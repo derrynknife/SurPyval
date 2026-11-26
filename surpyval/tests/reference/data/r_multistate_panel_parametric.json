@@ -1,0 +1,37 @@
+{
+  "generator": "scripts/reference/reference_r_multistate_panel_parametric.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "exponential": {
+      "fixture": "multistate_inspected",
+      "software": "R msm",
+      "version": "1.9",
+      "call": "msm(state ~ time, subject = id, data = d, qmatrix = Q, deathexact = 3, control = list(reltol = 1e-14, maxit = 10000))",
+      "settings": {
+        "transitions": "1-2, 1-3, 2-3"
+      },
+      "values": {
+        "loglik": -948.206629495982,
+        "q": [0.16591354406878, 0.0317239875423481, 0.135707695164521],
+        "q_se": [0.0121978350150379, 0.00606003162845234, 0.0163852966372922]
+      }
+    },
+    "weibull": {
+      "fixture": "multistate_inspected",
+      "software": "R nhm",
+      "version": "0.1.2",
+      "call": "nhm(model.nhm(state ~ time, data = d, subject = id, type = 'weibull', trans = trans, nonh = trans, death = TRUE, death.states = 3), control = nhm.control(rtol = 1e-11, atol = 1e-11, safe = TRUE))",
+      "settings": {
+        "transitions": "1-2, 1-3, 2-3",
+        "parameters": "log(1 / scale) then log(shape), by transition"
+      },
+      "values": {
+        "value": 919.152592705351,
+        "scale": [5.77365527157897, 23.9948595067132, 8.78964729349864],
+        "shape": [1.65313475948919, 1.09045717167001, 2.05834156242022],
+        "par": [-1.75330537588705, -3.1778396201863, -2.17357458501018, 0.502673339707858, 0.0865970318580493, 0.72190059177489],
+        "par_se": [0.0447185018805529, 0.285504082636613, 0.0592900059065997, 0.0631340756596268, 0.140601437435615, 0.183109835046879]
+      }
+    }
+  }
+}

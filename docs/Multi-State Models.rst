@@ -696,6 +696,72 @@ on probabilities from the delta method through the exact derivatives of
 the matrix exponential. Misclassified states (a hidden Markov model,
 where a visit can record the wrong state) are not built.
 
+Intensities that change with time
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A constant intensity says the chance of a move in the next month is the
+same however long the unit has been running, or in its state. Wear,
+ageing and recovery rarely work like that. ``ParametricPanelMultiState``
+takes the same visits and fits a distribution's hazard to each
+transition instead (a Weibull by default, so each move has a scale and
+a shape: a shape above 1 is a rate that rises, below 1 one that falls).
+Two time scales are offered:
+
+- ``clock="forward"`` (the default): each rate depends on the time
+  since the start, such as age or hours since new (a *non-homogeneous*
+  Markov model). The chance of going from one state to another between
+  two visits, by any route, is still an element of a matrix
+  :math:`P(t_{j-1}, t_j)`, now the solution of the Kolmogorov forward
+  equations with rates that change along the way, found by the product
+  integration ``ParametricMultiState`` uses.
+- ``clock="reset"``: each rate depends on the time since the unit
+  entered its current state (a *semi-Markov* model: a repaired item
+  starting afresh, a disease stage with its own course). The time of
+  entering a state is itself not seen, so the likelihood averages over
+  it, and over the entry into every state the unit may have passed
+  through between two visits unseen. This is offered for progressive
+  models (no going back to a state once left), where those routes can
+  be listed; a model with a way back is refused with the reason. Each
+  unit is taken to have entered its first state at its first visit.
+
+The fitted model is a ``ParametricMultiState``: the same occupation
+probabilities, bounds and lengths of stay. With exponential
+distributions either clock gives ``PanelMultiState``'s fit. Here the
+data above were simulated with constant intensities: each fitted shape
+is within two standard errors of 1, and the AIC barely moves (by less
+than one, for four more parameters), so they give no reason to leave
+the constant model:
+
+.. jupyter-execute::
+
+    from surpyval import Weibull
+    from surpyval.multistate import ParametricPanelMultiState
+
+    weibull = ParametricPanelMultiState.fit(
+        x, s, i, transitions=[("healthy", "ill"), ("healthy", "dead"),
+                              ("ill", "healthy"), ("ill", "dead")],
+        dist=Weibull,
+    )
+    for name, value, se in zip(weibull.parameter_names, weibull.params,
+                               weibull.standard_errors()):
+        print(f"{name:24s} {value:8.3f} ({se:.3f})")
+    print(round(panel.aic(), 1), round(weibull.aic(), 1))
+
+Every transition is fitted at once (the moves share each gap's
+probability), by BFGS on the log of each positive parameter, starting
+from the constant-intensity fit; the covariance is the inverse of the
+whole likelihood's numerical Hessian. On the forward clock the grid of
+the product integral is fixed for the search (every visit time, and the
+points between that the accuracy needs, chosen again at the estimate)
+so that the likelihood is smooth in the parameters. With exponential
+distributions it matches ``PanelMultiState`` and R ``msm`` to
+:math:`10^{-7}`; with Weibull hazards on the forward clock it matches R
+``nhm`` (Titman 2011); on the reset clock it is checked against
+adaptive quadrature and, where no state can be passed unseen, against
+``ParametricMultiState`` with the moves interval censored. Simulated
+visits recover the Weibull shapes, with bounds at their nominal
+coverage (``surpyval/tests/calibration/test_coverage_multistate_panel_parametric.py``).
+
 How it was checked
 ------------------
 
@@ -770,7 +836,9 @@ The non-parametric and Cox spell models refuse interval-censored
 changes of state (the parametric ones take them); for states seen only
 at visits use ``PanelMultiState``, which has no hidden Markov
 (misclassification) model yet. A ``SurpyvalData`` cannot yet carry an
-interval-censored move into the multi-state models: give the arrays. The parametric models have no
+interval-censored move into the multi-state models: give the arrays.
+``ParametricPanelMultiState`` takes no covariates yet, and on the clock
+reset only progressive models. The parametric models have no
 likelihood-ratio or bootstrap bounds. The clock reset is offered for the
 parametric spell models only: a Cox model per transition on the time in
 the state would need its probabilities simulated over step hazards, and
@@ -821,13 +889,17 @@ Putter, H., Fiocco, M. and Geskus, R. B. (2007), "Tutorial in
 biostatistics: competing risks and multi-state models", *Statistics in
 Medicine*, 26(11), 2389-2430.
 
+Titman, A. C. (2011), "Flexible nonhomogeneous Markov models for panel
+observed data", *Biometrics*, 67(3), 780-787.
+
 API
 ---
 
 Import these from ``surpyval.multistate`` (``MultiState``,
 ``MultiStateProportionalHazards``, ``ParametricMultiState``,
 ``ParametricMultiStateRegression``, ``PanelMultiState``,
-``PanelMultiStateRegression`` and ``TransitionMatrix`` are also at
+``PanelMultiStateRegression``, ``ParametricPanelMultiState`` and
+``TransitionMatrix`` are also at
 the top level, ``surpyval.MultiState`` and so on).
 
 .. autoclass:: surpyval.multistate.TransitionMatrix
@@ -849,6 +921,9 @@ the top level, ``surpyval.MultiState`` and so on).
    :members:
 
 .. autoclass:: surpyval.multistate.PanelMultiStateRegression
+   :members:
+
+.. autoclass:: surpyval.multistate.ParametricPanelMultiState
    :members:
 
 .. autofunction:: surpyval.multistate.to_stacked

@@ -127,6 +127,7 @@ _TAGGED_MODELS: dict[str, str] = {
     "PanelMultiState": "surpyval.multistate.panel",
     "PanelMultiStateRegression": "surpyval.multistate.panel",
     "ParametricMultiState": "surpyval.multistate.parametric",
+    "ParametricPanelMultiState": "surpyval.multistate.parametric_panel",
     "ParametricMultiStateRegression": "surpyval.multistate.parametric",
     "CauseSpecificMCF": (
         "surpyval.recurrent.competing_risks.nonparametric.cause_specific_mcf"
