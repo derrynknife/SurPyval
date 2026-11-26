@@ -411,6 +411,22 @@ v0.30 (unreleased)
   univariate fit. Priors are one set for every cause (transition) or a
   set each. Windows of inspection (``c`` of -1 or 2) in competing risks
   are refused: their likelihood holds every cause at once.
+- **Interval-censored moves in the parametric multi-state models.**
+  ``ParametricMultiState`` and ``ParametricMultiStateRegression`` take
+  ``x`` as two columns, ``[xl, xr]``: a move known only to lie between
+  the last time the unit was seen in its state and the first time it was
+  seen in the next (a state found at an inspection). ``fit_from_df``
+  takes ``x_col=[xl_col, xr_col]``. The likelihood integrates over the
+  move's unknown time (on the clock reset, the next spell's sojourn
+  density is convolved over it too), so every transition is fitted at
+  once and the covariance has terms between transitions; ``summary``
+  reports the joint fit's standard errors. Each move is taken to be
+  direct (for states that may be passed through unseen, use
+  ``PanelMultiState``). With constant hazards it matches R ``msm``'s
+  likelihood for the same visits to 1e-10 and its intensities to 1e-6;
+  a two-state model is ``flexsurvreg``'s interval-censored Weibull fit
+  (1e-9); an interval shrunk to a point gives the exact-time fit. Data
+  with every move's time known fit as before, to the same numbers.
 
 - **Exact median ranks for probability plots and rank regression**,
   ``heuristic="Exact"`` (also ``"Exact median"``): the median of each
