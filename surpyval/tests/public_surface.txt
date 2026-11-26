@@ -593,6 +593,8 @@ surpyval.torch.NLLLoss
 surpyval.torch.SUPPORTED
 surpyval.torch.Targets
 surpyval.torch.constrain
+surpyval.torch.cox_nll
+surpyval.torch.discrete_time_nll
 surpyval.torch.nll
 surpyval.torch.sf
 surpyval.torch.targets
