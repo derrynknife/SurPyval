@@ -504,3 +504,84 @@ def test_the_varying_bend_fit_is_no_worse_than_the_common_bend_fit(
     common-bend fit, the better maximum kept, reaches it."""
     model, _ = bend_varying
     assert model.neg_ll() <= placed.neg_ll() + 1e-6
+
+
+def test_a_bend_spread_at_zero_is_held_on_its_lower_bound(
+    placed, bend_varying
+):
+    """#1334: the bend has no spread, so the fit holds its sd at the
+    lower bound, 0: it is the common-bend fit (every other parameter, its
+    likelihood and their standard errors), a verified maximum with no
+    warning, and the bend's sd has no standard error."""
+    model, caught = bend_varying
+    assert model.spreads_at_zero == ["s1"]
+    assert model.maximum == "verified"
+    assert not [w for w in caught if "verified maximum" in w], caught
+    names = list(model.parameter_names)
+    assert model.params[names.index("sd_s1")] == 0.0
+    se = model.standard_errors()
+    assert np.isnan(se[names.index("sd_s1")])
+    common = dict(zip(placed.parameter_names, placed.params))
+    common_se = dict(zip(placed.parameter_names, placed.standard_errors()))
+    for name, value, error in zip(names, model.params, se):
+        if name == "sd_s1":
+            continue
+        assert value == pytest.approx(common[name], rel=1e-6, abs=1e-9)
+        assert error == pytest.approx(common_se[name], rel=1e-4)
+    assert model.neg_ll() == pytest.approx(placed.neg_ll(), rel=1e-9)
+    assert model.aic() == pytest.approx(placed.aic() + 2.0, rel=1e-9)
+    assert "sd_s1 at the lower bound, 0" in repr(model)
+
+
+def test_a_fit_held_on_the_boundary_predicts_and_saves(
+    straight, placed, bend_varying
+):
+    """Held on the boundary, the model predicts as the common-bend fit
+    does, with bounds, and saves and loads as it is."""
+    model, _ = bend_varying
+    item = {"markers": {0.0: 3.1, 120.0: 3.4, 240.0: 3.6}, "given": 300.0}
+    x = np.array([400.0, 600.0])
+    ours = model.predict(Z=[0.0], **item)
+    theirs = placed.predict(Z=[0.0], **item)
+    assert np.allclose(ours.sf(x), theirs.sf(x), rtol=1e-6)
+    assert np.allclose(ours.cb(x), theirs.cb(x), rtol=1e-4)
+    restored = surpyval.from_dict(json.loads(json.dumps(model.to_dict())))
+    assert restored.spreads_at_zero == ["s1"]
+    assert restored.k == model.k
+    assert np.allclose(
+        restored.predict(Z=[0.0], **item).sf(x), ours.sf(x), rtol=1e-12
+    )
+
+
+def test_a_spread_at_zero_is_tested_on_the_boundary(placed, bend_varying):
+    """The likelihood-ratio test of the bend's spread against the
+    common-bend fit: the statistic is 0 and, on the boundary, the
+    p-value is half of chi-squared on 0 (at 0, 1) and half on 1: 1."""
+    model, _ = bend_varying
+    test = model.likelihood_ratio_test(placed)
+    assert test["df"] == 1
+    assert test["statistic"] == pytest.approx(0.0, abs=1e-6)
+    assert test["p_value"] == pytest.approx(1.0)
+
+
+def test_fewer_varying_parameters_are_tested_by_the_boundary_mixture(
+    straight,
+):
+    """A straight line with its rate varying against one whose rate is
+    common: the rate's sd and its correlation, so half chi-squared on 1
+    and half on 2 (Stram and Lee, 1994)."""
+    from scipy.stats import chi2
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        both = JointPH(Weibull, LinearPath, varying=("a", "b")).fit(**straight)
+        level = JointPH(Weibull, LinearPath, varying=("a",)).fit(**straight)
+    test = both.likelihood_ratio_test(level)
+    stat = 2.0 * (level.neg_ll() - both.neg_ll())
+    assert test["df"] == 2
+    assert test["statistic"] == pytest.approx(stat)
+    assert test["p_value"] == pytest.approx(
+        0.5 * chi2.sf(stat, 1) + 0.5 * chi2.sf(stat, 2)
+    )
+    with pytest.raises(ValueError, match="varying"):
+        level.likelihood_ratio_test(both)
