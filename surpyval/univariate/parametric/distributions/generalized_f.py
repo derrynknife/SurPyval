@@ -235,6 +235,166 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         )
         return True
 
+    # -- the likelihood-ratio searches' edges -------------------------------
+    #: How near the limit as P runs to infinity its likelihood is taken:
+    #: the members on the ridge at c = sigma / delta = 1e-10, whose
+    #: log-likelihood agrees with the limit's to 1e-10 (the relative
+    #: corrections are O(c)).
+    _RIDGE_C = 1e-10
+
+    @staticmethod
+    def _ridge_params(mu: float, a: float, b: float, c: float) -> Any:
+        r"""The member ``[mu, sigma, Q, P]`` on the ridge to the limit as P
+        runs to infinity with shapes :math:`s_1 = a c` and :math:`s_2 = b
+        c`: :math:`\delta^2 = 1/s_1 + 1/s_2`, :math:`Q = (1/s_1 - 1/s_2)
+        / \delta`, :math:`P = (\delta^2 - Q^2) / 2` and :math:`\sigma = c
+        \delta`."""
+        s1, s2 = a * c, b * c
+        d2 = 1.0 / s1 + 1.0 / s2
+        delta = onp.sqrt(d2)
+        Q = (1.0 / s1 - 1.0 / s2) / delta
+        return onp.array([mu, c * delta, Q, (d2 - Q * Q) / 2.0])
+
+    def _lr_limit_nlls(self, neg_ll: Any, params: Any) -> dict:
+        r"""The family's limit as P runs to infinity, for the
+        likelihood-ratio searches (``_lr_family_limits``): the best
+        member of it, as a negative log-likelihood (``neg_ll`` of the
+        parameters), under the sides of the parameters' intervals that
+        run to it.
+
+        As P grows with :math:`\sigma^2 P` and :math:`\sigma Q` held, the
+        shapes :math:`s_1, s_2` fall to 0 in proportion to :math:`c =
+        \sigma / \delta`, and the log time tends to an asymmetric Laplace
+        distribution about ``mu``, falling away at the rate :math:`a =
+        s_1 / c` below it and :math:`b = s_2 / c` above it (the time
+        itself to a power law either side of :math:`e^\mu`). No member
+        reaches it, and on some samples it fits better than any member:
+        at n = 200 from GeneralizedF(2, 0.5, 0.5, 1), 30% censored, the
+        best member was 0.29 below it in log-likelihood. On the way to it
+        sigma falls to 0, P runs to infinity and Q to plus infinity where
+        :math:`b > a` (minus infinity where :math:`a > b`), so those
+        sides are given the limit's likelihood: unconstrained for sigma's
+        lower side and P's upper one, and with :math:`b \ge a` (or
+        :math:`a \ge b`) for Q's upper (lower) side, which, where the
+        best limit has the other sign, is the symmetric one, ``a = b``.
+        """
+        params = onp.asarray(params, dtype=float)
+        if params.size != 4 or not onp.all(onp.isfinite(params)):
+            return {}
+        from scipy.optimize import minimize
+
+        mu, sigma, Q, P = params
+        delta, s1, s2 = (float(v) for v in _shapes(Q, P))
+        c0 = sigma / delta
+        c = self._RIDGE_C
+
+        def nll(mu_: float, a: float, b: float) -> float:
+            v = neg_ll(self._ridge_params(mu_, a, b, c))
+            return float(v) if onp.isfinite(v) else onp.inf
+
+        def best(starts: list, f: Any) -> tuple:
+            out = (onp.inf, onp.asarray(starts[0], dtype=float))
+            for u0 in starts:
+                res = minimize(
+                    f,
+                    u0,
+                    method="Nelder-Mead",
+                    options={"xatol": 1e-9, "fatol": 1e-11, "maxiter": 4000},
+                )
+                if onp.isfinite(res.fun) and res.fun < out[0]:
+                    out = (float(res.fun), onp.asarray(res.x))
+            return out
+
+        # Started from the fit carried onto the ridge (its own a and b,
+        # far from the limit's where the fit is near P = 0) and from a
+        # Laplace on the log time about mu (the rates 1 / sigma either
+        # side), then the asymmetric limit from the symmetric one too.
+        log_a, log_b = onp.log(s1 / c0), onp.log(s2 / c0)
+        log_r = -onp.log(sigma)
+        sym, u_sym = best(
+            [onp.array([mu, 0.5 * (log_a + log_b)]), onp.array([mu, log_r])],
+            lambda u: nll(u[0], onp.exp(u[1]), onp.exp(u[1])),
+        )
+        full, u = best(
+            [
+                onp.array([mu, log_a, log_b]),
+                onp.array([mu, log_r, log_r]),
+                onp.array([u_sym[0], u_sym[1], u_sym[1]]),
+            ],
+            lambda u: nll(u[0], onp.exp(u[1]), onp.exp(u[2])),
+        )
+        if not onp.isfinite(full):
+            return {}
+        if sym <= full:
+            # (the symmetric limit is the best: both of Q's sides reach it)
+            full, q_up, q_down = sym, sym, sym
+        else:
+            # Q's sign on the ridge is that of b - a
+            q_up, q_down = (full, sym) if u[2] >= u[1] else (sym, full)
+        return {
+            (1, -1.0): full,
+            (3, 1.0): full,
+            (2, 1.0): q_up,
+            (2, -1.0): q_down,
+        }
+
+    #: Above this P a fit is on the ridge to the limit as P runs to
+    #: infinity (``_lr_limit_nlls``), where, as at the generalised gamma
+    #: edge, the Wald standard errors are no scale for a search.
+    _RIDGE_P = 1e3
+
+    def _at_an_edge(self, P: float) -> bool:
+        """Whether a fit's P is at the generalised gamma edge or on the
+        ridge to the limit as P runs to infinity."""
+        return bool(P < self._GG_EDGE_P or P > self._RIDGE_P)
+
+    def _lr_search_sd(self, theta: Any, free: list, sd: Any) -> Any:
+        """The likelihood-ratio searches' scale (``_wald_sd``), with those
+        of log sigma and log P held to at most 1 where the fit is at an
+        edge (``_at_an_edge``): there the likelihood is flat along the
+        edge and the Wald standard errors run to thousands, so a search's
+        first step went far off the profile's minimum (a sigma profile
+        deviance of 4.67 where it is 2.99)."""
+        sd = onp.array(sd, dtype=float)
+        if self._at_an_edge(float(theta[3])):
+            for j in (1, 3):
+                if j in free:
+                    k = free.index(j)
+                    sd[k] = min(sd[k], 1.0)
+        return sd
+
+    def _lr_profile_starts(self, model: Any, theta: Any, idx: int) -> list:
+        """Starts for a profile's search (``_profile_neg_ll``) besides the
+        fit, where the fit is at an edge (``_at_an_edge``): the
+        generalised gamma fitted to the same data, with P = 1, and the
+        profiled parameter at its value. From the fit a search stays on
+        the edge, where the likelihood is flat, and profiles the edge's
+        model instead of the family."""
+        if not self._at_an_edge(float(model.params[3])):
+            return []
+        kept = model.__dict__.get("_lr_gg_start")
+        if kept is None or kept[0] is not model.surv_data:
+            from surpyval.univariate.parametric import GeneralizedGamma
+
+            gg = None
+            try:
+                with ignoring_warnings(), onp.errstate(all="ignore"):
+                    fit = GeneralizedGamma._fit_from_surpyval_data(
+                        model.surv_data, how="MLE"
+                    )
+                gg = onp.r_[onp.asarray(fit.params, dtype=float), 1.0]
+                if not onp.all(onp.isfinite(gg)):
+                    gg = None
+            except (ValueError, RuntimeError):
+                gg = None
+            kept = (model.surv_data, gg)
+            model.__dict__["_lr_gg_start"] = kept
+        if kept[1] is None:
+            return []
+        out = onp.array(kept[1], dtype=float)
+        out[idx] = theta[idx]
+        return [out]
+
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:

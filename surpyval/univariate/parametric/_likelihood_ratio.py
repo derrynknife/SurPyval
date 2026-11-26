@@ -517,6 +517,12 @@ def _wald_sd(model: Any, coords: list[_LRCoord], free: list[int]) -> Any:
     with np.errstate(all="ignore"):
         sd = np.sqrt(np.diag(np.asarray(hess_inv, dtype=float))[free])
         sd = sd / np.abs(slopes)
+    adjust = getattr(model.dist, "_lr_search_sd", None)
+    if adjust is not None:
+        # A family whose Wald standard error is no scale for a search at
+        # the estimate (the GeneralizedF's log P at its generalised gamma
+        # edge, where it is in the thousands) says what to use instead.
+        sd = adjust(theta, free, sd)
     if not (np.all(np.isfinite(sd)) and np.all(sd > 0)):
         return None
     return sd
@@ -2104,10 +2110,38 @@ class LikelihoodRatioMixin:
 
     def _lr_supremum_nll(self) -> float | None:
         """The negative log-likelihood of a model the family only tends
-        to, where it fits the data better than the fit (``None`` here):
-        the fit is then not the maximum, and the likelihood's supremum is
-        there. See ``ExtendedLikelihoodRatio._lr_supremum_nll``."""
-        return None
+        to, where it fits the data better than the fit: the fit is then
+        not the maximum, and the likelihood's supremum is there. ``None``
+        for a family without such a limit; a distribution with one gives
+        it as ``_lr_limit_nlls`` (the GeneralizedF's, as P runs to
+        infinity). See ``ExtendedLikelihoodRatio._lr_supremum_nll``."""
+        limits = self._lr_family_limits()
+        if not limits:
+            return None
+        return float(min(limits.values()))
+
+    def _lr_family_limits(self) -> dict:
+        """The distribution's limits at the edges of its parameters'
+        space (``dist._lr_limit_nlls``), by the side of a parameter's
+        interval that runs to each, ``{(idx, direction): nll}``, kept;
+        empty for a family without them or with a parameter held fixed
+        at fit time (which the limit cannot follow)."""
+        find = getattr(self.dist, "_lr_limit_nlls", None)
+        if find is None:
+            return {}
+        key = (
+            np.asarray(self.params, dtype=float).tobytes(),
+            id(self.surv_data),
+        )
+        kept = self.__dict__.get("_lr_limits_kept")
+        if kept is None or kept[0] != key:
+            limits: dict = {}
+            if not self._user_fixed_idx():
+                with np.errstate(all="ignore"):
+                    limits = dict(find(self._lr_raw_neg_ll, self.params))
+            kept = (key, limits)
+            self.__dict__["_lr_limits_kept"] = kept
+        return kept[1]
 
     def _lr_reference_nll(self) -> float:
         """The negative log-likelihood every deviance is measured from:
@@ -2382,6 +2416,18 @@ class LikelihoodRatioMixin:
         u_hat = np.array([coords[j].to_u(self.params[j]) for j in free])
         w = coords[idx].to_u(value)
         starts = [] if path is None else path.starts(w)
+        # A family can add starts of its own: the GeneralizedF's from P of
+        # 1 where the fit is at its generalised gamma edge, P near 0, where
+        # the likelihood is flat in log P and a search started there does
+        # not leave it.
+        extra = getattr(self.dist, "_lr_profile_starts", None)
+        if extra is not None:
+            for th in extra(self, theta, idx):
+                starts.append(
+                    np.array(
+                        [coords[j].to_u(th[j]) for j in free], dtype=float
+                    )
+                )
         best, best_u, zero = np.inf, None, False
         # Searched in the coordinates divided by the Wald standard errors
         # (``_wald_sd``), where L-BFGS-B's first steps are to scale.
@@ -2648,19 +2694,32 @@ class LikelihoodRatioMixin:
             cache[key] = np.nan
             self.__dict__.setdefault("_lr_points", {})[key] = []
             return np.nan
-        status, w = _lr_walk(
-            deviance,
-            w_hat,
-            step,
-            direction,
-            crit,
-            end=coord.ends[1] if direction > 0 else coord.ends[0],
-            stop=limits[idx][1] if direction > 0 else limits[idx][0],
-            d_hat=d_hat,
-        )
+        if self._lr_limit_inside(idx, _LR_RESOLVED, direction, nll_hat):
+            # The likelihood's supremum is a limit of the family at the
+            # edge this side runs to (the fit has stopped short of it):
+            # the side is that edge, and the walk is not run, as far out
+            # along the valley to it the searches read noise as a crossing
+            # (a GeneralizedF P upper bound of 1.1e15 for infinity).
+            status, w = "edge", np.nan
+        else:
+            status, w = _lr_walk(
+                deviance,
+                w_hat,
+                step,
+                direction,
+                crit,
+                end=coord.ends[1] if direction > 0 else coord.ends[0],
+                stop=limits[idx][1] if direction > 0 else limits[idx][0],
+                d_hat=d_hat,
+            )
         if status in ("root", "stop"):
             value = coord.from_u(w)
         elif status == "edge":
+            value = float(coord.edge(direction))
+        elif self._lr_limit_inside(idx, crit, direction, nll_hat):
+            # The walk lost the profile along the valley to a limit of the
+            # family at the edge of this parameter's space, and that limit
+            # is inside the region: no value out to the edge is excluded.
             value = float(coord.edge(direction))
         else:
             value = np.nan
@@ -2672,6 +2731,22 @@ class LikelihoodRatioMixin:
         cache[key] = value
         self._lr_keep_points(idx, key, coord, path, crit, nll_hat)
         return value
+
+    def _lr_limit_inside(
+        self, idx: int, crit: float, direction: Any, nll_hat: float
+    ) -> bool:
+        """Whether a limit of the family that side ``direction`` of
+        parameter ``idx``'s interval runs to (``_lr_family_limits``) has
+        a deviance from ``nll_hat`` below ``crit``: the family's members
+        near it are then inside the region, so the side is the edge.
+
+        Where the parameter's walk settles its profile, it finds that
+        itself; this is for the walks that lose it in the narrow valley
+        the members follow out to the limit (the GeneralizedF's sigma to
+        0 as P runs to infinity), which reported the bound as not found.
+        """
+        nll = self._lr_family_limits().get((idx, float(np.sign(direction))))
+        return nll is not None and bool(2.0 * (nll - nll_hat) < crit)
 
     def _lr_keep_points(
         self,
