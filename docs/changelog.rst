@@ -24,6 +24,42 @@ v0.30 (unreleased)
   tolerance only: on the package's regression test fixtures the
   posterior medians and intervals move by at most 1e-7 (2e-8 relative),
   ``sf`` by at most 2e-9.
+- **``fit_best`` also tries the new ``BirnbaumSaunders``.** Where it has
+  the best value of the metric the answer changes: on 100 draws from
+  ``LogNormal(2, 0.8)`` (the diagnostics' example) it now wins with AIC
+  673.37 against the LogNormal's 673.58, so ``diagnose()`` on a Weibull
+  fitted to those data now names ``BirnbaumSaunders`` as the better
+  family. The two are close for a shape below 1 (as the shape falls to
+  0, the log time of a Birnbaum-Saunders is normal). Expect it to win
+  often among the right-skewed candidates: it also won on draws from a
+  ``Gamma(3, 0.5)`` and from an inverse Gaussian.
+- **``GeneralizedF.fit`` warns when its limit as ``P`` runs to infinity
+  fits better.** As ``P`` grows while ``sigma`` falls to 0 the log time
+  tends to an asymmetric Laplace distribution about ``mu``, which no
+  member reaches; on some samples it is more likely than any member, and
+  the fit stopped short of it in silence, at a local maximum (``P =
+  1.8``, 0.29 below the limit in log-likelihood, on one sample of 200
+  from ``GeneralizedF(2, 0.5, 0.5, 1)``) or out on the ridge towards it.
+  The fit now compares itself with the best member of that limit and,
+  where the limit is at least as likely, warns "No finite maximum",
+  naming the limit's ``mu`` and its rates ``a`` and ``b`` below and above
+  ``mu``, saying that the Wald standard errors and bounds mean nothing and
+  that the likelihood-ratio bounds allow for it; ``model.maximum`` is then
+  ``"no finite maximum"`` (so ``fit_best`` sets it aside). Where both
+  edges are at least as likely as the fit, the warning names this limit
+  rather than the generalised gamma, since it is the better. With a known
+  hazard ratio (``hr=``) the limit, and the generalised gamma the edge
+  check refits, are now taken under the same hazard ratio as the fit
+  (they were taken without it). No estimate changes, but results that
+  read ``maximum`` do, on such fits: ``fit_best`` sets the GeneralizedF
+  aside (on the sample above it was chosen with AIC 839.67; the Gamma,
+  840.09, is now chosen), and ``diagnose()``, ``prior.from_model`` and a
+  Bayesian fit with every prior flat refuse it, as they refuse every fit
+  with no finite maximum. The comparison costs more than the fit: at
+  n = 200 a fit took about 1 to 1.5 s more in our timings (0.3-0.5 s
+  became 1.0-1.7 s), and ``fit_best`` about 1.4 s more. A bootstrap's
+  refits skip it (they use only the estimates), so bootstrap bounds and
+  their time are as before.
 
 - **The parametric multi-state fits to interval-censored moves search
   more closely.** ``ParametricMultiState`` and
@@ -343,6 +379,32 @@ v0.30 (unreleased)
   changes.
 
 **Added.**
+
+- **Extremely randomised survival trees and forests:
+  ``splitrule="random"``.** ``SurvivalTree.fit`` and
+  ``RandomSurvivalForest.fit`` draw one cut for each feature considered
+  at a node, uniformly between the feature's smallest and largest value
+  there, and take the best of those by the kind's own split statistic
+  (Geurts, Ernst and Wehenkel, 2006), instead of searching every value.
+  ``"searched"`` is the default and the trees it grows are unchanged. The
+  rule works with every ``kind``, ``selection``, interval data and
+  competing risks, is seeded by ``random_state``, is saved and restored
+  by ``to_dict``/``from_dict``, and a forest keeps its bootstrap (so
+  out-of-bag scores exist). With seeds and a noise band fixed beforehand
+  (10 seeds; within two standard deviations of the searched forest), the
+  out-of-bag log-likelihood of 100-tree Weibull forests was within the
+  band on the Rossi data (-1.6037 against -1.6038) and on the lung data
+  (-2.155 against -2.169, 1.5 standard deviations better), and the fit
+  took 0.55 of the time on both.
+- **Torch losses for the Cox partial likelihood and the discrete-time
+  hazard: ``surpyval.torch.cox_nll`` and ``discrete_time_nll``.** Losses
+  only, for a network's outputs. ``cox_nll`` (Efron or Breslow ties,
+  counts and left truncation) equals ``CoxPH``'s negative log partial
+  likelihood to 1e-8 at its fitted coefficients and at others (140.687,
+  138.509 and 157.785 on the test data for the first two methods and a
+  third coefficient vector), and ``discrete_time_nll`` equals the negative
+  log-likelihood of ``DiscreteWeibull`` and ``Geometric`` at their
+  hazards; gradients agree with finite differences.
 
 - **``surpyval.utils.dates_to_durations``: dates to durations and
   censoring flags.** Start dates, end dates (a blank meaning still
@@ -919,6 +981,22 @@ v0.30 (unreleased)
   ``sex``) to 1e-6 in log-likelihood; the left-truncated likelihood to
   1e-8. See :doc:`univariate/generalized_f`.
 
+- **The Birnbaum-Saunders distribution, built in:**
+  ``surpyval.BirnbaumSaunders`` (``alpha``, the shape, and ``beta``, the
+  scale and median), as ``scipy.stats.fatiguelife(alpha, scale=beta)`` and
+  R's ``VGAM`` (``bisa``): a right-skewed lifetime whose log is close to
+  normal for a small shape, with a hazard that rises and then falls to a
+  constant. Closed-form quantiles (without the cancellation below the
+  median) and raw moments; both tails held in logs. Every fit option of a
+  built-in distribution (probability-plot fitting refused), Wald,
+  likelihood-ratio and bootstrap bounds, ``qf``/``isf``, moments, saving,
+  ``fit_best``, ``AFT(BirnbaumSaunders)``,
+  ``Distributional(BirnbaumSaunders)`` and the PyMC and torch helpers.
+  Against scipy the functions agree to 1e-10, and the fits with right,
+  left and interval censoring and truncation agree with an independently
+  written likelihood to 1e-8 in log-likelihood. See
+  :doc:`univariate/birnbaum_saunders`.
+
 - **The inverse Gaussian distribution, built in:**
   ``surpyval.InverseGaussian`` (``mu``, the mean, and ``lam``, the shape),
   as R's ``statmod`` and ``SuppDists``: the first passage time of a
@@ -1338,6 +1416,23 @@ v0.30 (unreleased)
   fitted both ways.
 
 **Fixed.**
+
+- **``fit_best`` no longer warns that a default candidate was set aside
+  when a regular fit was chosen.** With the GeneralizedF among the
+  default candidates, ordinary Weibull samples of 40 to 50 observations
+  gave "fit_best set aside GeneralizedF (its likelihood has no finite
+  maximum)" on every call. A candidate you name (``include=``), or a
+  choice among set-aside fits only, is still warned about; the default
+  candidates set aside stay in the table (``return_table=True``).
+
+- **``param_cb(method="lr")`` of the joint frailty, shared frailty and
+  semi-parametric proportional odds models, and of the frailty and
+  interval Cox models, raised ``AttributeError: 'LikelihoodRegion' object
+  has no attribute 'dist'``.** The edge handling added for the
+  GeneralizedF's likelihood-ratio bounds read the distribution family of
+  the model searched; a region over a bare likelihood has none. It now
+  reports no family limits, and the bounds are the ones they were
+  (joint frailty ``alpha``: 0.06 to 2.57 on the documented example).
 
 - **``Dabrowska``: a series with no failures.** Where every unit of one
   series is censored, ``sf``, ``ff`` and ``cb`` raised an

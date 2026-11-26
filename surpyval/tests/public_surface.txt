@@ -15,6 +15,7 @@ surpyval.Bernoulli
 surpyval.Beta
 surpyval.Beta4
 surpyval.BetaGeometric
+surpyval.BirnbaumSaunders
 surpyval.Binomial
 surpyval.BuckleyJames
 surpyval.BuckleyJamesModel
@@ -185,6 +186,8 @@ surpyval.ParametricCompetingRisksRegression
 surpyval.ParametricDistribution
 surpyval.ParametricMultiState
 surpyval.ParametricMultiStateRegression
+surpyval.ParametricPanelMultiState
+surpyval.ParametricPanelMultiStateRegression
 surpyval.ParametricRegressionModel
 surpyval.PenaltyPath
 surpyval.PermutationLogRankResult
@@ -401,6 +404,8 @@ surpyval.multistate.PanelMultiState
 surpyval.multistate.PanelMultiStateRegression
 surpyval.multistate.ParametricMultiState
 surpyval.multistate.ParametricMultiStateRegression
+surpyval.multistate.ParametricPanelMultiState
+surpyval.multistate.ParametricPanelMultiStateRegression
 surpyval.multistate.TransitionMatrix
 surpyval.multistate.from_stacked
 surpyval.multistate.to_stacked
@@ -440,10 +445,14 @@ surpyval.pymc.SUPPORTED
 surpyval.pymc.censored_likelihood
 surpyval.pymc.group_models
 surpyval.pymc.log_likelihood
+surpyval.pymc.nhpp_likelihood
+surpyval.pymc.nhpp_log_likelihood
 surpyval.pymc.pooled_likelihood
 surpyval.pymc.prior_from_model
 surpyval.pymc.prior_from_spec
+surpyval.pymc.shrinkage
 surpyval.pymc.to_surpyval
+surpyval.recurrent.AMPMProjection
 surpyval.recurrent.ARA
 surpyval.recurrent.ARI
 surpyval.recurrent.AndersenGill
@@ -459,6 +468,7 @@ surpyval.recurrent.CoxLewis
 surpyval.recurrent.CrowAMSAA
 surpyval.recurrent.CrowAMSAADiscrete
 surpyval.recurrent.DiscreteGrowthModel
+surpyval.recurrent.DiscreteSteinProjection
 surpyval.recurrent.Duane
 surpyval.recurrent.EffortClock
 surpyval.recurrent.EffortTable
@@ -490,10 +500,14 @@ surpyval.recurrent.ProportionalIntensityNHPP
 surpyval.recurrent.RayleighDefects
 surpyval.recurrent.RenewalModel
 surpyval.recurrent.SharedFrailtyModel
+surpyval.recurrent.SteinProjection
 surpyval.recurrent.TrendTestResult
 surpyval.recurrent.WeiLinWeissfeld
 surpyval.recurrent.WeibullEffort
 surpyval.recurrent.YamadaDelayedS
+surpyval.recurrent.adpm_stein_projection
+surpyval.recurrent.ampm_projection
+surpyval.recurrent.ampm_stein_projection
 surpyval.recurrent.change_point_cb
 surpyval.recurrent.change_point_test
 surpyval.recurrent.compare_predictions
@@ -580,6 +594,8 @@ surpyval.torch.NLLLoss
 surpyval.torch.SUPPORTED
 surpyval.torch.Targets
 surpyval.torch.constrain
+surpyval.torch.cox_nll
+surpyval.torch.discrete_time_nll
 surpyval.torch.nll
 surpyval.torch.sf
 surpyval.torch.targets
@@ -647,6 +663,7 @@ surpyval.univariate.parametric.Bernoulli
 surpyval.univariate.parametric.Beta
 surpyval.univariate.parametric.Beta4
 surpyval.univariate.parametric.BetaGeometric
+surpyval.univariate.parametric.BirnbaumSaunders
 surpyval.univariate.parametric.Binomial
 surpyval.univariate.parametric.CustomDistribution
 surpyval.univariate.parametric.DiscreteParametricFitter

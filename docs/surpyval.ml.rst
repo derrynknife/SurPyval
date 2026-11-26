@@ -47,6 +47,35 @@ type.
 For a narrative introduction see the survival-forest section of
 :doc:`Regression Modelling with SurPyval`.
 
+Extremely randomised trees
+--------------------------
+
+By default a node tries every value of each feature it considers as a cut
+and keeps the best. With ``splitrule="random"`` it draws one cut for each
+feature instead, uniformly between the smallest and largest value the
+feature takes at that node, and keeps the best of those few by the same
+split statistic (the extremely randomised trees of Geurts, Ernst and
+Wehenkel, 2006). The cut is chosen without looking at the outcome, so a
+node costs one score for each feature rather than one for each distinct
+value, and the trees of a forest differ more from each other. The kind,
+``selection``, leaf models and minimum leaf sizes are unchanged, and the
+draws come from ``random_state`` like the feature draws.
+
+A forest keeps its bootstrap resampling under this rule (so its
+out-of-bag scores exist); pass ``bootstrap=False`` for the original
+Extra-Trees, in which every tree sees the whole sample. On the Rossi
+recidivism data (432 rows) and the lung data (168 complete rows), forests
+of 100 Weibull trees over 10 seeds had a mean out-of-bag log-likelihood
+per observation of -1.604 searched and -1.604 random (the seed-to-seed
+standard deviations were 0.005 and 0.003), and -2.169 searched and -2.155
+random (0.009 and 0.006), with the random forests fitting in 0.55 of the
+time (``scripts/studies/extra_trees_oob.py``).
+
+.. code-block:: python
+
+    forest = RandomSurvivalForest.fit(x, Z, c=c, splitrule="random",
+                                      random_state=0)
+
 A few things worth knowing:
 
 - Fitted from a DataFrame (``fit_from_df`` with ``Z_cols`` or a

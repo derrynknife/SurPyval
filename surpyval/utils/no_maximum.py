@@ -163,6 +163,45 @@ def maximum_warnings_quiet() -> bool:
     return _QUIET.get()
 
 
+# Set while refits whose estimates alone are used (a bootstrap's) run
+_ESTIMATES_ONLY: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "surpyval_estimates_only", default=False
+)
+
+
+@contextlib.contextmanager
+def estimates_only() -> Iterator[None]:
+    """Mark the fits inside the block as refits whose estimates alone are
+    used (a bootstrap's resamples), so that a family may skip a costly
+    check of whether its likelihood is highest in a limit of its
+    parameters, a check that changes only the warning and the model's
+    ``maximum``, never the estimates (the GeneralizedF's comparison with
+    its limit as P runs to infinity, which costs more than the fit).
+
+    Examples
+    --------
+    >>> from surpyval.utils.no_maximum import (
+    ...     estimates_only,
+    ...     estimates_only_active,
+    ... )
+    >>> with estimates_only():
+    ...     estimates_only_active()
+    True
+    >>> estimates_only_active()
+    False
+    """
+    token = _ESTIMATES_ONLY.set(True)
+    try:
+        yield
+    finally:
+        _ESTIMATES_ONLY.reset(token)
+
+
+def estimates_only_active() -> bool:
+    """Whether the fits are inside :func:`estimates_only`."""
+    return _ESTIMATES_ONLY.get()
+
+
 def warn_no_maximum(what: str, consequence: str, advice: str) -> None:
     """Warn that a fit's likelihood has no finite maximum.
 

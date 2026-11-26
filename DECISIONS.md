@@ -15,6 +15,37 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### The Birnbaum-Saunders, built in (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `BirnbaumSaunders(alpha, beta)`: shape `alpha` and scale `beta` (the median), in that order, as `scipy.stats.fatiguelife(alpha, scale=beta)` and VGAM's `bisa` (`scale = beta, shape = alpha`). The names are the reverse of SurPyval's Weibull (`alpha` scale, `beta` shape); the docs say so. | maintainer (build it), proposed (parameterisation) | The common statistical form; anyone comparing with the literature, scipy or R reads the same numbers. | done |
+| `xi = (x - beta) / (alpha sqrt(x) sqrt(beta))`; both tails from the normal's log tails; the quantile below the median as `beta / (sqrt(w^2 + 1) - w)^2` (`w = alpha z / 2`, `hypot`), `isf` from the survival probability; raw moments exact, from the Chebyshev polynomial `T_2m` (a polynomial in `alpha^2` with integer coefficients). | proposed | scipy's own quantile cancels below the median; these hold to mpmath's 60 digits to 1e-10 down to probabilities of 1e-300. | done |
+| Started from the lognormal fit (`alpha = sigma`, `beta = exp(mu)`); no closed-form MLE. Added to the point-mass families (it concentrates as `alpha -> 0`). | proposed | The lognormal is its small-shape limit; the MLE of `beta` solves a non-linear equation even on exact data. | done |
+| AFT origin map (`beta` times `e^s`), distributional regression (`beta` "longer", `alpha` no direction), PyMC and torch families, `fit_best`. `PH(BirnbaumSaunders)` fits (a legitimate proportional hazards model on this baseline), but has no origin map: a constant multiple of the hazard leaves the family. No MPP fit (the straight line `x = beta + alpha sqrt(beta) z sqrt(x)` mixes the time and the probability). | proposed | As the other scale families added on 25 Nov. | done |
+| Validated against scipy and mpmath and an independently written likelihood; the VGAM check named by the request is committed as `scripts/reference/reference_r_birnbaum_saunders.R` with a test that skips until its output exists (VGAM is not installed here). | proposed | No R package is installed without the maintainer's OK; the base-R likelihood on `lung` agreed to 1e-10 in log-likelihood in the meantime. | open |
+### fit_best: warning about candidates set aside (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A default candidate set aside (no finite maximum, not a verified maximum, or a non-regular family) while a regular fit is chosen is not warned about; it is shown in the table (`return_table=True`). A candidate the caller named (`include=`), or a choice among set-aside fits only, still warns. The alternative considered was dropping the GeneralizedF from the default candidates. | proposed | The GeneralizedF has no finite maximum on much ordinary data (Weibull samples of 40 to 50), so the warning appeared on every default call. Dropping it would change which models `fit_best` can choose. | done |
+### Extremely randomised survival trees (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `splitrule="random"` (default `"searched"`) on `SurvivalTree` and `RandomSurvivalForest`: one cut for each drawn feature, uniform between the node's minimum and maximum of that feature, read as the largest observed value at or below the draw; the best of those by the kind's existing split statistic. | proposed | Geurts, Ernst and Wehenkel's Extra-Trees; the planned default. | done |
+| It is implemented by giving the split rule each candidate feature as the indicator of being above its cut, so one code path serves every kind, `selection`, interval data and competing risks, and the statistics are untouched. | proposed | One place to change, and the statistic cannot differ from the searched one's. | done |
+| The forest keeps its bootstrap under the random rule; `bootstrap=False` gives the original Extra-Trees. | proposed | Out-of-bag scores (and the importances built on them) still exist. | done |
+| The done-check's seeds, noise band and data were fixed before the first run (`scripts/studies/extra_trees_oob.py`): Rossi and lung, 100 Weibull trees, seeds 0 to 9, within two standard deviations of the searched forest's seed-to-seed spread. Both passed; fit time was 0.55 of the searched forest's. | proposed | The issue's "within noise, and faster, measured". | done |
+### Torch losses: Cox partial likelihood and discrete-time hazard (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `cox_nll(risk, target, ties="efron", reduction="mean")` takes the network's log relative hazard and a `Targets`; Efron (default, as `CoxPH`) and Breslow ties. The exact and Kalbfleisch-Prentice methods are refused, saying why. | proposed | They sum over orderings of the ties, with no cheap differentiable form; the other two match `CoxPH` exactly. | done |
+| `reduction="mean"` divides by the number of failures (the sum of `n` over failed rows); `"sum"` is `CoxPH`'s negative log partial likelihood. No `"none"`. | proposed | The partial likelihood has no per-row terms. DeepSurv divides by the number of events. | done |
+| `discrete_time_nll(logits, index, c, n)`: intervals counted from 0, a unit censored in interval k survived through it (pycox's logistic hazard convention), so interval k is the discrete time k + 1. Only failed and right-censored rows. | proposed | Matches `DiscreteWeibull` and `Geometric` (support from 1) and the usual training convention. | done |
+| The Stan or NumPyro likelihood bridge (part b) is not built. | proposed | Left for a follow-up. | open |
+
 ### Dates to durations (27 Nov 2026)
 
 | Decision | By | Reason | Status |
@@ -39,6 +70,14 @@ Design decisions made while working on the open issues, with the reason for each
 | The peak search (`find_mode`) takes a `scale` per coordinate and works in the coordinates divided by it; a target says its scales (`Target.coordinate_scales`, default none). The regressions give a coefficient of `exp(beta'Z)` the scale one over its covariate's standard deviation (count-weighted, as the default prior's) and every other parameter 1. The Laplace curvature and the grid already measure along the found covariance, so they follow. | proposed | The search's gradient tolerance and steps are absolute: a coefficient in micro-units stopped at its start. Scaling the search, not the target, keeps the priors on the user's coefficient (a prior per unit of the covariate means the same) and changes no stored posterior form. | done |
 | An accelerated life model's life-model parameters, a custom `phi`'s coefficients and the recurrent and process targets keep scale 1. | proposed | Their parameters are not one per covariate column, and their conformance cases pass the covariate-unit check already. | done |
 
+### The GeneralizedF fit warns at its limit as P runs to infinity (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A `GeneralizedF` maximum-likelihood fit (no offset) whose log-likelihood is no higher than the best member of the asymmetric Laplace limit (found as the likelihood-ratio searches find it, on the ridge at c = 1e-10, with the fit's zero inflation and limited failure population held), within 1e-9 relative, warns "No finite maximum", names the limit's mu, a and b, says the Wald standard errors and bounds mean nothing, and points to `method='lr'`; its `maximum` is `"no finite maximum"`. Checked at every P, not only on the ridge, under the fit's known hazard ratio (as is the generalised gamma edge's refit). | proposed | The fit stopped there silently, at a local maximum (P = 1.8, 0.29 below the limit on one study sample) or on the ridge (P near 1e5). An interior maximum is strictly better than the limit, so an ordinary fit is not flagged. Costs about 1 to 1.5 s a fit at n = 200. | done |
+| The comparison is skipped in refits whose estimates alone are used, a bootstrap's resamples and jackknife (`surpyval.utils.no_maximum.estimates_only`); it runs wherever `maximum` is read (a user's fit, `fit_best`, `diagnose`). | proposed | It changes only the warning and `maximum`, and costs more than the fit: a bootstrap of 20 refits went from 29 s to 81 s; with the skip its bounds are bit-identical to before for a fixed seed, in about the same time. | done |
+| That limit is checked before the generalised gamma edge, and where it is at least as likely as the fit it is the one named, even with P near 0. | proposed | An edge fit is within the margin of the GeneralizedGamma fit, so a limit above the fit is above the generalised gamma too: it is the supremum, and "fit GeneralizedGamma instead" would point to the worse model (seed 997154490: the limit is 0.36 higher). | done |
+
 ## 2026-11-26
 
 ### GeneralizedF likelihood-ratio bounds at the family's edges (26 Nov 2026)
@@ -49,7 +88,7 @@ Design decisions made while working on the open issues, with the reason for each
 | A side whose limit is the supremum (within 1e-3 of deviance) is the edge without walking; a side whose walk loses the profile (nan) is the edge where its limit is inside the region; a crossing the walk finds stands. | proposed | As the offset models' limit as the offset runs to -inf: far along the valley the searches read noise as a crossing (a P upper bound of 1.1e15). | done |
 | Where the fit is at an edge (P < 0.01 or P > 1e3) the profiles are also searched from the GeneralizedGamma fit with P = 1, and the searches' scale of log sigma and log P is held to at most 1. Hooks on the distribution (`_lr_limit_nlls`, `_lr_profile_starts`, `_lr_search_sd`), unused by every other family. | proposed | The likelihood is flat in log P at the edge; the Wald scale there (thousands) sent the searches off the minimum. | done |
 | The Wald bounds are not changed: sigma, P and the mean are already on the log scale, and their undercoverage at n = 200 comes from P's estimate being at an edge in 3 samples in 10, which no transform mends. The docs recommend the likelihood-ratio bounds or the bootstrap at moderate n, with the measured n; the Wald study stays a strict xfail. | proposed | Measured: nominal by n = 500 to 1000. | done |
-| The fit does not yet warn when the asymmetric Laplace limit beats it, as it does at the generalised gamma edge. | proposed | Separate change to the fit's warnings. | gap |
+| The fit does not yet warn when the asymmetric Laplace limit beats it, as it does at the generalised gamma edge. | proposed | Separate change to the fit's warnings. | superseded (27 Nov 2026): the fit now warns, see "The GeneralizedF fit warns at its limit as P runs to infinity" |
 
 ### The power-law NHPP in PyMC and fleet pooling (26 Nov 2026)
 
