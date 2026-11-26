@@ -121,15 +121,18 @@ v0.30 (unreleased)
   common fit's. On the test fixture whose lines have no bend, the
   spline fit with the bend varying went from 480.41 to 479.75 in
   negative log-likelihood earlier in this release (a second search from
-  the common-bend fit, now replaced), but still ended unverified with
-  ``sd_s1`` 2.1e-5 and no standard errors at all; it is now the
-  common-bend fit to 1e-10, verified, with ``sd_s1`` 0 and every other
-  standard error (``level`` 0.1307, ``marker_effect`` 0.2890). On the
+  the common-bend fit, now replaced), but still ended unverified, with
+  a warning and ``sd_s1`` 2.1e-5; it is now the common-bend fit to
+  1e-10, verified with no warning, ``sd_s1`` 0 with no standard error,
+  and every other standard error the common fit's (``level`` 0.1307,
+  ``marker_effect`` 0.2890). On the
   fixture with two markers whose temperature rises at the same rate in
   every item, the fit with that rate varying went from 997.95
   (unverified, 0.40 worse than the fit with it common) to 997.51, the
-  search off the edge rising 0.043 above it. Verified fits with every
-  spread clear of 0 are unchanged and cost nothing more. A study of
+  search off the edge rising 0.043 above it (still unverified, and
+  slower: 415 s against 108 s, two more fits of four varying
+  parameters). Verified fits with every spread clear of 0 are unchanged
+  and cost nothing more. A study of
   fleets whose bends are alike, or nearly, is described on the joint
   models page (``scripts/studies/joint_recovery/bend_null_study.py``).
 - **``likelihood_ratio_test`` of joint models takes fewer varying
