@@ -434,6 +434,23 @@ v0.30 (unreleased)
   univariate fit. Priors are one set for every cause (transition) or a
   set each. Windows of inspection (``c`` of -1 or 2) in competing risks
   are refused: their likelihood holds every cause at once.
+- **Panel multi-state models with hazards that change with time**,
+  ``ParametricPanelMultiState``: states seen only at visits (the data of
+  ``PanelMultiState``) with a parametric distribution per transition, a
+  Weibull by default. ``clock="forward"`` is a non-homogeneous Markov
+  model (each gap's transition probabilities by product integration of
+  the Kolmogorov forward equations); ``clock="reset"`` a semi-Markov
+  model for progressive models (the likelihood integrates over the
+  unseen entry times, including those of states passed through between
+  visits; a model with a way back is refused with the reason). The
+  fitted model is a ``ParametricMultiState``, with its predictions and
+  bounds. With exponential distributions both clocks give
+  ``PanelMultiState``'s fit (R ``msm``'s intensities to 1e-7); with
+  Weibull hazards the forward clock matches R ``nhm`` (log-likelihood
+  to 1e-11, scales and shapes to 1e-5). No covariates yet. The grid
+  refinement of the forward equations takes a ``floor`` (off for the
+  existing models, whose numbers do not change).
+
 - **Interval-censored moves in the parametric multi-state models.**
   ``ParametricMultiState`` and ``ParametricMultiStateRegression`` take
   ``x`` as two columns, ``[xl, xr]``: a move known only to lie between

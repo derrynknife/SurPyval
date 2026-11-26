@@ -76,6 +76,14 @@ def simulate(n, seed, pars, clock="forward", gap=1.0):
     start, or with ``clock="reset"`` since entering the state), healthy at
     0, seen every ``gap`` until a uniform (5, 10) end, deaths timed
     exactly, as the long form (see :func:`spells`)."""
+    ids, times, states, before = visits(n, seed, pars, clock, gap)
+    return spells(ids, times, states, before=before)
+
+
+def visits(n, seed, pars, clock="forward", gap=1.0):
+    """The visits of :func:`simulate`: ``(ids, times, states, before)``,
+    a death as state 3 at its exact time (``before`` the state just before
+    each row)."""
     from scipy.optimize import brentq
 
     rng = np.random.default_rng(seed)
@@ -117,4 +125,4 @@ def simulate(n, seed, pars, clock="forward", gap=1.0):
             times.append(v)
             states.append([s for w, s in path if w <= v][-1])
             before.append(states[-1])
-    return spells(ids, times, states, before=before)
+    return ids, times, states, before

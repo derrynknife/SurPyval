@@ -157,11 +157,22 @@ def fit(
     models: list,
     neg_ll: Callable[[list], float],
     what: str,
+    covariance: bool = True,
+    polish: bool = False,
+    central: bool = False,
 ) -> JointFit:
     """Maximise the likelihood over every transition's parameters, from
     ``models`` (the transitions' starting fits); ``neg_ll(models)`` is the
     negative log-likelihood of a list of rebuilt models. ``what`` names
-    the fit in a warning."""
+    the fit in a warning. Without ``covariance`` the search only (a
+    covariance of NaN, the maximum unverified, no warning); with
+    ``polish``, a Newton step from the search's end on the Hessian and a
+    central-difference gradient, kept where it lowers the negative
+    log-likelihood (BFGS on numerical gradients stops short by about the
+    rounding of their forward differences). With ``central`` the search
+    takes central-difference gradients (twice the evaluations each, but
+    accurate enough to stop on its tolerance rather than wander where the
+    forward differences' rounding hides the slope) and is run once."""
     from scipy.optimize import minimize
 
     from surpyval.utils.linalg import numerical_hessian
@@ -179,14 +190,31 @@ def fit(
         return value if np.isfinite(value) else _BAD
 
     theta0 = pack.to_search(pack.est)
-    res = minimize(f, theta0, method="BFGS", options={"gtol": 1e-6})
-    theta = res.x
+    if central:
+        res = minimize(
+            f, theta0, method="BFGS", jac="3-point", options={"gtol": 1e-5}
+        )
+        theta = res.x
+    else:
+        res = minimize(f, theta0, method="BFGS", options={"gtol": 1e-6})
+        theta = res.x
     # (BFGS's own stop can come a little early on a flat valley: once more
     # from where it stopped, which is cheap where it was already there)
-    res2 = minimize(f, theta, method="BFGS", options={"gtol": 1e-7})
-    if res2.fun <= res.fun:
-        res, theta = res2, res2.x
+    if not central:
+        res2 = minimize(f, theta, method="BFGS", options={"gtol": 1e-7})
+        if res2.fun <= res.fun:
+            res, theta = res2, res2.x
     value = float(res.fun)
+    if not covariance:
+        values = pack.from_search(theta)
+        return JointFit(
+            models=pack.rebuild(values),
+            est=values,
+            cov=np.full((values.size, values.size), np.nan),
+            neg_ll=value,
+            k=pack.k,
+            maximum="unverified",
+        )
     # (a step of the search scale's own size: a log shape near 0, a shape
     # near 1, would otherwise get a step too small for the rounding of
     # the likelihood)
@@ -200,6 +228,16 @@ def fit(
             cov_t = np.linalg.inv(H)
     except np.linalg.LinAlgError:
         cov_t = None
+    if polish and cov_t is not None:
+        g = np.empty(theta.size)
+        for j in range(theta.size):
+            e = np.zeros(theta.size)
+            e[j] = step[j]
+            g[j] = (f(theta + e) - f(theta - e)) / (2.0 * step[j])
+        trial = theta - cov_t @ g
+        f_trial = f(trial)
+        if f_trial < value:
+            theta, value = trial, f_trial
     if cov_t is None or value >= _BAD:
         maximum = "unverified"
         warn_unverified(

@@ -889,6 +889,47 @@ def _search_panel_multistate(model, data):
     ]
 
 
+def _search_parametric_panel_multistate(model, data):
+    """The joint panel likelihood of every transition's parameters, on
+    the scale the fit searches (the log of positive parameters), with
+    the gradient and Hessian by central differences (the likelihood is a
+    product integral on a fixed grid, or tanh-sinh integrals, both smooth
+    in the parameters)."""
+    from surpyval.multistate._joint import Packer
+    from surpyval.utils.linalg import numerical_hessian
+
+    models = model._models()
+    lik = model._panel_likelihood()
+    pack = Packer.of(models)
+
+    def fun(theta):
+        return lik.neg_ll(pack.rebuild(pack.from_search(theta)))
+
+    step = np.finfo(float).eps ** (1 / 3)
+
+    def jac(theta):
+        out = np.empty(theta.size)
+        for j in range(theta.size):
+            e = np.zeros(theta.size)
+            e[j] = step * max(abs(theta[j]), 1.0)
+            out[j] = (fun(theta + e) - fun(theta - e)) / (2 * e[j])
+        return out
+
+    def hess(theta):
+        h = np.finfo(float).eps ** 0.25 * np.maximum(np.abs(theta), 1.0)
+        return numerical_hessian(fun, theta, h)
+
+    return [
+        Search(
+            fun,
+            pack.to_search(pack.est),
+            float(model.n_obs),
+            jac=jac,
+            hess=hess,
+        )
+    ]
+
+
 def _columns(kept):
     """``(position, column)`` of coefficients that are all searched, in
     the order of ``kept``'s columns (of a ``Z`` restricted to them)."""
@@ -1489,6 +1530,7 @@ SEARCHES: dict[str, Callable] = {
         _search_parametric_multistate_regression
     ),
     "PanelMultiState": _search_panel_multistate,
+    "ParametricPanelMultiState": _search_parametric_panel_multistate,
     "PanelMultiStateRegression": _search_panel_multistate,
     "ParametricCompetingRisks": _search_parametric_competing_risks,
     "ParametricCompetingRisksRegression": (

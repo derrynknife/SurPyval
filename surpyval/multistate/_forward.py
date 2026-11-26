@@ -166,15 +166,19 @@ def _refine(
     frm: npt.NDArray,
     to: npt.NDArray,
     k: int,
+    floor: float = 0.0,
 ) -> npt.NDArray:
     """``nodes`` with every interval halved until its two halves agree
-    with its one step to ``tol * length / scale``. Each interval's fate
-    depends only on itself, so a node set holds the same points however
-    far it reaches."""
+    with its one step to ``tol * length / scale`` (or to ``floor``, where
+    given: next to a hazard infinite at an end of an interval, a Weibull
+    shape below 1 at 0, the difference falls little faster than the
+    length, and the relative rule alone would halve it to the limit of
+    the grid). Each interval's fate depends only on itself, so a node set
+    holds the same points however far it reaches."""
     while True:
         H = _checked(cumhaz, nodes)
         _, diff = _halves(cumhaz, nodes, H, frm, to, k)
-        bad = diff > tol * np.diff(nodes) / scale
+        bad = (diff > tol * np.diff(nodes) / scale) & (diff > floor)
         if not np.any(bad):
             return nodes
         a, b = nodes[:-1][bad], nodes[1:][bad]

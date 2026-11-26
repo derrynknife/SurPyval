@@ -299,6 +299,7 @@ _LAZY = {
             "PanelMultiStateRegression",
             "ParametricMultiState",
             "ParametricMultiStateRegression",
+            "ParametricPanelMultiState",
             "TransitionMatrix",
         ),
         "surpyval.multistate",
@@ -538,6 +539,7 @@ if TYPE_CHECKING:
         PanelMultiStateRegression,
         ParametricMultiState,
         ParametricMultiStateRegression,
+        ParametricPanelMultiState,
         TransitionMatrix,
     )
     from surpyval.recurrent import (

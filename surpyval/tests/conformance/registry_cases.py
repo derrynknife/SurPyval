@@ -1291,6 +1291,11 @@ def _panel_multistate():
             "exact_entry": d["exact_entry"],
         }
 
+    def parametric_from_df(d):
+        return ms.ParametricPanelMultiState.fit_from_df(
+            frame(d), "x", "s", "i", dist=sp.Exponential, **options(d)
+        )
+
     def from_df(d):
         return ms.PanelMultiState.fit_from_df(
             frame(d), "x", "s", "i", **options(d)
@@ -1338,6 +1343,30 @@ def _panel_multistate():
             coefficients=lambda m: m.betas,
             intercept=True,
             exclude=_PANEL_EXCLUDE,
+        ),
+        # A distribution per transition fitted to the visits (exponential
+        # here: fourteen units are too few for two parameters a
+        # transition; the Weibull fits are checked in the model's tests).
+        Case(
+            name="ParametricPanelMultiState",
+            fitters=("surpyval.multistate.ParametricPanelMultiState",),
+            model_class="surpyval.multistate.ParametricPanelMultiState",
+            interface=STATES,
+            data=panel_data,
+            fit=_fit(ms.ParametricPanelMultiState, dist=sp.Exponential),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_PANEL,
+            rows=("x", "s", "i"),
+            times=("x",),
+            paths={"fit_from_df": parametric_from_df},
+            exclude={
+                **_PANEL_EXCLUDE,
+                "convergence": "the search starts from a time-homogeneous "
+                "Markov fit and takes no init or iteration limit to starve; "
+                "a search that ends short is checked by 'maximum'",
+            },
         ),
     ]
 
@@ -4270,6 +4299,8 @@ def _bounds(case):
         # The delta method over the intensities (and coefficients), Wald
         # bounds on each parameter, and on each transient state's mean
         # stay.
+        "ParametricPanelMultiState": _multistate_bounds((None,))
+        + (_LENGTH_OF_STAY,),
         "PanelMultiState": _multistate_bounds((None,))
         + (
             _PARAM_CB,
