@@ -482,3 +482,146 @@ def test_failures_before_a_first_look_only():
     # 3 failures in 9 + 7 hours
     assert R.HPP.fit(history).params[0] == pytest.approx(3 / 16, rel=1e-9)
     assert R.HPP.fit(rows).params[0] == pytest.approx(3 / 16, rel=1e-9)
+
+
+def _round_trip(history, fitter=None, same=True):
+    """The history as rows reads back as the same history, and the fit of
+    either has the same numbers."""
+    rows = history.to_surpyval_data()
+    if same:
+        assert rows._event_history("test") == history
+    if fitter is not None:
+        np.testing.assert_array_equal(
+            fitter.fit(rows).params, fitter.fit(history).params
+        )
+    return rows
+
+
+def test_inspections_that_found_nothing_hold_as_rows():
+    """Item 1 was looked at over (0, 3] and (3, 6] and found 2 events then
+    none; item 2 found none over (0, 2] and 3 over (2, 6]. The counts of 0
+    are information (the item was looked at and failed no time), kept as
+    rows with n = 0."""
+    arrays = dict(
+        x=[[0, 3], [3, 6], [6, 6], [0, 2], [2, 6], [6, 6]],
+        i=[1, 1, 1, 2, 2, 2],
+        c=[2, 2, 1, 2, 2, 1],
+        n=[2, 0, 1, 0, 3, 1],
+    )
+    history = surpyval.handle_xicn(**arrays)
+    rows = _round_trip(history, R.CrowAMSAA)
+    assert rows.n.tolist() == [2, 0, 1, 0, 3, 1]
+    assert rows.c.tolist() == [2, 2, 1, 2, 2, 1]
+    assert rows.i == [1, 1, 1, 2, 2, 2]
+    assert rows.n_items == 2
+    # The fit of the rows is the fit of the arrays
+    np.testing.assert_array_equal(
+        R.CrowAMSAA.fit(rows).params, R.CrowAMSAA.fit(**arrays).params
+    )
+    # And the zero counts change the fit: they are real information
+    without = surpyval.handle_xicn(
+        x=[[0, 3], [6, 6], [2, 6], [6, 6]],
+        i=[1, 1, 2, 2],
+        c=[2, 1, 2, 1],
+        n=[2, 1, 3, 1],
+    )
+    assert not np.allclose(
+        R.CrowAMSAA.fit(rows).params, R.CrowAMSAA.fit(without).params
+    )
+
+
+def test_zero_counts_with_late_entry_covariates_and_types():
+    arrays = dict(
+        x=[[1, 3], [3, 6], [6, 6], [0, 2], [2, 6], [6, 6]],
+        i=["a", "a", "a", "b", "b", "b"],
+        c=[2, 2, 1, 2, 2, 1],
+        n=[0, 2, 1, 1, 0, 1],
+        tl=[1, 1, 1, 0, 0, 0],
+        Z=[[1.0], [1.0], [1.0], [2.0], [2.0], [2.0]],
+    )
+    history = surpyval.handle_xicn(**arrays)
+    rows = _round_trip(history)
+    assert rows.tl.tolist() == [1, -np.inf, -np.inf, 0, -np.inf, -np.inf]
+    assert rows.Z.ravel().tolist() == [1, 1, 1, 2, 2, 2]
+    assert rows.n.tolist() == [0, 2, 1, 1, 0, 1]
+
+
+def test_a_count_of_zero_stays_an_error_for_lifetimes():
+    # No units: a lifetime row, a count of 0 is nothing
+    with pytest.raises(ValueError, match="can't be 0 or less"):
+        SurpyvalData([[0, 3], [1, 4]], c=[2, 2], n=[0, 1])
+    # With units, only on a counted row (an inspection)
+    with pytest.raises(ValueError, match="can't be 0 or less"):
+        SurpyvalData([1, 2, 3], c=[0, 0, 1], n=[0, 1, 1], i=[1, 1, 1])
+    with pytest.raises(ValueError, match="can't be 0 or less"):
+        SurpyvalData([1, 2, 3], c=[0, 0, 1], n=[1, 1, 0], i=[1, 1, 1])
+    with pytest.raises(ValueError, match="can't be 0 or less"):
+        SurpyvalData([1], c=[0], n=[-1], i=[1])
+
+
+def test_counts_before_a_first_look_given_as_one_age_each():
+    """Failures before a first look, given as ``x = age, c = -1`` (the way
+    the fits are given them), come back as the same ages."""
+    arrays = dict(
+        x=[3, 4, 8, 2, 7],
+        i=[1, 1, 1, 2, 2],
+        c=[-1, 0, 1, -1, 1],
+        n=[2, 1, 1, 1, 1],
+    )
+    history = surpyval.handle_xicn(**arrays)
+    assert history.x.ndim == 1
+    # (The rows read back as [age, age] pairs, the same ages)
+    rows = _round_trip(history, R.CrowAMSAA, same=False)
+    assert rows.c.tolist() == [-1, 0, 1, -1, 1]
+    assert rows.n.tolist() == [2, 1, 1, 1, 1]
+    assert rows.x.tolist() == [3, 4, 8, 2, 7]
+    np.testing.assert_array_equal(
+        R.CrowAMSAA.fit(rows).params, R.CrowAMSAA.fit(**arrays).params
+    )
+    # Given as [age, age] pairs they stay pairs
+    pairs = surpyval.handle_xicn(
+        **{**arrays, "x": [[v, v] for v in arrays["x"]]}
+    )
+    assert pairs.to_surpyval_data()._event_history("test") == pairs
+
+
+def test_a_unit_with_repeated_events_is_one_item():
+    """Counts at inspections are events, not units: one unit that had 2
+    then 3 failures between inspections is one item."""
+    rows = SurpyvalData(
+        [[0, 3], [3, 6], [6, 6]], c=[2, 2, 1], n=[2, 3, 1], i=["u"] * 3
+    )
+    assert rows.n_items == 1
+    assert "1 item," in repr(rows)
+    assert "units: 1 " in rows.summary()
+    # A unit with one row is counted by its n (identical items)
+    assert SurpyvalData([1, 2], c=[0, 0], n=[2, 5], i=["a", "b"]).n_items == 7
+    two = SurpyvalData(
+        [[0, 3], [3, 3], [0, 4], [4, 4]],
+        c=[2, 1, 2, 1],
+        n=[4, 1, 2, 1],
+        i=["u", "u", "v", "v"],
+    )
+    assert two.n_items == 2
+
+
+def test_watched_stretch_with_no_failure_as_the_fits_build_it():
+    arrays = dict(x=[1, 6], i=[1, 1], c=[0, 0])
+    windows = {1: [(0, 3), (5, 9)], 2: [(0, 4)], 3: [(2, 8)]}
+    history = surpyval.handle_xicn(**arrays, windows=windows)
+    rows = _round_trip(history)
+    assert rows.i == [1, 1, 1, 1, 2, 3]
+    assert rows.c.tolist() == [0, 1, 0, 1, 1, 1]
+    assert rows.tl.tolist() == [0, -np.inf, 5, -np.inf, 0, 2]
+    np.testing.assert_array_equal(
+        R.CrowAMSAA.fit(rows).params,
+        R.CrowAMSAA.fit(**arrays, windows=windows).params,
+    )
+
+
+def test_an_event_at_the_right_truncation_age_converts():
+    arrays = dict(x=[5, 10, 3, 7], i=[1, 1, 2, 2], c=[0, 0, 0, 0], tr=10)
+    history = surpyval.handle_xicn(**arrays)
+    rows = _round_trip(history, R.CrowAMSAA)
+    assert rows.x.tolist() == [5, 10, 3, 7]
+    assert rows.tr.tolist() == [10.0] * 4

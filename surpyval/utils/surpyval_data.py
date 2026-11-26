@@ -384,7 +384,16 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             # Checked against the rows as given (before any grouping),
             # then grouped by weight as well.
             x, c, n, t = xcnt_handler(
-                x, c, n, t, xl, xr, tl, tr, group_and_sort=False
+                x,
+                c,
+                n,
+                t,
+                xl,
+                xr,
+                tl,
+                tr,
+                group_and_sort=False,
+                zero_counts=ids is not None,
             )
             w_arr = check_weights(w, len(c))
             if group_and_sort:
@@ -393,7 +402,16 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             w_arr = np.asarray(w, dtype=float)
         elif handle:
             x, c, n, t = xcnt_handler(
-                x, c, n, t, xl, xr, tl, tr, group_and_sort=group_and_sort
+                x,
+                c,
+                n,
+                t,
+                xl,
+                xr,
+                tl,
+                tr,
+                group_and_sort=group_and_sort,
+                zero_counts=ids is not None,
             )
         self.w = w_arr
 
@@ -1992,13 +2010,24 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         """The number of items: the rows weighted by their counts ``n``
         (``len(data)`` is the number of rows). With unit ids a unit may
         have several rows (stays in states, stretches, repeated events),
-        so the items are the distinct units, each counted by the ``n`` of
-        its first row."""
+        so the items are the distinct units. In data with states a unit
+        is counted by the ``n`` of its first row (``n`` identical units
+        that stay in the same states); in data without, where ``n``
+        counts a row's events (failures between two inspections), a unit
+        with several rows is one item."""
         n = np.asarray(self.n)
         if self.ids is not None and units_with_several_rows(self):
             first: dict = {}
             for k, unit in enumerate(self.ids):
                 first.setdefault(unit, k)
+            if getattr(self, "s", None) is None:
+                several = set(units_with_several_rows(self))
+                return int(
+                    sum(
+                        1 if unit in several else n[k]
+                        for unit, k in first.items()
+                    )
+                )
             return int(n[list(first.values())].sum())
         return int(n.sum())
 
