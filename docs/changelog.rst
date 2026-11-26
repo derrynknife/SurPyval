@@ -172,20 +172,47 @@ v0.30 (unreleased)
     taken from the accurate ``log_sf``.
   - ``Gompertz.qf(1)`` and ``isf(0)`` with shape 0 are ``inf`` (they
     were nan).
-- **Joint models on a spline path with varying bends reach the
-  common-bend fit they contain.** Where the search ended unverified, or
-  with a bend's spread between items at 0, it could stop short of the
-  likelihood of the same model with the bend common to all items,
-  which is the varying model with that spread at 0. Such a fit now
-  searches once more, starting from the common-bend fit with each
-  bend's spread small, and keeps the better maximum. On the test
-  fixture whose lines have no bend, the negative log-likelihood goes
-  from 480.41 to 479.75, the common-bend fit's. In the shape study's
-  fleet where the varying fit had stalled (seed 2123), the fit moves
-  from 2679.23 (unverified, ``sd_rate`` at 0) to 2659.19 (verified,
-  ``sd_rate`` 0.29 a year and ``sd_s1`` 0.93), and its AIC from 3.1
-  worse than the common-bend fit's to 36.9 better. Verified fits with
-  every spread clear of 0 are unchanged, and are not searched again.
+- **Joint models hold a spread at 0 on its lower bound (#1334).** Where
+  the data put the spread between items of a varying parameter at 0 (any
+  parameter, any path, one marker or several), the search, which works
+  on the log of each sd, could stall short of the fit with that
+  parameter common to all items, which the model contains. Such a fit
+  is now made again with the parameter common, and the full model
+  searched once more from there with its spread small; where the
+  likelihood does not rise off the edge, the fit is held on it:
+  ``sd_<name>`` is exactly 0 (its correlations 0), with no standard
+  error, the parameter is named in the new ``spreads_at_zero``, the
+  printout's ``Fit`` line says so, and every other number (estimates,
+  standard errors, ``neg_ll()``, predictions, ``maximum``) is the
+  common fit's. On the test fixture whose lines have no bend, the
+  spline fit with the bend varying went from 480.41 to 479.75 in
+  negative log-likelihood earlier in this release (a second search from
+  the common-bend fit, now replaced), but still ended unverified, with
+  a warning and ``sd_s1`` 2.1e-5; it is now the common-bend fit to
+  1e-10, verified with no warning, ``sd_s1`` 0 with no standard error,
+  and every other standard error the common fit's (``level`` 0.1307,
+  ``marker_effect`` 0.2890). On the
+  fixture with two markers whose temperature rises at the same rate in
+  every item, the fit with that rate varying went from 997.95
+  (unverified, 0.40 worse than the fit with it common) to 997.51, the
+  search off the edge rising 0.043 above it (still unverified, and
+  slower: 415 s against 108 s, two more fits of four varying
+  parameters). Verified fits with every spread clear of 0 are unchanged
+  and cost nothing more; an unverified fit is slower even where nothing
+  changes, as its spreads are checked (12.8 to 18.3 s against 7.4 to
+  14.3 s in a reviewer's straight-line fleets). A small spread just off
+  0 (above the 1% rule, the likelihood rising off the edge) is not held
+  and can still end unverified, with the warning: compare it with the
+  fit where the parameter is common by ``aic()`` or
+  ``likelihood_ratio_test``. A study of
+  fleets whose bends are alike, or nearly, is described on the joint
+  models page (``scripts/studies/joint_recovery/bend_null_study.py``).
+- **``likelihood_ratio_test`` of joint models takes fewer varying
+  parameters.** The fit with ``varying`` a part of this one's is nested
+  in it (their spreads 0, on the edge); with one parameter left out the
+  p-value is half that of chi-squared on its correlations and half on
+  those and its sd (Self and Liang, 1987; Stram and Lee, 1994), with
+  several the plain (conservative) chi-squared. It was refused.
   A study of fleets whose bends are alike, or nearly, is described on
   the joint models page (``scripts/studies/joint_recovery/
   bend_null_study.py``).
