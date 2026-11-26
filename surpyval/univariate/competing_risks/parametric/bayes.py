@@ -1084,9 +1084,7 @@ def _marginal(
     return BayesianParametric(
         dist,
         marginal,
-        priors=PriorSpec.parse(
-            priors if isinstance(priors, Mapping) else None
-        ),
+        priors=PriorSpec.parse(priors),
         fixed=fixed,
         method=method,
         diagnostics={
@@ -1115,6 +1113,9 @@ def fit_joint(
     with failures found in a window; with exact and right-censored data
     alone it gives the factorised posterior (the tests check it)."""
     from surpyval.bayes.result import fit_target
+    from surpyval.univariate.competing_risks.parametric import (
+        parametric_competing_risks as pcr,
+    )
     from surpyval.univariate.competing_risks.parametric._joint_bayes import (
         JointCompetingRisksTarget,
         to_target_priors,
@@ -1123,8 +1124,7 @@ def fit_joint(
 
     x, c, n, e, t = rows
     causes = ordered_labels(e[c != 1])
-    if not causes:
-        raise ValueError("No observed events to fit a cause to.")
+    pcr.check_some_cause(causes, c)
     if isinstance(dist, dict):
         missing = [k for k in causes if k not in dist]
         if missing:

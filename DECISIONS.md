@@ -63,6 +63,13 @@ Design decisions made while working on the open issues, with the reason for each
 | The object's own module name (`type(obj).__module__`) says whether it is Polars or Arrow, so neither library is imported for a pandas user, and neither is a dependency; both are in the `tests` extra only. | proposed | `import surpyval` stays light, and the issue asks for no hard dependency. | done |
 | The conversion is the library's own `to_pandas` (Polars' needs PyArrow); a null is then a missing value as in pandas. A Polars `LazyFrame` is collected first. Other Arrow-compatible frames (the Arrow C stream interface) are not read. | proposed | The simplest conversion that keeps a null as pandas keeps it; wider interchange is a later decision. | done |
 | A conformance test hands every registered `*_from_df` entry point a Polars-like object with nothing but `to_pandas`, and compares the fit with the pandas one. | proposed | The first run found 66 entry points that read the frame directly; the test keeps new ones honest without needing Polars installed. | done |
+### Competing risks on the joint (window) path: unknown causes, joint priors, WAIC with entry (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A failure found in a window with no cause contributes S(a) - S(b) (over S(tl)), in the maximum-likelihood fit and the Bayesian target alike; an exact failure with no cause is still refused. | proposed | It is the sum of the causes' window terms, so the likelihood stays one model's; an exact failure without a cause needs a model of which cause it was, which this is not. | done |
+| A cause's joint prior on the joint path is bound to that cause's distribution on its columns (`CauseJointPrior`); its names are the cause's (`a.alpha`); a joint prior across causes is refused. A prior needing a fit's target (`prior.from_fit`) is refused there by its own message. | proposed | The prior means what it means in the cause's own fit; with exact data the joint path reproduces the factorised posterior. | done |
+| On the joint path each prepared row's WAIC/LOO term carries its own entry term +H(tl). | proposed | The entry term belongs to the unit that entered; the terms times counts still sum to the log-likelihood. | done |
 ### A Bayesian regression's peak search in standardised units (27 Nov 2026)
 
 | Decision | By | Reason | Status |
