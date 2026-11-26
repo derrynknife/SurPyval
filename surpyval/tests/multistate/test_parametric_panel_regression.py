@@ -351,3 +351,130 @@ def test_refusals(small):
         ParametricPanelMultiStateRegression.fit(
             sp.SurpyvalData(x=[1.0, 2.0]), transitions=TM
         )
+
+
+# -- coarsen ----------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def measured():
+    """40 units with ``w`` measured at every visit (a different value at
+    each)."""
+    ids, times, states, Z = visits_covariates(
+        40, 7073, PARS, BETAS, continuous=True
+    )
+    s = np.array([NAMES[int(v)] for v in states], dtype=object)
+    return dict(
+        x=np.array(times),
+        Z=pd.DataFrame(Z, columns=["male", "w"]),
+        s=s,
+        i=np.array(ids),
+        obstype=np.where(s == "dead", "exact_entry", "panel"),
+    )
+
+
+def _by_hand(d, w):
+    out = dict(d)
+    out["Z"] = pd.DataFrame({"male": d["Z"]["male"], "w": w})
+    return out
+
+
+def test_coarsen_bins_are_pandas_qcut_with_bin_means():
+    from surpyval.multistate.parametric_panel import _coarsen
+
+    rng = np.random.default_rng(1)
+    z = np.round(rng.gamma(2.0, size=200), 1)  # ties, a long tail
+    Z = np.c_[z, rng.uniform() < 0.5 * np.ones(200), z * 10]
+    new, info = _coarsen(Z, ["a", "b", "c"], 6)
+    for j in (0, 2):
+        col = pd.Series(Z[:, j])
+        bins = pd.qcut(col, 6, duplicates="drop")
+        want = col.groupby(bins, observed=True).transform("mean")
+        assert_allclose(new[:, j], want, rtol=1e-14)
+    assert_allclose(new[:, 1], Z[:, 1])  # two values: left as it is
+    assert set(info) == {"a", "c"} and info["a"][1] == 6
+    assert info["a"][0] == np.unique(z).size
+
+
+@pytest.mark.parametrize("clock", ["forward", "reset"])
+def test_coarsen_is_the_fit_to_the_grouped_covariates(measured, clock):
+    """``coarsen=4`` is the fit to ``w`` grouped by hand (quartiles, each
+    value the mean of its quarter), to the optimiser's tolerance."""
+    w = measured["Z"]["w"]
+    hand = w.groupby(pd.qcut(w, 4), observed=True).transform("mean")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        a = ParametricPanelMultiStateRegression.fit(
+            transitions=TM, clock=clock, coarsen=4, **measured
+        )
+        b = ParametricPanelMultiStateRegression.fit(
+            transitions=TM, clock=clock, **_by_hand(measured, hand)
+        )
+    assert a.coarsened == {"w": (int(np.unique(w).size), 4)}
+    assert b.coarsened == {}
+    assert_allclose(a.log_likelihood, b.log_likelihood, rtol=1e-10)
+    # The same objective: the likelihood of the data grouped by hand at
+    # the coarsened fit's estimate is the coarsened fit's own (to
+    # rounding; numpy's and pandas' bin means differ by about 1e-16).
+    models = a._models()
+    own = a._panel_likelihood()
+    hand_lik = ParametricPanelMultiStateRegression._likelihood(
+        b._panel, [m.dist for m in models], clock
+    )
+    if clock == "forward":
+        hand_lik.plan(models)
+    assert_allclose(hand_lik.neg_ll(models), own.neg_ll(models), rtol=1e-12)
+    # The two searches (from data differing by about 1e-16) stop within
+    # the optimiser's tolerance of each other. (With 40 units few go
+    # straight from healthy to dead, and on the reset clock that
+    # transition's Weibull scale runs off to about 1e18 in both fits,
+    # where the likelihood is flat, so the estimates are compared on the
+    # forward clock only.)
+    if clock == "forward":
+        assert_allclose(a.params, b.params, rtol=1e-4, atol=1e-6)
+
+
+def test_coarsen_with_a_function_or_by_name(measured):
+    """A function is applied to every column (a binary one is unchanged
+    by rounding); a dict coarsens the columns it names."""
+    rounded = measured["Z"]["w"].round(0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        b = ParametricPanelMultiStateRegression.fit(
+            transitions=TM, model=ExponentialPH,
+            **_by_hand(measured, rounded),
+        )  # fmt: skip
+        for how in (np.round, {"w": np.round}):
+            a = ParametricPanelMultiStateRegression.fit(
+                transitions=TM, model=ExponentialPH, coarsen=how, **measured
+            )
+            assert a.coarsened["w"][1] == 3  # 0, 1 and 2
+            assert_allclose(a.log_likelihood, b.log_likelihood, rtol=1e-10)
+            assert_allclose(a.params, b.params, rtol=1e-4, atol=1e-6)
+
+
+def test_coarsen_round_trip_and_refusals(small, measured):
+    import surpyval as sp
+
+    model = ParametricPanelMultiStateRegression.fit(
+        transitions=TM, model=ExponentialPH, coarsen={"w": 3}, **measured
+    )
+    back = sp.from_dict(model.to_dict())
+    assert back.coarsened == model.coarsened
+    assert_allclose(back.params, model.params)
+    # (binary covariates have nothing to group)
+    plain = ParametricPanelMultiStateRegression.fit(
+        transitions=TM, model=ExponentialPH, coarsen=2, **small
+    )
+    assert plain.coarsened == {}
+    for bad, match in [
+        ({"weight": 3}, "'weight', which is not a covariate"),
+        (0, "number of bins"),
+        (True, "number of bins"),
+        (2.5, "number of bins"),
+        (lambda z: z[:3], "one\nfinite value|one finite value"),
+    ]:
+        with pytest.raises(ValueError, match=match):
+            ParametricPanelMultiStateRegression.fit(
+                transitions=TM, model=ExponentialPH, coarsen=bad, **measured
+            )

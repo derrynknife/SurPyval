@@ -15,6 +15,14 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### Parametric panel multi-state regression: `coarsen=` (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `coarsen=k` cuts a covariate with more than `k` distinct values into `k` bins of about equal counts at its quantiles (`pandas.qcut` semantics, bins `(e_j, e_j+1]`, the lowest closed, duplicate edges dropped) and replaces each value by the mean of the values in its bin; a covariate with at most `k` values is left alone. A function (applied to every column) or a `{name: k or function}` dict may be given instead. Off by default. | proposed | Equal-count bins keep every bin populated for a skewed measurement, where equal-width bins would put most values in one; the bin mean (not its midpoint) keeps the covariate's average in each bin, so for a log-linear effect the error is of the Berkson kind, centred on zero. Both are reproducible by hand with `pandas.qcut` and a group mean, which the tests do. | done |
+| The bins are taken over every row of `Z` as given (including a unit's last visit, whose covariates start no gap), not only the rows that start a gap. | proposed | So that grouping by hand is a one-line operation on the user's own column, and the fit with `coarsen` equals it exactly. | done |
+| The coarsened covariates are what the model holds and saves (`to_dict` keeps the grouped `Z` and `coarsened`); the measured values are not kept. | proposed | The model is the fit to the grouped data; a function given to `coarsen` cannot be serialised. | done |
+
 ### fit_best: warning about candidates set aside (27 Nov 2026)
 
 | Decision | By | Reason | Status |

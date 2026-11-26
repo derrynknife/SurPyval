@@ -879,7 +879,7 @@ integral as above, worked out for that gap's covariates. On the forward
 clock each distinct row of covariates gets its own grid (two rows that
 differ in any covariate are two grids, so a covariate with many values,
 such as a measurement taken at every visit, makes many grids and a slower
-fit; round it if that is a problem). On the reset clock the unit is
+fit; see :ref:`multistate-coarsen`). On the reset clock the unit is
 carried over its unknown entry times as before, each gap's hazards taken
 at that gap's covariates.
 
@@ -904,6 +904,51 @@ With ``ExponentialPH`` regressions the model is
     print(markov.betas.ravel().round(4))
     print(ph.betas.ravel().round(4))
     print(round(markov.log_likelihood, 6), round(ph.log_likelihood, 6))
+
+.. _multistate-coarsen:
+
+Grouping a covariate measured at every visit
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A covariate measured afresh at every visit (a blood pressure, a vibration
+level) has a different value in almost every gap, and on the forward
+clock every distinct row of covariates is a product integral of its own.
+``coarsen`` groups such a covariate's values before the fit, so that only
+a few distinct rows are left. **It is an approximation**: the model is
+then fitted to the grouped values, not the measured ones. It is off by
+default.
+
+``coarsen=k`` cuts every covariate with more than ``k`` distinct values
+into ``k`` bins of about equal counts (at its quantiles, as
+``pandas.qcut``) and replaces each value by the mean of the values in its
+bin; a covariate with at most ``k`` values (an indicator) is left alone.
+A function is applied to every covariate instead (``coarsen=np.round``,
+or ``lambda z: z.round(1)``), and a dict coarsens only the covariates it
+names (``coarsen={"w": 10}``). The fit is exactly the fit to the
+covariates grouped that way by hand, and ``model.coarsened`` gives each
+grouped covariate's number of distinct values before and after:
+
+.. code-block:: python
+
+    model = ParametricPanelMultiStateRegression.fit(
+        x, Z, s, i, transitions=tm, coarsen={"w": 10},
+    )
+    model.coarsened  # {'w': (740, 10)}
+
+How much it changes the answer depends on the data. On a simulated
+illness-death model (100 units seen every unit of time for 5 to 10
+units, Weibull proportional hazards, a covariate fixed for each unit and
+one, ``w``, uniform on (0, 2) and drawn at every visit: 785 visits and
+740 distinct values of ``w``) the full fit took 228 s on one core. With
+``coarsen`` it took 15 s (5 bins), 25 s (10), 38 s (20) and 58 s (40).
+The coefficient of ``w`` on healthy to ill, 0.639 (standard error 0.184)
+in the full fit, was 0.664, 0.658, 0.657 and 0.652, moving by 0.14 to
+0.07 of its standard error; the chance of being ill at time 5 with
+``w = 1`` (0.5453) moved by at most 0.0005. The coefficient of ``w`` on
+ill to dead, the least well estimated, moved most: 0.284 in the full
+fit, 0.231 with 5 bins and 0.280 with 40. Check the effect on your own
+data by fitting with two numbers of bins: if the answers you need do not
+move between them, the grouping is fine enough.
 
 The fit is joint, as above, with each coefficient searched in its
 covariate's units (a covariate in thousands is searched as well as one in

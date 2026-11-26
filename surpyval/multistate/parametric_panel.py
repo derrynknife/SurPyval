@@ -135,6 +135,65 @@ def _patterns(pdata: Any) -> tuple[npt.NDArray, npt.NDArray]:
     return pattern, rows
 
 
+def _coarsen(Z: npt.NDArray, names: list, coarsen: Any) -> tuple:
+    """``(Z, coarsened)``: the covariates with each coarsened column
+    replaced, and ``{name: (distinct values before, after)}`` for each.
+
+    ``coarsen`` is ``None`` (nothing done), a whole number ``k`` (every
+    column with more than ``k`` distinct values cut into ``k`` bins of
+    about equal counts at its quantiles, as ``pandas.qcut``, each value
+    replaced by the mean of the values in its bin), a function (applied
+    to every column: one array of values in, one of the same length
+    out) or a dict ``{name: k or function}`` for some columns."""
+    if coarsen is None:
+        return Z, {}
+    if isinstance(coarsen, dict):
+        unknown = [k for k in coarsen if k not in names]
+        if unknown:
+            raise ValueError(
+                f"coarsen names {unknown[0]!r}, which is not a covariate; "
+                f"the covariates are {names}."
+            )
+        how = {names.index(k): v for k, v in coarsen.items()}
+    else:
+        how = {j: coarsen for j in range(len(names))}
+    Z = np.array(Z, dtype=float, copy=True)
+    out: dict = {}
+    for j, rule in how.items():
+        z = Z[:, j]
+        before = int(np.unique(z).size)
+        if callable(rule):
+            new = np.asarray(rule(z.copy()), dtype=float)
+            if new.shape != z.shape or not np.all(np.isfinite(new)):
+                raise ValueError(
+                    f"coarsen's function for {names[j]!r} must return one "
+                    f"finite value for each of the {z.size} rows; got "
+                    f"shape {new.shape}."
+                )
+        else:
+            if (
+                isinstance(rule, bool)
+                or not isinstance(rule, (int, np.integer))
+                or rule < 1
+            ):
+                raise ValueError(
+                    "coarsen must be a number of bins (a whole number of "
+                    "at least 1), a function of a column's values, or a "
+                    f"dict of either by covariate name; got {rule!r}."
+                )
+            if before <= rule:
+                continue
+            edges = np.unique(np.quantile(z, np.linspace(0, 1, rule + 1)))
+            # (bins (e_j, e_j+1], the lowest closed, as pandas.qcut)
+            b = np.clip(np.searchsorted(edges, z, side="left") - 1, 0, None)
+            sums = np.bincount(b, weights=z, minlength=edges.size - 1)
+            counts = np.bincount(b, minlength=edges.size - 1)
+            new = (sums / np.maximum(counts, 1))[b]
+        Z[:, j] = new
+        out[names[j]] = (before, int(np.unique(new).size))
+    return Z, out
+
+
 class _PanelFit:
     """The fit to states seen at visits that the parametric panel models
     share (with or without covariates): the likelihood on either clock,
@@ -761,6 +820,10 @@ class ParametricPanelMultiStateRegression(
     ``PanelMultiStateRegression`` fit; the covariance is the inverse of
     the whole likelihood's numerical Hessian.
 
+    A covariate measured at every visit (a different value at each) makes
+    a row of covariates per gap and a slow fit; ``coarsen`` groups its
+    values first, an approximation that is off by default.
+
     Call the class method ``ParametricPanelMultiStateRegression.fit`` (or
     ``fit_from_df``); it returns a fitted instance.
 
@@ -772,6 +835,10 @@ class ParametricPanelMultiStateRegression(
     Marshall, G. and Jones, R. H. (1995), "Multi-state models and
     diabetic retinopathy", *Statistics in Medicine*, 14(18), 1975-1983.
     """
+
+    #: ``{name: (distinct values before, after)}`` for each covariate
+    #: that ``coarsen`` grouped (empty when nothing was grouped).
+    coarsened: dict = {}
 
     @classmethod
     @takes_unit
@@ -790,6 +857,7 @@ class ParametricPanelMultiStateRegression(
         exact_entry: Any = None,
         max_moves: int = MAX_MOVES,
         truncation_tol: float = TRUNCATION_TOL,
+        coarsen: Any = None,
     ) -> ParametricPanelMultiStateRegression:
         """
         Fit a parametric regression to each transition of states seen at
@@ -826,6 +894,23 @@ class ParametricPanelMultiStateRegression(
         truncation_tol : float, optional
             The share of a gap's chance that ``max_moves`` may leave out
             without a warning (default 1e-8).
+        coarsen : int, callable or dict, optional
+            Group the values of continuous covariates before fitting, so
+            that fewer distinct rows of covariates (and on the forward
+            clock, fewer grids) are worked out: an approximation, off by
+            default (``None``). A whole number ``k`` cuts every covariate
+            with more than ``k`` distinct values into ``k`` bins of about
+            equal counts at its quantiles (as ``pandas.qcut(z, k,
+            duplicates="drop")``) and replaces each value by the mean of
+            the values in its bin; a covariate with at most ``k`` values
+            (an indicator, say) is left as it is. A function is applied
+            to every covariate's column (an array of its values in, one
+            of the same length out, such as ``lambda z: z.round(1)``).
+            A dict ``{name: k or function}`` coarsens only the
+            covariates it names. The fit is exactly the fit to the
+            covariates grouped that way by hand; ``coarsened`` reports
+            the distinct values of each grouped covariate before and
+            after.
 
         Returns
         -------
@@ -873,11 +958,12 @@ class ParametricPanelMultiStateRegression(
             x, s, i, Z, obstype, transitions, censored, exact_entry, None
         )
         _, names = _covariates(Z, pdata.x.size)
+        pdata.Z, coarsened = _coarsen(pdata.Z, names, coarsen)
         fitters = _fitters(
             WeibullPH if model is None else model, pdata.tm, True
         )
         _check_truncation_options(max_moves, truncation_tol)
-        return cls._fit_panel(
+        out = cls._fit_panel(
             pdata,
             fitters,
             clock,
@@ -885,6 +971,8 @@ class ParametricPanelMultiStateRegression(
             int(max_moves),
             float(truncation_tol),
         )
+        out.coarsened = coarsened
+        return out
 
     @classmethod
     @takes_unit
@@ -903,6 +991,7 @@ class ParametricPanelMultiStateRegression(
         exact_entry: Any = None,
         max_moves: int = MAX_MOVES,
         truncation_tol: float = TRUNCATION_TOL,
+        coarsen: Any = None,
     ) -> ParametricPanelMultiStateRegression:
         """
         Fit the model to a DataFrame of visits, one row each; ``Z_cols``
@@ -957,6 +1046,7 @@ class ParametricPanelMultiStateRegression(
             exact_entry=exact_entry,
             max_moves=max_moves,
             truncation_tol=truncation_tol,
+            coarsen=coarsen,
         )
 
     # -- fitting ------------------------------------------------------------
@@ -1008,6 +1098,9 @@ class ParametricPanelMultiStateRegression(
                 **self._panel_dict(),
                 "Z": self._panel.Z.tolist(),
                 "covariate_names": list(self.covariate_names),
+                "coarsened": {
+                    k: [int(a), int(b)] for k, (a, b) in self.coarsened.items()
+                },
                 "clock": self.clock,
                 "models": [m.to_dict() for m in self._models()],
                 "joint": self._joint.to_dict(),
@@ -1046,6 +1139,10 @@ class ParametricPanelMultiStateRegression(
         }
         out.clock = model_dict.get("clock", "forward")
         out.covariate_names = names
+        out.coarsened = {
+            k: (int(a), int(b))
+            for k, (a, b) in model_dict.get("coarsened", {}).items()
+        }
         out._joint = JointFit.from_dict(model_dict["joint"], out._models())
         out._panel = pdata
         out._data = pl.midpoint_spells(pdata)
