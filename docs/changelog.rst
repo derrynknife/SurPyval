@@ -355,7 +355,8 @@ v0.30 (unreleased)
   (``JointModel.cb`` takes ``on="cif"`` and ``mode`` too), and
   ``to_dict()`` carries each mode's curve and bounds under ``"cif"``.
   Checked against a brute-force two-dimensional integral over the
-  item's path (1.4e-5), against ``ParametricCompetingRisks`` with the
+  item's path (1e-8 or less within 500 days of now, 1.3e-5 at 1100 days
+  beyond, the time rule's error), against ``ParametricCompetingRisks`` with the
   marker effects 0 (1.1e-11 relative) and the bounds against central
   differences (1%). A calibration study of the bounds is in
   ``tests/calibration/test_coverage_joint_cif.py``; an R ``JM``

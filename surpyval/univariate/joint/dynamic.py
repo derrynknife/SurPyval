@@ -372,11 +372,13 @@ class DynamicPrediction:
         an infinite age (use a late finite one for the chance of ever
         failing by the mode).
 
-        Each mode's chance is the chance of failing at all by ``x``
-        (``ff(x)``) times the mode's share of it: over the item's path
-        parameters given its readings and its survival to ``age``, the
-        chance of failing by that mode before any other, ``int_age^x
-        h_k(s) S(s) ds / S(age)``, out of the chance of failing at all.
+        It is the expectation, over the item's path parameters given its
+        readings and its survival to ``age``, of the chance of failing by
+        that mode before any other, ``int_age^x h_k(s) S(s) ds /
+        S(age)``. It is computed as the chance of failing at all by ``x``
+        (``ff(x)``) times the mode's share, the share taken at each node
+        of that average, inside the integral over age, so that the
+        result is that expectation and the modes add to ``ff``.
 
         Parameters
         ----------

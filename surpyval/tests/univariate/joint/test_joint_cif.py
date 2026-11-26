@@ -80,8 +80,8 @@ def test_with_no_marker_effects_it_is_parametric_competing_risks(model):
     after = X[X > u]
     for mode in flat.causes:
         expected = (crm.cif(after, mode) - crm.cif(u, mode)) / crm.sf(u)
-        # to the quadrature of the cumulative hazard (15-point rule)
-        assert pred.cif(after, mode) == pytest.approx(expected, rel=1e-6)
+        # 1.1e-11 relative is reached; 1e-9 leaves a margin
+        assert pred.cif(after, mode) == pytest.approx(expected, rel=1e-9)
 
 
 def _brute_force_cif(model, readings, u, x, cause):
@@ -155,7 +155,9 @@ def test_it_agrees_with_a_brute_force_integral(model, moved):
     after = np.array([450.0, 600.0, 900.0, 1500.0])
     for mode in model.causes:
         brute = _brute_force_cif(model, ITEM["markers"], 400.0, after, mode)
-        assert pred.cif(after, mode) == pytest.approx(brute, abs=1e-4)
+        assert pred.cif(after, mode) == pytest.approx(
+            brute, rel=1e-3, abs=2e-5
+        )
 
 
 def test_the_bounds_hold_the_estimate(model, pred):

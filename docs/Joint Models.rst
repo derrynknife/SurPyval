@@ -867,8 +867,8 @@ The chance of each mode for a running item
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 For a pump still running, its readings so far say not only how likely it
-is to fail in the next year but by which mode: a planner wants "bearing
-34%, seal 8%" to know which job to prepare. ``predict(...).cif(x, mode)``
+is to fail in the next year but by which mode: a planner wants, say,
+"bearing 34%, seal 8%" to know which job to prepare. ``predict(...).cif(x, mode)``
 gives the chance that the item fails by ``mode`` by age ``x``, given its
 readings and that it was running at the age now (the mode's cumulative
 incidence from now). The modes' chances add up to ``ff(x)``, the chance
@@ -913,12 +913,15 @@ averaged on the nodes placed at the item's distribution given its
 readings and its survival to ``u``. In practice each mode's chance is
 the chance of failing at all, ``ff(x)`` (as ``sf`` computes it), times
 the mode's share of it from that average, the integral over age by the
-15-point rule of the cumulative hazard; the shares add to 1, so the
-chances add to ``ff(x)`` exactly, and the rule's error (about 1e-5 here,
-against a brute-force integral) moves only the split between the modes.
+15-point rule of the cumulative hazard. The share is taken at each
+node, inside the integral over age and the average over the item's path,
+so the result is that expectation; the shares add to 1, so the chances
+add to ``ff(x)`` exactly, and the time rule's error moves only the split
+between the modes: against a brute-force integral, 1e-8 or less within
+500 days of now and 1.3e-5 at 1100 days beyond it.
 With the marker effects 0 the chances are ``ParametricCompetingRisks``'
 cumulative incidences from the age now, ``(CIF_k(x) - CIF_k(u)) /
-S(u)``, to 1e-11. Each mode's bounds are its own, one age at a time: the
+S(u)``, to 1.1e-11 (relative). Each mode's bounds are its own, one age at a time: the
 upper bounds of the modes need not add to the upper bound on ``ff``. An
 infinite age gives ``nan`` (use a late finite one for the chance of
 ever failing by a mode). A model of one way of failing has

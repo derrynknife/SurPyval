@@ -2271,7 +2271,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         with ``F(x | b) = 1 - S(x | b) / S(u | b)``, exact, and ``G_k(x
         | b) = int_u^x h_k(s | b) S(s | b) / S(u | b) ds`` by the
         cumulative hazard's Gauss-Legendre rule
-        (:func:`log_cause_fails_between`). So the modes' chances add to
+        (:func:`log_cause_fails_between`). The share is taken at each
+        node, inside the integral over age and the average over the
+        path, so the result is ``E[G_k(x | b)]``, the mode's cumulative
+        incidence from ``u``. So the modes' chances add to
         ``1 - sf(x)`` whatever the rule's error, which moves only the
         split between them. The nodes are held at the fitted parameters
         while differentiating."""
