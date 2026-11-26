@@ -294,6 +294,17 @@ v0.30 (unreleased)
 
 **Added.**
 
+- ``ParametricPanelMultiStateRegression`` (in ``surpyval.multistate``
+  and at the top level): a parametric regression per transition
+  (``WeibullPH`` by default) fitted to states seen only at visits, the
+  covariates of each visit holding until the next. On the forward clock
+  each distinct row of covariates has its own product-integral grid; on
+  the reset clock (progressive models) each gap's hazards are its
+  covariates'. With ``ExponentialPH`` it is ``PanelMultiStateRegression``'s
+  fit. It has every prediction and bound of
+  ``ParametricMultiStateRegression``, ``to_dict``/``from_dict`` and
+  ``fit_from_df``.
+
 - **Every history of repeated events converts to rows.**
   ``EventHistoryData.to_surpyval_data()`` refused two histories it can
   now hold: inspections that found no events (a count of ``n = 0``, which
