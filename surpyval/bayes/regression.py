@@ -133,6 +133,18 @@ def _coefficient_names(mle: Any) -> list[str]:
     return names if len(names) == np.shape(mle.data.Z)[1] else []
 
 
+def _covariate_sds(data: Any) -> npt.NDArray:
+    """Each covariate's standard deviation in the data, the rows weighted
+    by their counts."""
+    Z = np.asarray(data.Z, dtype=float)
+    n = np.asarray(data.n, dtype=float)
+    mean = np.sum(n[:, None] * Z, axis=0) / n.sum()
+    out: npt.NDArray = np.sqrt(
+        np.sum(n[:, None] * (Z - mean) ** 2, axis=0) / n.sum()
+    )
+    return out
+
+
 def _default_priors(mle: Any, spec: PriorSpec, fixed: dict) -> dict:
     """``Normal(0, 2.5 / sd)`` for each coefficient with no prior."""
     covered = set(spec.single) | set(fixed)
@@ -144,14 +156,12 @@ def _default_priors(mle: Any, spec: PriorSpec, fixed: dict) -> dict:
             # statement for each)
             return {}
         covered |= set(j.names)
-    Z = np.asarray(mle.data.Z, dtype=float)
-    n = np.asarray(mle.data.n, dtype=float)
+    sds = _covariate_sds(mle.data)
     out = {}
     for k, name in enumerate(_coefficient_names(mle)):
         if name in covered:
             continue
-        mean = float(np.sum(n * Z[:, k]) / n.sum())
-        sd = float(np.sqrt(np.sum(n * (Z[:, k] - mean) ** 2) / n.sum()))
+        sd = float(sds[k])
         if not sd > 0:
             raise ValueError(
                 f"The covariate of {name} is the same for every row, so "
@@ -298,6 +308,25 @@ class RegressionTarget(Target):
 
     def neg_ll(self, theta: npt.NDArray) -> float:
         return float(self.fitter.neg_ll(self.data, *theta))
+
+    def coordinate_scales(self, bound: Any) -> npt.NDArray | None:
+        """A coefficient of ``exp(beta'Z)`` is searched in units of one
+        over its covariate's standard deviation (as if the covariate
+        were standardised), so that the search is the same whatever the
+        covariate's unit; the other parameters (on log or identity
+        scales) in units of 1. The prior is on the coefficient as given,
+        per unit of the covariate: only the search's steps change."""
+        names = _coefficient_names(self.mle)
+        if not names:
+            return None
+        sds = _covariate_sds(self.data)
+        out = np.ones(bound.d)
+        for j, name in enumerate(bound.free_names):
+            if name in names:
+                sd = float(sds[names.index(name)])
+                if np.isfinite(sd) and sd > 0:
+                    out[j] = 1.0 / sd
+        return out
 
     def with_params(self, theta: npt.NDArray) -> Any:
         return self.mle.with_params(theta)

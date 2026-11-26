@@ -5,6 +5,35 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **A Bayesian regression's posterior no longer depends on a covariate's
+  unit.** The regressions' ``fit_bayes`` (proportional hazards,
+  accelerated failure time, and each cause's or transition's fit in
+  ``ParametricCompetingRisksRegression.fit_bayes`` and
+  ``ParametricMultiStateRegression.fit_bayes``) found the posterior's
+  peak with steps and a stopping rule in the coefficients' own units, so
+  a coefficient on a scale of millions (a covariate in micro-units)
+  could stop at its maximum-likelihood start: ``WeibullPH.fit_bayes`` on
+  24 lives with a binary covariate multiplied by 1e-6 moved ``sf`` by
+  2.7e-4 (5e-3 relative). The search now measures each coefficient in
+  units of one over its covariate's standard deviation, as if the
+  covariate were standardised; the priors are unchanged and still mean
+  what they say per unit of the user's covariate. With the covariate
+  multiplied by 1/731, 731 or 1e-6 every prediction and interval now
+  agrees with the unscaled fit to 1e-6 relative (about 3e-9 in ``sf``).
+  Where the posterior is close to normal the new search moves the
+  posteriors by its tolerance only: on the package's regression test
+  fixtures the posterior medians and intervals move by at most 1e-7
+  (2e-8 relative), ``sf`` by at most 2e-9. Where it is not (the
+  approximation's check says "poor"; for example a covariate far from
+  0, such as one near 50 with a spread of 1) the Laplace normal's
+  curvature is a secant along the axes the search found, so the
+  posterior can move by a few per cent, not always towards the exact
+  curvature but on the whole closer to it: on six such seeded designs
+  (40 rows, ``WeibullPH``) every standard deviation is now within 2.5%
+  of the exact Hessian's (the old were up to 20% off, on one design,
+  where ``sf`` at the covariate mean moved by 0.11; on the other five
+  by 0.001 to 0.013). A test pins that design to 3% of the exact
+  curvature.
 - **``fit_best`` also tries the new ``BirnbaumSaunders``.** Where it has
   the best value of the metric the answer changes: on 100 draws from
   ``LogNormal(2, 0.8)`` (the diagnostics' example) it now wins with AIC
@@ -143,20 +172,47 @@ v0.30 (unreleased)
     taken from the accurate ``log_sf``.
   - ``Gompertz.qf(1)`` and ``isf(0)`` with shape 0 are ``inf`` (they
     were nan).
-- **Joint models on a spline path with varying bends reach the
-  common-bend fit they contain.** Where the search ended unverified, or
-  with a bend's spread between items at 0, it could stop short of the
-  likelihood of the same model with the bend common to all items,
-  which is the varying model with that spread at 0. Such a fit now
-  searches once more, starting from the common-bend fit with each
-  bend's spread small, and keeps the better maximum. On the test
-  fixture whose lines have no bend, the negative log-likelihood goes
-  from 480.41 to 479.75, the common-bend fit's. In the shape study's
-  fleet where the varying fit had stalled (seed 2123), the fit moves
-  from 2679.23 (unverified, ``sd_rate`` at 0) to 2659.19 (verified,
-  ``sd_rate`` 0.29 a year and ``sd_s1`` 0.93), and its AIC from 3.1
-  worse than the common-bend fit's to 36.9 better. Verified fits with
-  every spread clear of 0 are unchanged, and are not searched again.
+- **Joint models hold a spread at 0 on its lower bound (#1334).** Where
+  the data put the spread between items of a varying parameter at 0 (any
+  parameter, any path, one marker or several), the search, which works
+  on the log of each sd, could stall short of the fit with that
+  parameter common to all items, which the model contains. Such a fit
+  is now made again with the parameter common, and the full model
+  searched once more from there with its spread small; where the
+  likelihood does not rise off the edge, the fit is held on it:
+  ``sd_<name>`` is exactly 0 (its correlations 0), with no standard
+  error, the parameter is named in the new ``spreads_at_zero``, the
+  printout's ``Fit`` line says so, and every other number (estimates,
+  standard errors, ``neg_ll()``, predictions, ``maximum``) is the
+  common fit's. On the test fixture whose lines have no bend, the
+  spline fit with the bend varying went from 480.41 to 479.75 in
+  negative log-likelihood earlier in this release (a second search from
+  the common-bend fit, now replaced), but still ended unverified, with
+  a warning and ``sd_s1`` 2.1e-5; it is now the common-bend fit to
+  1e-10, verified with no warning, ``sd_s1`` 0 with no standard error,
+  and every other standard error the common fit's (``level`` 0.1307,
+  ``marker_effect`` 0.2890). On the
+  fixture with two markers whose temperature rises at the same rate in
+  every item, the fit with that rate varying went from 997.95
+  (unverified, 0.40 worse than the fit with it common) to 997.51, the
+  search off the edge rising 0.043 above it (still unverified, and
+  slower: 415 s against 108 s, two more fits of four varying
+  parameters). Verified fits with every spread clear of 0 are unchanged
+  and cost nothing more; an unverified fit is slower even where nothing
+  changes, as its spreads are checked (12.8 to 18.3 s against 7.4 to
+  14.3 s in a reviewer's straight-line fleets). A small spread just off
+  0 (above the 1% rule, the likelihood rising off the edge) is not held
+  and can still end unverified, with the warning: compare it with the
+  fit where the parameter is common by ``aic()`` or
+  ``likelihood_ratio_test``. A study of
+  fleets whose bends are alike, or nearly, is described on the joint
+  models page (``scripts/studies/joint_recovery/bend_null_study.py``).
+- **``likelihood_ratio_test`` of joint models takes fewer varying
+  parameters.** The fit with ``varying`` a part of this one's is nested
+  in it (their spreads 0, on the edge); with one parameter left out the
+  p-value is half that of chi-squared on its correlations and half on
+  those and its sd (Self and Liang, 1987; Stram and Lee, 1994), with
+  several the plain (conservative) chi-squared. It was refused.
   A study of fleets whose bends are alike, or nearly, is described on
   the joint models page (``scripts/studies/joint_recovery/
   bend_null_study.py``).

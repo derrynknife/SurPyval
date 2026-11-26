@@ -49,7 +49,9 @@ from ._likelihood import (
     check_random_effects,
     check_weight,
     neg_ll,
+    path_jacobian,
     place,
+    several_markers,
 )
 from ._markers import (
     marker_start,
@@ -2081,7 +2083,7 @@ def _fit(
         theta = marker_start(model, ages, values, Z - zbar, counts)
     _check_markers(fitter, theta["mu"], "the readings put")
     total = float(np.sum(counts))
-    bends = [] if several else _varying_bends(path_model, fitter.varying)
+    fit_model, path_u = model, None
     if how == "two-stage":
         u, value, cov_u, maximum = _two_stage(model, arrays, theta)
     else:
@@ -2113,33 +2115,19 @@ def _fit(
                     model, arrays, survival_start(model, arrays, theta)
                 )
         kept_warnings = list(first_warnings)
-        if (
-            bends
-            and len(bends) < len(fitter.varying)
-            and (
-                maximum != "verified"
-                or _bends_at_zero(model, path_model, u, ages, bends)
+        # A spread between items whose sd is (nearly) 0 sits where the
+        # search's log-Cholesky scale puts it at minus infinity: the
+        # likelihood is flat along it there, the search can stall short
+        # of the fit with that parameter common to all items (#1334), and
+        # the spread has no Wald standard error. Such a fit is held on
+        # that boundary, or kept off it where the likelihood rises off it
+        # (:func:`_on_the_boundary`). A verified fit with every spread
+        # clear of 0 is left as it is.
+        held_fit = _at_a_spread_of_zero(model, arrays, u, value, maximum)
+        if held_fit is not None:
+            fit_model, (u, value, cov_u, maximum), kept_warnings, path_u = (
+                held_fit
             )
-        ):
-            # A varying bend's spread can stall at 0 short of the
-            # common-bend fit the model contains: where the search is
-            # unverified or a bend's spread is at 0, a second start from
-            # that fit, the better maximum kept (#1334). A verified fit
-            # with every spread clear of 0 is left as it is.
-            second = _from_common_bends(
-                model,
-                path_model,
-                arrays,
-                ages,
-                values,
-                Z - zbar,
-                counts,
-                bends,
-            )
-            if second is not None and second[0][1] < value - _ROUND_TOL * max(
-                1.0, abs(value)
-            ):
-                (u, value, cov_u, maximum), kept_warnings = second
         for caught in kept_warnings:
             warnings.warn_explicit(
                 caught.message,
@@ -2147,15 +2135,16 @@ def _fit(
                 caught.filename,
                 caught.lineno,
             )
-        _check_markers(fitter, layout.unpack(u)["mu"], "the fit puts")
+        _check_markers(
+            fitter, fit_model.layout.unpack(u)["mu"], "the fit puts"
+        )
+    at = fit_model.layout
     estimated = np.asarray(
-        reported_params(layout.unpack(u), layout, refs), dtype=float
+        reported_params(at.unpack(u), at, refs), dtype=float
     )
     covariance = None
     if cov_u is not None:
-        J = jacobian(
-            lambda v: reported_params(layout.unpack(v), layout, refs)
-        )(u)
+        J = jacobian(lambda v: reported_params(at.unpack(v), at, refs))(u)
         covariance = J @ cov_u @ J.T
         covariance = 0.5 * (covariance + covariance.T)
         if how == "two-stage":
@@ -2165,6 +2154,7 @@ def _fit(
             covariance[:, :n_marker] = np.nan
     else:
         warn_no_covariance()
+    kept_covariates = list(kept_names)
     # every parameter, nan for an aliased covariate's
     full_names = parameter_names(
         path_names,
@@ -2190,6 +2180,29 @@ def _fit(
         shared,
         fitter.markers,
     )
+    if fit_model is not model:
+        # held on the boundary: the fit with the spreads at 0 common to
+        # all items, its parameters in their places and those spreads
+        # (and their correlations) 0, with no standard errors
+        held = [path_names[j] for j in fit_model.layout.varying]
+        fit_names = parameter_names(
+            path_names,
+            held,
+            kept_covariates,
+            {
+                n: [c for c in shifts[n] if c in kept_covariates]
+                for n in path_names
+            },
+            [c for c in hazard if c in kept_covariates],
+            fitter.link,
+            fitter.random_effects,
+            cause_names,
+            shared,
+            fitter.markers,
+        )
+        estimated, covariance = _held_on_the_boundary(
+            kept_names, fit_names, estimated, covariance
+        )
     where = [full_names.index(name) for name in kept_names]
     params = np.full(len(full_names), np.nan)
     params[where] = estimated
@@ -2233,7 +2246,8 @@ def _fit(
         out._covariance = full_cov
     out._neg_ll = float(value)
     # the path part where it was found, a start for another link's fit
-    found = layout.unpack(u)
+    # (on the boundary, the search off it: the spreads at 0 small)
+    found = layout.unpack(u if path_u is None else path_u)
     out._path_start = {
         key: np.array(found[key], dtype=float)
         for key in ("mu", "Delta", "L", "sigma")
@@ -2248,93 +2262,177 @@ def _fit(
     return out
 
 
-def _varying_bends(path_model: Any, varying: Any) -> list:
-    """The bends of a spline path (``s1``, ...) among ``varying``."""
-    names = list(getattr(path_model, "parameter_names", []))
-    if not hasattr(path_model, "default_random_effects"):
-        return []
-    return [v for v in varying if v in names[2:]]
+#: A varying parameter whose spread between items moves no item's marker
+#: by this fraction of the readings' noise sd, at any reading age, is
+#: taken as at its lower bound, 0 (:func:`_spreads_at_zero`): so small a
+#: spread is invisible in the readings.
+_NO_SPREAD = 0.01
+
+#: The spread of a parameter at 0 when the search starts off the
+#: boundary (:func:`_on_the_boundary`): it moves an item's marker by at
+#: most this fraction of the noise sd, above the 1% at which it is taken
+#: as 0.
+_OFF_START = 0.05
+
+#: A search off the boundary must beat the fit on it by this much
+#: (relative, with an absolute floor of the same in log-likelihood
+#: units) to be kept: less is round-off, and the fit on the boundary,
+#: with every other parameter's standard error, is reported.
+_RISE_TOL = 1e-6
 
 
-def _bends_at_zero(
-    model: Model, path_model: Any, u: npt.NDArray, ages: list, bends: list
-) -> bool:
-    """Whether any of the varying ``bends`` has its spread between items
-    at its lower bound, 0, at the internal parameters ``u`` (by
-    :data:`_NO_SPREAD`)."""
+def _spread_reach(model: Model, arrays: JointArrays, theta: dict) -> Any:
+    """How far one unit of each varying parameter moves an item's
+    marker, in the noise sds of its readings, at most over the readings
+    ``(q,)``: the path's derivative in it at each item's mean path
+    (``mu`` and ``Delta`` of ``theta``), over the noise sd. 0 for a
+    parameter no reading depends on."""
     layout = model.layout
-    found = layout.unpack(u)
-    L = np.asarray(found["L"], dtype=float)
-    noise = float(np.ravel(found["sigma"])[0])
-    names = list(path_model.parameter_names)
-    every = np.concatenate([np.asarray(a, dtype=float) for a in ages])
+    V = list(layout.varying)
+    mu = np.asarray(theta["mu"], dtype=float)
+    Delta = np.asarray(theta["Delta"], dtype=float)
+    params = mu[None, :] + np.asarray(arrays.Z, dtype=float) @ Delta.T
     with np.errstate(all="ignore"):
-        basis = np.abs(np.asarray(path_model.basis(every), dtype=float))
-    for k, j in enumerate(layout.varying):
-        if names[j] not in bends:
+        if several_markers(model.path):
+            _, J = model.path.reading_jacobians(params, arrays)
+            noise = np.asarray(
+                model.path.noise(theta["sigma"], arrays), dtype=float
+            )
+        else:
+            ages = np.where(arrays.mask, arrays.ages, 0.0)
+            P = np.broadcast_to(params[:, None, :], ages.shape + (layout.P,))
+            J = path_jacobian(model.path.model, ages, np.array(P))
+            noise = np.full(ages.shape[1], float(np.ravel(theta["sigma"])[0]))
+        moved = np.abs(np.asarray(J, dtype=float)[..., V]) / np.reshape(
+            noise, (1, -1, 1)
+        )
+    moved = np.where(arrays.mask[..., None] & np.isfinite(moved), moved, 0.0)
+    if moved.size == 0:
+        return np.zeros(len(V))
+    return np.max(moved, axis=(0, 1))
+
+
+def _spreads_at_zero(model: Model, arrays: JointArrays, u: Any) -> list:
+    """The varying parameters (their places in ``model.layout.varying``)
+    whose spread between items at the internal parameters ``u`` moves no
+    item's marker by :data:`_NO_SPREAD` of the noise sd at any reading
+    age: at their lower bound, 0. A parameter no reading depends on is
+    not judged here."""
+    theta = model.layout.unpack(np.asarray(u, dtype=float))
+    L = np.asarray(theta["L"], dtype=float)
+    sd = np.sqrt(np.sum(L**2, axis=1))
+    reach = _spread_reach(model, arrays, theta)
+    return [
+        k
+        for k in range(model.layout.q)
+        if reach[k] > 0 and not sd[k] * reach[k] >= _NO_SPREAD
+    ]
+
+
+#: A spread whose loss (with its correlations) costs the log-likelihood
+#: less than this is not told from 0 by the data at the 5% level (half
+#: the 95% point of chi-squared on one degree of freedom): where a search
+#: ends unverified, such spreads are tried at 0 (:func:`_on_the_boundary`).
+_NOT_TOLD = 1.92
+
+
+def _spreads_not_told_from_zero(
+    model: Model, arrays: JointArrays, u: Any, value: float
+) -> list:
+    """The varying parameters (places in ``model.layout.varying``) whose
+    spread, taken to (nearly) 0 with its correlations and every other
+    parameter where it is at ``u`` (its negative log-likelihood
+    ``value``), costs the log-likelihood less than :data:`_NOT_TOLD`:
+    one likelihood a varying parameter, by the nodes placed there."""
+    layout = model.layout
+    theta = _theta_of(layout, u)
+    L = np.asarray(theta["L"], dtype=float)
+    D = L @ L.T
+    out = []
+    for k in range(layout.q):
+        small = D.copy()
+        small[k, :] = small[:, k] = 0.0
+        small[k, k] = 1e-6 * D[k, k]
+        try:
+            trial = dict(theta, L=np.linalg.cholesky(small))
+            v = layout.pack(trial)
+            with np.errstate(all="ignore"), warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                placed, _ = place(v, model, arrays, (None, None))
+                lost = float(neg_ll(v, model, arrays, placed)) - value
+        except (np.linalg.LinAlgError, ValueError, FloatingPointError):
             continue
-        sd = float(np.sqrt(np.sum(L[k] ** 2)))
-        reach = sd * (float(np.max(basis[:, j])) if basis.size else 0.0)
-        if not reach >= _NO_SPREAD * noise:
-            return True
-    return False
+        if np.isfinite(lost) and lost < _NOT_TOLD:
+            out.append(k)
+    return out
 
 
-#: The spread of a bend at the second start, as a share of the readings'
-#: noise sd that it moves an item's marker by at most (above the 1% at
-#: which it is taken as 0, :data:`_NO_SPREAD`).
-_BEND_START = 0.05
-
-
-def _from_common_bends(
-    model: Model,
-    path_model: Any,
-    arrays: JointArrays,
-    ages: list,
-    values: list,
-    Zc: npt.NDArray,
-    counts: npt.NDArray,
-    bends: list,
+def _at_a_spread_of_zero(
+    model: Model, arrays: JointArrays, u: Any, value: float, maximum: str
 ) -> tuple | None:
-    """The joint fit from a second start (#1334): the fit with the
-    ``bends`` common to all items, and their spread small
-    (:data:`_BEND_START`): ``(_maximise's answer, its warnings)``, or
-    ``None`` where the common-bend fit or the second search cannot
-    start."""
+    """:func:`_on_the_boundary`'s answer where a spread is at 0 at the
+    search's answer ``u`` (:func:`_spreads_at_zero`), or, the search
+    unverified, is not told from 0 (:func:`_spreads_not_told_from_zero`);
+    ``None`` where none is, or the answer stands."""
+    if not model.layout.q:
+        return None
+    at_zero = _spreads_at_zero(model, arrays, u)
+    if not at_zero and maximum != "verified":
+        # a search stalled on its way to 0 stops short of it
+        at_zero = _spreads_not_told_from_zero(model, arrays, u, value)
+    if not at_zero:
+        return None
+    return _on_the_boundary(model, arrays, (u, value), at_zero)
+
+
+def _with_varying(model: Model, keep: list) -> Model:
+    """``model`` with only the varying parameters at the places ``keep``
+    of its layout's varying ones: the others common to all items."""
     import dataclasses
 
     layout = model.layout
-    names = list(path_model.parameter_names)
-    keep = [k for k, j in enumerate(layout.varying) if names[j] not in bends]
-    nested_layout = dataclasses.replace(
+    nested = dataclasses.replace(
         layout,
         varying=tuple(layout.varying[k] for k in keep),
         blocks=tuple(layout.blocks[k] for k in keep),
     )
-    nested = dataclasses.replace(model, layout=nested_layout)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        try:
-            start = marker_start(nested, ages, values, Zc, counts)
-            u_n = _maximise(
-                nested, arrays, survival_start(nested, arrays, start)
-            )[0]
-        except (_NoStart, np.linalg.LinAlgError, ValueError):
-            return None
-    found = nested_layout.unpack(u_n)
-    theta = {key: np.array(value, dtype=float) for key, value in found.items()}
-    L = np.zeros((layout.q, layout.q))
-    L[np.ix_(keep, keep)] = theta["L"]
-    every = np.concatenate([np.asarray(a, dtype=float) for a in ages])
-    with np.errstate(all="ignore"):
-        basis = np.abs(np.asarray(path_model.basis(every), dtype=float))
-    sigma = float(np.ravel(theta["sigma"])[0])
-    for k, j in enumerate(layout.varying):
-        if k in keep:
-            continue
-        reach = float(np.max(basis[:, j])) if basis.size else 0.0
-        L[k, k] = _BEND_START * sigma / reach if reach > 0 else 1e-3
-    theta["L"] = L
+    return dataclasses.replace(model, layout=nested)
+
+
+def _theta_of(layout: Layout, u: Any) -> dict:
+    return {
+        key: np.array(value, dtype=float)
+        for key, value in layout.unpack(np.asarray(u, dtype=float)).items()
+    }
+
+
+def _project(theta: dict, keep: list) -> dict:
+    """``theta`` with only the spread of the varying parameters at the
+    places ``keep``: their covariance kept, the others' dropped."""
+    out = dict(theta)
+    L = np.asarray(theta["L"], dtype=float)
+    D = (L @ L.T)[np.ix_(keep, keep)]
+    out["L"] = np.linalg.cholesky(0.5 * (D + D.T)) if keep else D
+    return out
+
+
+def _embed(theta: dict, keep: list, q: int, sds: Any) -> dict:
+    """``theta`` (of the varying parameters at the places ``keep``) with
+    all ``q``: those not kept uncorrelated with every other, their sds
+    ``sds`` (by place)."""
+    out = dict(theta)
+    L = np.zeros((q, q))
+    L[np.ix_(keep, keep)] = np.asarray(theta["L"], dtype=float)
+    for k in range(q):
+        if k not in keep:
+            L[k, k] = sds[k]
+    out["L"] = L
+    return out
+
+
+def _maximised(model: Model, arrays: JointArrays, theta: dict) -> Any:
+    """:func:`_maximise`'s answer from ``theta`` with the warnings it
+    gave, ``(answer, warnings)``; ``None`` where it cannot start."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         try:
@@ -2344,11 +2442,94 @@ def _from_common_bends(
     return answer, list(caught)
 
 
-#: A varying bend of a spline whose spread between items moves an item's
-#: marker by less than this fraction of the readings' noise sd, at any
-#: reading age, is taken as estimated at its lower bound, 0, and the fit
-#: searches once more from the common-bend fit (:func:`_from_common_bends`).
-_NO_SPREAD = 0.01
+def _on_the_boundary(
+    model: Model, arrays: JointArrays, first: tuple, at_zero: list
+) -> tuple | None:
+    """The fit where the spreads of the varying parameters ``at_zero``
+    (places in ``model.layout.varying``) are at their lower bound, 0, at
+    the first search's answer ``first`` ``(u, value)``.
+
+    The search's scale for a spread is its log sd, so 0 is at minus
+    infinity, where the likelihood is flat along it: a search can stall
+    there short of the fit with that parameter common to all items, which
+    is this model with the spread 0 (#1334). So: (1) the fit with those
+    parameters common to all items (the nested model), from the first
+    answer's other parameters, again while it puts another spread at 0;
+    (2) a search of the whole model from that fit, those spreads small
+    (:data:`_OFF_START`), which finds where the likelihood rises off the
+    boundary. Where (2), or the first answer, beats (1) by more than
+    :data:`_RISE_TOL`, the better of them is the fit (off the boundary);
+    otherwise the fit is held on it: (1).
+
+    Returns ``(fit_model, (u, value, cov_u, maximum), warnings,
+    path_u)``: the model searched (the nested one where held on the
+    boundary) with its answer and warnings, and ``path_u`` the whole
+    model's internal parameters off the boundary (a start for another
+    link's fit), or ``None`` where the nested fit cannot be made (the
+    first answer then stands)."""
+    layout = model.layout
+    q = layout.q
+    u1, v1 = first
+    dropped = sorted(set(at_zero))
+    theta = _theta_of(layout, u1)
+    keep = [k for k in range(q) if k not in dropped]
+    start = _project(theta, keep)
+    while True:
+        if not keep:
+            return None
+        nested = _with_varying(model, keep)
+        got = _maximised(nested, arrays, start)
+        if got is None:
+            return None
+        (u_n, v_n, cov_n, max_n), warned_n = got
+        more = _spreads_at_zero(nested, arrays, u_n)
+        if not more:
+            break
+        theta_n = _theta_of(nested.layout, u_n)
+        start = _project(
+            theta_n, [j for j in range(len(keep)) if j not in more]
+        )
+        keep = [k for j, k in enumerate(keep) if j not in more]
+    # (2) off the boundary: the spreads at 0 small
+    theta_n = _theta_of(nested.layout, u_n)
+    reach = _spread_reach(model, arrays, theta_n)
+    sds = np.where(reach > 0, _OFF_START / np.where(reach > 0, reach, 1.0), 0)
+    off_start = _embed(theta_n, keep, q, sds)
+    path_u = layout.pack(off_start)
+    off = _maximised(model, arrays, off_start)
+    best = None
+    if off is not None:
+        (u_o, v_o, cov_o, max_o), warned_o = off
+        path_u = u_o
+        if np.isfinite(v_o):
+            best = (v_o, (model, (u_o, v_o, cov_o, max_o), warned_o, None))
+    tol = _RISE_TOL * max(1.0, abs(v_n))
+    if best is not None and best[0] < v_n - tol and best[0] <= v1:
+        return best[1]
+    if v1 < v_n - tol:
+        # the first answer is above the boundary: it stands
+        return None
+    return nested, (u_n, v_n, cov_n, max_n), warned_n, path_u
+
+
+def _held_on_the_boundary(
+    names: list,
+    fit_names: list,
+    estimated: npt.NDArray,
+    covariance: npt.NDArray | None,
+) -> tuple:
+    """The reported parameters ``estimated`` (named ``fit_names``, of the
+    fit with some spreads at 0) and their ``covariance`` in the places of
+    the whole model's ``names``: those spreads and their correlations 0,
+    with no standard errors (``nan`` in the covariance)."""
+    where = [names.index(name) for name in fit_names]
+    out = np.zeros(len(names))
+    out[where] = estimated
+    cov = None
+    if covariance is not None:
+        cov = np.full((len(names),) * 2, np.nan)
+        cov[np.ix_(where, where)] = covariance
+    return out, cov
 
 
 #: An item with at most this many readings has few for Laplace's
