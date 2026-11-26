@@ -19,6 +19,17 @@ from surpyval.recurrent import CauseSpecificMCF, NonParametricCounting
 from surpyval.recurrent.nonparametric.mcf import _lawless_nadeau_var
 from surpyval.univariate.competing_risks.labels import label_mask
 
+# These tests check the EventHistoryData the fits work on, reading its
+# ids and tl as they are there (before model.data becomes a SurpyvalData).
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.ids changes meaning:FutureWarning"
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.tl changes meaning:FutureWarning"
+    ),
+]
+
 
 def _by_items(data, x, r, d, counted=None):
     # The sum over items, as the variance was computed before #521.

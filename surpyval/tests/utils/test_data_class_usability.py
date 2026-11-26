@@ -10,6 +10,18 @@ import pytest
 
 from surpyval import EventHistoryData, ItemHistory, ItemLifetime, SurpyvalData
 
+# These tests check EventHistoryData itself, reading its ids and tl as
+# they are there (before model.data becomes a SurpyvalData).
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.ids changes meaning:FutureWarning"
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.tl changes meaning:FutureWarning"
+    ),
+]
+
+
 LIVES = [
     ItemLifetime("B7", observed=1820, event_type="spall"),
     ItemLifetime("B8", right_censored=2400),

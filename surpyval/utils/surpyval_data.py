@@ -2003,6 +2003,15 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         return int(n.sum())
 
     @property
+    def item_ids(self) -> list | None:
+        """The units' (items') ids, one per unit, in the order of their
+        first rows (``None`` without ids). ``ids`` and ``i`` are one per
+        row; a unit with several rows appears once here."""
+        if self.ids is None:
+            return None
+        return list(dict.fromkeys(self.ids))
+
+    @property
     def i(self) -> list | None:
         """Each row's unit (item) id, as ``ids``: the two names are one
         list, and setting either sets both."""

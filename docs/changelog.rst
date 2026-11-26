@@ -1035,6 +1035,16 @@ v0.30 (unreleased)
   the package now reads a fitted recurrent model's data through one
   helper rather than ``model.data``, ready for ``model.data`` to become a
   ``SurpyvalData``; no number changes.
+- **Reading** ``ids`` **or** ``tl`` **of a fitted recurrent model's**
+  ``data`` **warns.** In v0.31 a model's ``data``, and what the
+  simulations return, become a ``SurpyvalData``, on which both mean
+  something else: ``ids`` is one per row (each row's unit, as ``i``), not
+  one per unit, and ``tl`` is a unit's late entry on its first row only.
+  Code that counted or indexed by them would silently go wrong, so
+  reading either from your code now warns (``FutureWarning``, at your
+  line). The new ``data.item_ids``, on both containers, is the units, one
+  each, in the order of their first rows: use it where you read ``ids``.
+  The package's own reads are silent and no number changes.
 - **One container for recurrent data: building an** ``EventHistoryData``
   **warns.** A ``SurpyvalData`` with each row's unit ``i`` does every job
   an ``EventHistoryData`` did (v0.30, above), so building one yourself

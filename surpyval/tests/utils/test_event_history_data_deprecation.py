@@ -132,3 +132,58 @@ def test_the_surpyval_data_route_gives_the_same_fit():
         old = sp.CrowAMSAA.fit(sp.handle_xicn(X, i=I, c=C))
     new = sp.CrowAMSAA.fit(SurpyvalData(X, C, i=I))
     assert np.array_equal(old.params, new.params)
+
+
+# -- attributes that change meaning when model.data becomes a SurpyvalData ---
+
+
+def _fitted():
+    from surpyval.recurrent import CrowAMSAA
+
+    return CrowAMSAA.fit(
+        [1, 3, 5, 2, 4, 6],
+        i=[1, 1, 1, 2, 2, 2],
+        c=[0, 0, 1, 0, 0, 1],
+        tl=[0.5, 0.5, 0.5, 1, 1, 1],
+    )
+
+
+@pytest.mark.parametrize(
+    "name, says", [("ids", "data.item_ids"), ("tl", "data.to_items()")]
+)
+def test_reading_an_attribute_that_changes_meaning_warns(name, says):
+    model = _fitted()
+    with pytest.warns(FutureWarning, match=f"EventHistoryData.{name}") as rec:
+        value = getattr(model.data, name)
+    assert says in str(rec[0].message)
+    assert f"v{REMOVED_IN_NEXT}" in str(rec[0].message)
+    assert rec[0].filename == __file__  # at the reader's line
+    expected = [1, 2] if name == "ids" else [0.5, 0.5, 0.5, 1, 1, 1]
+    np.testing.assert_array_equal(value, expected)
+
+
+def test_item_ids_means_the_same_on_both_containers():
+    model = _fitted()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        held = model.data.item_ids
+        rows = model.data.to_surpyval_data()
+        assert held == [1, 2] == rows.item_ids
+        assert rows.ids == [1, 1, 1, 2, 2, 2]  # one per row there
+        assert model.data.n_items == 2
+    assert SurpyvalData([1, 2], [0, 1], [1, 1]).item_ids is None
+    data = SurpyvalData([4, 2, 9], [0, 0, 1], [1, 1, 1], i=["b", "a", "b"])
+    assert data.item_ids == ["b", "a"]
+
+
+def test_the_package_reads_them_silently():
+    # A fit, its bounds and a simulation read ids and tl inside.
+    from surpyval.recurrent import CrowAMSAA
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        model = _fitted()
+        model.cif_cb([2.0, 4.0])
+        model.residuals("martingale")
+        CrowAMSAA.fit(model.data.to_surpyval_data())
+        _renewal_simulation()

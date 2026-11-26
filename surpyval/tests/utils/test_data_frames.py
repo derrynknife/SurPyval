@@ -8,6 +8,18 @@ import pytest
 import surpyval as sp
 from surpyval import EventHistoryData, ItemHistory, ItemLifetime, SurpyvalData
 
+# These tests check EventHistoryData itself, reading its ids and tl as
+# they are there (before model.data becomes a SurpyvalData).
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.ids changes meaning:FutureWarning"
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.tl changes meaning:FutureWarning"
+    ),
+]
+
+
 FLEET = pd.DataFrame(
     {
         "unit": ["P1", "P2", "P3", "P4"],

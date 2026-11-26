@@ -19,6 +19,18 @@ from surpyval import (
 )
 from surpyval import recurrent as rc
 
+# These tests check EventHistoryData itself, reading its ids and tl as
+# they are there (before model.data becomes a SurpyvalData).
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.ids changes meaning:FutureWarning"
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.tl changes meaning:FutureWarning"
+    ),
+]
+
+
 STEPS = StepSchedule.from_changepoints([0, 3], [[0.0], [1.0]])
 X = sp.Weibull.random(40, 10, 2, random_state=1)
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import os
 import warnings
 from collections.abc import Callable
 from pathlib import Path
@@ -74,6 +75,51 @@ def warn_built_by_user(what: str, instead: str, depth: int = 2) -> None:
         f"{what} is deprecated and will be removed in v{REMOVED_IN_NEXT}: "
         "SurpyvalData with each row's unit i is the one container for "
         f"several rows per unit. Use {instead}.",
+        FutureWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
+_CHANGING = {
+    "ids": (
+        "is one per row there (each row's unit, as i), not one per unit as "
+        "here, so code that counts or indexes by it would silently miscount. "
+        "For the units, one each, use data.item_ids, which means the same "
+        "on both"
+    ),
+    "tl": (
+        "is a unit's late entry on its first row only there (-inf on its "
+        "later rows), not repeated on each of its rows as here. Read it "
+        "per unit from data.to_items(), or as it will be from "
+        "data.to_surpyval_data().tl"
+    ),
+}
+
+
+_PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_TESTS_DIR = os.path.join(_PACKAGE_DIR, "tests") + os.sep
+_PACKAGE_DIR += os.sep
+
+
+def _warn_changing(name: str) -> None:
+    """Warn user code reading ``name``, an attribute whose meaning changes
+    when a fitted model's ``data`` (and a simulation's) becomes a
+    ``SurpyvalData``. The package's own reads are silent."""
+    import sys
+
+    from surpyval.utils.deprecation import REMOVED_IN_NEXT
+
+    frame = sys._getframe(2)
+    if frame.f_code.co_filename.startswith(_PACKAGE_DIR) and not (
+        frame.f_code.co_filename.startswith(_TESTS_DIR)
+    ):
+        return  # the package's own read: the common case, kept cheap
+    if not _outside_package(frame):
+        return
+    warnings.warn(
+        f"EventHistoryData.{name} changes meaning in v{REMOVED_IN_NEXT}, "
+        "when a fitted recurrent model's data, and what the simulations "
+        f"return, become a SurpyvalData: its {name} {_CHANGING[name]}.",
         FutureWarning,
         stacklevel=caller_stacklevel(),
     )
@@ -384,7 +430,7 @@ class EventHistoryData(ReshapeMixin):
         --------
         >>> from surpyval import handle_xicn
         >>> data = handle_xicn([1, 2, 3, 4], i=[2, 1, 2, 1])
-        >>> data.ids, data.i
+        >>> data.item_ids, data.i
         ([1, 2], array([1, 1, 2, 2]))
         >>> data.item_rows()
         (array([0, 2]), array([0, 0, 1, 1]))
@@ -887,7 +933,7 @@ class EventHistoryData(ReshapeMixin):
         ...     observed={"M1": [420, 1310, 2050], "M2": [980, 2400]},
         ...     right_censored={"M1": 2600, "M2": 2900, "M3": 3100},
         ... )
-        >>> data.ids
+        >>> data.item_ids
         ['M1', 'M2', 'M3']
         >>> data.x[data.i == "M1"], data.c[data.i == "M1"]
         (array([ 420., 1310., 2050., 2600.]), array([0, 0, 0, 1]))
@@ -1014,7 +1060,7 @@ class EventHistoryData(ReshapeMixin):
         ...     log, i_col="machine", x_col="hours", e_col="part",
         ...     ends={"M1": 2600, "M2": 2900, "M3": 3100},
         ... )
-        >>> data.ids, data.c.tolist()
+        >>> data.item_ids, data.c.tolist()
         (['M1', 'M2', 'M3'], [0, 0, 1, 0, 1, 1])
         """
         warn_built_by_user(
@@ -1434,7 +1480,7 @@ class EventHistoryData(ReshapeMixin):
 
     def __len__(self) -> int:
         """The number of rows (events and ends of observation), as
-        ``SurpyvalData``'s length is its rows; ``len(data.ids)`` is the
+        ``SurpyvalData``'s length is its rows; ``len(data.item_ids)`` is the
         number of items."""
         return len(self.x)
 
@@ -1480,7 +1526,46 @@ class EventHistoryData(ReshapeMixin):
     @property
     def n_items(self) -> int:
         """The number of items (``len(data)`` is the number of rows)."""
-        return len(self.ids)
+        return len(self.__dict__["ids"])
+
+    @property
+    def ids(self) -> list:
+        """The distinct item ids, sorted: one per item.
+
+        .. deprecated:: 0.30
+            Reading it from your code warns: from v0.31 a fitted model's
+            ``data`` (and a simulation's) is a
+            :class:`~surpyval.SurpyvalData`, whose ``ids`` is one per row.
+            Use :attr:`item_ids`, one per item on both."""
+        _warn_changing("ids")
+        return self.__dict__["ids"]
+
+    @ids.setter
+    def ids(self, value: Any) -> None:
+        self.__dict__["ids"] = value
+
+    @property
+    def tl(self) -> npt.NDArray:
+        """Each row's left truncation: its item's late entry, on every one
+        of the item's rows (``-inf`` for none).
+
+        .. deprecated:: 0.30
+            Reading it from your code warns: from v0.31 a fitted model's
+            ``data`` is a :class:`~surpyval.SurpyvalData`, whose ``tl`` is
+            the late entry on a unit's first row only."""
+        _warn_changing("tl")
+        return self.__dict__["tl"]
+
+    @tl.setter
+    def tl(self, value: Any) -> None:
+        self.__dict__["tl"] = value
+
+    @property
+    def item_ids(self) -> list:
+        """The items' ids, one per item, in the order of their first rows
+        (sorted here): the same on a :class:`~surpyval.SurpyvalData`, so
+        code reading it does not change when a model's ``data`` does."""
+        return list(self.__dict__["ids"])
 
     def records(self) -> Any:
         """
@@ -1746,7 +1831,7 @@ class EventHistoryData(ReshapeMixin):
         >>> data = EventHistoryData.from_histories(
         ...     observed={"A": [5, 9]}, right_censored={"A": 12}
         ... )
-        >>> EventHistoryData.from_json(data.to_json()).ids
+        >>> EventHistoryData.from_json(data.to_json()).item_ids
         ['A']
         """
         warn_built_by_user(
