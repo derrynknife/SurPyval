@@ -951,10 +951,44 @@ every cause is the product of its chances of surviving each, and its
 chance of wearing out by ``t`` is the integral of wear's predictive
 density against the other causes' predictive survival. The credible
 intervals come from 4,000 joint draws (one from each cause's posterior)
-with a fixed seed, so the numbers repeat. Units found failed in a window
-at an inspection (``c`` of -1 or 2) are refused: such a unit's
-likelihood holds every cause at once, so the causes' posteriors are no
-longer separate fits; ``fit`` takes them by maximum likelihood.
+with a fixed seed, so the numbers repeat.
+
+**Failures found at an inspection.** A part found cracked at the
+40-hour inspection, having been working at 20 hours, failed somewhere
+in between, and it was the crack that got it first. The chance of that
+is not the crack's own chance of happening between 20 and 40 hours: wear
+was at work too, and a part that wore out first in that window would
+have been found worn, not cracked. So the part's contribution to the
+likelihood is the chance that its first failure of any kind came in the
+window *and* was the crack: at each moment in the window, the chance the
+part is still whole times the crack's hazard, added up over the window,
+
+.. math::
+
+    \int_{x_l}^{x_r} h_{\text{crack}}(u)\, S(u)\, du,
+    \qquad S(u) = S_{\text{crack}}(u)\, S_{\text{wear}}(u),
+
+the crack's cumulative incidence over the window
+(:math:`\mathrm{CIF}_{\text{crack}}(x_r) - \mathrm{CIF}_{\text{crack}}(x_l)`),
+not :math:`F_{\text{crack}}(x_r) - F_{\text{crack}}(x_l)`. A part found
+failed at its first inspection (``c = -1``) has the window from its
+entry (or from the start). This is the likelihood ``fit`` maximises for
+such rows, and because it holds both causes' parameters the posterior
+no longer splits: ``fit_bayes`` then fits every cause's parameters
+together, on the grid for up to three free parameters in all (two
+Exponential causes, or a Weibull and an Exponential) and by the Laplace
+engine beyond. ``model.joint`` says which was done, ``model.posterior``
+is the joint posterior (its parameters named ``wear.beta``,
+``crack.failure_rate``), and each of ``model.models`` is its cause's
+marginal. Priors are still one set for every cause or a set a cause,
+given a parameter at a time. The window's integral is taken at every
+posterior point on the cause's own probability scale, by a 48-point
+Gauss-Legendre rule (to about 1e-9 against adaptive quadrature in the
+tests). With flat priors the posterior's peak is the maximum-likelihood
+estimate, and with no windows in the data the joint fit gives the same
+posterior as the fit a cause at a time. A window whose cause is not
+known (a part found failed, cause unrecorded) is not taken, by ``fit``
+or ``fit_bayes``.
 
 The same holds for a **multi-state model**: units moving between
 healthy, degraded and failed, say, with a distribution for the hazard of
@@ -978,6 +1012,39 @@ joint draws (``model.draws``; fixed seed), so it carries a Monte Carlo
 error of about its spread over the draws divided by 31; the transitions'
 posteriors themselves are exact. A model of two states (working, then
 failed) is the distribution's own Bayesian fit, posterior for posterior.
+
+**With covariates.** The regression forms split the same way: each
+cause's (or transition's) hazard is a regression on the covariates, its
+likelihood a factor of its own, so each posterior is that regression's
+own ``fit_bayes`` on the cause-specific data (the Laplace engine, as for
+every regression). The results are for one set of covariates at a time:
+
+.. code-block:: python
+
+    from surpyval import ParametricCompetingRisksRegression
+    from surpyval.multistate import ParametricMultiStateRegression
+
+    model = ParametricCompetingRisksRegression.fit_bayes(x, Z, e)
+    unit = model.at([1.0])            # a unit with Z = 1
+    unit.cif(10.0, "wear")            # P(it has worn out by 10)
+    unit.cri(10.0, "wear")            # the 95% credible interval
+    unit.quantile_cri(0.1)            # its all-cause B10 life
+    model.cif(10.0, [1.0], "wear")    # the same, in one call
+
+    ms = ParametricMultiStateRegression.fit_bayes(
+        x, Z, e, state, tl=tl, i=unit_id)
+    ms.occupancy(120.0, [1], "failed")
+    ms.occupancy_cri(120.0, [1], "failed")
+
+Priors are one set for every cause (transition) or a set each, named as
+the regression names its parameters (``coef_0``, or a covariate's
+column; ``beta``); a coefficient given none has the regressions' default,
+:math:`\mathrm{Normal}(0, 2.5 / \mathrm{sd})`. A unit's predictions at
+its covariates are the posterior predictive, as without covariates; the
+competing-risks intervals come from 1,024 joint draws, each draw's
+regressions evaluated at the covariates, and the multi-state
+probabilities from 1,000. A model of one cause, or of two states, is the
+regression's own Bayesian fit.
 
 What every Bayesian fit reports
 -------------------------------

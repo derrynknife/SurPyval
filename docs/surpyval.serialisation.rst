@@ -574,11 +574,19 @@ with its own ``schema``.
      - --
    * - ``BayesianCompetingRisks``
      - ``"model": "BayesianCompetingRisks"``
-     - ``causes``, ``models``, ``surpyval_version``
-     - --
+     - ``causes``, ``surpyval_version``
+     - ``models`` (each cause's fit), or ``joint`` for causes fitted together (the joint posterior, each cause's columns, distribution and priors, the engine)
    * - ``BayesianMultiState``
      - ``"model": "BayesianMultiState"``
      - ``mle``, ``models``, ``draws``, ``surpyval_version``
+     - --
+   * - ``BayesianCompetingRisksRegression``
+     - ``"model": "BayesianCompetingRisksRegression"``
+     - ``causes``, ``models`` (each cause's Bayesian regression), ``surpyval_version``
+     - --
+   * - ``BayesianMultiStateRegression``
+     - ``"model": "BayesianMultiStateRegression"``
+     - ``mle``, ``models`` (each transition's Bayesian regression), ``draws``, ``surpyval_version``
      - --
 
 

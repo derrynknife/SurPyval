@@ -106,8 +106,10 @@ Competing risks and multi-state models
 --------------------------------------
 
 Each cause's (or transition's) likelihood is a factor of its own, so
-these are compositions of the distributions' fits; see "Competing risks
-and multi-state models" in :doc:`Bayesian Fitting with SurPyval`.
+these are compositions of the distributions' (or the regressions') fits,
+except for competing risks with failures found in a window, where the
+causes are fitted together; see "Competing risks and multi-state models"
+in :doc:`Bayesian Fitting with SurPyval`.
 
 .. automethod:: surpyval.univariate.competing_risks.ParametricCompetingRisks.fit_bayes
 
@@ -117,6 +119,19 @@ and multi-state models" in :doc:`Bayesian Fitting with SurPyval`.
 .. automethod:: surpyval.multistate.ParametricMultiState.fit_bayes
 
 .. autoclass:: surpyval.multistate.bayes.BayesianMultiState
+   :members:
+
+.. automethod:: surpyval.univariate.competing_risks.ParametricCompetingRisksRegression.fit_bayes
+
+.. autoclass:: surpyval.univariate.competing_risks.regression.bayes.BayesianCompetingRisksRegression
+   :members:
+
+.. autoclass:: surpyval.univariate.competing_risks.regression.bayes.BayesianCompetingRisksAt
+   :members:
+
+.. automethod:: surpyval.multistate.ParametricMultiStateRegression.fit_bayes
+
+.. autoclass:: surpyval.multistate.bayes.BayesianMultiStateRegression
    :members:
 
 Comparing fits

@@ -3258,6 +3258,265 @@ def _bayes_recurrent():
     return out
 
 
+# ---------------------------------------------------------------------------
+# Bayesian competing risks and multi-state models (compositions of the
+# causes' or transitions' own Bayesian fits; the causes fitted together
+# where failures are found in a window)
+# ---------------------------------------------------------------------------
+#: A Bayesian competing-risks fit's credible intervals (4,000 joint draws,
+#: or 1,024 at a regression's covariate row; fixed seeds): each cause's
+#: incidence, the all-cause survival and failure probability, the
+#: all-cause B-life, and each cause's parameters.
+_BAYES_CR_BOUNDS = (
+    Bound("cri", on=("cif",), wald=False, per_cause=True, label="cri[cif]"),
+    Bound("cri", on=("sf", "ff"), wald=False, label="cri[all-cause]"),
+    Bound("quantile_cri", point="qf", wald=False),
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=(("a", "failure_rate"), ("b", "failure_rate")),
+        wald=False,
+    ),
+)
+#: A Bayesian competing-risks regression's: the same at the first
+#: covariate row, and each cause's coefficient.
+_BAYES_CRR_BOUNDS = _BAYES_CR_BOUNDS[:3] + (
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=(("a", "coef_0"), ("b", "coef_0"), ("a", "beta")),
+        wald=False,
+    ),
+)
+#: A Bayesian multi-state fit's: each state's occupation probability and
+#: expected time in it, over 1,000 joint draws.
+_BAYES_MS_BOUNDS = (
+    Bound(
+        "occupancy_cri",
+        point="occupancy",
+        wald=False,
+        per_cause=True,
+        label="occupancy_cri",
+    ),
+    Bound(
+        "length_of_stay_cri",
+        point="length_of_stay",
+        wald=False,
+        per_cause=True,
+        in_range=False,
+        label="length_of_stay_cri",
+    ),
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=((("healthy", "ill"), "failure_rate"),),
+        wald=False,
+    ),
+)
+_BAYES_MSR_BOUNDS = _BAYES_MS_BOUNDS[:2] + (
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=((("healthy", "ill"), "z0"),),
+        wald=False,
+    ),
+)
+_BAYES_COMPOSITION_EXCLUDE = {
+    "convergence": "not an optimiser: each cause's (transition's) "
+    "posterior is its distribution's or regression's own fit_bayes, whose "
+    "engines check their own accuracy (tests/bayes/test_fit_bayes.py, "
+    "tests/bayes/test_laplace.py); a joint fit's grid refuses as theirs",
+}
+
+
+def _pcr_bayes(d, **kw):
+    return cr.ParametricCompetingRisks.fit_bayes(
+        d["x"], d["e"], c=d.get("c"), n=d.get("n"), **kw
+    )
+
+
+def _bayes_competing_risks():
+    interval_data = next(
+        c.data
+        for c in _competing_risks()
+        if c.name == "ParametricCompetingRisks[interval]"
+    )
+    causes = dict(
+        interface=CAUSES,
+        functions=("sf", "ff", "Hf", "hf", "df", "qf"),
+        event_functions=("cif",),
+        events=("a", "b"),
+        x=X_CR,
+        rtol=1e-6,
+        exclude=dict(_BAYES_COMPOSITION_EXCLUDE),
+    )
+    model_class = (
+        "surpyval.univariate.competing_risks.parametric.bayes"
+        ".BayesianCompetingRisks"
+    )
+    return [
+        # a cause at a time, the grid of each Weibull
+        Case(
+            name="ParametricCompetingRisks[bayes]",
+            fitters=(model_class,),
+            model_class=model_class,
+            data=cr_data,
+            # (Exponential causes: a one-parameter grid each, so that
+            # the suite's many refits stay quick; the Weibull grids are
+            # checked in tests/bayes/test_competing_risks_bayes.py)
+            fit=functools.partial(_pcr_bayes, dist=sp.Exponential),
+            rows=("x", "e", "n"),
+            **causes,
+        ),
+        # failures found in a window: both causes together on one grid
+        Case(
+            name="ParametricCompetingRisks[interval, bayes]",
+            fitters=(),
+            model_class=model_class,
+            data=interval_data,
+            fit=functools.partial(_pcr_bayes, dist=sp.Exponential),
+            rows=("x", "c", "e", "n"),
+            # (each incidence a mean over the joint grid's 42,000 points)
+            slow=REFIT_PROPERTIES,
+            **causes,
+        ),
+        Case(
+            name="ParametricCompetingRisksRegression[bayes]",
+            fitters=(
+                "surpyval.univariate.competing_risks.regression.bayes"
+                ".BayesianCompetingRisksRegression",
+            ),
+            model_class=(
+                "surpyval.univariate.competing_risks.regression.bayes"
+                ".BayesianCompetingRisksRegression"
+            ),
+            interface=CAUSES_REGRESSION,
+            data=functools.partial(cr_data, True),
+            fit=lambda d: cr.ParametricCompetingRisksRegression.fit_bayes(
+                d["x"], d["Z"], d["e"], n=d.get("n")
+            ),
+            functions=("sf", "ff"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            Z=Z_CR,
+            # one covariate row a call
+            z_style="single",
+            rows=("x", "Z", "e", "n"),
+            covariates="Z",
+            coefficients=lambda m: np.array(
+                [
+                    np.asarray(m.models[k].params, dtype=float)[2:]
+                    for k in m.causes
+                ]
+            ),
+            intercept=True,
+            rtol=1e-6,
+            exclude={
+                **_BAYES_COMPOSITION_EXCLUDE,
+                "covariate_scale": "each cause's (transition's) "
+                "BayesianRegression is not equivariant to 1e-4 under a "
+                "covariate scaled by 1e-6: the Laplace engine's peak "
+                "search and Hessian steps are not scaled with the "
+                "coefficient (the plain WeibullPH.fit_bayes on these data "
+                "moves sf by up to 5e-4 too); a known gap of the shared "
+                "regression engine, not of the composition",
+                **{
+                    key: "a column the data do not determine is refused "
+                    "by each cause's regression fit_bayes, naming its "
+                    "coefficient, not aliased"
+                    for key in ("aliasing", "aliasing_constant")
+                },
+            },
+        ),
+    ]
+
+
+def _bayes_multistate():
+    common = dict(
+        functions=(),
+        event_functions=("occupancy",),
+        events=_MS_STATES,
+        times=("x", "tl"),
+        rtol=1e-6,
+        exclude=dict(_BAYES_COMPOSITION_EXCLUDE),
+    )
+    return [
+        Case(
+            name="ParametricMultiState[bayes]",
+            fitters=("surpyval.multistate.bayes.BayesianMultiState",),
+            model_class="surpyval.multistate.bayes.BayesianMultiState",
+            interface=STATES,
+            data=ms_data,
+            fit=lambda d: ms.ParametricMultiState.fit_bayes(
+                d["x"],
+                d["e"],
+                d["state"],
+                tl=d["tl"],
+                n=d.get("n"),
+                transitions=d["transitions"],
+                dist=sp.Exponential,
+            ),
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n"),
+            **common,
+        ),
+        Case(
+            name="ParametricMultiStateRegression[bayes]",
+            fitters=(
+                "surpyval.multistate.bayes.BayesianMultiStateRegression",
+            ),
+            model_class=(
+                "surpyval.multistate.bayes.BayesianMultiStateRegression"
+            ),
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_data, True),
+            fit=lambda d: ms.ParametricMultiStateRegression.fit_bayes(
+                d["x"],
+                d["Z"],
+                d["e"],
+                d["state"],
+                tl=d["tl"],
+                n=d.get("n"),
+                transitions=d["transitions"],
+                model=sp.ExponentialPH,
+            ),
+            x=X_MSR,
+            Z=Z_MS,
+            z_style="single",
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            coefficients=lambda m: np.array(
+                [
+                    np.asarray(f.params, dtype=float)[1:]
+                    for f in m.models.values()
+                ]
+            ),
+            intercept=True,
+            **{
+                **common,
+                "exclude": {
+                    **_BAYES_COMPOSITION_EXCLUDE,
+                    "covariate_scale": "each cause's (transition's) "
+                    "BayesianRegression is not equivariant to 1e-4 under a "
+                    "covariate scaled by 1e-6: the Laplace engine's peak "
+                    "search and Hessian steps are not scaled with the "
+                    "coefficient (the plain WeibullPH.fit_bayes on these data "
+                    "moves sf by up to 5e-4 too); a known gap of the shared "
+                    "regression engine, not of the composition",
+                    **{
+                        key: "a column the data do not determine is "
+                        "refused by each transition's regression "
+                        "fit_bayes, naming its coefficient, not aliased"
+                        for key in ("aliasing", "aliasing_constant")
+                    },
+                },
+            },
+        ),
+    ]
+
+
 def _bayes_regression_fit(d):
     """A Bayesian Weibull proportional hazards fit (the Laplace engine): a
     prior on the shape, the default on the coefficients."""
@@ -3553,6 +3812,8 @@ CASES: list[Case] = (
     + _bayes()
     + _bayes_regression()
     + _bayes_recurrent()
+    + _bayes_competing_risks()
+    + _bayes_multistate()
     + _panel_count()
     + _relative()
 )
@@ -3799,6 +4060,17 @@ NO_DF_PATH: dict[str, str] = {
     "NeverOccurs": "a fixed model, not fitted",
     "InstantlyOccurs": "a fixed model, not fitted",
     "InducedFailureDistribution": "derived from a fitted degradation model",
+    **{
+        name: "fit_bayes takes arrays; the competing-risks and multi-state "
+        "fitters have no fit_bayes_from_df yet"
+        for name in (
+            "ParametricCompetingRisks[bayes]",
+            "ParametricCompetingRisks[interval, bayes]",
+            "ParametricCompetingRisksRegression[bayes]",
+            "ParametricMultiState[bayes]",
+            "ParametricMultiStateRegression[bayes]",
+        )
+    },
 }
 
 
@@ -4528,6 +4800,10 @@ def _bounds(case):
         "BayesianRecurrence": _BAYES_RECURRENCE_BOUNDS,
         "BayesianProportionalIntensity": _BAYES_PI_BOUNDS,
         "BayesianCauseSpecific": _BAYES_CAUSES_BOUNDS,
+        "BayesianCompetingRisks": _BAYES_CR_BOUNDS,
+        "BayesianCompetingRisksRegression": _BAYES_CRR_BOUNDS,
+        "BayesianMultiState": _BAYES_MS_BOUNDS,
+        "BayesianMultiStateRegression": _BAYES_MSR_BOUNDS,
         "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
         "LittlewoodVerrallModel": _LITTLEWOOD_VERRALL_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),

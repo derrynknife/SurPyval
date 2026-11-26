@@ -616,6 +616,46 @@ v0.30 (unreleased)
   univariate fit. Priors are one set for every cause (transition) or a
   set each. Windows of inspection (``c`` of -1 or 2) in competing risks
   are refused: their likelihood holds every cause at once.
+- **Bayesian competing risks with failures found in a window**:
+  ``ParametricCompetingRisks.fit_bayes`` now takes rows of ``c`` -1 or
+  2 (with their cause), which it refused. Such a row contributes its
+  cause's sub-density integrated over the window, :math:`\int h_k S`
+  (its cumulative incidence over the window), the likelihood ``fit``
+  maximises; as it holds every cause's parameters, the causes are then
+  fitted together, one posterior over all their parameters (the grid
+  for up to three free parameters, Laplace beyond), and
+  ``BayesianCompetingRisks`` averages its predictions over that joint
+  posterior (``joint``, ``posterior``, each cause's marginal in
+  ``models``). Checked: the target equals the maximum-likelihood fit's
+  own likelihood to 1e-10; a window's probability matches adaptive
+  quadrature to 1e-9; with flat priors the peak is the
+  maximum-likelihood estimate (to 2e-5); with exact data alone the
+  joint fit gives the factorised posterior (posterior means to 1e-8);
+  a seeded simulation's intervals cover the true values.
+- **Bayesian competing-risks and multi-state regressions**:
+  ``ParametricCompetingRisksRegression.fit_bayes(x, Z, e, ...,
+  priors=)`` and ``ParametricMultiStateRegression.fit_bayes(x, Z, e,
+  state, ..., priors=)``. Each cause's (transition's) posterior is its
+  regression's own ``fit_bayes`` on the cause-specific data (checked
+  equal, point for point; the Laplace engine), combined for one
+  covariate row at a time: ``BayesianCompetingRisksRegression.at(Z)``
+  gives a unit's predictive ``sf``, ``ff``, ``cif``, ``qf`` and its
+  ``cri`` and ``quantile_cri`` (1,024 joint draws, fixed seed; each
+  draw's incidence against the maximum-likelihood regression's to
+  1e-8), and ``BayesianMultiStateRegression`` its ``occupancy``,
+  ``length_of_stay`` (with ``_cri``) and ``transition_probabilities``
+  at ``Z``. One cause (two states) is the plain regression's Bayesian
+  fit; with flat priors each peak is the maximum-likelihood estimate.
+- **Conformance cases for the Bayesian competing-risks and multi-state
+  fits** (``BayesianCompetingRisks``, with the causes fitted together
+  too, ``BayesianCompetingRisksRegression``, ``BayesianMultiState``,
+  ``BayesianMultiStateRegression``). Found and fixed on the way: the
+  predictive incidence of ``BayesianCompetingRisks`` depended (in the
+  ninth digit) on the other times asked with it, and was slow for long
+  queries; it is now read from a table computed once (values within its
+  stated 1e-6 of before; this release's new feature, so no released
+  number changes). ``cri(on="R" | "F")`` is taken. A cause's
+  (transition's) warnings now say which cause they are about.
 - **Panel multi-state models with hazards that change with time**,
   ``ParametricPanelMultiState``: states seen only at visits (the data of
   ``PanelMultiState``) with a parametric distribution per transition, a

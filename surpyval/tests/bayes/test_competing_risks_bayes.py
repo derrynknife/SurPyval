@@ -193,10 +193,8 @@ def test_distribution_a_cause_and_truncation():
 
 
 def test_refusals():
-    x = [[2, 4], [5, 5], [6, 8], [9, 9]]
-    e = ["a", "b", "a", None]
-    with pytest.raises(ValueError, match="window"):
-        ParametricCompetingRisks.fit_bayes(x, e, c=[2, 0, 2, 1])
+    # (failures found in a window are fitted jointly: see
+    # test_competing_risks_bayes_windows.py)
     model = ParametricCompetingRisks.fit_bayes(
         [1, 2, 3, 4, 5, 6],
         ["a", "b", "a", "b", "a", None],

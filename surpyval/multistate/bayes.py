@@ -138,24 +138,33 @@ class BayesianMultiState(SerialisableMixin):
         x: npt.NDArray,
         s: float | None,
         from_state: Any,
+        z: npt.NDArray | None = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """``(draws, m, K)``: from the starting distribution at ``s``,
         the probability of each state (``what="P"``) or the expected
-        time in it (``"los"``) at the times ``x``, under each joint draw;
-        and the mask of the times at or after ``s``."""
+        time in it (``"los"``) at the times ``x``, under each joint draw
+        (for a regression, at the covariate row ``z``); and the mask of
+        the times at or after ``s``."""
         mle = self.mle
+        z = np.zeros(0) if z is None else np.asarray(z, dtype=float)
         s = mle._start(s)
         p0 = mle._p0(s, from_state)
-        flat, ok = mle._times(x, s)
+        flat = np.asarray(x, dtype=float).ravel()
+        ok = np.isfinite(flat) & (flat >= s)
         K = self.transitions.n_states
         out = np.full((self.draws, flat.size, K), np.nan)
         if not ok.any():
             return out, ok
         uniq, inverse = np.unique(flat[ok], return_inverse=True)
-        key = (what, s, tuple(p0.tolist()), tuple(uniq.tolist()))
+        key = (
+            what,
+            s,
+            tuple(p0.tolist()),
+            tuple(uniq.tolist()),
+            tuple(z.tolist()),
+        )
         draws = self._draw_models()
         if key not in self._cache:
-            z = np.zeros(0)
             if self.clock == "forward":
                 # (the solver's grid set by the fitted model, as for its
                 # standard errors)
@@ -179,10 +188,11 @@ class BayesianMultiState(SerialisableMixin):
         s: float | None,
         from_state: Any,
         levels: list[float] | None,
+        z: npt.NDArray | None = None,
     ) -> npt.NDArray:
         b = self.transitions.index(state)
         vals, ok = self._values(
-            what, np.asarray(x, dtype=float), s, from_state
+            what, np.asarray(x, dtype=float), s, from_state, z
         )
         v = vals[:, :, b]
         if levels is None:
@@ -372,6 +382,7 @@ def fit(
         _fitters,
     )
     from surpyval.univariate.competing_risks.parametric.bayes import (
+        labelled,
         split_priors,
     )
     from surpyval.utils.no_maximum import quiet_maximum_warnings
@@ -402,15 +413,20 @@ def fit(
             if np.any(np.isfinite(tl_h)):
                 extra = {"tl": tl_h}
         try:
-            models[pair] = fitters[h].fit_bayes(
-                x_fit[rows],
-                c,
-                data.n[rows],
-                priors=own[pair],
-                method=method,
-                points=points,
-                importance=importance,
-                **extra,
+            models[pair] = labelled(
+                f"Transition {tm.transition_names()[h]}",
+                lambda h=h, rows=rows, c=c, pair=pair, extra=extra: fitters[
+                    h
+                ].fit_bayes(
+                    x_fit[rows],
+                    c,
+                    data.n[rows],
+                    priors=own[pair],
+                    method=method,
+                    points=points,
+                    importance=importance,
+                    **extra,
+                ),
             )
         except ValueError as err:
             name = tm.transition_names()[h]
@@ -418,4 +434,265 @@ def fit(
     return BayesianMultiState(models, mle)
 
 
-__all__ = ["BayesianMultiState", "DRAWS", "SEED", "fit"]
+class BayesianMultiStateRegression(BayesianMultiState):
+    """
+    A Bayesian parametric multi-state regression
+    (``ParametricMultiStateRegression.fit_bayes``): a regression for
+    each transition's hazard, each with its own posterior.
+
+    The likelihood is a product of one factor per transition, so with
+    priors stated a transition at a time their posteriors are
+    independent, and each is the :class:`~surpyval.bayes.BayesianRegression`
+    of its transition's spells and covariates, in ``models``. The
+    predictions are for one covariate row ``Z`` per call: the state
+    occupation probabilities, the transition probabilities and the
+    expected time in a state come from ``draws`` joint draws (one from
+    each transition's posterior, fixed seed) solved at that row through
+    the fitted model's own equations; a prediction for a new unit is
+    their mean, a credible interval their quantiles.
+
+    Examples
+    --------
+    >>> from surpyval import ExponentialPH
+    >>> from surpyval.datasets import load_mgus2
+    >>> from surpyval.multistate import ParametricMultiStateRegression
+    >>> df = load_mgus2(spells=True).iloc[::4]
+    >>> model = ParametricMultiStateRegression.fit_bayes(
+    ...     df["x"], df[["male"]], df["e"], df["state"], tl=df["tl"],
+    ...     i=df["id"], model=ExponentialPH)
+    >>> lo, hi = model.occupancy_cri(120.0, [1], "death")
+    >>> bool(lo < model.occupancy(120.0, [1], "death") < hi)
+    True
+    """
+
+    model_tag = "BayesianMultiStateRegression"
+
+    def _z(self, Z: Any) -> npt.NDArray:
+        z: npt.NDArray = self.mle._z(Z)
+        return z
+
+    def _summarise(
+        self,
+        what: str,
+        x: npt.ArrayLike,
+        state: Any,
+        s: float | None,
+        from_state: Any,
+        levels: list[float] | None,
+        z: npt.NDArray | None = None,
+    ) -> npt.NDArray:
+        if z is not None and np.isnan(z).any():
+            # a missing covariate: NaN, as for every regression
+            self.transitions.index(state)
+            tail = () if levels is None or len(levels) == 1 else (2,)
+            shape = np.asarray(x, dtype=float).ravel().shape + tail
+            return np.full(shape, np.nan)
+        return super()._summarise(what, x, state, s, from_state, levels, z)
+
+    @keeps_query_shape
+    def occupancy(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        state: Any,
+        s: float | None = None,
+        from_state: Any = None,
+    ) -> npt.NDArray:
+        """The probability that a new unit with the covariate row ``Z``
+        is in ``state`` at ``x``: the posterior mean over the joint
+        draws."""
+        return self._summarise("P", x, state, s, from_state, None, self._z(Z))
+
+    @keeps_query_shape
+    def occupancy_cri(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        state: Any,
+        s: float | None = None,
+        from_state: Any = None,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """A credible interval on the state occupation probability at
+        the covariate row ``Z``."""
+        levels = _levels(alpha_ci, bound)
+        return self._summarise(
+            "P", x, state, s, from_state, levels, self._z(Z)
+        )
+
+    @keeps_query_shape
+    def length_of_stay(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        state: Any,
+        s: float | None = None,
+        from_state: Any = None,
+    ) -> npt.NDArray:
+        """The expected time a new unit with the row ``Z`` spends in
+        ``state`` from ``s`` to ``x``."""
+        return self._summarise(
+            "los", x, state, s, from_state, None, self._z(Z)
+        )
+
+    @keeps_query_shape
+    def length_of_stay_cri(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        state: Any,
+        s: float | None = None,
+        from_state: Any = None,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """A credible interval on the expected time in ``state`` at the
+        row ``Z``."""
+        levels = _levels(alpha_ci, bound)
+        return self._summarise(
+            "los", x, state, s, from_state, levels, self._z(Z)
+        )
+
+    def transition_probabilities(  # type: ignore[override]
+        self, x: npt.ArrayLike, Z: npt.ArrayLike, s: float | None = None
+    ) -> npt.NDArray:
+        """The posterior means of :math:`P(s, t \\mid z)` at the times
+        ``x`` for the covariate row ``Z``."""
+        z = self._z(Z)
+        K = self.transitions.n_states
+        xs = np.asarray(x, dtype=float)
+        rows = [
+            self._values("P", xs.ravel(), s, self.states[a], z)[0].mean(axis=0)
+            for a in range(K)
+        ]
+        out = np.stack(rows, axis=1)
+        return out.reshape(xs.shape + (K, K))
+
+    def to_dict(self) -> dict:
+        """A strict-JSON dictionary: the maximum-likelihood fit and each
+        transition's Bayesian regression, in the order of the
+        transitions."""
+        import surpyval
+
+        return stamp_schema(
+            {
+                "model": self.model_tag,
+                "mle": self.mle.to_dict(),
+                "models": [m.to_dict() for m in self.models.values()],
+                "draws": int(self.draws),
+                "surpyval_version": surpyval.__version__,
+            }
+        )
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> BayesianMultiStateRegression:
+        """Rebuild a fit from :meth:`to_dict`."""
+        from surpyval.bayes import BayesianRegression
+        from surpyval.multistate.parametric import (
+            ParametricMultiStateRegression,
+        )
+
+        require_model_tag(
+            model_dict, cls.model_tag, "a Bayesian multi-state regression"
+        )
+        mle = ParametricMultiStateRegression.from_dict(model_dict["mle"])
+        fits = [BayesianRegression.from_dict(d) for d in model_dict["models"]]
+        out = cls(dict(zip(mle.transitions.transitions, fits)), mle)
+        out.draws = int(model_dict.get("draws", DRAWS))
+        return out
+
+
+def fit_regression(
+    cls: Any,
+    x: Any,
+    Z: Any,
+    e: Any,
+    state: Any,
+    tl: Any = None,
+    i: Any = None,
+    n: Any = None,
+    transitions: Any = None,
+    model: Any = None,
+    clock: str = "forward",
+    *,
+    priors: Any = None,
+    method: str = "auto",
+    importance: bool = False,
+) -> BayesianMultiStateRegression:
+    """The Bayesian fit of a parametric multi-state regression; see
+    ``ParametricMultiStateRegression.fit_bayes``."""
+    from surpyval import WeibullPH
+    from surpyval.multistate._data import check_spells
+    from surpyval.multistate.parametric import (
+        _check_clock,
+        _check_reset,
+        _durations,
+        _fitters,
+    )
+    from surpyval.multistate.regression import _covariates
+    from surpyval.univariate.competing_risks.parametric.bayes import (
+        labelled,
+        split_priors,
+    )
+    from surpyval.utils.no_maximum import quiet_maximum_warnings
+
+    _check_clock(clock)
+    data = check_spells(x, e, state, tl, i, n, transitions)
+    tm = data.tm
+    Z_arr, names = _covariates(Z, data.x.size)
+    fitters = _fitters(WeibullPH if model is None else model, tm, True)
+    with quiet_maximum_warnings(), ignoring_warnings():
+        mle = cls._fit_named(data, Z_arr, names, fitters, clock)
+    import pandas as pd
+
+    frame = pd.DataFrame(Z_arr, columns=names)
+    own = split_priors(priors, list(tm.transitions))
+    frm, to = tm.from_index(), tm.to_index()
+    if clock == "reset":
+        _check_reset(fitters, tm, "model")
+        x_fit = _durations(data)
+    else:
+        x_fit = data.x
+    models = {}
+    for h, pair in enumerate(tm.transitions):
+        rows = data.g == frm[h]
+        c = np.where(data.h[rows] == to[h], 0, 1)
+        extra: dict = {}
+        if clock == "forward":
+            # As the fit: an entry at or before the start of the
+            # distribution's support truncates nothing.
+            low = float(np.ravel(getattr(fitters[h], "support", [-np.inf]))[0])
+            tl_h = np.where(data.tl[rows] <= low, -np.inf, data.tl[rows])
+            if np.any(np.isfinite(tl_h)):
+                extra = {"tl": tl_h}
+        try:
+            models[pair] = labelled(
+                f"Transition {tm.transition_names()[h]}",
+                lambda h=h, rows=rows, c=c, pair=pair, extra=extra: fitters[
+                    h
+                ].fit_bayes(
+                    x_fit[rows],
+                    frame[rows].reset_index(drop=True),
+                    c=c,
+                    n=data.n[rows],
+                    priors=own[pair],
+                    method=method,
+                    importance=importance,
+                    **extra,
+                ),
+            )
+        except ValueError as err:
+            name = tm.transition_names()[h]
+            raise ValueError(f"Transition {name}: {err}") from None
+    return BayesianMultiStateRegression(models, mle)
+
+
+__all__ = [
+    "BayesianMultiState",
+    "BayesianMultiStateRegression",
+    "DRAWS",
+    "SEED",
+    "fit",
+    "fit_regression",
+]

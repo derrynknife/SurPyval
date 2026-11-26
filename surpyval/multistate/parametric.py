@@ -1588,6 +1588,95 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         return out
 
     @classmethod
+    @takes_unit
+    @other_name("s", "state")
+    def fit_bayes(
+        cls,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        e: npt.ArrayLike,
+        state: npt.ArrayLike,
+        tl: npt.ArrayLike | float | None = None,
+        i: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        transitions: Any = None,
+        model: Any = None,
+        clock: str = "forward",
+        *,
+        priors: Any = None,
+        method: str = "auto",
+        importance: bool = False,
+    ) -> Any:
+        """
+        Fit each transition's regression by Bayes' rule: priors on its
+        coefficients and baseline parameters times the likelihood
+        :meth:`fit` maximises.
+
+        The likelihood is a product of one factor per transition, so
+        with priors stated a transition at a time each transition has
+        its own posterior, computed exactly as its fitter's
+        ``fit_bayes`` computes it on the transition's spells and their
+        covariates (censored where they ended otherwise, left truncated
+        where they began; the Laplace engine). The predictions are for
+        one covariate row per call, from joint draws of the
+        transitions' posteriors.
+
+        Parameters
+        ----------
+        x, Z, e, state, tl, i, n, transitions, model, clock
+            The spells, their covariates and the model, as for
+            :meth:`fit`; exact moves only (a move known only to a window,
+            ``x`` of two columns, is refused).
+        priors : optional
+            One set of priors for every transition (as the fitter's
+            ``fit_bayes`` takes them), or a set a transition,
+            ``{(from, to): {...}}`` (a transition left out has the
+            fitter's defaults).
+        method, importance
+            As for the fitter's ``fit_bayes``.
+
+        Returns
+        -------
+        surpyval.multistate.bayes.BayesianMultiStateRegression
+            ``models`` (each transition's
+            :class:`~surpyval.bayes.BayesianRegression`);
+            ``occupancy(x, Z, state)`` and ``length_of_stay`` for a new
+            unit with the covariate row ``Z`` (posterior means), with
+            ``occupancy_cri`` and ``length_of_stay_cri``, and
+            ``transition_probabilities(x, Z)``.
+
+        Examples
+        --------
+        >>> from surpyval import ExponentialPH
+        >>> from surpyval.datasets import load_mgus2
+        >>> from surpyval.multistate import ParametricMultiStateRegression
+        >>> df = load_mgus2(spells=True).iloc[::4]
+        >>> model = ParametricMultiStateRegression.fit_bayes(
+        ...     df["x"], df[["male"]], df["e"], df["state"], tl=df["tl"],
+        ...     i=df["id"], model=ExponentialPH)
+        >>> model.occupancy_cri([60.0, 120.0], [1], "death").shape
+        (2, 2)
+        """
+        from surpyval.multistate import bayes
+
+        return bayes.fit_regression(
+            cls,
+            x,
+            Z,
+            e,
+            state,
+            tl,
+            i,
+            n,
+            transitions,
+            model,
+            clock,
+            priors=priors,
+            method=method,
+            importance=importance,
+        )
+
+    @classmethod
     def _fit_named(
         cls,
         data: SpellData,

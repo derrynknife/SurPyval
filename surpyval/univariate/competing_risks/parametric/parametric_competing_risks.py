@@ -2108,28 +2108,42 @@ class ParametricCompetingRisks(
     ) -> Any:
         """
         Fit each cause's distribution by Bayes' rule: priors on its
-        parameters times the cause-specific likelihood ``fit`` uses.
+        parameters times the likelihood ``fit`` uses.
 
-        The likelihood factorises over the causes, so with priors
+        With exact failures and right censoring (and left truncation)
+        the likelihood factorises over the causes, so with priors
         stated a cause at a time each cause has its own posterior,
         computed exactly as ``dist.fit_bayes`` computes it with the
         other causes' failures right censored (the grid for up to three
         free parameters: exact). Nothing else is fitted: the result
         combines the causes' fits.
 
+        A unit found failed from cause :math:`k` in a window
+        :math:`(x_l, x_r]` (``c`` of 2, or -1 for a window from its
+        entry or the start) contributes the probability that its first
+        failure came in the window and was cause :math:`k`'s,
+        :math:`\\int_{x_l}^{x_r} h_k(u) S(u)\\,du` with :math:`S` the
+        all-cause survival -- the cause's sub-density over the window,
+        not :math:`F_k(x_r) - F_k(x_l)` of the cause alone -- which is
+        the likelihood :meth:`fit` maximises. It holds every cause's
+        parameters, so with such rows the causes are fitted together:
+        one posterior over all of their parameters (the grid for up to
+        three free parameters in all, Laplace beyond), and the causes'
+        posteriors are then dependent (``model.joint`` is True).
+
         Parameters
         ----------
         x, e, c, n, dist, tl
             The data and the distributions, as for :meth:`fit`: exact
-            failures, right censoring and left truncation. A unit found
-            failed in a window (``c`` of -1 or 2) is refused: its
-            likelihood holds every cause at once.
+            failures, right censoring, failures found in a window (with
+            their cause) and left truncation.
         priors : optional
             One set of priors for every cause (as ``dist.fit_bayes``
             takes: ``{"beta": ...}``), or a set a cause, ``{cause:
             {"beta": ...}}`` (a cause left out has none: its parameters
             are flat on their unconstrained scale, allowed where its
-            data determine them).
+            data determine them). With failures found in a window the
+            priors are taken a parameter at a time (no joint prior).
         method, points, importance
             As for ``dist.fit_bayes``.
 
