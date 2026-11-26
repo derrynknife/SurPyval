@@ -11,6 +11,7 @@ import numpy.typing as npt
 from surpyval.univariate.parametric import (
     Beta,
     Beta4,
+    BirnbaumSaunders,
     Exponential,
     ExpoWeibull,
     Gamma,
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
 distributions: list[OptimisedFitMixin] = [
     Beta,
     Beta4,
+    BirnbaumSaunders,
     Exponential,
     ExpoWeibull,
     Gamma,
@@ -236,9 +238,10 @@ def fit_best(
     the fitted model with the best value of ``metric``.
 
     The candidates are the fittable continuous univariate distributions
-    with a regular likelihood (Beta, Exponential, ExpoWeibull, Gamma,
-    GeneralizedF, GeneralizedGamma, Gompertz, Gumbel, InverseGaussian,
-    Logistic, LogLogistic, LogNormal, Normal, Rayleigh and Weibull). The
+    with a regular likelihood (Beta, BirnbaumSaunders, Exponential,
+    ExpoWeibull, Gamma, GeneralizedF, GeneralizedGamma, Gompertz, Gumbel,
+    InverseGaussian, Logistic, LogLogistic, LogNormal, Normal, Rayleigh
+    and Weibull). The
     data are given as to ``fit`` (``x``, ``c``, ``n``, ``t``, ``tl``,
     ``tr``, ``xl``, ``xr``) and are checked once, as ``fit`` checks them:
     an input error -- a malformed censoring flag, say -- raises the

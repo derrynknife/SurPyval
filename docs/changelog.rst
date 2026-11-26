@@ -5,6 +5,14 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **``fit_best`` also tries the new ``BirnbaumSaunders``.** Where it has
+  the best value of the metric the answer changes: on 100 draws from
+  ``LogNormal(2, 0.8)`` (the diagnostics' example) it now wins with AIC
+  673.37 against the LogNormal's 673.58, so ``diagnose()`` on a Weibull
+  fitted to those data now names ``BirnbaumSaunders`` as the better
+  family. The two are close for a shape below 1 (as the shape falls to
+  0, the log time of a Birnbaum-Saunders is normal).
+
 - **The parametric multi-state fits to interval-censored moves search
   more closely.** ``ParametricMultiState`` and
   ``ParametricMultiStateRegression`` with ``x`` as ``[xl, xr]`` (new in
@@ -877,6 +885,22 @@ v0.30 (unreleased)
   the functions to 1e-10, and the ``lung`` fits (right censored, AFT on
   ``sex``) to 1e-6 in log-likelihood; the left-truncated likelihood to
   1e-8. See :doc:`univariate/generalized_f`.
+
+- **The Birnbaum-Saunders distribution, built in:**
+  ``surpyval.BirnbaumSaunders`` (``alpha``, the shape, and ``beta``, the
+  scale and median), as ``scipy.stats.fatiguelife(alpha, scale=beta)`` and
+  R's ``VGAM`` (``bisa``): a right-skewed lifetime whose log is close to
+  normal for a small shape, with a hazard that rises and then falls to a
+  constant. Closed-form quantiles (without the cancellation below the
+  median) and raw moments; both tails held in logs. Every fit option of a
+  built-in distribution (probability-plot fitting refused), Wald,
+  likelihood-ratio and bootstrap bounds, ``qf``/``isf``, moments, saving,
+  ``fit_best``, ``AFT(BirnbaumSaunders)``,
+  ``Distributional(BirnbaumSaunders)`` and the PyMC and torch helpers.
+  Against scipy the functions agree to 1e-10, and the fits with right,
+  left and interval censoring and truncation agree with an independently
+  written likelihood to 1e-8 in log-likelihood. See
+  :doc:`univariate/birnbaum_saunders`.
 
 - **The inverse Gaussian distribution, built in:**
   ``surpyval.InverseGaussian`` (``mu``, the mean, and ``lam``, the shape),

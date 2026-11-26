@@ -223,7 +223,7 @@ Each parameter's sign :math:`s_k` (``model.coefficient_signs``) says how
 its coefficients enter, one rule for each kind of parameter:
 
 - A **scale** (a Weibull's, log-logistic's or ExpoWeibull's ``alpha``, a
-  Rayleigh's ``sigma``): :math:`s = -1`, so :math:`\alpha(z) = \alpha
+  Rayleigh's ``sigma``, a BirnbaumSaunders's ``beta``, its median): :math:`s = -1`, so :math:`\alpha(z) = \alpha
   e^{-b'z}` and a positive coefficient shrinks the scale, exactly as the
   AFT model's coefficient does.
 - A **rate** (an Exponential's ``failure_rate``, a Gamma's ``beta``, a
@@ -378,8 +378,8 @@ Limits
 - The distributions are the continuous ones whose support does not
   depend on their parameters: Exponential, Rayleigh, Weibull, Gamma,
   LogNormal, LogLogistic, Normal, Gumbel, GumbelLEV, Logistic, Beta,
-  ExpoWeibull, GeneralizedGamma, GeneralizedF, Gompertz and
-  InverseGaussian. Prebuilt fitters are ``WeibullDistributional``,
+  ExpoWeibull, GeneralizedGamma, GeneralizedF, Gompertz,
+  InverseGaussian and BirnbaumSaunders. Prebuilt fitters are ``WeibullDistributional``,
   ``ExponentialDistributional``, ``GammaDistributional``,
   ``LogNormalDistributional``, ``LogLogisticDistributional``,
   ``NormalDistributional``, ``GumbelDistributional`` and
