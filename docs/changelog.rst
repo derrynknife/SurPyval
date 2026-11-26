@@ -283,6 +283,18 @@ v0.30 (unreleased)
   in particular lifetime data without units, a count of 0 is still an
   error. A fit of the rows gives the same numbers as a fit of the
   history.
+- **``fit_bayes_from_df`` for the recurrent-event fitters.** The
+  Poisson-process fitters (``HPP``, ``CrowAMSAA``, ``Duane``,
+  ``CoxLewis`` and the other NHPP forms), ``ProportionalIntensityHPP``,
+  ``ProportionalIntensityNHPP`` and ``CauseSpecificNHPP`` read an event log
+  from a DataFrame for their Bayesian fit, as the distributions and the
+  regressions already did. It takes the column arguments of the fitter's
+  own ``fit_from_df`` (``x_col``, ``i_col``, ``c_col``, ``n_col``,
+  ``tl_col``, ``tr_col``, ``Z_cols``, ``e_col``, ``a_col``), with the same
+  defaults and refusals, and hands the Bayesian options (``priors``,
+  ``method``, ``importance``, ``points``, ``baseline``, ``dist``)
+  to ``fit_bayes`` unchanged. The posterior is the one ``fit_bayes`` gives
+  on the same data as arrays (checked to equality); no number changes.
 
 - **The power-law NHPP in PyMC, and pooling a fleet's growth rates**:
   ``surpyval.pymc.nhpp_likelihood`` and ``nhpp_log_likelihood`` give

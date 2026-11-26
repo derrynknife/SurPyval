@@ -213,21 +213,23 @@ def call_fit(
     arrays: dict[str, Any],
     arg_names: dict[str, str],
     fit_options: dict[str, Any],
+    method: str = "fit",
 ) -> Any:
     """``fitter.fit(**arrays, **fit_options)``, refusing a column that its
     ``fit`` has no argument for (``arg_names`` maps each ``fit`` argument to
-    the ``fit_from_df`` argument that named its column)."""
+    the ``fit_from_df`` argument that named its column). ``method`` names
+    another method to call in its place (``"fit_bayes"``)."""
     params: Mapping[str, inspect.Parameter]
     try:
-        params = inspect.signature(fitter.fit).parameters
+        params = inspect.signature(getattr(fitter, method)).parameters
     except (TypeError, ValueError):  # pragma: no cover - builtins only
         params = {}
     takes_any = any(p.kind is p.VAR_KEYWORD for p in params.values())
     for key in arrays:
         if params and not takes_any and key not in params:
             raise ValueError(
-                f"{_fitter_name(fitter)}.fit takes no `{key}`, so "
-                f"fit_from_df cannot use the column given as "
+                f"{_fitter_name(fitter)}.{method} takes no `{key}`, so "
+                f"{method}_from_df cannot use the column given as "
                 f"`{arg_names.get(key, key)}`"
             )
     for key in fit_options:
@@ -237,7 +239,7 @@ def call_fit(
                 f"with `{arg_names.get(key, key)}` rather than passing it "
                 "as an option"
             )
-    return fitter.fit(**arrays, **fit_options)
+    return getattr(fitter, method)(**arrays, **fit_options)
 
 
 def _truncation(df: pd.DataFrame, value: Any, arg: str) -> npt.NDArray:
@@ -574,6 +576,97 @@ class RecurrentDataFrameMixin:
         return call_fit(self, arrays, names, fit_options)
 
 
+class RecurrentBayesDataFrameMixin:
+    """``fit_bayes_from_df`` for a recurrent-event fitter with a
+    ``fit_bayes``: the columns of an event log, read as
+    :meth:`RecurrentDataFrameMixin.fit_from_df` reads them."""
+
+    @fitter_method
+    @ambiguous_item_ids(
+        "fit_bayes_from_df(df, x_col, c_col, n_col)", column=True
+    )
+    @column_arguments("x", "i", "c", "n")
+    @takes_unit
+    @takes_terminal_column
+    def fit_bayes_from_df(
+        self,
+        df: pd.DataFrame,
+        x_col: str,
+        i_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
+        **fit_options: Any,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on an event log held in the columns of a
+        :class:`pandas.DataFrame`.
+
+        The column names are passed in place of the arrays
+        :meth:`fit_bayes` takes, with the names :meth:`fit_from_df` uses;
+        every other option of :meth:`fit_bayes` (``priors``, ``method``,
+        ``importance``, ``points``, ``windows``) is passed to it
+        unchanged. The columns are handed to :meth:`fit_bayes` as they
+        are, so the posterior, and the refusal of a missing value in a
+        unit's history, is that of :meth:`fit_bayes` on the same arrays.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The event log.
+        x_col : str
+            Column of event (and end-of-observation) times.
+        i_col : str, optional
+            Column of item / unit ids. Defaults to a single item.
+        c_col : str, optional
+            Column of censoring flags (0 an event, 1 the end of a unit's
+            observation).
+        n_col : str, optional
+            Column of event counts per row.
+        tl_col, tr_col : str, optional
+            Columns of per-row left / right truncation.
+        a_col : str, optional
+            Column of terminal flags, as for :meth:`fit_from_df`.
+        **fit_options
+            Every other option of :meth:`fit_bayes`.
+
+        Returns
+        -------
+        surpyval.recurrent.bayes.BayesianRecurrence
+            The posterior :meth:`fit_bayes` returns.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import surpyval as sp
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> log = pd.DataFrame({
+        ...     "hours": [120, 380, 610, 700, 90, 400, 520, 650],
+        ...     "truck": [1, 1, 1, 1, 2, 2, 2, 2],
+        ...     "c": [0, 0, 0, 1, 0, 0, 0, 1],
+        ... })
+        >>> model = CrowAMSAA.fit_bayes_from_df(
+        ...     log, x_col="hours", i_col="truck", c_col="c",
+        ...     priors={"beta": sp.prior.between(0.5, 2.0)})
+        >>> model.method
+        'grid'
+        """
+        df = require_frame(df)
+        refuse_recurrent_column_names(fit_options)
+        columns = {
+            "x": x_col,
+            "i": i_col,
+            "c": c_col,
+            "n": n_col,
+            "tl": tl_col,
+            "tr": tr_col,
+        }
+        arrays = read_columns(df, columns)
+        names = {k: f"{k}_col" for k in columns}
+        return call_fit(self, arrays, names, fit_options, "fit_bayes")
+
+
 _TIME_ARGS = frozenset({"x", "xl", "xr", "tl", "tr"})
 
 
@@ -595,6 +688,7 @@ def regression_fit_from_df(
     Z_cols: str | list[str],
     columns: dict[str, str | None],
     fit_options: dict[str, Any],
+    method: str = "fit",
 ) -> Any:
     df = require_frame(df)
     arrays = read_columns(df, {"x": x_col, **columns})
@@ -605,7 +699,7 @@ def regression_fit_from_df(
 
     columns_named = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
     with covariate_columns(columns_named):
-        return call_fit(fitter, arrays, names, fit_options)
+        return call_fit(fitter, arrays, names, fit_options, method)
 
 
 class RecurrentRegressionDataFrameMixin:
@@ -710,6 +804,97 @@ class RecurrentRegressionDataFrameMixin:
         }
         return regression_fit_from_df(
             self, df, x_col, Z_cols, columns, fit_options
+        )
+
+    @fitter_method
+    @ambiguous_item_ids(
+        "a regression's fit_bayes_from_df(df, x_col, Z_cols, c_col)",
+        column=True,
+    )
+    @column_arguments("x", "i", "c", "n")
+    @takes_unit
+    @takes_terminal_column
+    def fit_bayes_from_df(
+        self,
+        df: pd.DataFrame,
+        x_col: str,
+        Z_cols: str | list[str],
+        i_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
+        **fit_options: Any,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on an event log held in the columns of a
+        :class:`pandas.DataFrame`.
+
+        The column names are passed in place of the arrays
+        :meth:`fit_bayes` takes, with the names :meth:`fit_from_df` uses;
+        every other option of :meth:`fit_bayes` (``priors``, ``method``,
+        ``importance``, ``points``, ``baseline``) is passed to it
+        unchanged. The columns are handed to :meth:`fit_bayes` as they
+        are, so the posterior, and the refusal of a missing value in a
+        unit's history, is that of :meth:`fit_bayes` on the same arrays.
+        A coefficient is named by its covariate's column in ``priors``
+        and in the result.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The event log.
+        x_col : str
+            Column of event (and end-of-observation) times.
+        Z_cols : str or list of str
+            Column(s) of the covariates, constant within a unit, in the
+            order of the fitted coefficients.
+        i_col : str, optional
+            Column of item / unit ids. Defaults to a single item.
+        c_col : str, optional
+            Column of censoring flags (0 an event, 1 the end of a unit's
+            observation).
+        n_col : str, optional
+            Column of event counts per row.
+        tl_col, tr_col : str, optional
+            Columns of per-row left / right truncation.
+        a_col : str, optional
+            Column of terminal flags, as for :meth:`fit_from_df`.
+        **fit_options
+            Every other option of :meth:`fit_bayes`.
+
+        Returns
+        -------
+        surpyval.recurrent.bayes.BayesianProportionalIntensity
+            The posterior :meth:`fit_bayes` returns.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import surpyval as sp
+        >>> from surpyval.recurrent import ProportionalIntensityHPP
+        >>> log = pd.DataFrame({
+        ...     "hours": [120, 380, 610, 700, 90, 200, 330, 400, 520],
+        ...     "truck": [1, 1, 1, 1, 2, 2, 2, 2, 2],
+        ...     "c": [0, 0, 0, 1, 0, 0, 0, 0, 1],
+        ...     "load": [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+        ... })
+        >>> model = ProportionalIntensityHPP.fit_bayes_from_df(
+        ...     log, x_col="hours", Z_cols="load", i_col="truck",
+        ...     c_col="c", priors={"load": sp.prior.between(-2.0, 2.0)})
+        >>> model.method
+        'grid'
+        """
+        refuse_recurrent_column_names(fit_options, "Z")
+        columns = {
+            "i": i_col,
+            "c": c_col,
+            "n": n_col,
+            "tl": tl_col,
+            "tr": tr_col,
+        }
+        return regression_fit_from_df(
+            self, df, x_col, Z_cols, columns, fit_options, "fit_bayes"
         )
 
 

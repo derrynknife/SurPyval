@@ -8,12 +8,14 @@ from typing import Any
 
 from numpy.typing import ArrayLike
 
+from surpyval.utils.dataframe import RecurrentBayesDataFrameMixin
 from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.units import takes_unit
 
 
-class BayesFitMixin:
-    """Gives a recurrent-event fitter ``fit_bayes``."""
+class BayesFitMixin(RecurrentBayesDataFrameMixin):
+    """Gives a recurrent-event fitter ``fit_bayes`` and
+    ``fit_bayes_from_df``."""
 
     @ambiguous_item_ids("fit_bayes(x, c, n, t)")
     @takes_unit

@@ -14,6 +14,7 @@ that show no reliability growth are refused.
 
    .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.fit
    .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.fit_from_df
+   .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.fit_bayes_from_df
    .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.from_params
    .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.cif
    .. automethod:: surpyval.recurrent.parametric.musa_okumoto.MusaOkumoto.iif

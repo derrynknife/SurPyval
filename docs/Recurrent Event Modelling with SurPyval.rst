@@ -136,6 +136,15 @@ gives on the same columns:
     same = CrowAMSAA.fit(log["hours"], log["truck"], log["c"])
     assert np.allclose(from_log.params, same.params)
 
+The Bayesian fit reads a table the same way. ``fit_bayes_from_df`` (on the
+Poisson-process fitters, the proportional-intensity regressions and
+``CauseSpecificNHPP``) takes the column arguments of the fitter's own
+``fit_from_df``, and passes ``priors``, ``method``, ``importance`` and
+``points`` to ``fit_bayes`` unchanged, so the posterior is the one
+``fit_bayes`` gives on the same columns as arrays. A regression's
+coefficient is named by its covariate's column, in ``priors`` and in the
+result.
+
 From a SurpyvalData
 ~~~~~~~~~~~~~~~~~~~
 
