@@ -49,8 +49,8 @@ v0.30 (unreleased)
   coverage study the package's bounds now agree, side by side, with a
   brute-force profile on every one, and cover 0.95, 0.96, 0.95 and 0.94
   (``mu``, ``sigma``, ``Q``, ``P``); the full 300-replicate study covers
-  RESULT_LR, and is no longer an expected failure. Bounds that were
-  found before can change too, where the limit is better than the fit
+  0.943, 0.950, 0.950 and 0.947, and is no longer an expected failure.
+  Bounds that were found before can change too, where the limit is better than the fit
   (they are measured from a higher maximum, so are narrower). No other
   family's numbers change: the searches take the new starts, scale and
   limits only from a distribution that defines them. The Wald bounds on

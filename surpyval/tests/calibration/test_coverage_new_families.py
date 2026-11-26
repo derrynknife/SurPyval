@@ -33,9 +33,9 @@ runs (seeded 727 and 1227) they reach nominal by n = 500 to 1000 (mu,
 sigma, Q, P and the mean 0.927, 0.950, 0.947, 0.973 and 0.950 at n =
 500, 300 replicates; 0.950, 0.950, 0.960, 0.985 and 0.925 at n = 1000,
 200 replicates), as the edge fits fall to 4% and 2%. Its
-likelihood-ratio bounds cover RESULT_LR (they covered 0.900-0.927, every
-miss a side reported as not found, before the profile searches learnt
-the family's two edges).
+likelihood-ratio bounds cover 0.943, 0.950, 0.950 and 0.947 (they
+covered 0.900-0.927, every miss a side reported as not found, before
+the profile searches learnt the family's two edges).
 """
 
 import os
