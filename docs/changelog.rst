@@ -1444,6 +1444,23 @@ v0.30 (unreleased)
 
 **Changed.**
 
+- **``GeneralizedF.fit`` warns when its limit as ``P`` runs to infinity
+  fits better.** As ``P`` grows while ``sigma`` falls to 0 the log time
+  tends to an asymmetric Laplace distribution about ``mu``, which no
+  member reaches; on some samples it is more likely than any member, and
+  the fit stopped short of it in silence, at a local maximum (``P =
+  1.8``, 0.29 below the limit in log-likelihood, on one sample of 200
+  from ``GeneralizedF(2, 0.5, 0.5, 1)``) or out on the ridge towards it.
+  The fit now compares itself with the best member of that limit and,
+  where the limit is at least as likely, warns "No finite maximum",
+  naming the limit's ``mu`` and its rates ``a`` and ``b`` below and above
+  ``mu``, saying that the Wald standard errors and bounds mean nothing and
+  that the likelihood-ratio bounds allow for it; ``model.maximum`` is then
+  ``"no finite maximum"`` (so ``fit_best`` sets it aside). Where both
+  edges are at least as likely as the fit, the warning names this limit
+  rather than the generalised gamma, since it is the better. No estimate
+  changes; a fit takes about 0.35 s longer at n = 200.
+
 - **No warning on a spline bend whose spread is estimated at 0.**
   Joint models on a ``SplinePath`` with bends in ``varying`` warned
   where a bend's spread between items was estimated at its lower bound,

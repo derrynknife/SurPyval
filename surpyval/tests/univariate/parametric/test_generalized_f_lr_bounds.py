@@ -165,3 +165,79 @@ def test_p_runs_to_infinity_where_the_limit_is_the_supremum():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert list(model.param_cb("P", method="lr")) == [0.0, np.inf]
+
+
+def _best_asymmetric_laplace_ll(x, c, starts):
+    """The best limit member, searched independently of the package: the
+    closed-form log-likelihood above, Nelder-Mead over mu, log a, log b."""
+    best = -np.inf
+    with np.errstate(all="ignore"):
+        for s in starts:
+            res = minimize(
+                lambda u: -_asymmetric_laplace_ll(
+                    u[0], np.exp(u[1]), np.exp(u[2]), x, c
+                ),
+                s,
+                method="Nelder-Mead",
+                options={"xatol": 1e-10, "fatol": 1e-12, "maxiter": 20000},
+            )
+            if np.isfinite(res.fun):
+                best = max(best, -res.fun)
+    return best
+
+
+def test_fit_warns_where_the_limit_as_p_runs_to_infinity_is_better():
+    # The fit stops at a local maximum (P = 1.8), 0.29 below the limit in
+    # log-likelihood (found here independently); it said nothing.
+    x, c = _sample(3185372835)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = GeneralizedF.fit(x, c=c)
+    messages = [str(w.message) for w in caught]
+    found = [m for m in messages if m.startswith("No finite maximum")]
+    assert len(found) == 1, messages
+    assert "asymmetric Laplace" in found[0]
+    assert "method='lr'" in found[0]
+    assert model.maximum == "no finite maximum"
+    ll_fit = _ll(np.asarray(model.params), x, c)
+    y = np.median(np.log(x))
+    ll_limit = _best_asymmetric_laplace_ll(
+        x, c, [[model.params[0], 0.0, 0.0], [y, 0.5, 1.0], [y, 1.0, 0.0]]
+    )
+    assert ll_limit - ll_fit == pytest.approx(0.2855, abs=2e-3)
+    # the limit it names is that member
+    assert "mu = 2.018" in found[0]
+    assert "a = 1.696" in found[0] and "b = 2.482" in found[0]
+
+
+def test_fit_does_not_warn_at_an_interior_maximum():
+    # A sample whose fit (P = 2.0) is 1.16 above the limit's best member
+    x, c = _sample(1)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = GeneralizedF.fit(x, c=c)
+    assert not [w for w in caught if "maximum" in str(w.message)]
+    assert model.maximum == "verified"
+    y = np.median(np.log(x))
+    ll_limit = _best_asymmetric_laplace_ll(
+        x, c, [[model.params[0], 0.0, 0.0], [y, 0.5, 1.0], [y, 1.0, 0.0]]
+    )
+    assert _ll(np.asarray(model.params), x, c) - ll_limit > 1.0
+
+
+def test_the_better_of_the_two_edges_is_the_one_named():
+    # A fit at the generalised gamma edge (P = 8e-8) where the limit at
+    # the other end, P to infinity, is 0.36 higher: that limit is the
+    # supremum, so it is the one the warning names (it named the
+    # generalised gamma, and advised fitting it).
+    x, c = _sample(997154490)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = GeneralizedF.fit(x, c=c)
+    found = [
+        str(w.message)
+        for w in caught
+        if str(w.message).startswith("No finite maximum")
+    ]
+    assert len(found) == 1 and "asymmetric Laplace" in found[0]
+    assert model.params[3] < 1e-6

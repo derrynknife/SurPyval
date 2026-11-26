@@ -80,7 +80,10 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
     compare by likelihood ratio before relying on ``P``: where the
     generalised gamma describes the data, the likelihood is highest at
     the edge ``P = 0``, and the fit stops near it with a warning that its
-    maximum is not verified.
+    maximum is not verified. At the other edge, as P runs to infinity
+    with sigma falling to 0, the log time tends to an asymmetric Laplace
+    distribution about mu; where that limit fits better than any member
+    the fit warns too, and the likelihood-ratio bounds allow for it.
 
     ``fit`` estimates the parameters from data (which may be censored
     and truncated); ``from_params`` builds the model from known values.
@@ -179,8 +182,9 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         zi: bool,
         lfp: bool,
     ) -> bool:
-        """Warn when the likelihood is highest at the generalised gamma
-        edge, P = 0.
+        """Warn when the likelihood is highest at an edge of the family:
+        the limit as P runs to infinity (``_warn_if_at_ridge_limit``,
+        checked first), or the generalised gamma edge, P = 0.
 
         As P falls to 0 the generalised F tends to the generalised gamma
         with the same mu, sigma and Q, a limit no generalised F reaches.
@@ -194,6 +198,8 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         maximum is strictly more likely than the limit it contains, so an
         ordinary fit is never flagged."""
         if super()._warn_if_at_limit(surv_data, results, zi, lfp):
+            return True
+        if self._warn_if_at_ridge_limit(surv_data, results):
             return True
         from surpyval.univariate.parametric import GeneralizedGamma
 
@@ -235,6 +241,65 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         )
         return True
 
+    def _warn_if_at_ridge_limit(
+        self, surv_data: SurpyvalData, results: dict
+    ) -> bool:
+        r"""Warn when the likelihood is highest in the limit as P runs to
+        infinity, where the log time is asymmetric Laplace about ``mu``.
+
+        No member reaches that limit (``_lr_limit_nlls``), and on some
+        samples it fits better than any member: at n = 200 from
+        GeneralizedF(2, 0.5, 0.5, 1), 30% censored, the search stopped,
+        in silence, at a local maximum (P = 1.8) 0.29 below it in
+        log-likelihood, and on others on the ridge to it, P near 1e5.
+        The criterion compares the fit with the best member of the limit
+        (on the ridge at ``c = _RIDGE_C``, with the fit's zero inflation
+        and limited failure population held): a limit at least as likely
+        as the fit, within the margin the fitter treats two answers as
+        equal, is the supremum. It is checked before the generalised
+        gamma edge, since where both are at least as likely as the fit
+        this one is the better (an edge fit is within that margin of the
+        generalised gamma, and the limit above it)."""
+        neg_ll = results.get("_neg_ll")
+        params = onp.asarray(results.get("params", []), dtype=float)
+        gamma = results.get("gamma") or 0.0
+        if (
+            neg_ll is None
+            or not onp.isfinite(neg_ll)
+            or params.size != 4
+            or not onp.all(onp.isfinite(params))
+            or gamma != 0.0
+        ):
+            return False
+        f0 = results.get("f0", 0.0)
+        p = results.get("lfp_p", 1.0)
+
+        def fit_neg_ll(theta: Any) -> float:
+            return float(self._neg_ll_func(surv_data, *theta, 0.0, f0, p))
+
+        with ignoring_warnings(), onp.errstate(all="ignore"):
+            found = self._ridge_limits(fit_neg_ll, params)
+        if found is None:
+            return False
+        limit_neg_ll, (mu, a, b) = found["best"]
+        margin = 1e-9 * max(1.0, abs(limit_neg_ll))
+        if neg_ll < limit_neg_ll - margin:
+            return False
+        warn_no_maximum(
+            "the GeneralizedF likelihood is highest in its limit as P runs "
+            "to infinity and sigma falls to 0, where the log time is "
+            "asymmetric Laplace about mu (the time a power law either side "
+            "of exp(mu)), a limit no GeneralizedF reaches (mu = "
+            f"{mu:.4g}, rate below mu a = {a:.4g}, rate above mu b = "
+            f"{b:.4g}; log-likelihood {-limit_neg_ll:.10g} against "
+            f"{-neg_ll:.10g})",
+            f"The reported sigma = {params[1]:.3g} and P = {params[3]:.3g}, "
+            "the Wald standard errors and the Wald bounds are meaningless",
+            "use the likelihood-ratio bounds (method='lr'), which allow "
+            "for this limit",
+        )
+        return True
+
     # -- the likelihood-ratio searches' edges -------------------------------
     #: How near the limit as P runs to infinity its likelihood is taken:
     #: the members on the ridge at c = sigma / delta = 1e-10, whose
@@ -255,32 +320,16 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         Q = (1.0 / s1 - 1.0 / s2) / delta
         return onp.array([mu, c * delta, Q, (d2 - Q * Q) / 2.0])
 
-    def _lr_limit_nlls(self, neg_ll: Any, params: Any) -> dict:
-        r"""The family's limit as P runs to infinity, for the
-        likelihood-ratio searches (``_lr_family_limits``): the best
-        member of it, as a negative log-likelihood (``neg_ll`` of the
-        parameters), under the sides of the parameters' intervals that
-        run to it.
-
-        As P grows with :math:`\sigma^2 P` and :math:`\sigma Q` held, the
-        shapes :math:`s_1, s_2` fall to 0 in proportion to :math:`c =
-        \sigma / \delta`, and the log time tends to an asymmetric Laplace
-        distribution about ``mu``, falling away at the rate :math:`a =
-        s_1 / c` below it and :math:`b = s_2 / c` above it (the time
-        itself to a power law either side of :math:`e^\mu`). No member
-        reaches it, and on some samples it fits better than any member:
-        at n = 200 from GeneralizedF(2, 0.5, 0.5, 1), 30% censored, the
-        best member was 0.29 below it in log-likelihood. On the way to it
-        sigma falls to 0, P runs to infinity and Q to plus infinity where
-        :math:`b > a` (minus infinity where :math:`a > b`), so those
-        sides are given the limit's likelihood: unconstrained for sigma's
-        lower side and P's upper one, and with :math:`b \ge a` (or
-        :math:`a \ge b`) for Q's upper (lower) side, which, where the
-        best limit has the other sign, is the symmetric one, ``a = b``.
-        """
+    def _ridge_limits(self, neg_ll: Any, params: Any) -> dict | None:
+        r"""The best members of the limit as P runs to infinity (see
+        ``_lr_limit_nlls``), on the ridge at ``c = _RIDGE_C``, searched
+        from the fit ``params``: ``{"best": (nll, (mu, a, b)),
+        "symmetric": (nll, (mu, a, a)), "Q_sides": (up, down)}``, the
+        best overall, the best with ``a = b``, and the best on Q's upper
+        and lower sides; ``None`` where none is found."""
         params = onp.asarray(params, dtype=float)
         if params.size != 4 or not onp.all(onp.isfinite(params)):
-            return {}
+            return None
         from scipy.optimize import minimize
 
         mu, sigma, Q, P = params
@@ -324,13 +373,53 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
             lambda u: nll(u[0], onp.exp(u[1]), onp.exp(u[2])),
         )
         if not onp.isfinite(full):
-            return {}
+            return None
+        rate = float(onp.exp(u_sym[1]))
+        sym_member = (float(u_sym[0]), rate, rate)
         if sym <= full:
             # (the symmetric limit is the best: both of Q's sides reach it)
-            full, q_up, q_down = sym, sym, sym
-        else:
-            # Q's sign on the ridge is that of b - a
-            q_up, q_down = (full, sym) if u[2] >= u[1] else (sym, full)
+            return {
+                "best": (sym, sym_member),
+                "symmetric": (sym, sym_member),
+                "Q_sides": (sym, sym),
+            }
+        # Q's sign on the ridge is that of b - a
+        sides = (full, sym) if u[2] >= u[1] else (sym, full)
+        member = (float(u[0]), float(onp.exp(u[1])), float(onp.exp(u[2])))
+        return {
+            "best": (full, member),
+            "symmetric": (sym, sym_member),
+            "Q_sides": sides,
+        }
+
+    def _lr_limit_nlls(self, neg_ll: Any, params: Any) -> dict:
+        r"""The family's limit as P runs to infinity, for the
+        likelihood-ratio searches (``_lr_family_limits``): the best
+        member of it, as a negative log-likelihood (``neg_ll`` of the
+        parameters), under the sides of the parameters' intervals that
+        run to it.
+
+        As P grows with :math:`\sigma^2 P` and :math:`\sigma Q` held, the
+        shapes :math:`s_1, s_2` fall to 0 in proportion to :math:`c =
+        \sigma / \delta`, and the log time tends to an asymmetric Laplace
+        distribution about ``mu``, falling away at the rate :math:`a =
+        s_1 / c` below it and :math:`b = s_2 / c` above it (the time
+        itself to a power law either side of :math:`e^\mu`). No member
+        reaches it, and on some samples it fits better than any member:
+        at n = 200 from GeneralizedF(2, 0.5, 0.5, 1), 30% censored, the
+        best member was 0.29 below it in log-likelihood. On the way to it
+        sigma falls to 0, P runs to infinity and Q to plus infinity where
+        :math:`b > a` (minus infinity where :math:`a > b`), so those
+        sides are given the limit's likelihood: unconstrained for sigma's
+        lower side and P's upper one, and with :math:`b \ge a` (or
+        :math:`a \ge b`) for Q's upper (lower) side, which, where the
+        best limit has the other sign, is the symmetric one, ``a = b``.
+        """
+        found = self._ridge_limits(neg_ll, params)
+        if found is None:
+            return {}
+        full = found["best"][0]
+        q_up, q_down = found["Q_sides"]
         return {
             (1, -1.0): full,
             (3, 1.0): full,
