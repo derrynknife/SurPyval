@@ -26,8 +26,9 @@ The design, the seeds (46000 + r) and the rules were fixed before the
 first fit. Slack: 0.02 for the coverages, as the joint model's other
 studies, the default 0.2 sd for the bias and 0.1 for the standard
 errors. A reduced run (``reduced_run``, 12 fleets of 200, seeds 46000 to
-46011) was made on 26 Nov 2026 to check the study runs; the full study
-was written and committed unrun.
+46011) was made on 26 Nov 2026 to check the study runs (every maximum
+verified, about two CPU minutes a fit; numbers in ``docs/Joint
+Models.rst``); the full study was written and committed unrun.
 """
 
 import warnings
