@@ -1084,9 +1084,7 @@ def _marginal(
     return BayesianParametric(
         dist,
         marginal,
-        priors=PriorSpec.parse(
-            priors if isinstance(priors, Mapping) else None
-        ),
+        priors=PriorSpec.parse(priors),
         fixed=fixed,
         method=method,
         diagnostics={

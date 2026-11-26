@@ -370,6 +370,29 @@ v0.30 (unreleased)
   conformance test hands each registered ``fit_from_df`` entry point a
   Polars-like frame, so a new entry point that reads its frame without
   converting it fails.
+- **Competing risks: failures found in a window whose cause was not
+  recorded.** ``ParametricCompetingRisks.fit`` and ``fit_bayes`` take a
+  row found failed in a window (``c`` of 2, or -1 from its entry) with
+  no cause (``e`` missing), where both refused it before. It contributes
+  the probability of a failure of any cause in the window, the all-cause
+  survival over it, :math:`S(x_l) - S(x_r)`; the maximum-likelihood fit
+  and the Bayesian target share the term. Checked against the sum of the
+  causes' sub-densities integrated by adaptive quadrature (1e-9), the
+  Bayesian target against the fit's likelihood (1e-10), and the
+  flat-prior peak against the maximum-likelihood estimate (2e-5). An
+  exact failure (``c = 0``) still needs its cause.
+- **Competing risks with failures in a window: a cause's joint prior.**
+  On the joint path (``fit_bayes`` with failures found in a window) a
+  cause may now have ``prior.on_quantities``, ``prior.from_model`` or
+  ``prior.MultivariateNormal`` priors (``priors={"a": belief}``), put on
+  that cause's parameters (``a.alpha``, ``a.beta``) and bound to its
+  distribution as the cause's own ``fit_bayes`` binds them; with exact
+  data the joint path gives the cause's own posterior (means to 1e-8).
+  A joint prior across causes is still refused.
+- **WAIC and leave-one-out with left truncation on the joint
+  competing-risks path.** Each row's log-likelihood now carries its own
+  entry term, so ``model.result.waic()`` and ``loo()`` take ``tl``
+  where they refused it.
 
 - **Two more bivariate survival estimators, and Kendall's tau from
   them.** ``surpyval.multivariate.Dabrowska.fit(x, c, n,
