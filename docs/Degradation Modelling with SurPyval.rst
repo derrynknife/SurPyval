@@ -1708,8 +1708,12 @@ divided by the average speed. The shape controls how tightly the failure times
 cluster around that mean (more diffusion → more scatter). Because the increments
 are independent, the model also needs the drift to be **positive** — a
 non-positive drift would mean the process is not reliably heading toward the
-threshold at all, so SurPyval raises an error rather than return a "life" that
-may never end.
+threshold at all, so the fit raises an error rather than return a "life" that
+may never end. A ``WienerProcessModel`` built by hand with such a drift still
+describes its life exactly: at zero drift every unit crosses but the mean life is
+infinite, and below zero a unit crosses only with probability
+:math:`e^{2\mu D/\sigma^2}`, so ``mean()`` is ``inf`` and quantiles past that
+probability are ``inf``.
 
 Let's fit one. We simulate 30 units, each measured every half–time-unit, with a
 true drift of ``0.5`` and diffusion ``0.4``, failing at a degradation of ``10``:
