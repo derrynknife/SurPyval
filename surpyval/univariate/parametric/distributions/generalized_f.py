@@ -16,9 +16,11 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
 from surpyval.utils.autograd_gamma_compat import betaln_accurate
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import ignoring_warnings
 
-from ._quantile import solve_log_tails
+from ._quantile import broadcast_values, solve_log_tails
 from ._stable import (
     log1mexp,
     on_support,
@@ -165,6 +167,73 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
                 "surpyval.GeneralizedGamma instead"
             )
         return super()._runaway_advice(runaway, values, offset)
+
+    #: Below this P a maximum-likelihood fit is compared with the
+    #: generalised gamma (its P = 0 limit) by :meth:`_warn_if_at_limit`.
+    _GG_EDGE_P = 1e-2
+
+    def _warn_if_at_limit(
+        self,
+        surv_data: SurpyvalData,
+        results: dict,
+        zi: bool,
+        lfp: bool,
+    ) -> bool:
+        """Warn when the likelihood is highest at the generalised gamma
+        edge, P = 0.
+
+        As P falls to 0 the generalised F tends to the generalised gamma
+        with the same mu, sigma and Q, a limit no generalised F reaches.
+        On data a generalised gamma describes, the likelihood keeps rising
+        towards it, and the search stopped at P of about 1e-7, in silence,
+        on five of six samples of 300 from a Weibull. The criterion
+        compares the fit with its limit, as the BetaGeometric's does: a
+        P below ``_GG_EDGE_P`` whose fit is no more likely than the
+        GeneralizedGamma fitted to the same data (within the margin the
+        fitter treats two answers as equal) is at the edge. An interior
+        maximum is strictly more likely than the limit it contains, so an
+        ordinary fit is never flagged."""
+        if super()._warn_if_at_limit(surv_data, results, zi, lfp):
+            return True
+        from surpyval.univariate.parametric import GeneralizedGamma
+
+        neg_ll = results.get("_neg_ll")
+        params = onp.asarray(results.get("params", []), dtype=float)
+        gamma = results.get("gamma") or 0.0
+        if (
+            neg_ll is None
+            or params.size != 4
+            or not onp.all(onp.isfinite(params))
+            or params[3] >= self._GG_EDGE_P
+            or gamma != 0.0
+        ):
+            return False
+        try:
+            with ignoring_warnings(), onp.errstate(all="ignore"):
+                limit = GeneralizedGamma._fit_from_surpyval_data(
+                    surv_data, how="MLE", zi=zi, lfp=lfp
+                )
+        except (ValueError, RuntimeError):
+            return False
+        limit_neg_ll = getattr(limit, "_neg_ll", None)
+        if limit_neg_ll is None or not onp.isfinite(limit_neg_ll):
+            return False
+        margin = 1e-9 * max(1.0, abs(limit_neg_ll))
+        if neg_ll < limit_neg_ll - margin:
+            return False
+        mu, sigma, Q = (float(v) for v in limit.params)
+        warn_no_maximum(
+            "the GeneralizedF likelihood keeps increasing as P falls to 0, "
+            "towards its generalised gamma limit, which the "
+            "GeneralizedGamma fit to the same data reaches (mu = "
+            f"{mu:.4g}, sigma = {sigma:.4g}, Q = {Q:.4g}; log-likelihood "
+            f"{-limit_neg_ll:.10g} against {-neg_ll:.10g}): the data need no "
+            "fourth parameter",
+            f"The reported P = {params[3]:.3g}, the standard errors and "
+            "the bounds are meaningless",
+            "fit surpyval.GeneralizedGamma instead",
+        )
+        return True
 
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
@@ -550,17 +619,17 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
     def _from_beta(
         self, b: Any, one_minus_b: Any, mu: Any, sigma: Any, Q: Any, P: Any
     ) -> Any:
-        delta, s1, s2 = (float(v) for v in _shapes(Q, P))
+        delta, s1, s2 = (onp.asarray(v, dtype=float) for v in _shapes(Q, P))
         with onp.errstate(divide="ignore", over="ignore"):
             # e^z = s2 B / (s1 (1 - B))
             z = onp.log(b) - onp.log(one_minus_b) + onp.log(s2 / s1)
-            return onp.exp(float(mu) + float(sigma) * z / delta)
+            return onp.exp(mu + sigma * z / delta)
 
     def _start(
         self, p: Any, s: Any, mu: Any, sigma: Any, Q: Any, P: Any
     ) -> Any:
         """A start for the solver: the inverse incomplete beta."""
-        delta, s1, s2 = (float(v) for v in _shapes(Q, P))
+        delta, s1, s2 = (onp.asarray(v, dtype=float) for v in _shapes(Q, P))
         with onp.errstate(all="ignore"):
             lower = p <= s
             # B = s1 e^z / (s1 e^z + s2) is Beta(s1, s2); its upper tail is
@@ -587,8 +656,8 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         >>> GeneralizedF.qf(np.array([.1, .5, .9]), 1.5, 0.6, 0.5, 1.0)
         array([1.31990576, 3.98399262, 9.2803683 ])
         """
-        u = onp.asarray(u, dtype=float)
-        params = tuple(float(getval(v)) for v in (mu, sigma, Q, P))
+        u, *values = broadcast_values(u, mu, sigma, Q, P)
+        params = tuple(values)
         start = self._start(u, 1.0 - u, *params)
         return solve_log_tails(self, u, 1.0 - u, params, start)
 
@@ -604,8 +673,8 @@ class GeneralizedF_(OptimisedFitMixin, ParametricFitter):
         >>> GeneralizedF.isf([0.5, 1e-300], 1.5, 0.6, 0.5, 1.0)
         array([3.98399262e+00, 5.12416026e+90])
         """
-        s = onp.asarray(s, dtype=float)
-        params = tuple(float(getval(v)) for v in (mu, sigma, Q, P))
+        s, *values = broadcast_values(s, mu, sigma, Q, P)
+        params = tuple(values)
         start = self._start(1.0 - s, s, *params)
         return solve_log_tails(self, 1.0 - s, s, params, start)
 

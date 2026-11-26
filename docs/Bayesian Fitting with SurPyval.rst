@@ -384,6 +384,59 @@ quantiles are the normal's own, exactly; functions of the parameters
 Pareto k is that of Yao, Vehtari, Simpson and Gelman (2018), "Yes, but
 did it work?: evaluating variational inference".
 
+Flexible families: a prior on the shape
+---------------------------------------
+
+The ``GeneralizedGamma`` and the ``GeneralizedF`` hold the Weibull, the
+lognormal and the gamma (and the ``GeneralizedF`` the log-logistic) as
+members, so their extra shapes say *which kind* of distribution the data
+look like. That is exactly what a moderate sample hardly pins down: far
+out along ``Q`` (or as ``P`` grows) the likelihood flattens towards a
+limit of the family instead of falling away, and with every parameter
+flat the posterior has no finite mass. ``fit_bayes`` refuses such a fit
+and says so, rather than return an interval that only reflects where
+the grid stopped.
+
+The remedy is a weakly informative prior on the shape alone: one that
+says "somewhere near the familiar members" without choosing between
+them. For the ``GeneralizedGamma``, ``Q`` from a ``Normal(0, 1)`` puts
+the lognormal (``Q = 0``), the Weibull and the gamma (``Q = 1``, ``Q =
+sigma``) well inside its range and anything past ``|Q| = 2`` in its
+tails; ``mu`` and ``sigma`` can stay flat, as the data fix them.
+
+.. code-block:: python
+
+    import numpy as np
+    import surpyval as sp
+
+    rng = np.random.default_rng(746)
+    true = sp.GeneralizedGamma.from_params([2.0, 0.5, 0.7])
+    t = true.qf(rng.uniform(size=60))
+    cens = rng.uniform(0, 12, 60)
+    x, c = np.minimum(t, cens), (cens < t).astype(int)
+
+    model = sp.GeneralizedGamma.fit_bayes(
+        x, c=c, priors={"Q": sp.Normal.from_params([0.0, 1.0])})
+
+On these 60 lives (52% censored) ``Q`` has a 95% credible interval of
+-0.009 to 1.56, against the maximum-likelihood -0.015 to 1.44: the
+prior only stops the tails, and the summary reports that ``Q`` "came
+mostly from the data". The grid is exact here (three parameters) and
+takes about ten seconds.
+
+For the ``GeneralizedF`` give ``P`` a prior as well, as a range on its
+own scale, for example ``sp.prior.between(0.05, 5)``. On 100 lives from
+``GeneralizedF(2, 0.5, 0.5, 1)`` (27% censored, drawn as above with
+censoring times up to 25) and ``Q`` from ``Normal(0, 1)``, a flat ``P``
+gets an interval of 0.006 to 26 (maximum likelihood: 1e-4 to 530),
+because the likelihood is nearly as high at the generalised gamma edge
+(``P`` near 0) as anywhere; with the range it is 0.053 to 4.1. Four
+parameters are past the grid, so the fit is the Laplace approximation,
+and its Pareto k says how far to trust it: 0.86 with ``P`` flat (poor),
+0.56 with the range. (``surpyval.pymc`` has no ``GeneralizedF`` yet: it
+needs an incomplete beta function, which torch, whose families are kept
+the same as PyMC's, does not have.)
+
 Regression: a prior on an effect
 --------------------------------
 

@@ -409,6 +409,120 @@ LOGISTIC = Family(
     log_ff=lambda torch, x, mu, sigma: -softplus(torch, -(x - mu) / sigma),
 )
 
+# GeneralizedGamma: mu, sigma (of the log time) and Q, Prentice's form;
+# w = (ln x - mu) / sigma, q = 1 / Q^2 and the gamma variable u = q e^{Qw}.
+# As surpyval's own (``generalized_gamma.py``) and the PyMC family: near
+# the lognormal (|Q| < 0.1, |eta| <= 1) the tails from Temme's uniform
+# expansion, written in (w, Q) so that it is exact through Q = 0, where
+# the incomplete gamma functions at shapes of 100 and more lose their
+# digits; elsewhere from the incomplete gamma at shape q (``_gamma_pq``,
+# with its derivatives in both arguments).
+_STIRLING = (
+    1.0 / 12.0,
+    -1.0 / 360.0,
+    1.0 / 1260.0,
+    -1.0 / 1680.0,
+    1.0 / 1188.0,
+    -691.0 / 360360.0,
+    1.0 / 156.0,
+)
+_H_SERIES = tuple(1.0 / math.factorial(n + 2) for n in range(14))
+
+
+def _gg_stirlerr(torch: Any, z: Any) -> Any:
+    """``ln Gamma(q) - (q - 1/2) ln q + q - ln sqrt(2 pi)`` at ``q = 1/z``,
+    0 at ``z = 0``: Stirling's series for ``q >= 10``."""
+    small = z <= 0.1
+    zs = torch.where(small, z, 0.0)
+    z2 = zs * zs
+    series: Any = _STIRLING[-1]
+    for c in reversed(_STIRLING[:-1]):
+        series = series * z2 + c
+    q = 1.0 / torch.where(small, 1.0, z)
+    direct = torch.lgamma(q) - (q - 0.5) * torch.log(q) + q - _HALF_LOG_2PI
+    return torch.where(small, series * zs, direct)
+
+
+def _gg_h(torch: Any, y: Any) -> Any:
+    """``(e^y - 1 - y) / y^2``, 1/2 at 0."""
+    small = torch.abs(y) < 0.1
+    ys = torch.where(small, y, 0.0)
+    yl = torch.where(small, 1.0, y)
+    series: Any = _H_SERIES[-1]
+    for c in reversed(_H_SERIES[:-1]):
+        series = series * ys + c
+    return torch.where(small, series, (torch.expm1(yl) - yl) / yl**2)
+
+
+def _gg_log_df(torch: Any, x: Any, mu: Any, sigma: Any, Q: Any) -> Any:
+    w = (torch.log(x) - mu) / sigma
+    return (
+        -_HALF_LOG_2PI
+        - _gg_stirlerr(torch, Q * Q)
+        - (w * w) * _gg_h(torch, Q * w)
+        - torch.log(sigma)
+        - torch.log(x)
+    )
+
+
+def _gg_temme_sum(eta: Any, Q: Any) -> Any:
+    from surpyval.univariate.parametric.distributions._temme import TEMME
+
+    q2 = Q * Q
+    total: Any = 0.0
+    for row in reversed(TEMME):
+        ck: Any = float(row[-1])
+        for c in reversed(row[:-1]):
+            ck = ck * eta + float(c)
+        total = total * q2 + ck
+    return total
+
+
+def _gg_tails(torch: Any, x: Any, mu: Any, sigma: Any, Q: Any) -> Any:
+    """``(ln S, ln F)``."""
+    from surpyval.univariate.parametric.distributions._temme import (
+        ETA_MAX,
+        Q_MAX,
+    )
+
+    w = (torch.log(x) - mu) / sigma
+    w, Q = torch.broadcast_tensors(w, Q)
+    y = Q * w
+    eta = y * torch.sqrt(_gg_h(torch, y)) * _SQRT2
+    temme = (torch.abs(Q) < Q_MAX) & (torch.abs(eta) <= ETA_MAX)
+    # Temme's expansion on its own points
+    w_t = torch.where(temme, w, 0.0)
+    Q_t = torch.where(temme, Q, 0.0)
+    y_t = Q_t * w_t
+    h_t = _gg_h(torch, y_t)
+    r_t = torch.sqrt(h_t)
+    zeta = w_t * r_t
+    upper = zeta >= 0
+    sign = torch.where(upper, 1.0, -1.0)
+    bracket = 0.5 * torch.special.erfcx(torch.abs(zeta)) + sign * Q_t * (
+        _gg_temme_sum(y_t * r_t * _SQRT2, Q_t) / math.sqrt(2.0 * math.pi)
+    )
+    small_t = -(w_t * w_t) * h_t + torch.log(bracket)
+    big_t = log1mexp(torch, small_t)
+    s_t = torch.where(upper, small_t, big_t)
+    f_t = torch.where(upper, big_t, small_t)
+    # the incomplete gamma at shape q elsewhere
+    Q_c = torch.where(temme, 0.5, Q)
+    w_c = torch.where(temme, 0.0, w)
+    q = 1.0 / (Q_c * Q_c)
+    p_c, c_c = _gamma_pq(torch, q, q * torch.exp(Q_c * w_c))
+    positive = Q_c > 0
+    s_c = torch.log(torch.where(positive, c_c, p_c))
+    f_c = torch.log(torch.where(positive, p_c, c_c))
+    return torch.where(temme, s_t, s_c), torch.where(temme, f_t, f_c)
+
+
+GENERALIZED_GAMMA = Family(
+    log_df=_gg_log_df,
+    log_sf=lambda torch, x, mu, sigma, Q: _gg_tails(torch, x, mu, sigma, Q)[0],
+    log_ff=lambda torch, x, mu, sigma, Q: _gg_tails(torch, x, mu, sigma, Q)[1],
+)
+
 # By SurPyval's distribution name (``dist.name``), in the order of
 # ``surpyval.pymc.SUPPORTED``.
 FAMILIES: dict[str, Family] = {
@@ -423,4 +537,5 @@ FAMILIES: dict[str, Family] = {
     "Rayleigh": RAYLEIGH,
     "Gompertz": GOMPERTZ,
     "InverseGaussian": INVERSE_GAUSSIAN,
+    "GeneralizedGamma": GENERALIZED_GAMMA,
 }

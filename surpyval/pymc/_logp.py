@@ -264,6 +264,137 @@ LOGISTIC = Family(
     centre=lambda pt, mu, sigma: mu,
 )
 
+# GeneralizedGamma: mu, sigma (of the log time) and Q, Prentice's form;
+# w = (ln x - mu) / sigma, q = 1 / Q^2 and the gamma variable u = q e^{Qw}.
+# As surpyval's own (``generalized_gamma.py``): near the lognormal (|Q| <
+# 0.1, |eta| <= 1) the tails from Temme's uniform expansion, written in
+# (w, Q) so it is exact through Q = 0, where the library's incomplete
+# gamma functions at shapes of 1e4 and more lose their digits; elsewhere
+# (shapes of 100 and less) from the incomplete gamma at shape q, as the
+# Gamma family's.
+_STIRLING = (
+    1.0 / 12.0,
+    -1.0 / 360.0,
+    1.0 / 1260.0,
+    -1.0 / 1680.0,
+    1.0 / 1188.0,
+    -691.0 / 360360.0,
+    1.0 / 156.0,
+)
+_H_SERIES = tuple(1.0 / math.factorial(n + 2) for n in range(14))
+
+
+# The stand-ins below (the values a branch sees on the points it does not
+# own) are never 0: pytensor's rewrite ``local_mul_switch_sink`` moves
+# every product with a ``switch`` that has a zero branch inside it, and
+# on these nested sums that took minutes to compile.
+def _gg_stirlerr(pt: Any, z: Any) -> Any:
+    """``ln Gamma(q) - (q - 1/2) ln q + q - ln sqrt(2 pi)`` at ``q = 1/z``,
+    0 at ``z = 0``: Stirling's series for ``q >= 10``."""
+    small = z <= 0.1
+    zs = pt.switch(small, z, 0.05)
+    z2 = zs * zs
+    series = _STIRLING[-1]
+    for c in reversed(_STIRLING[:-1]):
+        series = series * z2 + c
+    q = 1.0 / pt.switch(small, 1.0, z)
+    direct = pt.gammaln(q) - (q - 0.5) * pt.log(q) + q - _HALF_LOG_2PI
+    return pt.switch(small, series * zs, direct)
+
+
+def _gg_h(pt: Any, y: Any) -> Any:
+    """``(e^y - 1 - y) / y^2``, 1/2 at 0."""
+    small = pt.abs(y) < 0.1
+    ys = pt.switch(small, y, 0.05)
+    yl = pt.switch(small, 1.0, y)
+    series = _H_SERIES[-1]
+    for c in reversed(_H_SERIES[:-1]):
+        series = series * ys + c
+    return pt.switch(small, series, (pt.expm1(yl) - yl) / yl**2)
+
+
+def _gg_w(pt: Any, x: Any, mu: Any, sigma: Any) -> Any:
+    return (pt.log(x) - mu) / sigma
+
+
+def _gg_log_df(pt: Any, x: Any, mu: Any, sigma: Any, Q: Any) -> Any:
+    w = _gg_w(pt, x, mu, sigma)
+    return (
+        -_HALF_LOG_2PI
+        - _gg_stirlerr(pt, Q * Q)
+        - (w * w) * _gg_h(pt, Q * w)
+        - pt.log(sigma)
+        - pt.log(x)
+    )
+
+
+def _gg_temme_sum(pt: Any, eta: Any, Q: Any) -> Any:
+    """``sum_k c_k(eta) Q^(2k)``, as two products with the table of
+    coefficients rather than nested Horner sums (a graph of a few nodes
+    instead of hundreds, which pytensor compiles in seconds)."""
+    from surpyval.univariate.parametric.distributions._temme import TEMME
+
+    rows, cols = TEMME.shape
+    powers = [pt.ones_like(eta)]
+    for _ in range(cols - 1):
+        powers.append(powers[-1] * eta)
+    q2 = Q * Q
+    q_powers = [pt.ones_like(q2)]
+    for _ in range(rows - 1):
+        q_powers.append(q_powers[-1] * q2)
+    ck = pt.dot(pt.stack(powers, axis=-1), pt.as_tensor(TEMME.T.copy()))
+    return pt.sum(ck * pt.stack(q_powers, axis=-1), axis=-1)
+
+
+def _gg_tails(pt: Any, x: Any, mu: Any, sigma: Any, Q: Any) -> Any:
+    """``(ln S, ln F)``."""
+    from surpyval.univariate.parametric.distributions._temme import (
+        ETA_MAX,
+        Q_MAX,
+    )
+
+    w = _gg_w(pt, x, mu, sigma)
+    y = Q * w
+    hy = _gg_h(pt, y)
+    root = pt.sqrt(hy)
+    eta = y * root * _SQRT2
+    temme = (pt.abs(Q) < Q_MAX) & (pt.abs(eta) <= ETA_MAX)
+    # Temme's expansion on its own points
+    w_t = pt.switch(temme, w, 1.0)
+    Q_t = pt.switch(temme, Q, 0.05)
+    y_t = Q_t * w_t
+    h_t = _gg_h(pt, y_t)
+    r_t = pt.sqrt(h_t)
+    zeta = w_t * r_t
+    upper = zeta >= 0
+    sign = pt.switch(upper, 1.0, -1.0)
+    bracket = 0.5 * pt.erfcx(pt.abs(zeta)) + sign * Q_t * _gg_temme_sum(
+        pt, y_t * r_t * _SQRT2, Q_t
+    ) / math.sqrt(2.0 * math.pi)
+    small_t = -(w_t * w_t) * h_t + pt.log(bracket)
+    big_t = log1mexp(pt, small_t)
+    s_t = pt.switch(upper, small_t, big_t)
+    f_t = pt.switch(upper, big_t, small_t)
+    # the incomplete gamma at shape q elsewhere, as the Gamma family's
+    Q_c = pt.switch(temme, 0.5, Q)
+    w_c = pt.switch(temme, 1.0, w)
+    q = 1.0 / (Q_c * Q_c)
+    u = q * pt.exp(Q_c * w_c)
+    log_p = pt.log(pt.gammainc(q, u))
+    log_q = pt.log(_gamma_q(pt, q, u))
+    positive = Q_c > 0
+    s_c = pt.switch(positive, log_q, log_p)
+    f_c = pt.switch(positive, log_p, log_q)
+    return pt.switch(temme, s_t, s_c), pt.switch(temme, f_t, f_c)
+
+
+GENERALIZED_GAMMA = Family(
+    log_df=_gg_log_df,
+    log_sf=lambda pt, x, mu, sigma, Q: _gg_tails(pt, x, mu, sigma, Q)[0],
+    log_ff=lambda pt, x, mu, sigma, Q: _gg_tails(pt, x, mu, sigma, Q)[1],
+    centre=lambda pt, mu, sigma, Q: pt.exp(mu),
+)
+
 # By SurPyval's distribution name (``dist.name``).
 FAMILIES: dict[str, Family] = {
     "Weibull": WEIBULL,
@@ -277,4 +408,5 @@ FAMILIES: dict[str, Family] = {
     "Rayleigh": RAYLEIGH,
     "Gompertz": GOMPERTZ,
     "InverseGaussian": INVERSE_GAUSSIAN,
+    "GeneralizedGamma": GENERALIZED_GAMMA,
 }

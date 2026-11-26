@@ -330,6 +330,37 @@ v0.30 (unreleased)
   weight still applies to every marker. ``fitter.compare_links(data,
   marker="vibration")`` compares that marker's links, with each other
   marker's links as the fitter has them. Saved models keep a lag or weight by marker.
+  marker's links as the fitter has them. A spline marker's varying
+  bends whose spread is estimated at 0 are now warned of, as with one
+  marker, each against its own marker's noise; the warning names them
+  ``"vibration.s1"``. Saved models keep a lag or weight by marker.
+- **The GeneralizedGamma in the PyMC and torch helpers.**
+  ``surpyval.pymc`` and ``surpyval.torch`` take ``GeneralizedGamma``
+  (``mu``, ``sigma``, ``Q``), with Temme's expansion near the lognormal
+  (small ``Q``) as SurPyval's own functions use, so the likelihood and
+  its gradient hold through ``Q = 0``. Its quantile functions (``qf``,
+  ``isf``), and those of the GeneralizedF, Gompertz and InverseGaussian,
+  now take a parameter per point, as a posterior's draws give them. The
+  GeneralizedF is not in the helpers: torch has no incomplete beta
+  function, and the two lists are kept the same.
+- **A GeneralizedF fit at its generalised gamma edge says so.** When
+  the likelihood keeps rising as ``P`` falls to 0 (the data need no
+  fourth parameter), the fit warns "No finite maximum", reports
+  ``maximum = "no finite maximum"`` and names ``GeneralizedGamma``,
+  whose fit reaches that limit. It stopped near ``P = 0`` before with
+  only "not a verified maximum", or in silence.
+- **Coverage studies** of the Wald and likelihood-ratio bounds for the
+  Gompertz, the InverseGaussian and the GeneralizedF
+  (``calibration/test_coverage_new_families.py``, run with
+  ``--run-calibration``; n = 200). The Gompertz and the InverseGaussian
+  cover 0.93-0.97 throughout. The GeneralizedF's Wald bounds on ``sf``
+  and B10 do too, but those on ``mu``, ``sigma`` and the mean cover only
+  0.912, 0.865 and 0.838 at this sample size, and its likelihood-ratio
+  bounds on the parameters 0.900-0.927: a known shortfall (#1444), with
+  its fourth parameter weakly identified at n = 200.
+- **Bayesian docs: a prior on the shape** of the GeneralizedGamma and
+  GeneralizedF, which ``fit_bayes`` needs (with every parameter flat it
+  refuses, as before).
 
 - **Bayesian fits of the Wiener and gamma degradation processes**:
   ``WienerProcess.fit_bayes`` and ``GammaProcess.fit_bayes`` (readings,

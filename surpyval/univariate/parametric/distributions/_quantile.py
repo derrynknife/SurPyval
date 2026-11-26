@@ -6,6 +6,17 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as onp
+from autograd.tracer import getval
+
+
+def broadcast_values(*values: Any) -> list:
+    """``values`` (probabilities and parameters, each a scalar, an array
+    or an autograd box) as float arrays of one broadcast shape, for a
+    quantile solved numerically: a Bayesian posterior asks for the
+    quantile at every one of its parameter points at once, which the
+    solvers' scalar ``float(param)`` refused."""
+    arrays = [onp.asarray(getval(v), dtype=float) for v in values]
+    return [onp.array(a) for a in onp.broadcast_arrays(*arrays)]
 
 
 def solve_log_tails(

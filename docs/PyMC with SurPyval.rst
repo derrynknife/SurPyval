@@ -40,9 +40,12 @@ The helpers are:
   and for a new group.
 
 They support the Weibull, Exponential, LogNormal, Gamma, LogLogistic,
-Normal, Gumbel, Logistic, Rayleigh, Gompertz and InverseGaussian
-distributions
-(``surpyval.pymc.SUPPORTED``); any other is refused with that list. The
+Normal, Gumbel, Logistic, Rayleigh, Gompertz, InverseGaussian and
+GeneralizedGamma distributions
+(``surpyval.pymc.SUPPORTED``); any other is refused with that list. (The
+generalised gamma's likelihood, with Temme's expansion for small ``Q``,
+is a larger graph than the others': pytensor takes about a minute to
+compile it, once per model.) The
 likelihood helpers also take the proportional hazards, accelerated failure
 time and accelerated life fitters on those distributions
 (``surpyval.pymc.REGRESSION``), with covariates.
