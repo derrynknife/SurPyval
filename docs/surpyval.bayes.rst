@@ -99,6 +99,9 @@ The Wiener and gamma processes' fits; see "Degradation processes" in
 .. autoclass:: surpyval.degradation.bayes.BayesianProcessRUL
    :members:
 
+.. autoclass:: surpyval.degradation.bayes.PointClocks
+   :members:
+
 Competing risks and multi-state models
 --------------------------------------
 

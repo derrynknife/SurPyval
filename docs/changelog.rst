@@ -18,6 +18,14 @@ v0.30 (unreleased)
   verified maximum where a covariate's units are very large or very
   small. On the msm reference the intensities agree to 2.7e-8 (5.1e-8
   before).
+- **``GammaProcess.fit(..., gauge=)`` estimates in about the ninth
+  significant figure.** The quantised likelihood is now computed one
+  unit at a time and summed (so the Bayesian fit can take it at many
+  parameter points at once); the sum's order changed, which moves the
+  log-likelihood by about 1e-14 and the estimates, where the search
+  stops, by up to 3e-9 relative (``alpha`` 1.5302380114 to
+  1.5302380067 on one seeded fleet). No rounded or documented number
+  moves.
 
 - **The mean life of a Wiener process whose drift is not positive is
   infinite: a correctness change.** (``WienerProcess.fit`` refuses
@@ -421,8 +429,8 @@ v0.30 (unreleased)
 
 - **Bayesian fits of the Wiener and gamma degradation processes**:
   ``WienerProcess.fit_bayes`` and ``GammaProcess.fit_bayes`` (readings,
-  stress and zero increments as ``fit`` takes them; not gauge readings
-  yet). Priors on the process's parameters and stress coefficients, on
+  stress, zero increments and gauge readings as ``fit`` takes them).
+  Priors on the process's parameters and stress coefficients, on
   its life (``prior.on_quantities(WienerProcess, B10=...,
   instead_of=["mu"])``) or from an earlier fleet (``prior.from_model(fit,
   param="mu")``, or ``prior.from_fit`` for its readings); the grid for up
@@ -438,6 +446,29 @@ v0.30 (unreleased)
   fleets together; simulation-based calibration (200 fleets a process
   drawn from the priors) holds the intervals on a parameter and on the
   B10 life at their level. Nothing existing changes.
+- **Gauge readings in ``GammaProcess.fit_bayes``** (``gauge=``, with
+  ``rounding``, ``exact_start`` and ``gauge_method`` as for ``fit``): the
+  posterior on the quantised likelihood ``fit(..., gauge=)`` maximises,
+  both the exact path recursion and the independent approximation, on
+  the grid. It was refused. Checked: with no priors the posterior's peak
+  is the quantised fit's estimate (to 1e-5); the gap from the posterior of
+  the exact readings shrinks with the step (about 1.1, 0.015 and 0.0002
+  of the 95% intervals' widths at steps 1, 0.1 and 0.01, both methods); a seeded fleet read off a
+  gauge of step 2 holds the true ``alpha`` (2) in its 95% interval
+  (1.12 to 3.65) where the readings taken as exact do not (0.68 to
+  1.50); and a calibration study of 200 such fleets
+  (``test_sbc_process_bayes_gauge.py``, behind ``--run-calibration``;
+  a 30-fleet run holds ``alpha``'s 90% interval in 30 of 30 and the B10
+  life's in 26, where ignoring the gauge holds ``alpha`` in 16).
+- **Stress profiles in ``BayesianProcessModel``**: ``sf``, ``ff``,
+  ``qf``, ``cri``, ``quantile_cri`` and ``predict_rul`` take a
+  ``StepSchedule`` as ``Z``, each posterior point's clock run through
+  the profile at once (``PointClocks``). It was refused with a pointer
+  to ``function_cri``; the results equal that route's, the fitted model
+  at each point, to 1e-12, a constant profile equals the constant
+  stress, and a posterior of one point is the fitted model. ``mean``
+  and ``mean_cri`` under a profile still refuse, pointing to
+  ``function_cri(lambda m: m.mean(profile))``.
 - **The MCF's two-sided bounds name their columns.**
   ``NonParametricCounting.mcf_cb`` (and ``CauseSpecificMCF.mcf_cb``)
   returns its two-sided bounds as a
