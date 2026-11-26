@@ -376,6 +376,61 @@ of the likelihood. The fits are checked against R's ``flexsurvcure``.
     P(\text{cured} \mid T > t, z)
     = \frac{1 - \pi(z)}{1 - \pi(z) + \pi(z)\, S_u(t \mid z)} .
 
+The promotion-time model: a ceiling on the hazard
+-------------------------------------------------
+
+A second way to get a cured fraction is to put a ceiling on the
+cumulative hazard instead of splitting the population in two. Picture
+each unit carrying a random number of hidden causes of failure -- cancer
+cells left after treatment, latent flaws in a part -- on average
+:math:`\theta`, each of which would cause the event after a time drawn
+from a distribution :math:`F_0`. The unit fails at the first, and never
+fails if it carries none, which happens with probability
+:math:`e^{-\theta}`. Its survival is
+
+.. math::
+
+    S(t \mid z) = \exp\{-\theta(z)\, F_0(t)\},
+
+and its cumulative hazard :math:`\theta(z) F_0(t)` rises to the ceiling
+:math:`\theta(z)`. This is the *promotion-time* (or *bounded cumulative
+hazard*, *non-mixture*) cure model, ``PromotionTimeCure``. By default the
+covariates act on :math:`\theta` through a log link, so the model is a
+proportional hazards model: ``exp`` of a coefficient is a hazard ratio,
+the same at every age, as in Cox regression. In the mixture model the
+covariates move the cured fraction and the timing of failures
+separately; here one coefficient moves both together.
+
+.. code:: python
+
+    import surpyval as sp
+
+    model = sp.WeibullPromotionTimeCure.fit(x, Z, c=c)
+    model.cure_probability(Z_new)          # exp(-theta(z))
+    model.summary()                        # exp(coef) is a hazard ratio
+    model.sf(t, Z_new, susceptible=True)   # a unit that does fail
+
+``WeibullPromotionTimeCure``, ``LogNormalPromotionTimeCure``,
+``LogLogisticPromotionTimeCure``, ``GammaPromotionTimeCure`` and
+``ExponentialPromotionTimeCure`` are built; ``PromotionTimeCure(F0)``
+takes any of Weibull, Exponential, Gamma, LogNormal, LogLogistic,
+Rayleigh, InverseGaussian, BirnbaumSaunders, GeneralizedGamma and
+ExpoWeibull. Covariates on F0's parameters as well are given with
+``covariates={"theta": [...], "alpha": [...]}``. The model shares
+everything else with the mixture model: the bounds (Wald,
+likelihood-ratio, bootstrap), ``follow_up()``, ``cure_given_survival``,
+``susceptible=True``, the warning when follow-up shows no plateau (then
+:math:`\theta` runs to infinity, the cure fraction to 0, and the fit is
+the uncured model's: a Weibull F0 gives ``WeibullPH``'s fit), and the
+saved form.
+
+It is checked against a likelihood written out independently and
+maximised by a general optimiser, against ``WeibullPH`` in the limit of
+no cure, and by simulation (the coverage of its Wald intervals is in
+the calibration suite). A comparison with R's ``flexsurvcure``
+(``mixture = FALSE``) is scripted in
+``scripts/reference/reference_r_promotion_time_cure.R``.
+
 What is not built
 -----------------
 
@@ -406,5 +461,11 @@ References
   51-65.
 - Peng, Y. and Dear, K. B. G. (2000). A nonparametric mixture model for
   cure rate estimation. *Biometrics* 56, 237-243.
+- Chen, M.-H., Ibrahim, J. G. and Sinha, D. (1999). A new Bayesian
+  model for survival data with a surviving fraction. *Journal of the
+  American Statistical Association* 94, 909-919.
+- Yakovlev, A. Y. and Tsodikov, A. D. (1996). *Stochastic Models of
+  Tumor Latency and Their Biostatistical Applications*. World
+  Scientific.
 - Amdahl, J. (2022). *flexsurvcure: Flexible Parametric Cure Models*. R
   package.

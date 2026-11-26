@@ -414,6 +414,10 @@ tc = np.where(ever, 100 * rc.weibull(2.0, 400), 500.0)   # the rest still runnin
 cm = sp.WeibullMixtureCure.fit(tc, lot, c=(~ever).astype(int))
 cm.cure_probability([1]); cm.sf(100, [1], susceptible=True)   # the latency alone
 cm.cure_given_survival(100, [1])       # P(never fails | still running at 100)
+# Promotion-time cure: a ceiling on the cumulative hazard, S = exp(-theta F0(t));
+# covariates on theta (log link) by default, so exp(coef) is a hazard ratio
+pm = sp.WeibullPromotionTimeCure.fit(tc, lot, c=(~ever).astype(int))
+pm.cure_probability([1])               # exp(-theta(z))
 
 # Equivalent time scale: one life on a main clock (hours) and a subordinate
 # second clock (starts) read at the same moments, T = hours + k * starts.
