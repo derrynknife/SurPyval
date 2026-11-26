@@ -307,3 +307,77 @@ def test_refusals():
         )
     with pytest.raises(ValueError, match="ParametricMultiState"):
         MultiState.fit([[1.0, 3.0]], ["ill"], ["healthy"], **kw)
+
+
+# --- a SurpyvalData with interval-censored rows (c = 2) ---------------------
+
+
+def _flags(x, e):
+    """The SurpyvalData flags of the long form: 2 where the move is known
+    only to lie in (xl, xr], 1 where the unit was still in its state, 0
+    where the move's time is known."""
+    censored = np.array([v is None for v in e])
+    return np.where(x[:, 0] < x[:, 1], 2, np.where(censored, 1, 0))
+
+
+@pytest.mark.parametrize("clock", ["forward", "reset"])
+@pytest.mark.parametrize("regression", [False, True], ids=["dist", "reg"])
+def test_surpyval_data_is_the_fit_from_arrays(clock, regression):
+    import surpyval as sp
+
+    # (80 units were too few for the reset clock's array fit itself: the
+    # midpoint start of one transition had a single distinct time)
+    x, e, state, tl, i = _simulate(150, 13, clock=clock)
+    assert (x[:, 0] < x[:, 1]).sum() > 10
+    c = _flags(x, e)
+    z = (np.arange(np.unique(i).size) % 2).astype(float)[i][:, None]
+    cls = (
+        ParametricMultiStateRegression if regression else ParametricMultiState
+    )
+    zkw = {"Z": z} if regression else {}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ref = cls.fit(
+            x, *zkw.values(), e, state, tl=tl, i=i, transitions=TM,
+            clock=clock,
+        )  # fmt: skip
+        # the two columns of x, and the lower and upper ends in xl, xr
+        for data in (
+            sp.SurpyvalData(x=x, c=c, e=e, s=state, tl=tl, i=i, **zkw),
+            sp.SurpyvalData(
+                x=np.where(c == 2, np.nan, x[:, 1]),
+                xl=np.where(c == 2, x[:, 0], np.nan),
+                xr=np.where(c == 2, x[:, 1], np.nan),
+                c=c, e=e, s=state, tl=tl, i=i, **zkw,
+            ),  # fmt: skip
+        ):
+            got = cls.fit(data, transitions=TM, clock=clock)
+            assert got._joint is not None
+            np.testing.assert_array_equal(got.params, ref.params)
+            np.testing.assert_array_equal(got.covariance(), ref.covariance())
+            assert got.to_dict() == ref.to_dict()
+            q = (6.0, z[:1]) if regression else (6.0,)
+            np.testing.assert_array_equal(
+                got.occupancy(*q, "ill"), ref.occupancy(*q, "ill")
+            )
+
+
+def test_surpyval_data_interval_refusals():
+    import surpyval as sp
+
+    s = ["healthy", "ill", "healthy"]
+    # a left-censored move: no stay it ended
+    data = sp.SurpyvalData(
+        x=[2.0, 5, 3], c=[-1, 0, 1], e=["ill", "dead", None], s=s
+    )
+    with pytest.raises(ValueError, match="no stay it ended"):
+        ParametricMultiState.fit(data, transitions=TM)
+    # the Bayesian fit takes no intervals
+    data = sp.SurpyvalData(
+        x=[[1.0, 2.0], [5, 5], [3, 3]], c=[2, 0, 1],
+        e=["ill", "dead", None], s=s,
+    )  # fmt: skip
+    with pytest.raises(ValueError, match="Rows 0 are interval censored"):
+        ParametricMultiState.fit_bayes(data, transitions=TM)
+    with pytest.raises(ValueError, match="Rows 0 are interval censored"):
+        MultiState.fit(data, transitions=TM)

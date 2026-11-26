@@ -762,6 +762,26 @@ def ms_data(with_Z=False):
     return d
 
 
+# The rows of ``ms_data`` whose move is interval censored in
+# ``ms_interval_data``, each known only to lie in (x - 1, x].
+_MS_INTERVAL_ROWS = (0, 7, 9, 12, 15)
+
+
+def ms_interval_data(with_Z=False):
+    """``ms_data`` with five moves known only to lie in a window of one
+    time unit before their recorded time (``x`` as two columns
+    ``[xl, xr]``); without unit ids, each spell's ``tl`` is taken as
+    known."""
+    d = ms_data(with_Z)
+    x = np.column_stack([d["x"], d["x"]])
+    rows = list(_MS_INTERVAL_ROWS)
+    assert all(d["e"][k] is not None for k in rows)
+    x[rows, 0] -= 1.0
+    assert np.all(x[:, 0] >= d["tl"])
+    d["x"] = x
+    return d
+
+
 X_MS = np.array([0.5, 1.75, 3.0, 4.25, 6.0, 7.25, 8.5, 11.5])
 # The Cox model's predictions: from 7.5 on, the one unit left at risk in
 # "ill" makes the predicted hazards of leaving it add up to more than 1

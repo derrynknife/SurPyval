@@ -128,10 +128,16 @@ The terminal flag ``a`` of a ``SurpyvalData`` is not needed here: a
 terminal event is the same idea as entering an absorbing state, which the
 transitions already say, so the fits ignore it.
 
-These models take neither interval- nor left-censored rows (``c`` of 2 or
--1: a change of state seen only between two inspections), weights, right
-truncation, time-varying covariates nor measurements (``m``); data holding any of them is
-refused, saying what to do. ``s`` is also another name for ``state`` in
+A row with ``c = 2`` is a move known only to lie between two times (see
+:ref:`multistate-interval-moves`): ``ParametricMultiState`` and
+``ParametricMultiStateRegression`` read its ``[xl, xr]`` as the two
+columns of their ``x``, with the same fit as from the arrays; the
+non-parametric and Cox models refuse it. A left-censored row (``c =
+-1``, a move at some time before ``x``) is refused by every model: with
+no last time the unit was seen in its state, it has no stay it ended;
+give that time as the lower end of an interval. The models take neither
+weights, right truncation, time-varying covariates nor measurements
+(``m``); data holding any of them is refused, saying what to do. ``s`` is also another name for ``state`` in
 ``fit``, and ``s_col`` for ``state_col`` in ``fit_from_df``.
 The panel models below take arrays of visits, not a ``SurpyvalData``:
 their ``s`` is the state seen at a visit, not the state during a row, so
@@ -536,6 +542,8 @@ only on the time in the state, they depend only on ``x - s``. A
 prediction from a later ``s`` needs ``from_state``: units under
 observation at ``s`` have been in their states for different times.
 
+.. _multistate-interval-moves:
+
 Moves known only to lie between two times
 -----------------------------------------
 
@@ -570,6 +578,31 @@ end of it (the time the unit was first seen there, say), and the unit
 
 Unit 1 was found degraded at 4 after working at 2, and failed at 7;
 unit 3 was found degraded at 2 and was still degraded at 6.
+
+The same spells in a :class:`~surpyval.SurpyvalData` mark each such move
+with ``c = 2`` (and ``x`` as ``[xl, xr]``, or the ends in ``xl`` and
+``xr``); the fit is the same:
+
+.. jupyter-execute::
+
+    import surpyval as sp
+
+    data = sp.SurpyvalData(
+        x=[[2, 4], [7, 7], [3, 3], [1, 2], [6, 6]],
+        c=[2, 0, 0, 2, 1],
+        e=["degraded", "failed", "failed", "degraded", None],
+        s=["working", "degraded", "working", "working", "degraded"],
+        tl=[0, 4, 0, 0, 2],
+        i=[1, 1, 2, 3, 3],
+    )
+    ParametricMultiState.fit(
+        data,
+        transitions=[
+            ("working", "degraded"), ("working", "failed"),
+            ("degraded", "failed"),
+        ],
+        dist=Exponential,
+    ).params.round(4)
 
 The likelihood then averages over the unknown time of the move: the
 chance of staying in the old state until then, times the rate of the
@@ -835,8 +868,7 @@ What is not here yet
 The non-parametric and Cox spell models refuse interval-censored
 changes of state (the parametric ones take them); for states seen only
 at visits use ``PanelMultiState``, which has no hidden Markov
-(misclassification) model yet. A ``SurpyvalData`` cannot yet carry an
-interval-censored move into the multi-state models: give the arrays.
+(misclassification) model yet.
 ``ParametricPanelMultiState`` takes no covariates yet, and on the clock
 reset only progressive models. The parametric models have no
 likelihood-ratio or bootstrap bounds. The clock reset is offered for the

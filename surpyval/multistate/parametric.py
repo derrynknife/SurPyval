@@ -194,10 +194,14 @@ class _ParametricMultiStateBase(SerialisableMixin):
             )
             start = _interval.midpoint_data(data, lik.succ)
             models = cls._fit_transitions(start, Z, fitters, clock)
+            starts = [models[k] for k in data.tm.transitions]
             joint = _joint.fit(
-                [models[k] for k in data.tm.transitions],
+                starts,
                 lik.neg_ll,
                 f"The fit of {cls.__name__} to interval-censored moves",
+                polish=True,
+                central=True,
+                units=_joint.coefficient_units(starts, Z),
             )
             models = dict(zip(data.tm.transitions, joint.models))
         else:
@@ -289,6 +293,21 @@ class _ParametricMultiStateBase(SerialisableMixin):
     @staticmethod
     def _warn_found(found: list) -> None:
         return None
+
+    def _interval_likelihood(self) -> Any:
+        """The likelihood a fit to interval-censored moves maximised over
+        every transition's parameters at once (``None`` where every
+        move's time is known and the fit is a transition at a time)."""
+        if self._joint is None or not self._data.has_intervals:
+            return None
+        from surpyval.multistate import _interval
+
+        return _interval.IntervalLikelihood(
+            self._data,
+            self.clock,
+            self._row_hazard(self._Z),
+            _lows([m.dist for m in self._models()]),
+        )
 
     def _setup(self) -> None:
         d = self._data
@@ -863,7 +882,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
     @classmethod
     @takes_unit
     @other_name("s", "state")
-    @multistate_data
+    @multistate_data(intervals=True)
     @accepts_surpyval_data
     def fit(
         cls,
@@ -1499,7 +1518,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
     @classmethod
     @takes_unit
     @other_name("s", "state")
-    @multistate_data
+    @multistate_data(intervals=True)
     @accepts_surpyval_data
     def fit(
         cls,

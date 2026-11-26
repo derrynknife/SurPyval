@@ -153,6 +153,31 @@ class JointFit:
         )
 
 
+def coefficient_units(models: list, Z: Any) -> npt.NDArray | None:
+    """Each free parameter's unit in the search (see :func:`fit`): a
+    regression coefficient's natural unit for its covariate
+    (:func:`~surpyval.utils.covariates.coefficient_floor`, ``1 /
+    range(Z_j)`` where the range is below 1 or above 100), 1 for the
+    others; ``None`` where every unit is 1."""
+    from surpyval.utils.covariates import coefficient_floor
+
+    Z = np.asarray(Z, dtype=float)
+    if Z.ndim != 2 or Z.shape[1] == 0:
+        return None
+    pack = Packer.of(models)
+    place = np.cumsum(pack.free) - 1
+    coefs, start = [], 0
+    for m, size in zip(pack.models, pack.sizes):
+        k_dist = int(getattr(m, "k_dist", size))
+        for col in range(size - k_dist):
+            j = start + k_dist + col
+            if pack.free[j]:
+                coefs.append((int(place[j]), col))
+        start += size
+    units = coefficient_floor(pack.k, coefs, Z)
+    return None if np.all(units == 1.0) else units
+
+
 def fit(
     models: list,
     neg_ll: Callable[[list], float],
@@ -160,6 +185,7 @@ def fit(
     covariance: bool = True,
     polish: bool = False,
     central: bool = False,
+    units: npt.NDArray | None = None,
 ) -> JointFit:
     """Maximise the likelihood over every transition's parameters, from
     ``models`` (the transitions' starting fits); ``neg_ll(models)`` is the
@@ -172,7 +198,12 @@ def fit(
     rounding of their forward differences). With ``central`` the search
     takes central-difference gradients (twice the evaluations each, but
     accurate enough to stop on its tolerance rather than wander where the
-    forward differences' rounding hides the slope) and is run once."""
+    forward differences' rounding hides the slope) and is run once.
+    ``units`` (one per free parameter, from :func:`coefficient_units`)
+    measures each search value in its own unit: a coefficient of a
+    covariate in thousands is searched in steps of its size, so the
+    search and its Hessian are as well scaled as with the covariate in
+    ones; the default, a unit of 1 for each, is the plain search."""
     from scipy.optimize import minimize
 
     from surpyval.utils.linalg import numerical_hessian
@@ -180,16 +211,19 @@ def fit(
     from surpyval.utils.warnings import ignoring_warnings
 
     pack = Packer.of(models)
+    unit = np.ones(pack.k) if units is None else np.asarray(units, float)
 
-    def f(theta: npt.NDArray) -> float:
+    # The search is over ``theta / unit`` (``theta`` the packed values on
+    # the unconstrained scale); with every unit 1 it is ``theta`` itself.
+    def f(u: npt.NDArray) -> float:
         try:
             with np.errstate(all="ignore"), ignoring_warnings():
-                value = float(neg_ll(pack.rebuild(pack.from_search(theta))))
+                value = float(neg_ll(pack.rebuild(pack.from_search(u * unit))))
         except (ValueError, FloatingPointError, ZeroDivisionError):
             return _BAD
         return value if np.isfinite(value) else _BAD
 
-    theta0 = pack.to_search(pack.est)
+    theta0 = pack.to_search(pack.est) / unit
     if central:
         res = minimize(
             f, theta0, method="BFGS", jac="3-point", options={"gtol": 1e-5}
@@ -206,7 +240,7 @@ def fit(
             res, theta = res2, res2.x
     value = float(res.fun)
     if not covariance:
-        values = pack.from_search(theta)
+        values = pack.from_search(theta * unit)
         return JointFit(
             models=pack.rebuild(values),
             est=values,
@@ -248,6 +282,10 @@ def fit(
             "distribution, or use a simpler distribution (Exponential) for "
             "the rare ones",
         )
+    if cov_t is not None:
+        # (back to the unconstrained scale from the search's units)
+        cov_t = unit[:, None] * cov_t * unit[None, :]
+    theta = theta * unit
     values = pack.from_search(theta)
     n_all = values.size
     cov = np.zeros((n_all, n_all))
