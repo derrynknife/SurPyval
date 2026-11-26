@@ -474,13 +474,13 @@ def test_with_the_bend_spread_at_zero_it_is_the_common_bend_model(
     assert float(f2(u2)) == pytest.approx(float(f1(u1)), rel=1e-9)
 
 
-def test_a_bend_spread_at_its_lower_bound_is_warned_of(bend_varying):
-    model, caught = bend_varying
-    k = model.parameter_names.index("sd_s1")
-    flat = [w for w in caught if "lower bound, 0" in w]
-    assert len(flat) == 1, (model.params[k], caught)
-    assert "'s1'" in flat[0]
-    assert "Leave it out of varying" in flat[0]
+def test_a_bend_spread_at_its_lower_bound_is_not_warned_of(bend_varying):
+    """The lines have no bend, so the bend's spread is estimated at (or
+    near) 0. No warning says so: the readings rarely tell a small spread
+    from none, so such a warning misled. Compare the fits by ``aic()``."""
+    _, caught = bend_varying
+    assert not [w for w in caught if "lower bound, 0" in w], caught
+    assert not [w for w in caught if "Leave it out of varying" in w], caught
 
 
 def test_the_two_spline_fits_compare_by_aic(placed, bend_varying):

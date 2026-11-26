@@ -1090,20 +1090,26 @@ them). Each varying parameter adds a dimension to every item's integral
 minutes. Compare it with the common-bend fit of the same data by
 ``aic()``.
 
-Two checks keep the fit to what the readings can tell. A varying bend is
-refused where the items' median number of readings after the knot its
-piece starts at is below the number of varying parameters (the message
-gives the counts, and says to leave the bend out of ``varying`` or to use
-knots the readings reach well past). And where a bend's estimated spread
-is at its lower bound, 0 -- it moves no item's marker by as much as 1% of
-the readings' noise at any reading age -- one warning names it and says
-to leave it out of ``varying``: the data show no difference between items
-in it, and the common-bend model is the same fit with one parameter
-fewer. (With the spread held at 0 the likelihood is the common-bend
-model's.) On such data the search for the larger fit could stop short of
-the common-bend fit's likelihood, with a spread run to 0 (#1334). So where
-the search ends unverified, or with a bend's spread at 0, the fit searches
-once more. The second search starts from the common-bend fit, with each
+A varying bend is refused where the items' median number of readings
+after the knot its piece starts at is below the number of varying
+parameters (the message gives the counts, and says to leave the bend out
+of ``varying`` or to use knots the readings reach well past): with fewer,
+the readings cannot pin down each item's own bend at all.
+
+Whether the bends really differ between items is a question for
+``aic()``. Fit the model twice, once with the bend common to all items
+and once with it in ``varying``, and compare ``common.aic()`` with
+``varying.aic()``; the lower is the better account of the data for its
+size. The common-bend model is the varying one with the bend's spread
+held at 0 (the likelihoods are then equal), so the varying fit has one
+parameter more. No warning is given where a bend's spread is estimated
+at 0: the study below shows the readings usually cannot tell a small
+spread from none, so a warning on the estimate alone misled. On such
+data the search for the larger fit could stop short of the common-bend
+fit's likelihood, with a spread run to 0 (#1334). So where the search
+ends unverified, or with a bend's spread at 0 (it moves no item's marker
+by as much as 1% of the readings' noise at any reading age), the fit
+searches once more. The second search starts from the common-bend fit, with each
 bend's spread small, and the better of the two maxima is kept. A verified
 fit with every spread clear of 0 is not searched again, so it costs
 nothing more. A varying fit therefore reaches at least the likelihood of
@@ -1126,8 +1132,7 @@ above. Each fleet was fitted with the bend common and with it varying.
   with an AIC 37 better than the common fit's.
 - All 198 varying fits reached a verified maximum, and ``aic()``
   preferred the varying bend in all 198 (by 48.5 at the median, 9.8 at
-  the least). The bend's spread was never warned of as 0: here it is
-  real.
+  the least): here the spread is real.
 - The varying fit recovered every parameter. ``sd_s1`` averaged 0.996
   against 1.0, with 96% coverage. The marker effect's bias was +1.5%
   (se 1.2%), and the intervals covered 91% to 97% of the time.
@@ -1147,17 +1152,15 @@ spread between pumps 0, 0.1 and 0.3 (against 1.0 above). This run is a
 reduced one, 10 fleets for each spread, so each share below is uncertain
 by about 15 points; the design has 200.
 
-- With no spread (sd 0), the warning fired in 4 of 10 fleets, and
-  ``aic()`` preferred the varying fit in 2. A spread that is truly 0 is
-  estimated above 0 in about half of fleets, as any variance at its
-  boundary is. So the warning cannot be expected to fire in every such
-  fleet: ``aic()`` is the check that matters, and it preferred the
-  common bend in 8 of 10.
-- With a small spread, the warning fired in 5 of 10 fleets at sd 0.1 and
-  2 of 10 at sd 0.3, and ``aic()`` preferred the varying fit in 3 and 1.
-  Spreads this small are not told from none by 150 pumps read monthly for
-  two years. The warning says that the estimate is at 0, which it is, not
-  that the truth is.
+- With no spread (sd 0), the spread was estimated at 0 in 4 of 10
+  fleets, and ``aic()`` preferred the varying fit in 2. A spread that is
+  truly 0 is estimated above 0 in about half of fleets, as any variance
+  at its boundary is, so an estimate of 0 is no reliable sign of it;
+  ``aic()`` preferred the common bend in 8 of 10.
+- With a small spread, the spread was estimated at 0 in 5 of 10 fleets at
+  sd 0.1 and 2 of 10 at sd 0.3, and ``aic()`` preferred the varying fit in
+  3 and 1. Spreads this small are not told from none by 150 pumps read
+  monthly for two years.
 - No varying fit fell short of the common-bend fit's likelihood (30 of
   30, with the second search above).
 - The readings rule refused none of the fleets, even cut at 450 or 540
@@ -1165,7 +1168,10 @@ by about 15 points; the design has 200.
   boundary, so every reading counts (a median of 15 or 18 per pump), and
   the rule is met.
 
-Read a bend's warning with the ``aic()`` comparison, not alone.
+So an estimate of 0 says little either way, and SurPyval gives no
+warning on it (it did until this study: the warning fired at the rates
+above, missing most fleets with no spread and firing on many with
+some). Compare the common-bend and varying-bend fits by ``aic()``.
 
 What the hazard follows: the link
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2027,10 +2033,10 @@ estimated: compare the choices you have in mind by ``aic()``.
 ``fitter.compare_links(data, marker="vibration")`` fits the vibration's
 links in turn, each with every other marker's links as the fitter has
 them, and ranks them as with one marker; ``models`` and the table are by
-the vibration's link and the ``verdict`` names it. A spline marker's
-varying bends are checked as one marker's are, each against its own
-marker's noise and reading ages, and the warning names them
-``"vibration.s1"``.
+the vibration's link and the ``verdict`` names it. Whether a spline
+marker's bends vary between items (``varying=("vibration.s1",)``) is,
+as with one marker, a comparison by ``aic()`` of the fits with and
+without them in ``varying``.
 
 Not yet: failure modes with several markers (``e=``), and a shared
 health index (one hidden condition behind every reading).

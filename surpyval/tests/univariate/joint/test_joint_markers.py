@@ -21,7 +21,6 @@ The checks:
 
 import json
 import pickle
-import warnings
 
 import numpy as np
 import pytest
@@ -504,37 +503,12 @@ def test_compare_links_of_several_markers_names_the_marker():
 # -- a spline marker's bends without spread ---------------------------------
 
 
-@pytest.mark.parametrize("sd_bend, warned", [(1e-6, True), (0.5, False)])
-def test_the_bends_without_spread_warning_is_per_marker(sd_bend, warned):
-    """Each marker's varying bends are checked against its own noise and
-    its own reading ages, and named with the marker."""
-    from types import SimpleNamespace
+def test_no_bends_without_spread_warning_by_marker():
+    """The warning on a varying bend whose spread is estimated at 0 was
+    dropped (one marker or several, ``"<marker>.s1"``): the readings
+    rarely tell a small spread from none, so the warning misled. The two
+    fits are compared by ``aic()`` instead."""
+    from surpyval.univariate.joint import joint_ph
 
-    from surpyval.degradation import SplinePath
-    from surpyval.univariate.joint._multi import MarkerSet
-    from surpyval.univariate.joint.joint_ph import _warn_bends_without_spread
-
-    knee = SplinePath(knots=[365.0], boundary=(0.0, 730.0))
-    paths = MarkerSet(["vibration", "temperature"], [knee, knee])
-    params = {
-        "sd_vibration.s1": sd_bend,
-        "vibration.sd_noise": 0.4,
-        # the temperature's bend has spread for its noise
-        "sd_temperature.s1": 1e-3,
-        "temperature.sd_noise": 0.01,
-    }
-    model = SimpleNamespace(
-        parameter_names=list(params), params=np.array(list(params.values()))
-    )
-    ages = [np.array([0.0, 300.0, 700.0, 0.0, 700.0])] * 3
-    channels = [np.array([0, 0, 0, 1, 1])] * 3
-    varying = ("vibration.level", "vibration.s1", "temperature.s1")
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        _warn_bends_without_spread(paths, varying, model, ages, channels)
-    said = [str(w.message) for w in caught]
-    assert len(said) == int(warned)
-    if warned:
-        assert "'vibration.s1' (sd 1e-06" in said[0]
-        assert "its noise sd 0.4" in said[0]
-        assert "temperature" not in said[0]
+    assert not hasattr(joint_ph, "_warn_bends_without_spread")
+    assert not hasattr(joint_ph, "_flat_bends")

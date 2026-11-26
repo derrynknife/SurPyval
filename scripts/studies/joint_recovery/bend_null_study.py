@@ -2,6 +2,13 @@
 (``shape_study.py``) with the bends alike, or nearly, to see how often
 the two checks on a varying bend get that case wrong.
 
+The warning this study tested (a bend's spread estimated at 0) was
+dropped on 2026-11-26 after its reduced run: the fits are compared by
+``aic()`` instead. The study still records the warning's rule
+(``warned``: the varying fit's ``sd_s1`` moves no item's marker by 1%
+of the noise sd at any reading age), computed here from the fit, so a
+rerun gives the same counts as before.
+
     python scripts/studies/joint_recovery/bend_null_study.py [reps]
 
 The design, fixed before the first run:
@@ -15,7 +22,7 @@ The design, fixed before the first run:
   spreads), each fleet drawn afresh from its seed for each sd.
 - Each fleet is fitted with ``marker_reference=4`` with the bend common,
   ``varying=("level", "rate")``, and varying, ``("level", "rate",
-  "s1")``. Recorded: whether the bends-without-spread warning fires, the
+  "s1")``. Recorded: whether the bends-without-spread rule is met, the
   two AICs, the varying fit's ``sd_s1`` and whether its maximum is
   verified.
 - The readings rule: each fleet cut at 450 and at 540 days (readings
@@ -61,7 +68,24 @@ MEAN = [3.0, 0.0, 3.0]
 BEND_SDS = (0.0, 0.1, 0.3)
 CUTS = (450.0, 540.0)
 NOISE = 0.4
-WARNING = "lower bound, 0"
+#: the dropped warning's rule: a spread under 1% of the noise sd
+NO_SPREAD = 0.01
+
+
+def at_zero(path: Any, model: Any, data: Any) -> bool:
+    """Whether the varying fit's bend ``s1`` has its spread at 0 by the
+    dropped warning's rule (:data:`NO_SPREAD`)."""
+    params = dict(zip(model.parameter_names, model.params))
+    if "sd_s1" not in params:
+        return False
+    ages = np.array(
+        [a for item in data.to_items() for a in (item.markers or {})],
+        dtype=float,
+    )
+    basis = np.abs(np.asarray(path.basis(ages), dtype=float))
+    j = list(path.parameter_names).index("s1")
+    reach = abs(float(params["sd_s1"])) * float(np.max(basis[:, j]))
+    return bool(reach < NO_SPREAD * float(params["sd_noise"]))
 
 
 def cut(data: Any, at: float) -> Any:
@@ -106,8 +130,8 @@ def one(job: Any) -> Any:
             ("common", ("level", "rate")),
             ("varying", ("level", "rate", "s1")),
         ):
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always")
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
                 model = JointPH(Weibull, path, varying=varying).fit(
                     data, marker_reference=4.0
                 )
@@ -117,7 +141,7 @@ def one(job: Any) -> Any:
                 neg_ll=float(model.neg_ll()),
                 maximum=model.maximum,
                 sd_s1=float(params.get("sd_s1", np.nan)),
-                warned=any(WARNING in str(w.message) for w in caught),
+                warned=at_zero(path, model, data),
             )
     except Exception as error:  # recorded, not hidden
         out = dict(sd_s1=sd_s1, seed=seed, ok=False, error=repr(error))
