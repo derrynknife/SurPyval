@@ -54,6 +54,12 @@ Design decisions made while working on the open issues, with the reason for each
 | The object's own module name (`type(obj).__module__`) says whether it is Polars or Arrow, so neither library is imported for a pandas user, and neither is a dependency; both are in the `tests` extra only. | proposed | `import surpyval` stays light, and the issue asks for no hard dependency. | done |
 | The conversion is the library's own `to_pandas` (Polars' needs PyArrow); a null is then a missing value as in pandas. A Polars `LazyFrame` is collected first. Other Arrow-compatible frames (the Arrow C stream interface) are not read. | proposed | The simplest conversion that keeps a null as pandas keeps it; wider interchange is a later decision. | done |
 | A conformance test hands every registered `*_from_df` entry point a Polars-like object with nothing but `to_pandas`, and compares the fit with the pandas one. | proposed | The first run found 66 entry points that read the frame directly; the test keeps new ones honest without needing Polars installed. | done |
+### fit_bayes_from_df for the competing-risks and multi-state fitters (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The regressions' `fit_bayes_from_df` (competing risks and multi-state) name a coefficient in `priors` as `fit_bayes` does (`coef_0`), not by its column as `WeibullPH.fit_bayes_from_df` does; their `fit_from_df` columns and the Bayesian options are passed through unchanged. The Bayesian options after the columns are keyword-only on `ParametricCompetingRisks.fit_bayes_from_df` (`dist`, `tl_col`, `xl_col`, `xr_col` too). | proposed | Naming by column needs each cause's (transition's) regression fitted from the frame, a change to how the composition fits; the plumbing the issue asked for is the columns. Keyword-only avoids the positional mismatch with `fit_from_df`'s `how`. | done |
+
 ### Competing risks on the joint (window) path: unknown causes, joint priors, WAIC with entry (27 Nov 2026)
 
 | Decision | By | Reason | Status |
