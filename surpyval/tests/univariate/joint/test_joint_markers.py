@@ -323,7 +323,9 @@ def test_refusals():
     with pytest.raises(ValueError, match="compares the links of one marker"):
         fitter.compare_links([1.0], markers=[{}])
     x, c, m, _ = simulate(n=20, seed=2)
-    with pytest.raises(ValueError, match="no failure modes"):
+    # failure modes are taken (test_joint_marker_causes.py); a mode on an
+    # item still running is refused as with one marker
+    with pytest.raises(ValueError, match="still running"):
         fitter.fit(x, c=c, markers=m, e=["a"] * len(x))
     with pytest.raises(ValueError, match=r"\{marker: \{age: value\}\}"):
         fitter.fit(x, c=c, markers=[r["vibration"] for r in m])

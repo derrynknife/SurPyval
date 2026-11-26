@@ -1239,7 +1239,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         spread = list(range(n_path, n_path + n_spread))
         i = spread[-1] + 1 if spread else n_path
         if self.markers is not None:
-            return self._marker_parts(path, spread, i, p)
+            return self._marker_parts(path, spread, i, p, hazard)
         at = {
             "value": "marker = {:.6g}".format(
                 np.nan
@@ -1266,7 +1266,13 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                     spread,
                 ),
                 ("noise", [i]),
-                *self._cause_parts(hazard, at),
+                *self._cause_parts(
+                    hazard,
+                    ", ".join(at[link] for link in self.link),
+                    ", ".join(_LINK_WORDS[link] for link in self.link)
+                    + (f", lag {self.lag:g}" if self.lag > 0 else "")
+                    + _weight_words(self.weight),
+                ),
             ]
         return [
             (
@@ -1302,7 +1308,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ]
 
     def _marker_parts(
-        self, path: list, spread: list, i: int, p: int
+        self, path: list, spread: list, i: int, p: int, hazard: list
     ) -> list[tuple[str, list[int]]]:
         """:meth:`_parts` of several markers: the path (each marker's in
         turn), the spread, each marker's noise, the survival part (alpha
@@ -1326,6 +1332,22 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         )
         noise = list(range(i, i + M))
         j = i + M
+        links = (
+            ", ".join(link_words(link) for link in self.link)
+            + lag_words(self.lag, heading=True)
+            + weight_words(self.weight)
+        )
+        if self.causes is not None:
+            return [
+                (f"paths: {paths}", path),
+                (
+                    "spread between items"
+                    + _structure_words(self.random_effects_structure),
+                    spread,
+                ),
+                ("noise", noise),
+                *self._cause_parts(hazard, ", ".join(at), links),
+            ]
         return [
             (f"paths: {paths}{one}", path),
             (
@@ -1351,27 +1373,20 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             ),
         ]
 
-    def _cause_parts(self, hazard: list, at: dict) -> list:
+    def _cause_parts(self, hazard: list, at: str, links: str) -> list:
         """The survival part's headings and positions with several
         causes: each cause's baseline and coefficients, then its
-        effects, then what the causes share."""
+        effects, then what the causes share. ``at`` says where ``alpha``
+        is reported and ``links`` what the hazard follows."""
         names = list(self.parameter_names)
-        effects = [EFFECTS[link] for link in self.link]
-        link_words = (
-            ", ".join(_LINK_WORDS[link] for link in self.link)
-            + (f", lag {self.lag:g}" if self.lag > 0 else "")
-            + _weight_words(self.weight)
-        )
+        effects = [effect_name(link) for link in self.link]
         out = []
         for cause in self.causes or []:
             own = [f"{cause}: {name}" for name in ["alpha", "beta", *hazard]]
             out.append(
                 (
                     "survival, {}: {} {}, alpha at {}".format(
-                        cause,
-                        self.dist.name,
-                        self.survival,
-                        ", ".join(at[link] for link in self.link),
+                        cause, self.dist.name, self.survival, at
                     ),
                     [names.index(name) for name in own if name in names],
                 )
@@ -1379,7 +1394,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             own = [f"{cause}: {name}" for name in effects]
             out.append(
                 (
-                    f"link, {cause}: {link_words}",
+                    f"link, {cause}: {links}",
                     [names.index(name) for name in own if name in names],
                 )
             )
@@ -1589,6 +1604,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             + f"\nSurvival            : {survival}"
             f"\nData                : {self.n_items:g} items, "
             f"{self.n_events:g} failures, {self.n_readings:g} readings"
+            f"{self._cause_line()}"
             f"\nFit                 : {self._fit_line()}"
             f"\nIntegration         : {_INTEGRATION_WORDS[self.integration]}"
             "\nEffect units        : "

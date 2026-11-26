@@ -407,6 +407,22 @@ v0.30 (unreleased)
   points asked about are in, not the whole grid: 200 resamples of 400
   pairs at two points take 0.8 s, not 2.5 s. The bounds are the same
   to the last digit.
+- **Joint models of several markers take failure modes.**
+  ``JointPH(Weibull, {"vibration": ..., "temperature": ...}).fit(...,
+  e=modes)`` (or ``e_col=``, or the records' event types) fits each
+  failure mode its own Weibull baseline, hazard coefficients and an
+  effect of each marker's link (``"bearing: vibration.marker_effect"``),
+  on one marker part, as one marker's failure modes do. ``shared=``
+  takes ``"beta"``, a hazard covariate, or one marker's link effect by
+  its full name (``"temperature.marker_effect"``), and the fit with it
+  shared is nested in the fit without. Lags and weights by marker,
+  ``compare_links(..., marker=)``, predictions, Wald bounds, saving and
+  ``fit_from_df`` all take the modes. Checked: one marker given as a
+  dict equals ``WeibullJointPH`` with modes to 3e-15; one mode is the
+  model without modes exactly; equal hazards and a mode no marker
+  follows reduce to the simpler models' likelihoods (1e-10); a seeded
+  fleet of 300 recovers the effects. These fits were refused before, so
+  no existing number changes.
 - **Joint models of several markers: a lag and a weight for each
   marker, and ``compare_links`` of one marker.** ``JointPH(Weibull, {...}, lag={"vibration": 30},
   weight={"vibration": ("window", 90)})`` gives each marker its own
