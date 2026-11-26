@@ -1198,6 +1198,9 @@ class CompetingRisks(SerialisableMixin):
         >>> model.r
         array([3, 2, 3, 3, 2, 1])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         if xl_col is not None or xr_col is not None:
             if x_col is not None or xl_col is None or xr_col is None:
                 raise ValueError(

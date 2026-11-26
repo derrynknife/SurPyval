@@ -17,6 +17,11 @@ here: only SurPyval's likelihood, for your own network and loop.
   one distribution or a mixture of ``K`` (``mixture=``, the model of Deep
   Survival Machines), and :class:`NLLLoss` the same as a
   ``torch.nn.Module``;
+- :func:`cox_nll` is the Cox partial likelihood (Efron or Breslow ties) for
+  a network's log relative hazards, and :func:`discrete_time_nll` the
+  discrete-time (logistic) hazard likelihood for a network's interval
+  logits: losses only, equal to ``CoxPH``'s and a discrete lifetime
+  model's negative log-likelihood;
 - :func:`sf` gives each row's survival curve as an ``(N, T)`` tensor, the
   predictions ``surpyval.metrics.score_predictions`` scores, and
   :func:`to_surpyval` any row as an ordinary SurPyval model.
@@ -36,12 +41,15 @@ from typing import Any
 from surpyval.torch.data import Targets, targets
 from surpyval.torch.loss import SUPPORTED, constrain, nll
 from surpyval.torch.predict import sf, to_surpyval
+from surpyval.torch.survival_losses import cox_nll, discrete_time_nll
 
 __all__ = [
     "SUPPORTED",
     "NLLLoss",
     "Targets",
     "constrain",
+    "cox_nll",
+    "discrete_time_nll",
     "nll",
     "sf",
     "targets",

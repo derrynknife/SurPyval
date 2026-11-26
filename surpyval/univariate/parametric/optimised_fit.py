@@ -955,7 +955,11 @@ turnbull_estimator, hr
         if (
             how == "MLE"
             and not fixed
-            and self._warn_if_at_limit(surv_data, results, zi, lfp)
+            # (with the hazard ratio known at fit time, which a family
+            # comparing the fit with a limit must hold too)
+            and self._warn_if_at_limit(
+                surv_data, {**results, "hr": hr}, zi, lfp
+            )
         ):
             warning = None
             unverified = False

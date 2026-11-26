@@ -923,6 +923,9 @@ class FrailtyFitter(FitterRepr):
         FrailtyModel
             The fitted model.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         check_columns(
             df, x_col=x_col, c_col=c_col, n_col=n_col, group_col=group_col
         )

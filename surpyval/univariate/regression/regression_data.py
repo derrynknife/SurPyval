@@ -453,6 +453,9 @@ def design_matrix_from_df(
         categorical factor levels) can be reproduced at prediction time.
         ``None`` when ``Z_cols`` was used.
     """
+    from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+    df = _as_pandas(df)
     if (Z_cols is None) and (formula is None):
         raise ValueError("One of 'Z_cols' or 'formula' must be provided")
 
@@ -1329,6 +1332,9 @@ class DataFrameRegressionMixin:
         >>> model.sf([10, 20], df[["age", "weight"]].head(2)).round(4)
         array([0.4757, 0.0024])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         df, x_col, xl_col, xr_col = exact_or_range_frame(
             df, x_col, xl_col, xr_col, c_col
         )

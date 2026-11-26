@@ -224,6 +224,9 @@ class RegressionFitter(MirroredDistributionAttrs, DataFrameRegressionMixin):
         >>> model.parameter_names
         ['alpha', 'beta', 'load']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.bayes.regression import fit_from_df as _fit_from_df
 
         return _fit_from_df(

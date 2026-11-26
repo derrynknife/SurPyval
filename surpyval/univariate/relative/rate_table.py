@@ -515,6 +515,9 @@ class RateTable(SerialisableMixin):
         >>> sp.RateTable.from_df(df, "age", "rate", stratum_col="sex")
         RateTable: 2 age band(s) (0 to 50+), 2 strata ('F', 'M')
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         for name, col in (
             ("age_col", age_col),
             ("rate_col", rate_col),

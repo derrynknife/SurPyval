@@ -408,6 +408,7 @@ _PARAMETER_ROLES: dict[str, tuple[str, ...]] = {
     ),
     "GeneralizedGamma": ("location of log(x)", "scale of log(x)", "shape"),
     "Geometric": ("probability",),
+    "BirnbaumSaunders": ("shape", "scale (median)"),
     "Gompertz": ("shape", "rate"),
     "InverseGaussian": ("mean", "shape"),
     "Gumbel": ("location", "scale"),
@@ -1897,6 +1898,9 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         >>> model.method
         'conjugate'
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         if w_col is not None:
             raise self._bayes_weights_refusal("fit_bayes_from_df", "w_col")
         from surpyval.bayes.fitting import fit_from_df as _fit_from_df
