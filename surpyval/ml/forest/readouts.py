@@ -5,7 +5,8 @@
   changes as one covariate is moved over a range of values, the others
   kept as they are, and the average of those curves.
 * :func:`minimal_depth` -- how near the root a covariate first splits
-  each tree (Ishwaran, Kogalur, Gorodeski, Minn and Lauer, 2010).
+  each tree, and the threshold below which it is selected (Ishwaran,
+  Kogalur, Gorodeski, Minn and Lauer, 2010).
 * :func:`horizon_importance` -- permutation importance of each covariate
   at each of several horizons, by the out-of-bag Brier score or AUC.
 
@@ -333,19 +334,88 @@ def tree_minimal_depths(model: Any) -> tuple[NDArray, NDArray]:
     return depths, used
 
 
+def _split_nodes_by_depth(root: Any) -> tuple[list[int], int]:
+    """The number of split nodes at each depth, the root at depth 0, and
+    the depth of the tree (its deepest leaf)."""
+    counts: dict[int, int] = {}
+    deepest = 0
+    stack = [(root, 0)]
+    while stack:
+        node, depth = stack.pop()
+        if hasattr(node, "left_child"):
+            counts[depth] = counts.get(depth, 0) + 1
+            stack.append((node.left_child, depth + 1))
+            stack.append((node.right_child, depth + 1))
+        else:
+            deepest = max(deepest, depth)
+    return [counts.get(d, 0) for d in range(deepest)], deepest
+
+
+def null_minimal_depth_distribution(
+    split_nodes: Any, tree_depth: int, p: Any
+) -> list[Any]:
+    """The distribution of the minimal depth of a covariate with no effect.
+
+    ``split_nodes[d]`` is the number of split nodes at depth ``d`` of a
+    tree, ``d = 0, ..., tree_depth - 1``; ``p`` is the number of
+    covariates. Returns ``tree_depth + 1`` probabilities, for the depths
+    ``0, ..., tree_depth`` (the last is "never split on", at the tree's
+    depth), after Ishwaran et al. (2010):
+
+    ``P(D = d) = (1 - 1/p)**L_d * (1 - (1 - 1/p)**l_d)`` with
+    ``l_d = split_nodes[d]`` and ``L_d = l_0 + ... + l_(d-1)``.
+
+    The arithmetic is plain Python, so a ``fractions.Fraction`` ``p`` gives
+    exact probabilities.
+    """
+    q = 1 - 1 / p
+    probs = []
+    above = 0
+    for d in range(tree_depth):
+        probs.append(q**above * (1 - q ** int(split_nodes[d])))
+        above += int(split_nodes[d])
+    probs.append(1 - sum(probs))
+    return probs
+
+
+def null_minimal_depth_mean(split_nodes: Any, tree_depth: int, p: Any) -> Any:
+    """The mean of :func:`null_minimal_depth_distribution`."""
+    probs = null_minimal_depth_distribution(split_nodes, tree_depth, p)
+    return sum(d * pr for d, pr in enumerate(probs))
+
+
+def minimal_depth_threshold(model: Any) -> float:
+    """The selection threshold for :func:`minimal_depth`.
+
+    See :meth:`~surpyval.ml.forest.forest.RandomSurvivalForest.minimal_depth`.
+    """
+    trees = model.trees if _is_forest(model) else [model]
+    p = len(model.feature_labels)
+    means = []
+    for tree in trees:
+        split_nodes, deepest = _split_nodes_by_depth(tree._root)
+        means.append(float(null_minimal_depth_mean(split_nodes, deepest, p)))
+    return float(np.mean(means))
+
+
 def minimal_depth(model: Any) -> pd.DataFrame:
     """The minimal depth of each feature.
 
     See :meth:`~surpyval.ml.forest.forest.RandomSurvivalForest.minimal_depth`.
     """
     depths, used = tree_minimal_depths(model)
-    return pd.DataFrame(
+    mean_depth = depths.mean(axis=0)
+    threshold = minimal_depth_threshold(model)
+    out = pd.DataFrame(
         {
-            "minimal_depth": depths.mean(axis=0),
+            "minimal_depth": mean_depth,
             "split_fraction": used.mean(axis=0),
+            "selected": mean_depth < threshold,
         },
         index=pd.Index(model.feature_labels, name="feature"),
     )
+    out.attrs["threshold"] = threshold
+    return out
 
 
 _METRICS = ("brier", "auc")

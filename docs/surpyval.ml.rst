@@ -173,6 +173,27 @@ say what it has learnt, all from the fitted model, without refitting:
   important) and the share of trees that use it at all. It needs no
   out-of-bag data, so it also works on a forest restored with
   ``from_dict``.
+
+  *Which covariates to keep.* A covariate with no effect is still split on
+  by chance, and the more nodes a tree has near the root, the sooner chance
+  alone reaches it. ``forest.minimal_depth_threshold()`` (also
+  ``result.attrs["threshold"]``) is the mean minimal depth you would expect
+  from a covariate with no effect in these trees, and the table's
+  ``selected`` column is true for a covariate whose mean minimal depth is
+  below it: it is split on earlier than chance explains. With ``p``
+  covariates, ``l_d`` the number of split nodes at depth ``d`` of a tree,
+  ``D`` its depth and ``L_d = l_0 + ... + l_(d-1)``, such a covariate's
+  minimal depth ``D_v`` has
+  ``P(D_v = d) = (1 - 1/p)^L_d (1 - (1 - 1/p)^l_d)`` for
+  ``d = 0, ..., D - 1``, and the rest of the probability at ``D`` (a tree
+  that never splits on it, counted at ``D`` as in the table); the
+  threshold is the mean of this, worked out tree by tree and averaged over
+  the trees. ``1/p`` is the chance a given covariate is the one split on
+  at a node, whatever ``n_features_split`` is. It is a guide rather than a
+  test: it assumes the covariates are interchangeable, which correlated
+  covariates are not. Ishwaran, Kogalur, Gorodeski, Minn and Lauer (2010),
+  "High-dimensional variable selection for survival data", *Journal of the
+  American Statistical Association* 105(489), 205-217.
 - **How much each covariate matters, at each horizon**:
   ``forest.feature_importances(times=[1, 5, 10])``. Each covariate is
   shuffled among each tree's out-of-bag units, which breaks its link with
