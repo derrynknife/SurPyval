@@ -4,6 +4,8 @@
 import numpy as np
 import pytest
 from scipy import stats
+from scipy.integrate import quad
+from scipy.special import gammainc
 
 import surpyval as sp
 from surpyval.degradation import (
@@ -12,7 +14,14 @@ from surpyval.degradation import (
     WienerProcess,
     WienerProcessModel,
 )
-from surpyval.degradation.bayes import BayesianProcessModel, ProcessLife
+from surpyval.degradation.bayes import (
+    BayesianProcessModel,
+    ProcessLife,
+    _gamma_partial_integral,
+    _gamma_passage_integral,
+    _wiener_partial_life,
+    _wiener_sf,
+)
 
 
 def _readings(kind, units=5, reads=11, seed=1, start=0.0):
@@ -544,10 +553,124 @@ def test_a_tight_posterior_is_the_fitted_model_under_a_profile(stressed):
     assert gap < 0.1 * (hi - lo)
 
 
-def test_the_mean_under_a_profile_points_to_function_cri(stressed):
-    with pytest.raises(ValueError, match="function_cri"):
-        stressed.mean(PROFILE)
-    with pytest.raises(ValueError, match="function_cri"):
-        stressed.mean_cri(PROFILE)
+# The mean life under a profile. Rules fixed before the first run: the
+# Wiener partial life and the gamma partial integral against adaptive
+# quadrature of the survival (1e-9 relative); the mean at each posterior
+# point against the fitted model's own mean through the profile (a
+# quadrature of its sf, 1e-7 relative, the issue's tolerance), the
+# fixed and the cyclic profile; a constant profile against the constant
+# stress (1e-8: the gamma plain mean is tabulated to about 1e-9).
+@pytest.mark.parametrize("mu", [0.5, 2.0, -0.3])
+@pytest.mark.parametrize("sigma", [1.2, 0.4])
+@pytest.mark.parametrize("u", [0.5, 5.0, 20.0, 80.0])
+def test_the_wiener_partial_life_is_its_survival_integrated(mu, sigma, u):
+    D = 10.0
+    m, s = np.array([mu]), np.array([sigma])
+
+    def sf(t):
+        return float(_wiener_sf(np.array([t]), m, s, D)[0])
+
+    # split where the survival falls, for the quadrature's sake
+    cuts = [0.0] + [c for c in (D / abs(mu), 2 * D / abs(mu)) if c < u] + [u]
+    ref = sum(
+        quad(sf, a, b, epsabs=0, epsrel=1e-13, limit=500)[0]
+        for a, b in zip(cuts[:-1], cuts[1:])
+    )
+    got = float(_wiener_partial_life(np.array([u]), m, s, D)[0])
+    assert got == pytest.approx(ref, rel=1e-9)
+
+
+def test_the_wiener_partial_life_runs_to_the_mean():
+    D = 10.0
+    m, s = np.array([0.5, 2.0, -0.3]), np.array([1.2, 0.4, 1.0])
+    got = _wiener_partial_life(np.full(3, np.inf), m, s, D)
+    np.testing.assert_allclose(got[:2], D / m[:2], rtol=1e-15)
+    assert np.isposinf(got[2])
+    # and far out, the partial life is the mean
+    far = _wiener_partial_life(np.array([1e4, 1e4]), m[:2], s[:2], D)
+    np.testing.assert_allclose(far, D / m[:2], rtol=1e-13)
+
+
+@pytest.mark.parametrize("c", [0.5, 8.0, 200.0])
+@pytest.mark.parametrize("share", [0.1, 1.0, 1.3, 50.0])
+def test_the_gamma_partial_integral_is_its_survival_integrated(c, share):
+    v = share * c
+    cuts = sorted({0.0, max(c - 3 * np.sqrt(c), 0.0), c, v})
+    cuts = [x for x in cuts if x <= v]
+    ref = sum(
+        quad(lambda t: gammainc(t, c), a, b, epsabs=0, epsrel=1e-13)[0]
+        for a, b in zip(cuts[:-1], cuts[1:])
+    )
+    got = float(_gamma_partial_integral(np.array([c]), np.array([[v]]))[0, 0])
+    assert got == pytest.approx(ref, rel=1e-9)
+    whole = _gamma_partial_integral(np.array([c]), np.array([[np.inf]]))
+    assert whole[0, 0] == pytest.approx(
+        float(_gamma_passage_integral(np.array([c]))[0]), rel=1e-9
+    )
+
+
+CYCLIC = sp.StepSchedule.cyclic([0.0, 5.0], [[1.0], [2.0]], period=10.0)
+
+
+@pytest.mark.parametrize("profile", ["steps", "cyclic"])
+def test_the_mean_under_a_profile_is_the_fitted_models(stressed, profile):
+    """At each posterior point the mean through the profile equals the
+    fitted model's own mean there (a quadrature of its sf through its
+    StressClock): what function_cri(lambda m: m.mean(profile)) reads,
+    point by point."""
+    prof = PROFILE if profile == "steps" else CYCLIC
+    points = stressed.posterior.points
+    # (the fitted model's mean through a cyclic profile is a quadrature
+    # over hundreds of its steps, seconds a point: eight points for it)
+    sub = points[:: max(1, len(points) // (40 if profile == "steps" else 8))]
+    got = ProcessLife(stressed.target, sub, prof, None).mean()
+    slow = np.array(
+        [float(stressed.target.with_params(r).mean(prof)) for r in sub]
+    )
+    assert np.array_equal(np.isinf(got), np.isinf(slow))
+    ok = np.isfinite(slow)
+    np.testing.assert_allclose(got[ok], slow[ok], rtol=1e-7)
+    if profile == "cyclic":
+        # (the whole grid through a cyclic profile takes a minute or two
+        # for the gamma process: the steps profile checks the summaries)
+        return
+    life = ProcessLife(stressed.target, points, prof, None).mean()
+    assert stressed.mean(prof) == pytest.approx(
+        float(stressed.posterior.wquantile(life, 0.5)), rel=1e-14
+    )
+    lo, hi = stressed.mean_cri(prof)
+    assert lo < stressed.mean(prof) < hi
+
+
+def test_a_cyclic_mean_lies_between_its_stresses(stressed):
+    # half the time at 1, half at 2: at every point, strictly between
+    # the constant-stress means
+    points = stressed.posterior.points
+    sub = points[:: max(1, len(points) // 500)]
+    m = ProcessLife(stressed.target, sub, CYCLIC, None).mean()
+    hi = ProcessLife(stressed.target, sub, [1.0], None).mean()
+    lo = ProcessLife(stressed.target, sub, [2.0], None).mean()
+    ok = np.isfinite(hi)
+    assert np.all(np.isinf(m[~ok]))
+    # (which stress is the faster depends on the sign of the point's
+    # stress coefficient)
+    moving = ok & (sub[:, -1] != 0)
+    assert np.all(
+        (np.minimum(lo, hi)[moving] < m[moving])
+        & (m[moving] < np.maximum(lo, hi)[moving])
+    )
+
+
+def test_a_constant_profile_has_the_constant_stress_mean(stressed):
+    const = sp.StepSchedule.constant([2.0])
+    assert stressed.mean(const) == pytest.approx(
+        stressed.mean([2.0]), rel=1e-8
+    )
+    np.testing.assert_allclose(
+        stressed.mean_cri(const), stressed.mean_cri([2.0]), rtol=1e-8
+    )
+
+
+def test_a_wrong_profile_is_refused(stressed):
     with pytest.raises(ValueError, match="covariate"):
         stressed.sf(10.0, sp.StepSchedule.from_changepoints([0], [[1.0, 2.0]]))

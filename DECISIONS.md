@@ -36,6 +36,11 @@ Design decisions made while working on the open issues, with the reason for each
 | `reduction="mean"` divides by the number of failures (the sum of `n` over failed rows); `"sum"` is `CoxPH`'s negative log partial likelihood. No `"none"`. | proposed | The partial likelihood has no per-row terms. DeepSurv divides by the number of events. | done |
 | `discrete_time_nll(logits, index, c, n)`: intervals counted from 0, a unit censored in interval k survived through it (pycox's logistic hazard convention), so interval k is the discrete time k + 1. Only failed and right-censored rows. | proposed | Matches `DiscreteWeibull` and `Geometric` (support from 1) and the usual training convention. | done |
 | The Stan or NumPyro likelihood bridge (part b) is not built. | proposed | Left for a follow-up. | open |
+### The Bayesian process fits' mean life under a stress profile (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A cyclic profile is laid out to a horizon doubled until each point's clock survival beyond it is below 1e-12 of its whole, and that rest is taken at the last step's pace; after 64 doublings the call refuses, pointing to `function_cri`. A non-cyclic profile's last stress holds for ever, so its rest is exact. | proposed | No closed form sums the cycles; 1e-12 of the whole is far inside the 1e-7 the fitted model's own quadrature reaches. | done |
 
 ### Dates to durations (27 Nov 2026)
 

@@ -349,6 +349,18 @@ v0.30 (unreleased)
   third coefficient vector), and ``discrete_time_nll`` equals the negative
   log-likelihood of ``DiscreteWeibull`` and ``Geometric`` at their
   hazards; gradients agree with finite differences.
+- **The mean life under a stress profile in ``BayesianProcessModel``.**
+  ``mean(profile)`` and ``mean_cri(profile)`` (a ``StepSchedule`` as
+  ``Z``) are computed at every posterior point at once, where they
+  refused and pointed to ``function_cri(lambda m: m.mean(profile))``:
+  the sum over the profile's steps of the step's stretch of the
+  reference-clock survival's integral over its pace. The Wiener
+  process's stretch is in closed form (the Inverse Gaussian's partial
+  mean, derived in ``_wiener_partial_life``), the gamma process's one
+  integral on a fixed Gauss-Legendre rule. Checked against adaptive
+  quadrature (1e-9), against the fitted model's own mean through the
+  profile at each posterior point (1e-7, fixed and cyclic profiles), and
+  a constant profile against the constant stress (1e-8).
 
 - **``surpyval.utils.dates_to_durations``: dates to durations and
   censoring flags.** Start dates, end dates (a blank meaning still
