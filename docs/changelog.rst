@@ -324,6 +324,18 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **``surpyval.utils.dates_to_durations``: dates to durations and
+  censoring flags.** Start dates, end dates (a blank meaning still
+  running), an optional cut-off (default: the latest date seen), a
+  ``unit`` (seconds, minutes, hours, days, weeks or years; a year is
+  365.25 days) and an optional ``event`` flag return ``x`` and ``c``. A
+  unit with no end, or ending after the cut-off, is right censored at the
+  cut-off; time-zone aware dates are compared as elapsed time; a mix of
+  aware and naive dates, an end before its start and a start after the
+  cut-off are refused with a count. It agrees with lifelines'
+  ``datetimes_to_durations`` on whole days (and returns the fraction of a
+  unit it truncates). The refusals of dates in fits now point to it.
+
 - **Two more bivariate survival estimators, and Kendall's tau from
   them.** ``surpyval.multivariate.Dabrowska.fit(x, c, n,
   estimator="prentice-cai")`` gives Prentice and Cai's (1992) estimate

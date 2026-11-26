@@ -13,6 +13,18 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-27
+
+### Dates to durations (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `surpyval.utils.dates_to_durations(start, end=None, cutoff=None, unit="D", event=None)` returns `(x, c)` with `c` 0 or 1. It is a function in the utilities, not a method of a data class, and takes dates only (text is refused, saying how to convert it). | proposed | The data handling lives in `surpyval.utils`; text dates are ambiguous (day first or month first). | done |
+| The default cut-off is the latest date among the starts and the present ends; an end after the cut-off is censored at it. | proposed | As lifelines' `fill_date` does for an end after it; the latest date seen is the usual end of a records extract. | done |
+| Units are fixed lengths: s, min, h, D, W and Y, a year being 365.25 days; months are refused. Durations are floats, not truncated to whole units (lifelines truncates). | proposed | A month or a calendar year has no fixed length; truncating discards information the fit can use. | done |
+| Time-zone aware dates are compared in UTC (elapsed time); naive ones as written; a mix is refused. | proposed | A mix has no right answer, and silently assuming a zone shifts durations by hours. | done |
+| `event` (which end dates are failures) is an extra argument beyond the first plan; where false the unit is censored at its end date. | proposed | A removal for another reason is the common case in field logs (the Data Wrangler page's own example). | done |
+
 ## 2026-11-26
 
 ### GeneralizedF likelihood-ratio bounds at the family's edges (26 Nov 2026)

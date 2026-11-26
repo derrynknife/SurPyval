@@ -798,6 +798,7 @@ surpyval.univariate.regression.kinds.TIME_SCALING
 surpyval.univariate.regression.penalty_path
 surpyval.univariate.regression.plot_coefficients
 surpyval.utils.coerce_xcnt_x
+surpyval.utils.dates_to_durations
 surpyval.utils.format_truncation
 surpyval.utils.fs_to_xcnt
 surpyval.utils.fs_to_xrd
