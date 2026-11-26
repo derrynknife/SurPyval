@@ -322,10 +322,23 @@ class DistributionPrior(Prior):
                 "at the range's ends."
             )
 
+    def _log_df(self, theta: npt.NDArray) -> Any:
+        """The prior's log density at ``theta``, from the distribution's
+        own log density where it has one (so that it does not underflow
+        to ``-inf`` far in the tails, past about 38 standard deviations
+        of a normal, where ``log(df)`` would)."""
+        dist = self.model.dist
+        log_df = getattr(dist, "log_df", None)
+        if log_df is None:
+            return np.log(self.model.df(theta))
+        params = np.atleast_1d(np.asarray(self.model.params, dtype=float))
+        out = np.asarray(log_df(np.asarray(theta, dtype=float), *params))
+        return np.where(np.isfinite(out) | (out == -np.inf), out, -np.inf)
+
     def log_density_phi(self, phi: npt.NDArray, t: Transform) -> Any:
         theta = t.to_theta(phi)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            out = np.log(self.model.df(theta)) + t.log_jacobian(phi)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            out = self._log_df(theta) + t.log_jacobian(phi)
             if self.truncate:
                 out = out - np.log(self._mass_inside(t))
         return np.where(np.isnan(out), -np.inf, out)
@@ -2092,6 +2105,13 @@ class BoundPriors:
     def centre(self) -> npt.NDArray | None:
         """A start on the unconstrained scale from the priors' centres,
         or None where a parameter has none."""
+        c = self.centres()
+        return None if np.isnan(c).any() else c
+
+    def centres(self) -> npt.NDArray:
+        """Each free parameter's prior centre on the unconstrained scale,
+        ``nan`` where its prior has none (flat, or a joint prior that
+        does not locate it)."""
         c = np.full(self.d, np.nan)
         for k, p in self.spec.single.items():
             if p.is_fixed:
@@ -2116,7 +2136,7 @@ class BoundPriors:
                     with np.errstate(all="ignore"):
                         at = self.to_phi(np.asarray(old)[None, :])[0]
                     c = np.where(np.isnan(c), at, c)
-        return None if np.isnan(c).any() else c
+        return c
 
 
 def check(dist: Any, priors: Any = None, **fit_options: Any) -> Any:

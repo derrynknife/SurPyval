@@ -785,3 +785,63 @@ def test_a_non_centred_covariates_laplace_normal_has_the_exact_curvature():
     exact = (4 * hessian(5e-4 * sd) - hessian(1e-3 * sd)) / 3
     exact_sd = np.sqrt(np.diag(np.linalg.inv(-exact)))
     np.testing.assert_allclose(sd, exact_sd, rtol=0.03)
+
+
+def _far_prior_data():
+    rng = np.random.default_rng(462000)
+    n = 60
+    Z = rng.normal(size=(n, 1))
+    x = sp.Weibull.random(n, 50.0, 2.0, random_state=462001)
+    return x * np.exp(-0.8 * Z[:, 0]), Z
+
+
+def test_a_prior_density_far_in_its_tail_does_not_underflow():
+    p = sp.prior.as_prior(sp.Normal.from_params([0.0, 0.02]), "coef_0")
+    t = sp.bayes.transforms.Transform("identity")
+    got = p.log_density_phi(np.array([1.36, 3.0]), t)
+    ref = stats.norm(0.0, 0.02).logpdf([1.36, 3.0])
+    np.testing.assert_allclose(got, ref, rtol=1e-12)
+
+
+def test_a_strong_prior_far_from_the_estimate_is_the_brute_force_posterior():
+    """A tight prior (Normal(0, 0.02)) on a coefficient the data put at
+    1.36, 68 prior standard deviations away: its density at the estimate
+    underflowed and the fit was refused for want of a start. Rule: each
+    parameter's 2.5%, 50% and 97.5% points (on the unconstrained scale)
+    within the Laplace engine's stated accuracy of a brute-force
+    posterior on a 41-point lattice a dimension over +-6 standard
+    deviations of the Laplace normal: 0.1 of the 95% interval's width
+    (``laplace.SHIFT``; 0.39 standard deviations). (First written as 0.1
+    standard deviations, stricter than the engine claims; the observed
+    gaps are up to 0.27 standard deviations, on beta, where the engine's
+    own check reports a shift of 0.06 of the width.)"""
+    from surpyval.bayes.regression import RegressionTarget
+    from surpyval.bayes.result import bind, log_posterior
+
+    x, Z = _far_prior_data()
+    priors = {"coef_0": sp.Normal.from_params([0.0, 0.02])}
+    model = quietly(sp.WeibullPH.fit_bayes, x, Z, priors=priors)
+    mean = np.asarray(model.posterior.normal["mean"])
+    sd = np.sqrt(np.diag(np.asarray(model.posterior.normal["cov"])))
+    target = RegressionTarget(model.mle)
+    bound, _ = bind(target, priors)
+    log_post = log_posterior(target, bound)
+    axes = [np.linspace(m - 6 * s, m + 6 * s, 41) for m, s in zip(mean, sd)]
+    mesh = np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, 3)
+    lp = np.asarray(log_post(mesh), dtype=float).reshape(41, 41, 41)
+    w = np.exp(lp - np.max(lp))
+    names = list(model.parameter_names)
+    transforms = bound.transforms
+    for j, name in enumerate(names):
+        marginal = w.sum(axis=tuple(k for k in range(3) if k != j))
+        # (each lattice point's mass is its cell's: the running sum
+        # reaches a point's share at its cell's upper edge)
+        cdf = np.cumsum(marginal) / marginal.sum()
+        step = axes[j][1] - axes[j][0]
+        ref = np.interp([0.025, 0.5, 0.975], cdf, axes[j] + 0.5 * step)
+        lo, hi = np.ravel(model.param_cri(name))
+        med = float(model.params[j])
+        t = transforms[names.index(name)]
+        got = np.ravel(t.to_phi(np.array([lo, med, hi])))
+        width = 2 * stats.norm.ppf(0.975) * sd[j]
+        np.testing.assert_allclose(got, ref, atol=0.1 * width)
