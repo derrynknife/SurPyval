@@ -126,3 +126,71 @@ def visits(n, seed, pars, clock="forward", gap=1.0):
             states.append([s for w, s in path if w <= v][-1])
             before.append(states[-1])
     return ids, times, states, before
+
+
+def visits_covariates(n, seed, pars, betas, clock="forward", gap=1.0):
+    """The visits of :func:`visits` with covariates: ``male`` (0 or 1,
+    fixed for a unit, half the units) and ``w`` (0 or 1, drawn afresh at
+    each visit, holding until the next), multiplying each transition's
+    Weibull hazard by ``exp(b_male male + b_w w)`` (``betas``: ``{(from,
+    to): (b_male, b_w)}``; proportional hazards on either clock). Returns
+    ``(ids, times, states, Z)``, ``Z`` one row ``(male, w)`` per row, a
+    death's row with the covariates of the visit before it."""
+    from scipy.optimize import brentq
+
+    rng = np.random.default_rng(seed)
+    ids, times, states, Z = [], [], [], []
+    for u in range(n):
+        male = float(rng.uniform() < 0.5)
+        end = float(rng.uniform(5, 10))
+        visits = list(np.arange(0.0, end, gap)) + [end]
+        w = [float(rng.uniform() < 0.5) for _ in visits]
+        state, t, path = 1, 0.0, [(0.0, 1)]
+        entry = 0.0
+        g = 0
+        e = float(rng.exponential())
+        while state != 3 and g < len(visits) - 1:
+            hi = visits[g + 1]
+            out = [
+                (
+                    3 if b == "dead" else 2,
+                    (a, b),
+                    np.exp(betas[(a, b)][0] * male + betas[(a, b)][1] * w[g]),
+                )
+                for (a, b) in pars
+                if a == ("healthy" if state == 1 else "ill")
+            ]
+            zero = entry if clock == "reset" else 0.0
+
+            def total(v, out=out, t0=t, zero=zero):
+                return sum(
+                    m * (_H(pars[p], v - zero) - _H(pars[p], t0 - zero))
+                    for _, p, m in out
+                )
+
+            if total(hi) <= e:
+                e -= total(hi)
+                t = hi
+                g += 1
+                continue
+            t_new = brentq(lambda v: total(v) - e, t, hi, xtol=1e-12)
+            rates = np.array(
+                [m * _h(pars[p], t_new - zero) for _, p, m in out]
+            )
+            k = rng.choice(len(out), p=rates / rates.sum())
+            state, t = out[k][0], t_new
+            entry = t
+            path.append((t, state))
+            e = float(rng.exponential())
+        death = path[-1][0] if path[-1][1] == 3 else None
+        for j, v in enumerate(visits):
+            ids.append(u)
+            if death is not None and v >= death:
+                times.append(death)
+                states.append(3)
+                Z.append((male, w[j - 1]))
+                break
+            times.append(v)
+            states.append([s for x, s in path if x <= v][-1])
+            Z.append((male, w[j]))
+    return ids, times, states, np.array(Z, dtype=float)

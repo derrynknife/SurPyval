@@ -956,9 +956,14 @@ def _search_panel_multistate(model, data):
 
 def _search_parametric_panel_multistate(model, data):
     """The joint panel likelihood of every transition's parameters (see
-    :func:`_search_multistate_joint`)."""
+    :func:`_search_multistate_joint`), each coefficient in its
+    covariate's units."""
+    panel = model._panel
     return _search_multistate_joint(
-        model, model._panel_likelihood(), float(model.n_obs)
+        model,
+        model._panel_likelihood(),
+        float(model.n_obs),
+        units=panel.Z[panel.intervals() - 1] if model._regression else None,
     )
 
 
@@ -1563,6 +1568,9 @@ SEARCHES: dict[str, Callable] = {
     ),
     "PanelMultiState": _search_panel_multistate,
     "ParametricPanelMultiState": _search_parametric_panel_multistate,
+    "ParametricPanelMultiStateRegression": (
+        _search_parametric_panel_multistate
+    ),
     "PanelMultiStateRegression": _search_panel_multistate,
     "ParametricCompetingRisks": _search_parametric_competing_risks,
     "ParametricCompetingRisksRegression": (

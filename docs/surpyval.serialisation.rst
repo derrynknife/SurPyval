@@ -396,6 +396,14 @@ with its own ``schema``.
      - ``"model": "PanelMultiStateRegression"``
      - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``Z``, ``censored``, ``exact_entry``, ``pci``, ``covariate_names``, ``shared``, ``theta``, ``cov_theta``, ``_neg_ll``, ``n_obs``, ``scale``, ``mean``, ``sd``, ``kept``
      - ``maximum``
+   * - ``ParametricPanelMultiState``
+     - ``"model": "ParametricPanelMultiState"``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``censored``, ``censored_codes``, ``exact_entry``, ``clock``, ``models``, ``joint``
+     - --
+   * - ``ParametricPanelMultiStateRegression``
+     - ``"model": "ParametricPanelMultiStateRegression"``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``censored``, ``censored_codes``, ``exact_entry``, ``Z``, ``covariate_names``, ``clock``, ``models``, ``joint``
+     - --
    * - ``CompetingRisks``
      - ``"model": "CompetingRisks"``
      - ``event_idx_map``, ``n_event_types``

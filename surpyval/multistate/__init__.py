@@ -23,7 +23,8 @@ simplest cases.
 - :class:`ParametricPanelMultiState`: states seen only at visits with a
   parametric distribution per transition (a Weibull, say), on the time
   since the start (non-homogeneous Markov) or the time in the state
-  (semi-Markov, progressive models).
+  (semi-Markov, progressive models), and with covariates in
+  :class:`ParametricPanelMultiStateRegression`.
 - :func:`to_stacked` and :func:`from_stacked`: the long form the models
   take (one row per spell in a state) and the stacked form (one row per
   possible transition, as R's ``mstate`` uses).
@@ -39,7 +40,10 @@ from surpyval.multistate.parametric import (
     ParametricMultiState,
     ParametricMultiStateRegression,
 )
-from surpyval.multistate.parametric_panel import ParametricPanelMultiState
+from surpyval.multistate.parametric_panel import (
+    ParametricPanelMultiState,
+    ParametricPanelMultiStateRegression,
+)
 from surpyval.multistate.regression import MultiStateProportionalHazards
 from surpyval.multistate.transitions import TransitionMatrix
 
@@ -51,6 +55,7 @@ __all__ = [
     "ParametricMultiState",
     "ParametricMultiStateRegression",
     "ParametricPanelMultiState",
+    "ParametricPanelMultiStateRegression",
     "TransitionMatrix",
     "from_stacked",
     "to_stacked",

@@ -795,6 +795,56 @@ adaptive quadrature and, where no state can be passed unseen, against
 visits recover the Weibull shapes, with bounds at their nominal
 coverage (``surpyval/tests/calibration/test_coverage_multistate_panel_parametric.py``).
 
+Covariates with intensities that change with time
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``ParametricPanelMultiStateRegression`` is the same model with covariates:
+a parametric regression for each transition (``WeibullPH`` by default, so
+each move has a Weibull baseline and its own coefficients; any of the
+package's parametric regressions can be given, ``WeibullAFT`` say). The
+covariates are given per visit, as for ``PanelMultiStateRegression``: the
+values recorded at a visit hold until the unit's next visit, so a
+treatment started at a visit counts from then on.
+
+In words: between two visits the unit's rates of moving are those of a
+unit with that gap's covariates, so the chance of going from the state
+seen at one visit to the state seen at the next is the same product
+integral as above, worked out for that gap's covariates. On the forward
+clock each distinct row of covariates gets its own grid (two rows that
+differ in any covariate are two grids, so a covariate with many values,
+such as a measurement taken at every visit, makes many grids and a slower
+fit; round it if that is a problem). On the reset clock the unit is
+carried over its unknown entry times as before, each gap's hazards taken
+at that gap's covariates.
+
+With ``ExponentialPH`` regressions the model is
+``PanelMultiStateRegression``'s, on either clock:
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval import ExponentialPH
+    from surpyval.multistate import (
+        PanelMultiStateRegression, ParametricPanelMultiStateRegression,
+    )
+
+    z = (np.asarray(i) % 2).astype(float)  # a covariate per unit
+    tm = [("healthy", "ill"), ("healthy", "dead"), ("ill", "healthy"),
+          ("ill", "dead")]
+    markov = PanelMultiStateRegression.fit(x, z, s, i, transitions=tm)
+    ph = ParametricPanelMultiStateRegression.fit(
+        x, z, s, i, transitions=tm, model=ExponentialPH,
+    )
+    print(markov.betas.ravel().round(4))
+    print(ph.betas.ravel().round(4))
+    print(round(markov.log_likelihood, 6), round(ph.log_likelihood, 6))
+
+The fit is joint, as above, with each coefficient searched in its
+covariate's units (a covariate in thousands is searched as well as one in
+ones). A covariate that cannot be told from the others over the gaps (or
+from a constant) is reported, with ``nan`` for its coefficient, as in the
+other regressions.
+
 How it was checked
 ------------------
 
@@ -862,6 +912,20 @@ Simulated panel data show the bounds on the intensities, the occupation
 probabilities and the mean stays covering at their nominal level. The
 script is ``scripts/reference/reference_r_multistate_panel.R``.
 
+The parametric panel regression was checked on a simulated
+illness-death model with Weibull proportional hazards, one covariate
+fixed for each unit and one drawn at every visit
+(``scripts/reference/reference_r_multistate_panel_regression.R``):
+with exponential hazards against R ``msm`` with covariates (the
+log-likelihood to :math:`10^{-14}`, the intensities and coefficients to
+about :math:`10^{-6}`), and with Weibull hazards against R ``nhm``, whose
+likelihood SurPyval's equals at nhm's estimates to :math:`10^{-9}`. Each
+gap's factor is checked against an ODE solver with the gap's covariates,
+and on the reset clock a stay spanning three rows of covariates against
+adaptive quadrature. Simulated visits recover the coefficients, with
+bounds at their nominal coverage
+(``surpyval/tests/calibration/test_coverage_multistate_panel_regression.py``).
+
 What is not here yet
 --------------------
 
@@ -869,8 +933,8 @@ The non-parametric and Cox spell models refuse interval-censored
 changes of state (the parametric ones take them); for states seen only
 at visits use ``PanelMultiState``, which has no hidden Markov
 (misclassification) model yet.
-``ParametricPanelMultiState`` takes no covariates yet, and on the clock
-reset only progressive models. The parametric models have no
+On the clock reset ``ParametricPanelMultiState`` and
+``ParametricPanelMultiStateRegression`` take only progressive models. The parametric models have no
 likelihood-ratio or bootstrap bounds. The clock reset is offered for the
 parametric spell models only: a Cox model per transition on the time in
 the state would need its probabilities simulated over step hazards, and
@@ -930,8 +994,9 @@ API
 Import these from ``surpyval.multistate`` (``MultiState``,
 ``MultiStateProportionalHazards``, ``ParametricMultiState``,
 ``ParametricMultiStateRegression``, ``PanelMultiState``,
-``PanelMultiStateRegression``, ``ParametricPanelMultiState`` and
-``TransitionMatrix`` are also at
+``PanelMultiStateRegression``, ``ParametricPanelMultiState``,
+``ParametricPanelMultiStateRegression`` and ``TransitionMatrix`` are also
+at
 the top level, ``surpyval.MultiState`` and so on).
 
 .. autoclass:: surpyval.multistate.TransitionMatrix
@@ -956,6 +1021,9 @@ the top level, ``surpyval.MultiState`` and so on).
    :members:
 
 .. autoclass:: surpyval.multistate.ParametricPanelMultiState
+   :members:
+
+.. autoclass:: surpyval.multistate.ParametricPanelMultiStateRegression
    :members:
 
 .. autofunction:: surpyval.multistate.to_stacked

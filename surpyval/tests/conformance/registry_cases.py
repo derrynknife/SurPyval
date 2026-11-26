@@ -1396,6 +1396,12 @@ def _panel_multistate():
             frame(d), "x", "s", "i", dist=sp.Exponential, **options(d)
         )
 
+    def parametric_reg_from_df(d):
+        return ms.ParametricPanelMultiStateRegression.fit_from_df(
+            frame(d), "x", ["z0"], "s", "i", model=sp.ExponentialPH,
+            **options(d),
+        )  # fmt: skip
+
     def from_df(d):
         return ms.PanelMultiState.fit_from_df(
             frame(d), "x", "s", "i", **options(d)
@@ -1466,6 +1472,41 @@ def _panel_multistate():
                 "convergence": "the search starts from a time-homogeneous "
                 "Markov fit and takes no init or iteration limit to starve; "
                 "a search that ends short is checked by 'maximum'",
+            },
+        ),
+        # A regression per transition fitted to the visits, the covariates
+        # of a visit holding until the next (ExponentialPH, as above).
+        Case(
+            name="ParametricPanelMultiStateRegression",
+            fitters=(
+                "surpyval.multistate.ParametricPanelMultiStateRegression",
+            ),
+            model_class=(
+                "surpyval.multistate.ParametricPanelMultiStateRegression"
+            ),
+            interface=STATES_REGRESSION,
+            data=functools.partial(panel_data, True),
+            fit=_fit(
+                ms.ParametricPanelMultiStateRegression, model=sp.ExponentialPH
+            ),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_PANEL,
+            Z=Z_MS[: X_PANEL.size],
+            rows=("x", "Z", "s", "i"),
+            times=("x",),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": parametric_reg_from_df},
+            coefficients=lambda m: m.betas,
+            intercept=True,
+            exclude={
+                **_PANEL_EXCLUDE,
+                "convergence": "the search starts from a time-homogeneous "
+                "Markov fit with covariates and takes no init or iteration "
+                "limit to starve; a search that ends short is checked by "
+                "'maximum'",
             },
         ),
     ]
@@ -4419,6 +4460,8 @@ def _bounds(case):
         # bounds on each parameter, and on each transient state's mean
         # stay.
         "ParametricPanelMultiState": _multistate_bounds((None,))
+        + (_LENGTH_OF_STAY,),
+        "ParametricPanelMultiStateRegression": _multistate_bounds((None,))
         + (_LENGTH_OF_STAY,),
         "PanelMultiState": _multistate_bounds((None,))
         + (

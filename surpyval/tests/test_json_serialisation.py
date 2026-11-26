@@ -61,6 +61,8 @@ from surpyval.multistate import (
     PanelMultiStateRegression,
     ParametricMultiState,
     ParametricMultiStateRegression,
+    ParametricPanelMultiState,
+    ParametricPanelMultiStateRegression,
 )
 from surpyval.serialisation import (
     _PARAMETERIZATIONS,
@@ -520,6 +522,16 @@ def _build(name):
         "multistate_panel_regression": lambda: (
             PanelMultiStateRegression.fit(**panel_data(True))
         ),
+        "multistate_panel_parametric": lambda: (
+            ParametricPanelMultiState.fit(
+                **panel_data(), dist=surpyval.Exponential
+            )
+        ),
+        "multistate_panel_parametric_regression": lambda: (
+            ParametricPanelMultiStateRegression.fit(
+                **panel_data(True), model=surpyval.ExponentialPH
+            )
+        ),
         "cause_specific_mcf": lambda: CauseSpecificMCF.fit(
             np.array([5, 10, 15, 4, 9, 12, 20], dtype=float),
             np.array([1, 1, 1, 2, 2, 3, 3]),
@@ -716,6 +728,8 @@ CASES = [
     "multistate_parametric_regression_reset",
     "multistate_panel",
     "multistate_panel_regression",
+    "multistate_panel_parametric",
+    "multistate_panel_parametric_regression",
     "cause_specific_mcf",
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",
