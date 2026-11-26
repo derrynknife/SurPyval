@@ -5,6 +5,20 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **The parametric multi-state fits to interval-censored moves search
+  more closely.** ``ParametricMultiState`` and
+  ``ParametricMultiStateRegression`` with ``x`` as ``[xl, xr]`` (new in
+  this release) now search with central-difference gradients and a
+  Newton step at the end, as ``ParametricPanelMultiState`` does, and
+  measure each regression coefficient in its covariate's units (a
+  covariate in thousands is searched as well as one in ones). On seeded
+  fits of 200 units the estimates move by 3e-7 relative (no covariates,
+  both clocks) and 2.6e-6 (one covariate), the standard errors by up to
+  2.3e-6, the log-likelihood by under 2e-12; the fits now reach a
+  verified maximum where a covariate's units are very large or very
+  small. On the msm reference the intensities agree to 2.7e-8 (5.1e-8
+  before).
+
 - **The mean life of a Wiener process whose drift is not positive is
   infinite: a correctness change.** (``WienerProcess.fit`` refuses
   such a drift; this is a model built from its parameters.)
@@ -295,6 +309,15 @@ v0.30 (unreleased)
   ``method``, ``importance``, ``points``, ``baseline``, ``dist``)
   to ``fit_bayes`` unchanged. The posterior is the one ``fit_bayes`` gives
   on the same data as arrays (checked to equality); no number changes.
+- ``ParametricMultiState.fit(data)`` and
+  ``ParametricMultiStateRegression.fit(data)`` take a ``SurpyvalData``
+  with interval-censored rows (``c = 2``): each is a move known only to
+  lie in ``(xl, xr]``, read exactly as the two-column ``x`` of the
+  arrays, with the same fit. A left-censored row (``c = -1``) is refused
+  by every multi-state model, saying why (it has no stay it ended) and
+  to give the last time seen as the lower end of an interval. The
+  non-parametric and Cox models and ``ParametricMultiState.fit_bayes``
+  still refuse ``c = 2``, naming the models that take it.
 
 - **The power-law NHPP in PyMC, and pooling a fleet's growth rates**:
   ``surpyval.pymc.nhpp_likelihood`` and ``nhpp_log_likelihood`` give

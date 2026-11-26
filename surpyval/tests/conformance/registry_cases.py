@@ -91,6 +91,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     lfp_data,
     mixture_data,
     ms_data,
+    ms_interval_data,
     offset_data,
     panel_count_data,
     panel_data,
@@ -1081,14 +1082,44 @@ def _multistate():
             clock=clock,
         )
 
-    def from_data(cls):
-        # fit(data): the spells as a SurpyvalData with states (s).
+    def from_data(cls, **opts):
+        # fit(data): the spells as a SurpyvalData with states (s); a move
+        # known only to lie between two times (x as [xl, xr]) is a row
+        # with c = 2.
         def fit(d):
+            x = np.asarray(d["x"], dtype=float)
+            c = None
+            if x.ndim == 2:
+                c = np.where(
+                    x[:, 0] < x[:, 1],
+                    2,
+                    np.array([v is None for v in d["e"]], dtype=int),
+                )
             data = sp.SurpyvalData(
-                d["x"], n=d["n"], tl=d["tl"], e=d["e"], s=d["state"],
+                x, c=c, n=d["n"], tl=d["tl"], e=d["e"], s=d["state"],
                 Z=d.get("Z"),
             )  # fmt: skip
-            return cls.fit(data, transitions=d["transitions"])
+            return cls.fit(data, transitions=d["transitions"], **opts)
+
+        return fit
+
+    def interval_from_df(cls, Z=False, **opts):
+        # fit_from_df with x_col as the two columns [xl, xr]
+        def fit(d):
+            x = np.asarray(d["x"], dtype=float)
+            df = frame({**d, "x": x[:, 1]})
+            df["xl"], df["xr"] = x[:, 0], x[:, 1]
+            cols = (["xl", "xr"], ["z0"]) if Z else (["xl", "xr"],)
+            return cls.fit_from_df(
+                df,
+                *cols,
+                "e",
+                "state",
+                tl_col="tl",
+                n_col="n",
+                transitions=d["transitions"],
+                **opts,
+            )
 
         return fit
 
@@ -1261,6 +1292,75 @@ def _multistate():
             },
             coefficients=lambda m: m.betas,
             intercept=True,
+        ),
+        # Moves known only to lie between two times (x as [xl, xr]): the
+        # transitions fitted jointly, the move's time integrated out.
+        # Exponential hazards: ten units are too few for two parameters a
+        # transition once five moves are blurred.
+        Case(
+            name="ParametricMultiState[interval]",
+            fitters=("surpyval.multistate.ParametricMultiState",),
+            model_class="surpyval.multistate.ParametricMultiState",
+            interface=STATES,
+            data=ms_interval_data,
+            fit=_fit(ms.ParametricMultiState, dist=sp.Exponential),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            paths={
+                "fit_from_df": interval_from_df(
+                    ms.ParametricMultiState, dist=sp.Exponential
+                ),
+                "fit(data)": from_data(
+                    ms.ParametricMultiState, dist=sp.Exponential
+                ),
+            },
+            exclude={
+                "convergence": "the joint search starts from the "
+                "transitions' fits to the intervals' middles and takes no "
+                "init or iteration limit to starve; a search that ends "
+                "short is checked by 'maximum'"
+            },
+        ),
+        Case(
+            name="ParametricMultiStateRegression[interval]",
+            fitters=("surpyval.multistate.ParametricMultiStateRegression",),
+            model_class="surpyval.multistate.ParametricMultiStateRegression",
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_interval_data, True),
+            fit=_fit(
+                ms.ParametricMultiStateRegression, model=sp.ExponentialPH
+            ),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MSR,
+            Z=Z_MS,
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={
+                "fit_from_df": interval_from_df(
+                    ms.ParametricMultiStateRegression,
+                    Z=True,
+                    model=sp.ExponentialPH,
+                ),
+                "fit(data)": from_data(
+                    ms.ParametricMultiStateRegression, model=sp.ExponentialPH
+                ),
+            },
+            coefficients=lambda m: m.betas,
+            intercept=True,
+            exclude={
+                "convergence": "the joint search starts from the "
+                "transitions' fits to the intervals' middles and takes no "
+                "init or iteration limit to starve; a search that ends "
+                "short is checked by 'maximum'"
+            },
         ),
     ]
 
