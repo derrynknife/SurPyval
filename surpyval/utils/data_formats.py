@@ -897,6 +897,7 @@ def xcnt_handler(
     tl: npt.ArrayLike | Number | None = None,
     tr: npt.ArrayLike | Number | None = None,
     group_and_sort: bool = True,
+    zero_counts: bool = False,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Main handler that ensures any input to a surpyval fitter meets the
@@ -1041,7 +1042,7 @@ def xcnt_handler(
     )
     x = _xcnt_x(x, xl, xr)
     c = _xcnt_censoring(c, x)
-    n = _xcnt_counts(n, x)
+    n = _xcnt_counts(n, x, c if zero_counts else None)
 
     t = format_truncation(t, tl, tr, x.shape[0])
 
@@ -1515,8 +1516,13 @@ def _xcnt_censoring(c: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
     return c_arr
 
 
-def _xcnt_counts(n: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
-    """The counts as positive whole numbers, or one per row."""
+def _xcnt_counts(
+    n: npt.ArrayLike | None, x: npt.NDArray, c: npt.NDArray | None = None
+) -> npt.NDArray:
+    """The counts as positive whole numbers, or one per row. With ``c``
+    given (data whose rows have units), a count of 0 is also held on a
+    counted row (``c = 2`` or ``c = -1``): an inspection that found
+    nothing."""
     if n is None:
         # Do check here for groupby and binning
         return np.ones(x.shape[0])
@@ -1544,7 +1550,10 @@ def _xcnt_counts(n: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
             "sampling, propensity or censoring weights, pass them as 'w' "
             "(and leave 'n' for counts of identical units)."
         )
-    if not (n_arr > 0).all():
+    counted = (
+        np.zeros(n_arr.shape, dtype=bool) if c is None else np.isin(c, (-1, 2))
+    )
+    if not ((n_arr > 0) | ((n_arr == 0) & counted)).all():
         raise ValueError("count array can't be 0 or less")
     return n_arr
 

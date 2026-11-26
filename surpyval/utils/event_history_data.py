@@ -752,8 +752,9 @@ class EventHistoryData(ReshapeMixin):
         entry ``tl`` on its first row, its right truncation ``tr``, its
         covariates, attributes and the events' types. An item watched in
         separate stretches (observation windows) has each stretch start
-        with its ``tl`` and end with a ``c = 1`` row. A fit of the rows is
-        the fit of this data.
+        with its ``tl`` and end with a ``c = 1`` row. An inspection that
+        found no events stays a row with ``n = 0``. A fit of the rows is the
+        fit of this data.
 
         The rows are read back and compared with this data before they
         are returned, so nothing is lost on the way; data they cannot hold

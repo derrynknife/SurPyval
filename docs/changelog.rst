@@ -260,7 +260,29 @@ v0.30 (unreleased)
   proportional intensity fit at a ``nan`` covariate; they now give
   ``nan`` there, as every other model does.
 
+- **The item count of repeated-event rows.** ``SurpyvalData.n_items``,
+  and with it the "N items" of its ``repr`` and the "units:" line of its
+  ``summary()``, counted a unit that has several rows by the ``n`` of its
+  first row. For repeated events that ``n`` is the number of failures
+  found at one inspection, so a unit whose first inspection found 2
+  failures (and later ones 3, and its end of observation) was shown as 2
+  items. Without states, a unit with several rows is now one item; rows
+  with one row per unit, and data with states, count as before. No fit
+  changes.
+
 **Added.**
+
+- **Every history of repeated events converts to rows.**
+  ``EventHistoryData.to_surpyval_data()`` refused two histories it can
+  now hold: inspections that found no events (a count of ``n = 0``, which
+  is information: the item was looked at and nothing had failed), and
+  failures before a first look given as one age each (``c = -1`` with a
+  one-column ``x``), which read back as ``[age, age]`` pairs and so
+  failed its own check. A ``SurpyvalData`` with units ``i`` now takes
+  ``n = 0`` on a counted row (``c = 2`` or ``c = -1``); everywhere else,
+  in particular lifetime data without units, a count of 0 is still an
+  error. A fit of the rows gives the same numbers as a fit of the
+  history.
 
 - **The power-law NHPP in PyMC, and pooling a fleet's growth rates**:
   ``surpyval.pymc.nhpp_likelihood`` and ``nhpp_log_likelihood`` give

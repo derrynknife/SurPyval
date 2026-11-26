@@ -263,6 +263,10 @@ def rows_from_event_history(data: Any) -> Any:
         # The data warned of its masked causes when it was built
         if data.window_map is not None:
             out = _window_rows(data)
+        elif np.any(np.asarray(data.n) == 0):
+            # Inspections that found nothing: an item's record has no place
+            # for them, so the rows are written from the arrays
+            out = _rows_with_zero_counts(data, what)
         else:
             out = rows_from_histories(
                 data.to_items(), unit=data.unit, what=what, warn=False
@@ -271,8 +275,74 @@ def rows_from_event_history(data: Any) -> Any:
             back = event_history_from_rows(out, what)
         except (TypeError, ValueError) as error:
             raise ValueError(_NOT_THE_SAME + f" ({error})") from error
+        if np.ndim(data.x) == 1 and np.ndim(back.x) == 2:
+            # Counts before a first look given as one age each: the rows
+            # read them as [age, age], the same ages
+            if (back.x[:, 0] == back.x[:, 1]).all():
+                back.x = back.x[:, 1]
     if not data.equals(back, rtol=0):
         raise ValueError(_NOT_THE_SAME)
+    return out
+
+
+def _rows_with_zero_counts(data: Any, what: str) -> Any:
+    """The rows of an ``EventHistoryData`` that holds inspections finding
+    no events (``n = 0``), written from its arrays in the order
+    :func:`rows_from_histories` uses (an item's rows in time order, its
+    late entry ``tl`` on the first). A count of 0 is a real finding, "looked
+    and saw nothing", and stays a row with ``n = 0`` (a ``SurpyvalData``
+    with units holds it on a counted row)."""
+    from surpyval.utils.surpyval_data import SurpyvalData
+
+    if data.states is not None:
+        raise ValueError(
+            f"{what}: changes of state, which a SurpyvalData holds as rows "
+            "of another kind, have no place in these rows: build those "
+            'rows, or drop them first (data.without("states")).'
+        )
+    x = np.asarray(data.x, dtype=float)
+    lower = x[:, 0] if x.ndim == 2 else x
+    upper = x[:, 1] if x.ndim == 2 else x
+    c = np.asarray(data.c)
+    ids = np.asarray(data.i)
+    # Items in the order of ``ids``, each item's rows in time order
+    order: list = []
+    for item in data.ids:
+        rows = np.flatnonzero(ids == item)
+        keys = [_row_key((lower[r], upper[r], c[r])) for r in rows]
+        order += [
+            rows[k] for k in sorted(range(len(rows)), key=keys.__getitem__)
+        ]
+    order_a = np.asarray(order)
+    ordered_ids = ids[order_a]
+    first = np.r_[True, ordered_ids[1:] != ordered_ids[:-1]]
+    tl = np.where(first, np.asarray(data.tl)[order_a], -np.inf)
+    tr = np.asarray(data.tr)[order_a]
+    extra: dict[str, Any] = {}
+    if np.isfinite(tl).any() or np.isfinite(tr).any():
+        extra.update(tl=tl, tr=tr)
+    if data.Z is not None:
+        extra.update(
+            Z=np.asarray(data.Z, dtype=float)[order_a],
+            covariate_names=data.covariate_names,
+        )
+    if data.e is not None:
+        extra["e"] = np.asarray(data.e, dtype=object)[order_a]
+    if len(order_a) > len(data.ids):
+        extra["a"] = [0] * len(order_a)
+    out = SurpyvalData(
+        x[order_a],
+        c[order_a],
+        np.asarray(data.n)[order_a],
+        i=ordered_ids.tolist(),
+        unit=data.unit,
+        **extra,
+    )
+    if data.attributes is not None:
+        by_item = dict(zip(data.ids, data.attributes))
+        out.attributes = [by_item[item] for item in ordered_ids.tolist()]
+    if data.time_varying_covariates is not None:
+        out.time_varying_covariates = dict(data.time_varying_covariates)
     return out
 
 
