@@ -2207,9 +2207,6 @@ def _fit(
     )
     out.hazard_covariates = None if every_one else list(hazard)
     out.parameter_names = full_names
-    _warn_bends_without_spread(
-        path_model, fitter.varying, out, ages, channels if several else None
-    )
     out.markers = None if not several else list(markers)
     out.link = tuple(fitter.link)
     out.lag = fitter.lag
@@ -2260,8 +2257,8 @@ def _bends_at_zero(
     model: Model, path_model: Any, u: npt.NDArray, ages: list, bends: list
 ) -> bool:
     """Whether any of the varying ``bends`` has its spread between items
-    at its lower bound, 0, at the internal parameters ``u`` (by the rule
-    of :func:`_warn_bends_without_spread`, :data:`_NO_SPREAD`)."""
+    at its lower bound, 0, at the internal parameters ``u`` (by
+    :data:`_NO_SPREAD`)."""
     layout = model.layout
     found = layout.unpack(u)
     L = np.asarray(found["L"], dtype=float)
@@ -2346,103 +2343,9 @@ def _from_common_bends(
 
 #: A varying bend of a spline whose spread between items moves an item's
 #: marker by less than this fraction of the readings' noise sd, at any
-#: reading age, is taken as estimated at its lower bound, 0.
+#: reading age, is taken as estimated at its lower bound, 0, and the fit
+#: searches once more from the common-bend fit (:func:`_from_common_bends`).
 _NO_SPREAD = 0.01
-
-
-def _flat_bends(
-    path_model: Any, varying: Any, sd_of: Any, noise: float, ages: list
-) -> list:
-    """``(bend, sd, reach)`` of the varying bends of the spline
-    ``path_model`` among ``varying`` whose spread between items (``sd_of
-    (bend)``) moves no item's marker by :data:`_NO_SPREAD` of the noise
-    sd ``noise`` at any of the reading ``ages``."""
-    names = list(getattr(path_model, "parameter_names", []))
-    bends = [v for v in varying if v in names[2:]]
-    if not bends or not hasattr(path_model, "default_random_effects"):
-        return []
-    every = np.concatenate(
-        [np.asarray(a, dtype=float) for a in ages] or [np.zeros(0)]
-    )
-    if not every.size:
-        return []
-    with np.errstate(all="ignore"):
-        basis = np.abs(np.asarray(path_model.basis(every), dtype=float))
-    flat = []
-    for bend in bends:
-        sd = abs(float(sd_of(bend)))
-        reach = sd * float(np.max(basis[:, names.index(bend)]))
-        if reach < _NO_SPREAD * noise:
-            flat.append((bend, sd, reach))
-    return flat
-
-
-def _warn_bends_without_spread(
-    path_model: Any,
-    varying: Any,
-    model: JointModel,
-    ages: list,
-    channels: Any = None,
-) -> None:
-    """One warning naming the varying bends of a spline (``s1``, ...)
-    whose estimated spread between items is at its lower bound, 0 (by
-    :data:`_NO_SPREAD`), saying to leave them out of ``varying``. With
-    several markers (``path_model`` a ``MarkerSet``, ``channels`` each
-    reading's marker), each marker's bends against its own noise and
-    reading ages, named ``"<marker>.s1"``."""
-    params = dict(zip(model.parameter_names, np.asarray(model.params)))
-    if channels is None:
-        noise = float(params.get("sd_noise", np.nan))
-        flat = _flat_bends(
-            path_model,
-            varying,
-            lambda b: params.get(f"sd_{b}", np.nan),
-            noise,
-            ages,
-        )
-        said = ", ".join(
-            f"{b!r} (sd {sd:.3g}, at most {reach:.3g})"
-            for b, sd, reach in flat
-        )
-        noise_words = f"(sd {noise:.3g})"
-    else:
-        entries = []
-        for k, (name, own) in enumerate(
-            zip(path_model.names, path_model.models)
-        ):
-            mine = [
-                v.split(".", 1)[1] for v in varying if v.startswith(name + ".")
-            ]
-            noise = float(params.get(f"{name}.sd_noise", np.nan))
-            seen = [
-                np.asarray(a, dtype=float)[np.asarray(ch) == k]
-                for a, ch in zip(ages, channels)
-            ]
-            for b, sd, reach in _flat_bends(
-                own,
-                mine,
-                lambda b, name=name: params.get(f"sd_{name}.{b}", np.nan),
-                noise,
-                seen,
-            ):
-                entries.append(
-                    f"'{name}.{b}' (sd {sd:.3g}, at most {reach:.3g}, its "
-                    f"noise sd {noise:.3g})"
-                )
-        flat = entries
-        said = ", ".join(entries)
-        noise_words = "(each marker's own)"
-    if flat:
-        warnings.warn(
-            f"The spread between items of the bend(s) {said} "
-            "is estimated at its lower bound, 0: it moves an item's "
-            f"marker by under {_NO_SPREAD:.0%} of the readings' noise "
-            f"{noise_words} at any reading age, so the data show no "
-            "difference between items in it. Leave it out of varying "
-            "(common to all items) and compare the two fits by aic().",
-            UserWarning,
-            stacklevel=caller_stacklevel(),
-        )
 
 
 #: An item with at most this many readings has few for Laplace's

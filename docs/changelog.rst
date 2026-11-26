@@ -300,17 +300,13 @@ v0.30 (unreleased)
   pairs at two points take 0.8 s, not 2.5 s. The bounds are the same
   to the last digit.
 - **Joint models of several markers: a lag and a weight for each
-  marker, ``compare_links`` of one marker, and the spline-bend warning
-  for each marker.** ``JointPH(Weibull, {...}, lag={"vibration": 30},
+  marker, and ``compare_links`` of one marker.** ``JointPH(Weibull, {...}, lag={"vibration": 30},
   weight={"vibration": ("window", 90)})`` gives each marker its own
   delay and its own weight on its accumulated exposure. A marker left
   out of the dict has no lag and no weight, and one number or one
   weight still applies to every marker. ``fitter.compare_links(data,
   marker="vibration")`` compares that marker's links, with each other
-  marker's links as the fitter has them. A spline marker's varying
-  bends whose spread is estimated at 0 are now warned of, as with one
-  marker, each against its own marker's noise; the warning names them
-  ``"vibration.s1"``. Saved models keep a lag or weight by marker.
+  marker's links as the fitter has them. Saved models keep a lag or weight by marker.
 
 - **Bayesian fits of the Wiener and gamma degradation processes**:
   ``WienerProcess.fit_bayes`` and ``GammaProcess.fit_bayes`` (readings,
@@ -1115,6 +1111,18 @@ v0.30 (unreleased)
   Python's own error. Use ``surpyval.EventHistoryData``.
 
 **Changed.**
+
+- **No warning on a spline bend whose spread is estimated at 0.**
+  Joint models on a ``SplinePath`` with bends in ``varying`` warned
+  where a bend's spread between items was estimated at its lower bound,
+  0 (one marker, or several, naming ``"vibration.s1"``), and said to
+  leave the bend out of ``varying``. A study of fleets whose bends are
+  alike, or nearly, found the readings usually cannot tell a small
+  spread from none: the warning missed most fleets with no spread and
+  fired on many with some, so it misled. It is removed. Compare the
+  common-bend and varying-bend fits by ``aic()`` instead. The refusal
+  of a varying bend with too few readings after its knot stays, and so
+  does the second search from the common-bend fit. No numbers change.
 
 - **Probability-plot starts are quicker on large data.**
   ``plotting_positions`` with the ``"Nelson-Aalen"``, ``"Kaplan-Meier"``
