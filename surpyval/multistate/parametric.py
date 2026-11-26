@@ -1001,6 +1001,9 @@ class ParametricMultiState(_ParametricMultiStateBase):
         >>> model.transitions.transition_names()
         ['mgus -> death', 'mgus -> pcm', 'pcm -> death']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import frame_column
 
         def col(name: str | None, arg: str) -> Any:
@@ -1728,6 +1731,9 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         >>> model.covariate_names
         ['male']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import frame_column
 
         def col(name: str | None, arg: str) -> Any:

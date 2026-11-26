@@ -1064,6 +1064,9 @@ class EventHistoryData(ReshapeMixin):
         >>> data.item_ids, data.c.tolist()
         (['M1', 'M2', 'M3'], [0, 0, 1, 0, 1, 1])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         warn_built_by_user(
             "EventHistoryData.from_dataframe",
             "SurpyvalData.from_dataframe(df, i_col=..., ...), which takes "

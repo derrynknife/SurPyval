@@ -1530,6 +1530,9 @@ class IntervalCoxPH_(FitterRepr):
         >>> model.beta.round(4)
         array([-1.3267])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         check_columns(
             df,
             x_col=x_col,

@@ -636,6 +636,9 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         b      harsh        0.6931
         Name: coef, dtype: float64
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         refuse_recurrent_column_names(fit_options, "Z")
         columns = {
             "e": e_col,
@@ -938,6 +941,9 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         >>> model.models["seal"].coeffs.round(4)
         array([1.0986])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return _FRAME._fit_tvc_frame(
             cls.fit_tvc,
             df,
@@ -995,6 +1001,9 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         >>> model.models["seal"].coeffs.round(4)
         array([1.0986])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return _FRAME._fit_tvc_frame(
             cls.fit_tvc_timeline,
             df,

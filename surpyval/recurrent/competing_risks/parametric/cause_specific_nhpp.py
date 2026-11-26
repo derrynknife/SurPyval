@@ -685,6 +685,9 @@ class CauseSpecificNHPP(SerialisableMixin):
         Fit a cause-specific intensity model from a :class:`pandas.DataFrame`,
         naming the columns to read. See :meth:`fit` for the meaning of each.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
 
         model = cls.fit(
             x=df[x_col].to_numpy(),
@@ -748,6 +751,9 @@ class CauseSpecificNHPP(SerialisableMixin):
         >>> sorted(model.models)
         ['pump', 'seal']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return cls.fit_bayes(
             x=df[x_col].to_numpy(),
             i=optional_column(df, i_col),

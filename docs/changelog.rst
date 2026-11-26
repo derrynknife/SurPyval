@@ -335,6 +335,15 @@ v0.30 (unreleased)
   cut-off are refused with a count. It agrees with lifelines'
   ``datetimes_to_durations`` on whole days (and returns the fraction of a
   unit it truncates). The refusals of dates in fits now point to it.
+- **Polars and Arrow tables are taken wherever a pandas DataFrame is.**
+  Every ``fit_from_df``, ``fit_bayes_from_df``, ``fit_tvc_from_df`` and
+  ``from_dataframe`` converts a Polars ``DataFrame`` or ``LazyFrame`` and
+  a PyArrow ``Table`` or ``RecordBatch`` to pandas on entry (with its own
+  ``to_pandas``), so the fit is the pandas one. Neither library is a
+  dependency or is imported unless the object passed is theirs. A
+  conformance test hands each registered ``fit_from_df`` entry point a
+  Polars-like frame, so a new entry point that reads its frame without
+  converting it fails.
 
 - **Two more bivariate survival estimators, and Kendall's tau from
   them.** ``surpyval.multivariate.Dabrowska.fit(x, c, n,

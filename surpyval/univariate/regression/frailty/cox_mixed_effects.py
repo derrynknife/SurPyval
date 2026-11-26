@@ -538,6 +538,9 @@ class CoxMixedEffectsFitter(FitterRepr):
         >>> list(model.random_effects)
         ['inst']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         check_columns(
             df,
             x_col=x_col,

@@ -1057,6 +1057,9 @@ class EquivalenceFitter:
         >>> model.clocks
         ('hours', 'starts')
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         # 0.28's form: x_cols = [main, second] (also given by position,
         # where x_col now is), tl_cols = [main, second]
         if isinstance(x_col, (list, tuple)):

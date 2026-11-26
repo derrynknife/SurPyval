@@ -335,6 +335,9 @@ class RelativeSurvival(SerialisableMixin):
         >>> model.sf(3).round(4)
         np.float64(0.6819)
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import check_columns, frame_column
 
         check_columns(
