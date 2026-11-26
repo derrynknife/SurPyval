@@ -345,6 +345,22 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **The chance of each failure mode for a running item in a joint
+  model.** ``JointModel.predict(...).cif(x, mode)`` is the chance that
+  the item fails by ``mode`` by age ``x``, given its readings and that
+  it was running at the age now; ``total_cif(x)`` is the chance of
+  failing by any (``ff``), and the modes' chances and ``sf`` add to 1
+  (to 2e-13 on the test model). ``cb(x, on="cif", mode=)`` gives Wald
+  bounds by the delta method on ``log(-log(1 - cif))``, as ``ff``'s
+  (``JointModel.cb`` takes ``on="cif"`` and ``mode`` too), and
+  ``to_dict()`` carries each mode's curve and bounds under ``"cif"``.
+  Checked against a brute-force two-dimensional integral over the
+  item's path (1.4e-5), against ``ParametricCompetingRisks`` with the
+  marker effects 0 (1.1e-11 relative) and the bounds against central
+  differences (1%). A calibration study of the bounds is in
+  ``tests/calibration/test_coverage_joint_cif.py``; an R ``JM``
+  reference script, not yet run, in ``scripts/reference/``.
+
 - **Two more bivariate survival estimators, and Kendall's tau from
   them.** ``surpyval.multivariate.Dabrowska.fit(x, c, n,
   estimator="prentice-cai")`` gives Prentice and Cai's (1992) estimate

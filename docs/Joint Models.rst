@@ -863,6 +863,70 @@ types, give the model of one kind of failure, exactly as before. Each
 mode adds its cumulative hazard to every item's likelihood, so a fit
 with two modes takes about twice as long.
 
+The chance of each mode for a running item
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For a pump still running, its readings so far say not only how likely it
+is to fail in the next year but by which mode: a planner wants "bearing
+34%, seal 8%" to know which job to prepare. ``predict(...).cif(x, mode)``
+gives the chance that the item fails by ``mode`` by age ``x``, given its
+readings and that it was running at the age now (the mode's cumulative
+incidence from now). The modes' chances add up to ``ff(x)``, the chance
+of failing at all, and with ``sf(x)`` to 1; ``total_cif(x)`` is that sum.
+``cb(x, on="cif", mode=...)`` bounds each mode's chance (the same delta
+method as ``cb(on="ff")``, on ``log(-log(1 - cif))``, so the bounds stay
+between 0 and 1), and ``to_dict()`` carries each mode's curve and bounds
+under ``"cif"``, so a saved prediction can be drawn without the model.
+
+.. jupyter-execute::
+
+    pump = modes.predict(markers={0: 3.4, 120: 3.9, 240: 4.3, 360: 4.8},
+                         given=400)
+    year_on = 765
+    for mode in modes.causes:
+        lower, upper = pump.cb(year_on, on="cif", mode=mode)
+        print(f"{mode}: {pump.cif(year_on, mode):.3f} ({lower:.3f} to {upper:.3f})")
+    print(f"still running: {pump.sf(year_on):.3f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    every = sum(pump.cif(year_on, m) for m in modes.causes)
+    assert abs(every + pump.sf(year_on) - 1) < 1e-10
+    assert pump.cif(year_on, "bearing") > pump.cif(year_on, "seal")
+
+A pump whose vibration is climbing is most at risk from its bearing.
+
+How it is worked out: over the item's path, given its readings and its
+survival to now, each mode's chance is the chance of failing by that
+mode before any other, the mode's hazard times the survival of every
+mode,
+
+.. math::
+
+    \mathrm{CIF}_k(x \mid T > u, y) = E\left[\int_u^x h_k(s \mid \theta)
+    \frac{S(s \mid \theta)}{S(u \mid \theta)}\, ds
+    \;\middle|\; T > u, y\right],
+
+averaged on the nodes placed at the item's distribution given its
+readings and its survival to ``u``. In practice each mode's chance is
+the chance of failing at all, ``ff(x)`` (as ``sf`` computes it), times
+the mode's share of it from that average, the integral over age by the
+15-point rule of the cumulative hazard; the shares add to 1, so the
+chances add to ``ff(x)`` exactly, and the rule's error (about 1e-5 here,
+against a brute-force integral) moves only the split between the modes.
+With the marker effects 0 the chances are ``ParametricCompetingRisks``'
+cumulative incidences from the age now, ``(CIF_k(x) - CIF_k(u)) /
+S(u)``, to 1e-11. Each mode's bounds are its own, one age at a time: the
+upper bounds of the modes need not add to the upper bound on ``ff``. An
+infinite age gives ``nan`` (use a late finite one for the chance of
+ever failing by a mode). A model of one way of failing has
+``cif(x) == ff(x)`` and refuses a ``mode``.
+
+In RePyability a ``JointNode`` follows the item's overall ``sf``; a node
+for each mode is not part of this.
+
 The marker reference
 ~~~~~~~~~~~~~~~~~~~~
 

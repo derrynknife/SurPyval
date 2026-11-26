@@ -333,6 +333,71 @@ class DynamicPrediction:
         """
         return self.qf(p) - self.age
 
+    # -- failure modes -----------------------------------------------------
+
+    @property
+    def modes(self) -> list | None:
+        """The model's failure modes, ``None`` for a model of one way of
+        failing."""
+        causes = getattr(self.model, "causes", None)
+        return None if causes is None else list(causes)
+
+    def _cif_all(self, x: npt.NDArray) -> npt.NDArray:
+        """Every mode's chance of failing by it by each age of the flat
+        ``x``, ``(n_modes, x.size)``: 0 up to ``age``, ``nan`` at
+        ``nan`` and ``inf`` (and every age where a covariate is
+        missing)."""
+        n_modes = len(self.modes or [])
+        out = np.zeros((n_modes, x.size))
+        out[:, ~np.isfinite(x)] = np.nan
+        if self._missing:
+            return np.full(out.shape, np.nan)
+        Z, markers, given = self._args
+        f, after, _ = self.model._log_cif_function(x, Z, markers, given)
+        if after.any():
+            est = self.model._estimated
+            params = np.asarray(self.model.params, dtype=float)[est]
+            with np.errstate(all="ignore"):
+                out[:, after] = np.exp(np.asarray(f(params), dtype=float))
+        return out
+
+    @keeps_query_shape
+    def cif(self, x: npt.ArrayLike, mode: Any = None) -> npt.NDArray:
+        """
+        The chance that the item fails by the failure mode ``mode`` by
+        age ``x``, given its readings so far and that it was running at
+        ``age`` (0 up to ``age``): the mode's cumulative incidence from
+        now. ``mode=None`` is the chance of failing by any mode, ``ff``.
+        The modes' chances and ``sf`` add to 1 at every age. ``nan`` at
+        an infinite age (use a late finite one for the chance of ever
+        failing by the mode).
+
+        Each mode's chance is the chance of failing at all by ``x``
+        (``ff(x)``) times the mode's share of it: over the item's path
+        parameters given its readings and its survival to ``age``, the
+        chance of failing by that mode before any other, ``int_age^x
+        h_k(s) S(s) ds / S(age)``, out of the chance of failing at all.
+
+        Parameters
+        ----------
+        x : array_like
+            The ages (since new, as the model's).
+        mode : optional
+            One of the model's failure modes (:attr:`modes`), or ``None``
+            for any.
+        """
+        x = np.asarray(x, dtype=float)
+        k = self.model._check_mode(mode)
+        if k is None:
+            return self.ff(x)
+        return self._cif_all(x)[k]
+
+    @keeps_query_shape
+    def total_cif(self, x: npt.ArrayLike) -> npt.NDArray:
+        """The chance of failing by any mode by age ``x``: the modes'
+        :meth:`cif` added up, which is ``ff(x)``, ``1 - sf(x)``."""
+        return self.ff(np.asarray(x, dtype=float))
+
     # -- uncertainty -------------------------------------------------------
 
     def cb(
@@ -341,31 +406,55 @@ class DynamicPrediction:
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        mode: Any = None,
     ) -> npt.NDArray:
         """
-        Wald confidence bounds on the item's conditional ``sf``, ``ff`` or
-        ``Hf`` at ages ``x``, from the parameters' covariance: the delta
-        method on ``log(-log sf)``, as :meth:`JointModel.cb
+        Wald confidence bounds on the item's conditional ``sf``, ``ff``,
+        ``Hf`` or, with failure modes, chance of failing by ``mode``
+        (``on="cif"``) at ages ``x``, from the parameters' covariance:
+        the delta method on ``log(-log sf)`` (on ``log(-log(1 - cif))``
+        for a mode), as :meth:`JointModel.cb
         <surpyval.univariate.joint.joint_model.JointModel.cb>`, which it
         is (``Hf`` is ``-log`` of the bounds on ``sf``). Up to ``age``
-        the bounds are the estimate.
+        the bounds are the estimate. Each mode's bounds are its own
+        (pointwise, one mode at a time): the modes' upper bounds need not
+        add up to the upper bound on ``ff``.
 
         Parameters
         ----------
         x : array_like
             The ages.
-        on : {'sf', 'ff', 'Hf'}, optional
+        on : {'sf', 'ff', 'Hf', 'cif'}, optional
             The function bounded (``'R'`` and ``'F'`` are ``'sf'`` and
             ``'ff'``). Default ``'sf'``.
         alpha_ci : float, optional
             The total tail probability. Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Default ``'two-sided'``, ``[lower, upper]`` on a last axis.
+        mode : optional
+            With ``on='cif'``, the failure mode (:attr:`modes`); ``None``
+            for any (``'ff'``).
         """
-        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf", "cif"))
         check_alpha_ci(alpha_ci)
         check_option("bound", bound, BOUNDS)
         Z, markers, given = self._args
+        if on == "cif":
+            return self.model.cb(
+                x,
+                Z,
+                markers,
+                given,
+                on="cif",
+                alpha_ci=alpha_ci,
+                bound=bound,
+                mode=mode,
+            )
+        if mode is not None:
+            raise ValueError(
+                "'mode' is for the chance of failing by a mode, on='cif'; "
+                f"got on={on!r}."
+            )
         if on != "Hf":
             return self.model.cb(
                 x,
@@ -536,8 +625,12 @@ class DynamicPrediction:
             ages; ``sf``, ``ff`` and ``hf`` at them; ``sf_lower`` and
             ``sf_upper``, the Wald bounds of :meth:`cb` (``None`` where
             the model has no covariance); ``remaining_life``, ``{"p":
-            [0.1, 0.5, 0.9], "life": [...]}``; and ``marker``, the item's
-            path from its first reading (or ``age``) to the last age,
+            [0.1, 0.5, 0.9], "life": [...]}``; ``cif``, with failure
+            modes each mode's chance of failing by it by each age and
+            its Wald bounds, ``{mode: {"estimate", "lower", "upper"}}``
+            (``None`` for a model of one way of failing); and
+            ``marker``, the item's path from its first reading (or
+            ``age``) to the last age,
             ``{"x", "mean", "lower", "upper"}``; and ``how``, how the
             model was fitted (``"two-stage"`` for the approximate
             estimate, whose bounds are too narrow).
@@ -629,6 +722,7 @@ class DynamicPrediction:
                 "p": p,
                 "life": np.asarray(self.remaining_life(p), dtype=float),
             },
+            "cif": self._cif_entry(grid, alpha_ci),
             "marker": (
                 self._marker_entry(path, alpha_ci, None)
                 if marker_names is None
@@ -639,6 +733,39 @@ class DynamicPrediction:
             ),
         }
         return encode_non_finite(out)
+
+    def _cif_entry(self, grid: npt.NDArray, alpha_ci: float) -> Any:
+        """``to_dict``'s ``cif``: each failure mode's chance by each age
+        of ``grid`` with its Wald bounds (``None`` where the model has no
+        covariance), ``{mode: {"estimate", "lower", "upper"}}``; ``None``
+        for a model of one way of failing."""
+        if self.modes is None:
+            return None
+        every = self._cif_all(grid)
+        out: dict = {}
+        for k, mode in enumerate(self.modes):
+            lower: Any = None
+            upper: Any = None
+            if not self._missing:
+                try:
+                    band = np.asarray(
+                        self.cb(grid, on="cif", alpha_ci=alpha_ci, mode=mode),
+                        dtype=float,
+                    )
+                except (
+                    ValueError,
+                    NotImplementedError,
+                    np.linalg.LinAlgError,
+                ):
+                    band = None
+                if band is not None and np.isfinite(band).any():
+                    lower, upper = band[:, 0], band[:, 1]
+            out[str(mode)] = {
+                "estimate": every[k],
+                "lower": lower,
+                "upper": upper,
+            }
+        return out
 
     def _marker_entry(
         self, path: npt.NDArray, alpha_ci: float, name: Any
