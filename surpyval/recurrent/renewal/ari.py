@@ -811,6 +811,9 @@ class ARI(RenewalFitMixin):
         >>> model.model.params.round(3)
         array([3.508, 1.3  ])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return super().fit_from_df(
             df,
             x_col,

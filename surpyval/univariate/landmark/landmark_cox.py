@@ -263,6 +263,9 @@ class LandmarkCox(SerialisableMixin):
         rest is as :meth:`fit`. Measurements need a ``SurpyvalData`` with
         ``m`` and :meth:`fit`.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.surpyval_data import SurpyvalData
 
         _refuse_unknown(unknown, "LandmarkCox.fit_from_df", "w_col")

@@ -1717,6 +1717,9 @@ class PanelMultiState(_PanelMultiStateBase):
         >>> model.parameter_names
         ['ok -> worn: intensity', 'worn -> failed: intensity']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import frame_column
 
         return cls.fit(
@@ -2121,6 +2124,9 @@ class PanelMultiStateRegression(_PanelMultiStateBase):
         >>> model.covariate_names
         ['heavy']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         import pandas as pd
 
         from surpyval.utils.dataframe import frame_column

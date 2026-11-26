@@ -24,6 +24,14 @@ Design decisions made while working on the open issues, with the reason for each
 | Units are fixed lengths: s, min, h, D, W and Y, a year being 365.25 days; months are refused. Durations are floats, not truncated to whole units (lifelines truncates). | proposed | A month or a calendar year has no fixed length; truncating discards information the fit can use. | done |
 | Time-zone aware dates are compared in UTC (elapsed time); naive ones as written; a mix is refused. | proposed | A mix has no right answer, and silently assuming a zone shifts durations by hours. | done |
 | `event` (which end dates are failures) is an extra argument beyond the first plan; where false the unit is censored at its end date. | proposed | A removal for another reason is the common case in field logs (the Data Wrangler page's own example). | done |
+### Polars and Arrow input (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| One function, `surpyval.utils.dataframe.as_pandas`, converts a Polars or Arrow table to pandas, and every DataFrame entry point calls it first (`require_frame` does, and the entry points that did not use it now call it directly). Nothing else in the package reads Polars or Arrow. | proposed | The fits read a pandas frame throughout; converting once on entry keeps one code path and gives the pandas fit. | done |
+| The object's own module name (`type(obj).__module__`) says whether it is Polars or Arrow, so neither library is imported for a pandas user, and neither is a dependency; both are in the `tests` extra only. | proposed | `import surpyval` stays light, and the issue asks for no hard dependency. | done |
+| The conversion is the library's own `to_pandas` (Polars' needs PyArrow); a null is then a missing value as in pandas. A Polars `LazyFrame` is collected first. Other Arrow-compatible frames (the Arrow C stream interface) are not read. | proposed | The simplest conversion that keeps a null as pandas keeps it; wider interchange is a later decision. | done |
+| A conformance test hands every registered `*_from_df` entry point a Polars-like object with nothing but `to_pandas`, and compares the fit with the pandas one. | proposed | The first run found 66 entry points that read the frame directly; the test keeps new ones honest without needing Polars installed. | done |
 
 ## 2026-11-26
 

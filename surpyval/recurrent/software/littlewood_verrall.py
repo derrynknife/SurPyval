@@ -356,6 +356,9 @@ class LittlewoodVerrall(FitterRepr):
         failures, with ``gaps=True``), ``c_col`` that of 0 (a failure)
         and 1 (the end of testing), if there is one. See :meth:`fit`.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         for name, col in (("x_col", x_col), ("c_col", c_col)):
             if col is not None and col not in df.columns:
                 raise ValueError(

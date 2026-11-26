@@ -22,6 +22,7 @@ from surpyval.tests.conformance.registry import (
     predictions,
     refit,
 )
+from surpyval.utils.dataframe import fitter_method
 
 
 def _path_params():
@@ -157,3 +158,85 @@ def test_every_case_has_a_data_frame_path(case):
         assert "fit_from_df" not in case.paths
         return
     assert "fit_from_df" in case.paths
+
+
+class _PolarsLike:
+    """Stands in for a Polars DataFrame without Polars: it reports
+    Polars' module, holds a frame, and offers nothing but ``to_pandas``.
+    An entry point that reads its frame any other way than through the
+    shared conversion fails on it."""
+
+    __module__ = "polars.dataframe.frame"
+
+    def __init__(self, frame):
+        self._frame = frame
+
+    def to_pandas(self):
+        return self._frame
+
+
+def _frames_as_polars(monkeypatch, case):
+    """Make every ``*_from_df`` / ``from_dataframe`` entry point of the
+    case's fitters receive its pandas frame as a :class:`_PolarsLike`."""
+    import pandas as pd
+
+    def convert(args, kwargs):
+        return (
+            tuple(
+                _PolarsLike(a) if isinstance(a, pd.DataFrame) else a
+                for a in args
+            ),
+            {
+                k: _PolarsLike(v) if isinstance(v, pd.DataFrame) else v
+                for k, v in kwargs.items()
+            },
+        )
+
+    def wrap(owner, method):
+        static = inspect.getattr_static(owner, method)
+        if inspect.isclass(owner) and isinstance(static, fitter_method):
+            # binds to whichever fitter it is called on
+
+            def func(self, *args, **kwargs):
+                args, kwargs = convert(args, kwargs)
+                return static.func(self, *args, **kwargs)
+
+            return fitter_method(func)
+        entry = getattr(owner, method)
+
+        def call(*args, **kwargs):
+            args, kwargs = convert(args, kwargs)
+            return entry(*args, **kwargs)
+
+        # a class's plain method is unbound here, and binds on the way in
+        if not inspect.isclass(owner) or inspect.isfunction(static):
+            return call
+        return staticmethod(call)
+
+    for name in case.fitters:
+        module, _, attr = name.rpartition(".")
+        owner = getattr(importlib.import_module(module), attr)
+        for method in dir(owner):
+            if method.endswith("_from_df") or method == "from_dataframe":
+                monkeypatch.setattr(owner, method, wrap(owner, method))
+
+
+@pytest.mark.parametrize(
+    "case, path",
+    [p for p in _path_params() if p.values[1].endswith("_from_df")],
+)
+def test_data_frame_paths_take_a_polars_frame(monkeypatch, case, path):
+    """Every DataFrame entry point converts a Polars (or Arrow) table on
+    the way in, as the registry's own fit does a pandas one."""
+    ref = predictions(case, fitted(case))
+    _frames_as_polars(monkeypatch, case)
+    other = refit(replace(case, fit=case.paths[path]), case.data())
+    got = predictions(case, other)
+    for key in ref:
+        np.testing.assert_allclose(
+            got[key],
+            ref[key],
+            rtol=case.rtol,
+            atol=case.rtol * 1e-2,
+            err_msg=key,
+        )

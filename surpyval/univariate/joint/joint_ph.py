@@ -1105,6 +1105,9 @@ class JointPHFitter(FitterRepr):
         >>> model.parameter_names[:4]
         ['a', 'a_site', 'b', 'b_site']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.univariate.regression._aliasing import (
             covariate_columns,
         )

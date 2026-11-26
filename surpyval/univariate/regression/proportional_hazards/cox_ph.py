@@ -1773,6 +1773,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         model: SemiParametricRegressionModel
             The fitted model.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         if (
             xl_col is not None
             or xr_col is not None
@@ -1856,6 +1859,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         masked: str,
     ) -> Any:
         """``fit_from_df`` with intervals, right truncation or causes."""
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import check_columns
 
         from ..regression_data import FrameDesign
@@ -2084,6 +2090,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         column of each row's stratum, for a stratified fit, and ``w_col``
         that of each row's weight (``w`` of :meth:`fit_tvc`).
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         columns = {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col}
         if strata_col is not None:
             columns["strata"] = strata_col
@@ -2355,6 +2364,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         ``Z_cols`` (pass ``None``), ``formula`` gives the covariates as a
         ``formulaic`` formula, as in :meth:`fit_from_df`.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return fit_tvc_df(
             self.fit_tvc_timeline,
             df,

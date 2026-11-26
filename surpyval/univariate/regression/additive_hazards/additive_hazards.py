@@ -1216,6 +1216,9 @@ class AdditiveHazards_(FitterRepr):
         Fit the additive hazards model from a pandas DataFrame, retaining the
         covariate names for prediction (see :meth:`fit` for the model).
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col)
         design = FrameDesign(df, Z_cols, formula)
         return design.fit(

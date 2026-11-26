@@ -233,6 +233,9 @@ def fit_from_df(
 ) -> BayesianRegression:
     """``fit_bayes`` on the columns of a DataFrame, named as
     ``fit_from_df`` names them."""
+    from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+    df = _as_pandas(df)
     for k in ("w_col", "penalizer", "l1_ratio", "init", "center"):
         if columns.get(k) is not None:
             refuse_options("fit_bayes_from_df", {k.replace("_col", ""): 1})

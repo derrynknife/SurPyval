@@ -376,6 +376,9 @@ class MultiStateProportionalHazards(SerialisableMixin):
         >>> model.parameter_names
         ['age']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import frame_column
 
         def col(name: str | None, arg: str) -> Any:
