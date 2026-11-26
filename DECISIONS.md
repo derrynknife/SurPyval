@@ -15,12 +15,6 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
-### The GeneralizedF fit warns at its limit as P runs to infinity (27 Nov 2026)
-
-| Decision | By | Reason | Status |
-|---|---|---|---|
-| A `GeneralizedF` maximum-likelihood fit (no offset) whose log-likelihood is no higher than the best member of the asymmetric Laplace limit (found as the likelihood-ratio searches find it, on the ridge at c = 1e-10, with the fit's zero inflation and limited failure population held), within 1e-9 relative, warns "No finite maximum", names the limit's mu, a and b, says the Wald standard errors and bounds mean nothing, and points to `method='lr'`; its `maximum` is `"no finite maximum"`. Checked at every P, not only on the ridge. | proposed | The fit stopped there silently, at a local maximum (P = 1.8, 0.29 below the limit on one study sample) or on the ridge (P near 1e5). An interior maximum is strictly better than the limit, so an ordinary fit is not flagged. Costs about 0.35 s a fit at n = 200. | done |
-| That limit is checked before the generalised gamma edge, and where it is at least as likely as the fit it is the one named, even with P near 0. | proposed | An edge fit is within the margin of the GeneralizedGamma fit, so a limit above the fit is above the generalised gamma too: it is the supremum, and "fit GeneralizedGamma instead" would point to the worse model (seed 997154490: the limit is 0.36 higher). | done |
 ### fit_best: warning about candidates set aside (27 Nov 2026)
 
 | Decision | By | Reason | Status |
@@ -60,6 +54,7 @@ Design decisions made while working on the open issues, with the reason for each
 | The object's own module name (`type(obj).__module__`) says whether it is Polars or Arrow, so neither library is imported for a pandas user, and neither is a dependency; both are in the `tests` extra only. | proposed | `import surpyval` stays light, and the issue asks for no hard dependency. | done |
 | The conversion is the library's own `to_pandas` (Polars' needs PyArrow); a null is then a missing value as in pandas. A Polars `LazyFrame` is collected first. Other Arrow-compatible frames (the Arrow C stream interface) are not read. | proposed | The simplest conversion that keeps a null as pandas keeps it; wider interchange is a later decision. | done |
 | A conformance test hands every registered `*_from_df` entry point a Polars-like object with nothing but `to_pandas`, and compares the fit with the pandas one. | proposed | The first run found 66 entry points that read the frame directly; the test keeps new ones honest without needing Polars installed. | done |
+
 ### The GeneralizedF fit warns at its limit as P runs to infinity (27 Nov 2026)
 
 | Decision | By | Reason | Status |
