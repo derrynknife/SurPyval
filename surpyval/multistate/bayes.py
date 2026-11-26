@@ -380,6 +380,7 @@ def fit(
         _check_reset,
         _durations,
         _fitters,
+        _reset_entries,
     )
     from surpyval.univariate.competing_risks.parametric.bayes import (
         labelled,
@@ -405,6 +406,12 @@ def fit(
         rows = data.g == frm[h]
         c = np.where(data.h[rows] == to[h], 0, 1)
         extra: dict = {}
+        if clock == "reset":
+            # (a row that carries on a stay enters at the time already
+            # spent in the state, as the fit)
+            tl_h = _reset_entries(data)[rows]
+            if np.any(np.isfinite(tl_h)):
+                extra = {"tl": tl_h}
         if clock == "forward":
             # As the fit: an entry at or before the start of the
             # distribution's support truncates nothing.
@@ -629,6 +636,7 @@ def fit_regression(
         _check_reset,
         _durations,
         _fitters,
+        _reset_entries,
     )
     from surpyval.multistate.regression import _covariates
     from surpyval.univariate.competing_risks.parametric.bayes import (
@@ -659,6 +667,12 @@ def fit_regression(
         rows = data.g == frm[h]
         c = np.where(data.h[rows] == to[h], 0, 1)
         extra: dict = {}
+        if clock == "reset":
+            # (a row that carries on a stay enters at the time already
+            # spent in the state, as the fit)
+            tl_h = _reset_entries(data)[rows]
+            if np.any(np.isfinite(tl_h)):
+                extra = {"tl": tl_h}
         if clock == "forward":
             # As the fit: an entry at or before the start of the
             # distribution's support truncates nothing.

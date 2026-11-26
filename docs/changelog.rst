@@ -5,6 +5,21 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **The clock-reset multi-state fits read a stay given as several rows
+  as one stay: a correctness change.** ``ParametricMultiState`` and
+  ``ParametricMultiStateRegression`` (and their ``fit_bayes``) with
+  ``clock="reset"`` fitted each row on ``x - tl``, so a stay split into
+  rows (the same unit ``i`` and state, a row starting where the one
+  before was censored, as when splitting at a change of covariates)
+  restarted the time in the state at each split. Such rows are now one
+  stay: the later rows are fitted on the time since the unit entered the
+  state, left truncated at the time already spent. A unit cannot be
+  censored in a state and enter it afresh at the same time, so only data
+  that held such split stays move; on a 150-unit test set split at one
+  change of covariates per unit, the log-likelihood moves by more than 1
+  and now equals the likelihood written out by hand. Data with
+  interval-censored moves and split stays on the reset clock is refused
+  (give each stay as one row). The forward clock is unchanged.
 - **The parametric multi-state fits to interval-censored moves search
   more closely.** ``ParametricMultiState`` and
   ``ParametricMultiStateRegression`` with ``x`` as ``[xl, xr]`` (new in
@@ -324,6 +339,20 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Time-varying covariates in ``ParametricMultiStateRegression``.**
+  ``fit(..., time_varying_covariates={unit: StepSchedule or
+  CovariatePath})`` (and ``fit_from_df``, and a ``SurpyvalData`` holding
+  them by unit) splits every spell at its unit's changes inside the fit,
+  on either clock (on the reset clock the time in the state carries on
+  across the splits), with delayed entry kept; the fit equals the fit to
+  the stays split by hand. A ``CovariatePath`` is cut into steps, halved
+  until the estimates settle (``path_steps``). Predictions on the forward
+  clock take a covariate path in place of a row of covariates
+  (``occupancy``, ``transition_probabilities``, ``length_of_stay``,
+  ``cb``, ``cumulative_hazard``), checked against an ODE solution of the
+  forward equations. Accelerated failure time regressions, predictions
+  along a path on the reset clock and interval-censored moves with
+  time-varying covariates are refused, saying what to do.
 - **Extremely randomised survival trees and forests:
   ``splitrule="random"``.** ``SurvivalTree.fit`` and
   ``RandomSurvivalForest.fit`` draw one cut for each feature considered
