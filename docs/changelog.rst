@@ -324,6 +324,23 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Extremely randomised survival trees and forests:
+  ``splitrule="random"``.** ``SurvivalTree.fit`` and
+  ``RandomSurvivalForest.fit`` draw one cut for each feature considered
+  at a node, uniformly between the feature's smallest and largest value
+  there, and take the best of those by the kind's own split statistic
+  (Geurts, Ernst and Wehenkel, 2006), instead of searching every value.
+  ``"searched"`` is the default and the trees it grows are unchanged. The
+  rule works with every ``kind``, ``selection``, interval data and
+  competing risks, is seeded by ``random_state``, is saved and restored
+  by ``to_dict``/``from_dict``, and a forest keeps its bootstrap (so
+  out-of-bag scores exist). With seeds and a noise band fixed beforehand
+  (10 seeds; within two standard deviations of the searched forest), the
+  out-of-bag log-likelihood of 100-tree Weibull forests was within the
+  band on the Rossi data (-1.6037 against -1.6038) and on the lung data
+  (-2.155 against -2.169, 1.5 standard deviations better), and the fit
+  took 0.55 of the time on both.
+
 - **``surpyval.utils.dates_to_durations``: dates to durations and
   censoring flags.** Start dates, end dates (a blank meaning still
   running), an optional cut-off (default: the latest date seen), a
