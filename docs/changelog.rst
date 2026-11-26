@@ -26,6 +26,36 @@ v0.30 (unreleased)
   stops, by up to 3e-9 relative (``alpha`` 1.5302380114 to
   1.5302380067 on one seeded fleet). No rounded or documented number
   moves.
+- **GeneralizedF likelihood-ratio bounds at the edges of the family: a
+  correctness change.** At n = 200 from ``GeneralizedF(2, 0.5, 0.5, 1)``,
+  30% censored, the 95% likelihood-ratio bounds on the four parameters
+  covered only 90-93% of the time, and every miss was a side reported as
+  not found (``nan``, with a warning) where the truth was inside an
+  independently searched profile. Two causes, both at an edge of the
+  parameters' space. (1) A fit at the generalised gamma edge (``P`` near
+  0): the profiles' searches started there and, scaled by a Wald standard
+  error of ``log P`` in the thousands, stayed there (a ``sigma`` profile
+  deviance of 4.67 where it is 2.99). They are now also started from the
+  generalised gamma fit with ``P = 1``, and that scale is held to 1. (2)
+  The limit as ``P`` runs to infinity with ``sigma`` falling to 0 (the log
+  time an asymmetric Laplace, the time a power law either side of
+  :math:`e^\mu`): on some samples it fits better than any member (by
+  0.29 in log-likelihood on one), so the profiles running towards it rose
+  above the fit's likelihood, which the searches refuse, and stopped. The
+  deviances are now measured from that limit where it is better, and a
+  side whose profile runs to it is the edge of its parameter's space
+  where the limit is inside the region (``sigma`` lower 0, ``P`` upper
+  ``inf``, ``Q`` plus or minus ``inf``). On the first 100 replicates of the
+  coverage study the package's bounds now agree, side by side, with a
+  brute-force profile on every one, and cover 0.95, 0.96, 0.95 and 0.94
+  (``mu``, ``sigma``, ``Q``, ``P``); the full 300-replicate study covers
+  0.943, 0.950, 0.950 and 0.947, and is no longer an expected failure.
+  Bounds that were found before can change too, where the limit is better than the fit
+  (they are measured from a higher maximum, so are narrower). No other
+  family's numbers change: the searches take the new starts, scale and
+  limits only from a distribution that defines them. The Wald bounds on
+  ``mu``, ``sigma`` and the mean still undercover at n = 200 (they reach
+  95% by n = 500 to 1000), as the documentation now says.
 
 - **The mean life of a Wiener process whose drift is not positive is
   infinite: a correctness change.** (``WienerProcess.fit`` refuses

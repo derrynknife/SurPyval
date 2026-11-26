@@ -25,8 +25,17 @@ Results (these seeds): Gompertz Wald 0.942-0.958 and likelihood ratio
 0.950-0.967; InverseGaussian Wald 0.932-0.951 and likelihood ratio
 0.940-0.960. The GeneralizedF's Wald bounds on sf and B10 cover
 0.935-0.964, but those on mu, sigma and the mean only 0.912, 0.865 and
-0.838 (Q 0.936, P 0.954), and its likelihood-ratio bounds 0.900-0.927:
-both strict xfails under #1444.
+0.838 (Q 0.936, P 0.954): a strict xfail under #1444. At n = 200 the
+estimate of P is at an edge of its space in about 3 samples in 10 (P
+near 0, the generalised gamma, in 22%; on the ridge to the limit as P
+runs to infinity in 7%), where the Wald bounds mean nothing; in reduced
+runs (seeded 727 and 1227) they reach nominal by n = 500 to 1000 (mu,
+sigma, Q, P and the mean 0.927, 0.950, 0.947, 0.973 and 0.950 at n =
+500, 300 replicates; 0.950, 0.950, 0.960, 0.985 and 0.925 at n = 1000,
+200 replicates), as the edge fits fall to 4% and 2%. Its
+likelihood-ratio bounds cover 0.943, 0.950, 0.950 and 0.947 (they
+covered 0.900-0.927, every miss a side reported as not found, before
+the profile searches learnt the family's two edges).
 """
 
 import os
@@ -114,10 +123,9 @@ def _study(name, method, reps):
 # Known shortfalls, by (family, method): strict xfails naming their issue.
 SHORTFALL = {
     ("GeneralizedF", "wald"): "#1444: the Wald bounds on mu, sigma and the "
-    "mean cover 0.912, 0.865 and 0.838 at n = 200 (P is weakly identified "
-    "there)",
-    ("GeneralizedF", "lr"): "#1444: the likelihood-ratio bounds on mu, "
-    "sigma, Q and P cover 0.927, 0.903, 0.900 and 0.903 at n = 200",
+    "mean cover 0.912, 0.865 and 0.838 at n = 200, where P's estimate is "
+    "at an edge of its space in 3 samples in 10 (nominal by n = 500-1000; "
+    "the likelihood-ratio bounds are nominal at n = 200)",
 }
 
 

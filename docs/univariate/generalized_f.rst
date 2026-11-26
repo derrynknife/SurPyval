@@ -93,6 +93,35 @@ Wald bounds are immediate; likelihood-ratio bounds take tens of seconds
 parameters; the bootstrap refits the four-parameter model each time and
 takes many minutes.
 
+**Which bound to trust at moderate sample sizes.** With a few hundred
+units the data often cannot tell ``P`` apart from one of its two edges,
+and then the Wald bounds on ``mu``, ``sigma`` and the mean are too
+narrow. Prefer ``method="lr"`` (or the bootstrap) there. In a study of
+n = 200 units from ``GeneralizedF(2, 0.5, 0.5, 1)``, 30% censored, the
+95% Wald bounds covered ``mu``, ``sigma`` and the mean only 91%, 87% and
+84% of the time, while the likelihood-ratio bounds on all four
+parameters covered 94-96%; the Wald bounds reached 95% by n = 500 to
+1000 (``surpyval/tests/calibration/test_coverage_new_families.py``).
+The bounds on ``sf`` and on quantiles such as B10 were fine at n = 200.
+
+The two edges are these. As ``P`` falls to 0 the model becomes the
+generalised gamma, and the fit warns when it stops there: fit
+``GeneralizedGamma`` instead. As ``P`` grows while ``sigma`` shrinks
+(:math:`\sigma^2 P` and :math:`\sigma Q` held), the log time tends to
+an asymmetric Laplace distribution about ``mu`` (the time a power law
+either side of :math:`e^\mu`), which no member reaches. At n = 200
+about 3 fits in 10 were at one edge or the other.
+
+The likelihood-ratio bounds allow for both. Where a fit is at the
+generalised gamma edge, the profiles are also searched from ``P = 1``,
+since the likelihood is flat in ``log P`` there. Where the asymmetric
+Laplace limit fits the data better than the fit, the deviances are
+measured from the limit. Where a profile runs along the ridge to that
+limit and the limit is inside the region, the bound is the edge of the
+parameter's space: 0 for ``sigma``'s lower side, ``inf`` for ``P``'s
+upper side, and plus or minus ``inf`` for ``Q``, whichever way the
+limit's asymmetry points.
+
 Covariates
 ----------
 

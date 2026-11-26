@@ -15,6 +15,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-26
 
+### GeneralizedF likelihood-ratio bounds at the family's edges (26 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The limit as P runs to infinity with sigma to 0 (log time asymmetric Laplace about mu, rates a below and b above) is the GeneralizedF's second edge. Its best member, found on the ridge at c = sigma / delta = 1e-10 (log-likelihood within 1e-8 of the closed form), is the likelihood-ratio reference where it beats the fit, and the side of sigma (lower), P (upper) and Q (the sign of b - a; the symmetric limit for the other sign) runs to it. | proposed | The fit stops at a local maximum there, and the searches refused likelihoods above it, so they stopped and reported nan. | done |
+| A side whose limit is the supremum (within 1e-3 of deviance) is the edge without walking; a side whose walk loses the profile (nan) is the edge where its limit is inside the region; a crossing the walk finds stands. | proposed | As the offset models' limit as the offset runs to -inf: far along the valley the searches read noise as a crossing (a P upper bound of 1.1e15). | done |
+| Where the fit is at an edge (P < 0.01 or P > 1e3) the profiles are also searched from the GeneralizedGamma fit with P = 1, and the searches' scale of log sigma and log P is held to at most 1. Hooks on the distribution (`_lr_limit_nlls`, `_lr_profile_starts`, `_lr_search_sd`), unused by every other family. | proposed | The likelihood is flat in log P at the edge; the Wald scale there (thousands) sent the searches off the minimum. | done |
+| The Wald bounds are not changed: sigma, P and the mean are already on the log scale, and their undercoverage at n = 200 comes from P's estimate being at an edge in 3 samples in 10, which no transform mends. The docs recommend the likelihood-ratio bounds or the bootstrap at moderate n, with the measured n; the Wald study stays a strict xfail. | proposed | Measured: nominal by n = 500 to 1000. | done |
+| The fit does not yet warn when the asymmetric Laplace limit beats it, as it does at the generalised gamma edge. | proposed | Separate change to the fit's warnings. | gap |
+
 ### The power-law NHPP in PyMC and fleet pooling (26 Nov 2026)
 
 | Decision | By | Reason | Status |
