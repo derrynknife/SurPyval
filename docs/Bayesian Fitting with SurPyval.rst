@@ -847,10 +847,58 @@ and 200" stands in place of a prior on the drift:
 
 The starting level ``y0`` is the maximum-likelihood fit's (given, or
 estimated from the readings) and held: it is not in the likelihood of
-the increments. A fit with stress takes one stress row ``Z`` in every
-result; a stress profile is taken by ``function_cri(lambda m: m.sf(t,
-schedule))``. Gauge readings (``gauge=``, the quantised likelihood) are
-not taken by ``fit_bayes`` yet.
+the increments.
+
+**Readings off a coarse gauge.** A gauge that reads wear to the nearest
+2, when an interval adds only about 1 of spread, turns every increment
+into a whole number of steps, some of them zero. Taken as exact, those
+readings look more scattered than the wear is, and the posterior puts
+the shape rate ``alpha`` too low. Give the step as ``gauge`` (with
+``rounding``, ``exact_start`` and ``gauge_method`` as for ``fit``) and
+the posterior is built on the likelihood ``GammaProcess.fit(...,
+gauge=)`` maximises: the probability that each unit's true path passes
+through the bins of its readings. For five units whose wear is a gamma
+process with ``alpha`` 2 and ``beta`` 4, read every 10 hours to 100 (the
+``GammaProcess.fit_bayes`` example):
+
+.. code-block:: python
+
+    y_read = np.round(y / 2.0) * 2.0
+    model = GammaProcess.fit_bayes(t, y_read, i, 100, gauge=2.0)
+    model.param_cri("alpha")    # 1.12 to 3.65: holds the true 2
+    GammaProcess.fit_bayes(t, y_read, i, 100).param_cri("alpha")
+    # 0.68 to 1.50 with the readings taken as exact
+
+With no priors the posterior's peak is that fit's estimate; as the
+step shrinks the posterior becomes the one of exact readings; and in
+200 simulated fleets read off such a gauge the gauge fit's intervals
+hold the truth at their level while the fit that ignores the gauge
+falls well short (``test_sbc_process_bayes_gauge.py``). The exact
+method carries each unit's path through 16 cells of each bin, so it
+costs about ten times the ``"independent"`` approximation: a few
+seconds to a minute on the grid with two parameters, minutes with a
+stress coefficient.
+
+**A stress profile.** A fit with stress takes one stress row ``Z``, or
+a stress profile (a ``StepSchedule``), in ``sf``, ``ff``, ``qf``,
+``cri``, ``quantile_cri`` and ``predict_rul``. Under a profile a unit
+ages at the rate of the stress in force, so its clock is piecewise
+linear in time; each posterior point runs its own clock at its own
+stress coefficients, and the results are those of the fitted model at
+every point at once:
+
+.. code-block:: python
+
+    from surpyval import StepSchedule
+
+    profile = StepSchedule.from_changepoints([0, 60, 120], [1.0, 2.0, 1.5])
+    model.sf([90.0, 150.0], profile)    # a new unit, all uncertainty in
+    model.cri([90.0, 150.0], profile)   # the population's band
+    model.predict_rul(60.0, Z=profile)  # time zero of the profile is now
+
+For ``predict_rul`` the profile starts now. The mean life under a
+profile is not computed at every point at once yet; its interval is
+``function_cri(lambda m: m.mean(profile))``.
 
 With no priors the Wiener posterior is the textbook one: flat on ``mu``
 and on ``log sigma`` is :math:`p(\mu, \sigma^2) \propto 1/\sigma^2`, so

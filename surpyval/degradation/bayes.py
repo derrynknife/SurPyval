@@ -226,11 +226,13 @@ class ProcessTarget(Target):
         mle: Any,
         readings: dict,
         resolution: float | None = None,
+        gauge: dict | None = None,
     ) -> None:
         from surpyval.degradation.process_models import (
             GammaProcess,
             WienerProcess,
             _increments_and_stress,
+            _quantised_unit_log_likelihood,
             _unit_steps,
         )
 
@@ -255,7 +257,24 @@ class ProcessTarget(Target):
             self.z = z - np.asarray(mle.stress_ref, dtype=float)[None, :]
         self.resolution = None
         self.zero = np.zeros(dy.shape, dtype=bool)
-        if kind == "gamma":
+        #: the gauge's settings (``step``, ``rounding``, ``exact_start``,
+        #: ``method``), or ``None`` for readings taken as exact
+        self.gauge = None if gauge is None else _gauge_settings(**gauge)
+        self._gauge_ll: Any = None
+        if self.gauge is not None:
+            step = self.gauge["step"]
+            self.dy = GammaProcess._gauge_increments(dy, step)
+            cells, self._gauge_start = GammaProcess._gauge_design(
+                step,
+                self.gauge["rounding"],
+                self.gauge["exact_start"],
+                self.gauge["method"],
+            )
+            self._gauge_cells = cells
+            self._gauge_ll = _quantised_unit_log_likelihood(
+                self.dy, readings["i"], step, cells, self._gauge_start
+            )
+        elif kind == "gamma":
             self.zero, delta = GammaProcess._zero_increments(dy, resolution)
             self.resolution = float(delta) if self.zero.any() else None
             self._log_dy = np.log(np.where(self.zero, 1.0, dy))
@@ -273,13 +292,23 @@ class ProcessTarget(Target):
         stress_ref: Any = None,
         y0: float | None = None,
         resolution: float | None = None,
+        gauge: dict | None = None,
     ) -> ProcessTarget:
         """The target of ``fitter``'s maximum-likelihood fit to the
-        readings."""
+        readings (``gauge``: the gamma process's gauge settings, as
+        :func:`_gauge_settings` takes them)."""
         from surpyval.degradation.process_models import GammaProcess
 
         kind = "gamma" if fitter is GammaProcess else "wiener"
-        extra = {} if kind == "wiener" else {"resolution": resolution}
+        extra: dict = {} if kind == "wiener" else {"resolution": resolution}
+        if gauge is not None:
+            g = _gauge_settings(**gauge)
+            extra.update(
+                gauge=g["step"],
+                rounding=g["rounding"],
+                exact_start=g["exact_start"],
+                gauge_method=g["method"],
+            )
         mle = fitter.fit(
             x,
             y,
@@ -296,12 +325,18 @@ class ProcessTarget(Target):
             "i": np.asarray(i),
             "Z": None if Z is None else np.asarray(Z, dtype=float),
         }
-        return cls(kind, mle, readings, resolution)
+        return cls(kind, mle, readings, resolution, gauge)
 
     def __reduce__(self) -> tuple:
         return (
             type(self),
-            (self.kind, self.mle, self.data, self._given_resolution),
+            (
+                self.kind,
+                self.mle,
+                self.data,
+                self._given_resolution,
+                self.gauge,
+            ),
         )
 
     # -- the likelihood ------------------------------------------------------
@@ -339,8 +374,37 @@ class ProcessTarget(Target):
         for s in range(0, len(theta), step):
             yield s, self._increment_log_lik(theta[s : s + step])
 
+    def _dtau(self, theta: npt.NDArray) -> npt.NDArray:
+        """The clock steps ``(N, n)`` at rows of parameters."""
+        dt = self.dt[None, :]
+        if self.z is None:
+            return np.broadcast_to(dt, (len(theta), dt.shape[1]))
+        return dt * np.exp(theta[:, self.k :] @ self.z.T)
+
+    def _gauge_unit_log_lik(self, theta: npt.NDArray) -> npt.NDArray:
+        """Each unit's log-likelihood of gauge readings (the quantised
+        likelihood ``fit(..., gauge=)`` maximises), ``(N, units)``, a
+        block of rows at a time (the recursion holds ``cells**2`` numbers
+        an increment and a row)."""
+        theta = np.atleast_2d(np.asarray(theta, dtype=float))
+        out = np.empty((len(theta), self.n_units))
+        per_row = self.dy.size * (self._gauge_cells**2 + 2 * self._gauge_cells)
+        step = max(1, _BLOCK // max(per_row, 1))
+        with np.errstate(all="ignore"):
+            for s in range(0, len(theta), step):
+                rows = theta[s : s + step]
+                k = rows[:, :1] * self._dtau(rows)
+                out[s : s + len(rows)] = self._gauge_ll(k, rows[:, 1])
+        # a point outside the parameters' range (alpha or beta not
+        # positive) has no likelihood
+        bad = ~np.all(np.isfinite(theta[:, :2]) & (theta[:, :2] > 0), axis=1)
+        out[bad | np.isnan(out).any(axis=1)] = -np.inf
+        return out
+
     def log_lik(self, theta: npt.NDArray) -> npt.NDArray:
         theta = np.atleast_2d(np.asarray(theta, dtype=float))
+        if self.gauge is not None:
+            return self._gauge_unit_log_lik(theta).sum(axis=1)
         out = np.empty(len(theta))
         for s, block in self._blocks(theta):
             out[s : s + len(block)] = block.sum(axis=1)
@@ -354,6 +418,8 @@ class ProcessTarget(Target):
 
     def unit_log_lik(self, theta: npt.NDArray) -> npt.NDArray:
         theta = np.atleast_2d(np.asarray(theta, dtype=float))
+        if self.gauge is not None:
+            return self._gauge_unit_log_lik(theta)
         member = np.zeros((self.dy.size, self.n_units))
         member[np.arange(self.dy.size), self.unit_index] = 1.0
         out = np.empty((len(theta), self.n_units))
@@ -379,9 +445,33 @@ class ProcessTarget(Target):
         if self.kind == "wiener":
             return rng.normal(a * dtau, b * np.sqrt(dtau))
         dy = rng.gamma(a * dtau, 1.0 / b)
+        if self.gauge is not None:
+            return self._read_off_gauge(dy, rng)
         if self.resolution is not None:
             dy = np.where(dy < self.resolution, 0.0, dy)
         return dy
+
+    def _read_off_gauge(self, dy: npt.NDArray, rng: Any) -> npt.NDArray:
+        """The recorded increments of true increments ``dy`` read off the
+        gauge: each unit's level starts in its first bin (at the exact
+        start's point, or anywhere in it, uniformly, as the likelihood
+        has it), and each reading records the bin the level is in."""
+        assert self.gauge is not None
+        step = self.gauge["step"]
+        unit = self.unit_index
+        if self._gauge_start is None:
+            offset = rng.uniform(0.0, step, self.n_units)
+        else:
+            offset = np.full(self.n_units, self._gauge_start)
+        # each unit's increments are contiguous, in path order
+        total = np.cumsum(dy)
+        first = np.flatnonzero(np.r_[True, unit[1:] != unit[:-1]])
+        before = np.r_[0.0, total][first]
+        level = offset[unit] + total - before[unit]
+        bins = np.floor(level / step)
+        previous = np.r_[0.0, bins[:-1]]
+        previous[first] = 0.0
+        return step * (bins - previous)
 
     def observed(self) -> npt.NDArray:
         return self.dy
@@ -457,14 +547,18 @@ class ProcessTarget(Target):
 
     # -- words and saving ----------------------------------------------------
     def describe_data(self) -> str:
-        return (
+        out = (
             f"{self.n_units} unit{'s' if self.n_units != 1 else ''}, "
             f"{self.dy.size} increment{'s' if self.dy.size != 1 else ''}"
         )
+        if self.gauge is not None:
+            out += f", read off a gauge of step {self.gauge['step']:g}"
+        return out
 
     def same_data(self, other: Any) -> bool:
         return bool(
             self.kind == getattr(other, "kind", None)
+            and getattr(self, "gauge", None) == getattr(other, "gauge", None)
             and np.array_equal(self.dt, other.dt)
             and np.array_equal(self.dy, other.dy)
             and (
@@ -490,6 +584,7 @@ class ProcessTarget(Target):
             "i": [to_native(v) for v in r["i"]],
             "Z": None if r["Z"] is None else r["Z"].tolist(),
             "resolution": self._given_resolution,
+            "gauge": self.gauge,
         }
 
     @classmethod
@@ -504,7 +599,32 @@ class ProcessTarget(Target):
             "i": np.asarray(d["i"]),
             "Z": None if d["Z"] is None else np.asarray(d["Z"], dtype=float),
         }
-        return cls(d["kind"], mle, readings, d.get("resolution"))
+        return cls(
+            d["kind"], mle, readings, d.get("resolution"), d.get("gauge")
+        )
+
+
+def _gauge_settings(
+    step: float,
+    rounding: str = "nearest",
+    exact_start: bool = False,
+    method: str = "exact",
+) -> dict:
+    """A gauge's settings, checked, as ``GammaProcess.fit`` takes them
+    (``gauge``, ``rounding``, ``exact_start``, ``gauge_method``)."""
+    step = float(step)
+    if not (np.isfinite(step) and step > 0):
+        raise ValueError(
+            f"gauge must be a positive, finite number, got {step!r}"
+        )
+    check_option("rounding", rounding, ("nearest", "floor"))
+    check_option("gauge_method", method, ("exact", "independent"))
+    return {
+        "step": step,
+        "rounding": str(rounding),
+        "exact_start": bool(exact_start),
+        "method": str(method),
+    }
 
 
 def _is_process_fit(model: Any) -> bool:
@@ -536,6 +656,150 @@ register_adapter(_is_process_fit, _target_of_fit)
 # ---------------------------------------------------------------------------
 # The life at given parameters
 # ---------------------------------------------------------------------------
+class PointClocks:
+    """
+    The process clock of every posterior point at once, under one stress
+    row or a stress profile (a
+    :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`).
+
+    Each point runs its own clock, ``tau(t) = int_0^t AF(z(s)) ds`` with
+    ``AF(z) = exp(gamma' (z - stress_ref))`` at that point's stress
+    coefficients ``gamma``: at a constant stress ``AF t``; under a profile
+    piecewise linear in ``t``, with the slope of the stress in force (what
+    :class:`~surpyval.degradation._clock.StressClock` is for one model).
+    The profile's segments are shared by the points, so only the slopes
+    differ from one point to the next, and a block of points is computed
+    with one matrix product.
+
+    Parameters
+    ----------
+    gammas : array, ``(N, q)``, or None
+        The points' stress coefficients (``q = 0`` or ``None``: a fit
+        without stress, whose clock is the time itself).
+    stress_ref : array, ``(q,)``, or None
+    Z : array like, StepSchedule or None
+        One stress row, a stress profile, or ``None`` (the reference
+        stress).
+    """
+
+    def __init__(self, gammas: Any, stress_ref: Any, Z: Any) -> None:
+        from surpyval.univariate.regression.tvc_schedule import (
+            StepSchedule,
+            check_from_origin,
+        )
+
+        self.schedule: Any = None
+        self.n = 1 if gammas is None else len(gammas)
+        self.af = np.ones(self.n)
+        if gammas is None or Z is None or np.shape(gammas)[1] == 0:
+            return
+        self.gammas = np.asarray(gammas, dtype=float)
+        self.ref = np.asarray(stress_ref, dtype=float)
+        q = self.gammas.shape[1]
+        if isinstance(Z, StepSchedule):
+            if Z.p != q:
+                raise ValueError(
+                    "the StepSchedule has {} covariate(s) but the model was "
+                    "fitted with {}".format(Z.p, q)
+                )
+            self.schedule = check_from_origin(Z)
+            return
+        from surpyval.degradation._clock import stress_row
+
+        z = stress_row(Z, q) - self.ref
+        self.af = np.exp(self.gammas @ z)
+
+    def _knots(self, horizon: float) -> tuple[npt.NDArray, npt.NDArray]:
+        """The profile's segments from 0 to past ``horizon`` (and past its
+        last step): the calendar knots ``(K + 1,)`` and each segment's
+        stress less the reference, ``(K, q)``."""
+        from surpyval.univariate.regression.tvc_schedule import (
+            segments_from_origin,
+        )
+
+        edges = self.schedule.edges
+        finite = edges[np.isfinite(edges)]
+        horizon = max(horizon, float(finite.max(initial=0.0)) + 1.0, 1.0)
+        starts, ends, Zs = segments_from_origin(self.schedule, horizon)
+        knots_t = np.concatenate([[starts[0]], ends])
+        return knots_t, np.asarray(Zs, dtype=float) - self.ref
+
+    def _block(self, K: int) -> int:
+        return max(1, _BLOCK // max(K, 1))
+
+    def _slopes(
+        self, rows: Any, knots_t: npt.NDArray, dz: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The block of points' slopes ``(n, K)`` and their clocks at the
+        knots ``(n, K + 1)``."""
+        af = np.exp(self.gammas[rows] @ dz.T)
+        steps = af * np.diff(knots_t)[None, :]
+        knots_tau = np.concatenate(
+            [np.zeros((len(af), 1)), np.cumsum(steps, axis=1)], axis=1
+        )
+        return af, knots_tau
+
+    def tau(self, t: npt.NDArray) -> npt.NDArray:
+        """``(N, m)``: each point's clock at the calendar times ``t``
+        (``(m,)``)."""
+        t = np.asarray(t, dtype=float)
+        if self.schedule is None:
+            return self.af[:, None] * t[None, :]
+        finite = t[np.isfinite(t)]
+        knots_t, dz = self._knots(float(finite.max(initial=0.0)))
+        K = len(dz)
+        j = np.searchsorted(knots_t, np.where(np.isfinite(t), t, 0.0), "right")
+        j = np.clip(j - 1, 0, K - 1)
+        out = np.empty((self.n, t.size))
+        step = self._block(K)
+        for s in range(0, self.n, step):
+            rows = slice(s, s + step)
+            af, knots_tau = self._slopes(rows, knots_t, dz)
+            # before the origin the clock has not started
+            since = np.maximum(t - knots_t[j], 0.0)
+            out[rows] = knots_tau[:, j] + af[:, j] * since[None, :]
+        out[:, np.isposinf(t)] = np.inf
+        out[:, np.isnan(t)] = np.nan
+        out[:, t < 0] = 0.0
+        return out
+
+    def inverse(self, tau: npt.NDArray) -> npt.NDArray:
+        """``(N,)``: the calendar time at which each point's clock reads
+        its own ``tau`` (``(N,)``)."""
+        tau = np.asarray(tau, dtype=float)
+        if self.schedule is None:
+            return tau / self.af
+        out = np.full(self.n, np.nan)
+        out[np.isposinf(tau)] = np.inf
+        ok = np.isfinite(tau)
+        horizon = 1.0
+        knots_t, dz = self._knots(horizon)
+        step = self._block(len(dz))
+        for s in range(0, self.n, step):
+            rows = np.arange(s, min(s + step, self.n))
+            rows = rows[ok[rows]]
+            if not rows.size:
+                continue
+            want = tau[rows]
+            af, knots_tau = self._slopes(rows, knots_t, dz)
+            # lengthen the profile until every point's clock passes its
+            # tau (a cyclic profile repeats; any other holds its last
+            # stress)
+            for _ in range(200):
+                if np.all(knots_tau[:, -1] >= want):
+                    break
+                horizon = 2.0 * float(knots_t[-1])
+                knots_t, dz = self._knots(horizon)
+                step = self._block(len(dz))
+                af, knots_tau = self._slopes(rows, knots_t, dz)
+            K = len(dz)
+            j = np.sum(knots_tau <= want[:, None], axis=1) - 1
+            j = np.clip(j, 0, K - 1)
+            at = np.arange(len(rows))
+            out[rows] = knots_t[j] + (want - knots_tau[at, j]) / af[at, j]
+        return out
+
+
 class ProcessLife:
     """The first passage from a level to the threshold, at rows of
     parameters (every posterior point at once), at one stress.
@@ -545,9 +809,9 @@ class ProcessLife:
     target : ProcessTarget
     theta : array, ``(N, k)``
         The parameter rows, in ``target.names`` order.
-    Z : array like or None
-        One stress row (a model fitted with stress), else ``None``: the
-        reference stress.
+    Z : array like, StepSchedule or None
+        One stress row or a stress profile (a model fitted with stress),
+        else ``None``: the reference stress.
     start : float or None
         The level the passage starts from; the fit's ``y0`` by default.
     """
@@ -566,19 +830,18 @@ class ProcessLife:
                 f"threshold {mle.threshold:g}: there is no passage left."
             )
         k = len(mle.parameter_names)
-        if mle.gamma is None or Z is None:
-            self.af = np.ones(len(self.theta))
-        else:
-            from surpyval.degradation._clock import stress_row
-
-            z = stress_row(mle._covariates(Z), mle.gamma.size)
-            z = z - np.asarray(mle.stress_ref, dtype=float)
-            self.af = np.exp(self.theta[:, k:] @ z)
+        stress = None if mle.gamma is None else mle._covariates(Z)
+        self.clock = PointClocks(self.theta[:, k:], mle.stress_ref, stress)
         self.a = self.theta[:, 0]
         self.b = self.theta[:, 1]
 
+    @property
+    def is_profile(self) -> bool:
+        """Whether the stress is a profile (a StepSchedule)."""
+        return self.clock.schedule is not None
+
     def _tau(self, t: npt.NDArray) -> npt.NDArray:
-        return self.af[:, None] * np.asarray(t, dtype=float)[None, :]
+        return self.clock.tau(np.asarray(t, dtype=float))
 
     def sf(self, t: npt.NDArray) -> npt.NDArray:
         """``(N, m)``: the probability of no passage by each time."""
@@ -625,18 +888,26 @@ class ProcessLife:
         if p <= 0:
             return np.zeros(len(self.a))
         tau = _solve_quantile(ff, p, scale, self.ever())
-        return tau / self.af
+        return self.clock.inverse(tau)
 
     def mean(self) -> npt.NDArray:
         """``(N,)``: the mean time to the passage (infinite where it may
-        never happen)."""
+        never happen), at a constant stress."""
+        if self.is_profile:
+            raise ValueError(
+                "The mean life under a stress profile is not computed at "
+                "every posterior point at once yet: use "
+                "function_cri(lambda m: m.mean(schedule)) for its interval "
+                "(and its posterior median as function_cri(lambda m: "
+                "m.mean(schedule), alpha_ci=1.0))."
+            )
         D = self.distance
         with np.errstate(all="ignore"):
             if self.kind == "wiener":
                 tau = np.where(self.a > 0, D / self.a, np.inf)
             else:
                 tau = _gamma_passage_integral(self.b * D) / self.a
-        return tau / self.af
+        return tau / self.clock.af
 
 
 # ---------------------------------------------------------------------------
@@ -733,8 +1004,13 @@ class BayesianProcessModel(BayesianResult):
     first-passage distribution in closed form.
 
     For a fit with stress, ``Z`` is one stress row (the stress the unit
-    runs at); a stress profile is taken by :meth:`function_cri` of the
-    fitted model, ``lambda m: m.sf(t, schedule)``.
+    runs at) or a stress profile, a
+    :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`:
+    each posterior point's clock runs through the profile at that point's
+    stress coefficients, so ``sf``, ``ff``, ``qf``, ``cri``,
+    ``quantile_cri`` and ``predict_rul`` take one as the fitted model's
+    methods do. The mean life under a profile is reached by
+    :meth:`function_cri`, ``lambda m: m.mean(schedule)``.
 
     Attributes
     ----------
@@ -781,17 +1057,9 @@ class BayesianProcessModel(BayesianResult):
         if self.is_accelerated:
             if Z is None:
                 raise ValueError(
-                    "This process was fitted with stress; pass Z, one stress "
-                    "row (for a stress profile use function_cri(lambda m: "
-                    "m.sf(t, schedule)))."
-                )
-            if not isinstance(Z, (np.ndarray, list, tuple, float, int)) and (
-                not hasattr(Z, "columns")
-            ):
-                raise ValueError(
-                    "Z is one stress row here. For a stress profile "
-                    "(a StepSchedule) use function_cri(lambda m: "
-                    "m.sf(t, schedule)) of the fitted model."
+                    "This process was fitted with stress; pass Z: one "
+                    "stress row for a constant stress, or a StepSchedule "
+                    "for a stress profile."
                 )
         elif Z is not None:
             raise ValueError(
@@ -978,7 +1246,10 @@ class BayesianProcessModel(BayesianResult):
 
         Increments are independent, so the remaining passage over
         ``threshold - current_degradation`` follows the law of a fresh
-        passage from that level.
+        passage from that level. For a fit with stress, ``Z`` is the
+        stress the unit runs at from now on: one row, or a
+        :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+        whose time zero is now.
 
         Examples
         --------
@@ -1021,19 +1292,30 @@ def fit(
     y0: float | None = None,
     resolution: float | None = None,
     *,
+    gauge: dict | None = None,
     priors: Any = None,
     method: str = "auto",
     points: int | None = None,
     importance: bool = False,
 ) -> BayesianProcessModel:
     """The Bayesian fit of a Wiener or gamma process; see the fitters'
-    ``fit_bayes``."""
+    ``fit_bayes`` (``gauge``: the gamma process's gauge settings, as
+    :func:`_gauge_settings` takes them)."""
     from surpyval.utils.no_maximum import quiet_maximum_warnings
 
     try:
         with quiet_maximum_warnings(), np.errstate(all="ignore"):
             target = ProcessTarget.from_readings(
-                fitter, x, y, i, threshold, Z, stress_ref, y0, resolution
+                fitter,
+                x,
+                y,
+                i,
+                threshold,
+                Z,
+                stress_ref,
+                y0,
+                resolution,
+                gauge,
             )
     except ValueError as e:
         raise ValueError(
@@ -1060,6 +1342,7 @@ def fit(
 __all__ = [
     "BayesianProcessModel",
     "BayesianProcessRUL",
+    "PointClocks",
     "ProcessLife",
     "ProcessTarget",
     "fit",
