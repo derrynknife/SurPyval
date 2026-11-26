@@ -402,6 +402,21 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
             "BayesianCauseSpecific",
         )
     },
+    **{
+        _path: (
+            "a posterior, not a maximum: each cause's (transition's) "
+            "fit_bayes checks its own engine, and a joint fit's grid checks "
+            "its own accuracy, in place of a verified maximum"
+        )
+        for _path in (
+            "surpyval.univariate.competing_risks.parametric.bayes"
+            ".BayesianCompetingRisks",
+            "surpyval.univariate.competing_risks.regression.bayes"
+            ".BayesianCompetingRisksRegression",
+            "surpyval.multistate.bayes.BayesianMultiState",
+            "surpyval.multistate.bayes.BayesianMultiStateRegression",
+        )
+    },
 }
 
 # Properties that refit the model (the slow ones).

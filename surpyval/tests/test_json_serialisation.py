@@ -677,6 +677,28 @@ def _build(name):
         "bayesian_multistate": lambda: ParametricMultiState.fit_bayes(
             **{**ms_data(), "dist": surpyval.Exponential}
         ),
+        "bayesian_competing_risks_joint": lambda: (
+            ParametricCompetingRisks.fit_bayes(
+                [[2, 2], [2, 4], [4, 6], [5, 5], [6, 8], [7, 7], [8, 10]],
+                ["a", "b", "a", "b", "a", "a", "b"],
+                c=[-1, 2, 2, 0, 2, 0, 2],
+                dist=surpyval.Exponential,
+            )
+        ),
+        "bayesian_competing_risks_regression": lambda: (
+            surpyval.ParametricCompetingRisksRegression.fit_bayes(
+                _cr_data()[0],
+                _cr_data()[1],
+                _cr_data()[2],
+                c=_cr_data()[3],
+                model=surpyval.ExponentialPH,
+            )
+        ),
+        "bayesian_multistate_regression": lambda: (
+            surpyval.multistate.ParametricMultiStateRegression.fit_bayes(
+                **{**ms_data(True), "model": surpyval.ExponentialPH}
+            )
+        ),
     }
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -774,6 +796,9 @@ CASES = [
     "bayesian_process",
     "bayesian_competing_risks",
     "bayesian_multistate",
+    "bayesian_competing_risks_joint",
+    "bayesian_competing_risks_regression",
+    "bayesian_multistate_regression",
 ]
 
 

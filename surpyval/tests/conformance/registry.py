@@ -674,25 +674,6 @@ OUT_OF_SCOPE["surpyval.degradation.bayes.BayesianProcessModel"] = (
 OUT_OF_SCOPE["surpyval.degradation.bayes.BayesianProcessRUL"] = _COMPONENT
 OUT_OF_SCOPE["surpyval.degradation.bayes.ProcessLife"] = _COMPONENT
 OUT_OF_SCOPE["surpyval.degradation.bayes.ProcessTarget"] = _COMPONENT
-# Bayesian competing risks and multi-state models: a composition of the
-# registered BayesianParametric, one a cause or a transition (each
-# posterior is that family's own fit, checked equal to it).
-OUT_OF_SCOPE[
-    "surpyval.univariate.competing_risks.parametric.bayes."
-    "BayesianCompetingRisks"
-] = (
-    "a composition of BayesianParametric fits, one a cause, built by "
-    "ParametricCompetingRisks.fit_bayes (checked in "
-    "surpyval/tests/bayes/test_competing_risks_bayes.py and "
-    "surpyval/tests/calibration/test_sbc_competing_risks_bayes.py; no "
-    "conformance case yet)"
-)
-OUT_OF_SCOPE["surpyval.multistate.bayes.BayesianMultiState"] = (
-    "a composition of BayesianParametric fits, one a transition, built by "
-    "ParametricMultiState.fit_bayes (checked in "
-    "surpyval/tests/bayes/test_multistate_bayes.py; no conformance case "
-    "yet)"
-)
 OUT_OF_SCOPE["surpyval.bayes.Target"] = _COMPONENT
 OUT_OF_SCOPE["surpyval.bayes.fit_target"] = (
     _FUNCTION + " (the engine rule behind every family's fit_bayes; "
