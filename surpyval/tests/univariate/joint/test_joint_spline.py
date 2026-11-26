@@ -585,3 +585,29 @@ def test_fewer_varying_parameters_are_tested_by_the_boundary_mixture(
     )
     with pytest.raises(ValueError, match="varying"):
         level.likelihood_ratio_test(both)
+
+
+def test_a_larger_model_is_never_worse_than_the_nested_one_with_modes():
+    """The general property on another fixture: the two-mode fixture's
+    straight lines (80 items, a wear and a random failure), fitted with
+    the spline's bend common and varying. The varying fit reaches the
+    common fit's likelihood and is held on the boundary, verified."""
+    from surpyval.tests.conformance.registry_fixtures import (
+        joint_causes_data,
+    )
+
+    data = joint_causes_data()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        common = JointPH(
+            Weibull, SplinePath.natural(df=2), varying=("level", "rate")
+        ).fit(**data)
+        bend = JointPH(
+            Weibull,
+            SplinePath.natural(df=2),
+            varying=("level", "rate", "s1"),
+        ).fit(**data)
+    assert bend.neg_ll() <= common.neg_ll() + 1e-6 * abs(common.neg_ll())
+    assert bend.spreads_at_zero == ["s1"]
+    assert bend.maximum == "verified"
+    assert not [w for w in caught if "verified maximum" in str(w.message)]
