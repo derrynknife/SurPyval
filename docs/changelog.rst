@@ -11,7 +11,9 @@ v0.30 (unreleased)
   673.37 against the LogNormal's 673.58, so ``diagnose()`` on a Weibull
   fitted to those data now names ``BirnbaumSaunders`` as the better
   family. The two are close for a shape below 1 (as the shape falls to
-  0, the log time of a Birnbaum-Saunders is normal).
+  0, the log time of a Birnbaum-Saunders is normal). Expect it to win
+  often among the right-skewed candidates: it also won on draws from a
+  ``Gamma(3, 0.5)`` and from an inverse Gaussian.
 
 - **The parametric multi-state fits to interval-censored moves search
   more closely.** ``ParametricMultiState`` and

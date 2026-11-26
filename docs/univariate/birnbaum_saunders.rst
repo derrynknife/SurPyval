@@ -106,8 +106,12 @@ What it does not do
 line, :math:`x = \beta + \alpha\sqrt{\beta}\,z\sqrt{x}`, mixes the time
 with the probability, so no axis of the time alone and one of the
 probability alone makes it straight. ``plot()`` draws on the fitted
-shape. There is no proportional hazards form (the hazard does not keep
-the family under a constant multiple).
+shape. ``PH(BirnbaumSaunders)`` fits a proportional hazards model on
+this baseline, but there the covariates do not keep the distribution in
+the family (a multiple of its hazard is not a Birnbaum-Saunders hazard),
+so it has no map between the baseline at the covariates' means and at 0
+(as the AFT model has); centre the covariates, or use ``center=True``,
+if they are far from 0.
 
 .. autoclass:: surpyval.univariate.parametric.distributions.birnbaum_saunders.BirnbaumSaunders_
    :members:

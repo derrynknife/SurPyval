@@ -223,9 +223,10 @@ Each parameter's sign :math:`s_k` (``model.coefficient_signs``) says how
 its coefficients enter, one rule for each kind of parameter:
 
 - A **scale** (a Weibull's, log-logistic's or ExpoWeibull's ``alpha``, a
-  Rayleigh's ``sigma``, a BirnbaumSaunders's ``beta``, its median): :math:`s = -1`, so :math:`\alpha(z) = \alpha
-  e^{-b'z}` and a positive coefficient shrinks the scale, exactly as the
-  AFT model's coefficient does.
+  Rayleigh's ``sigma``, a BirnbaumSaunders's ``beta``, its median):
+  :math:`s = -1`, so :math:`\alpha(z) = \alpha e^{-b'z}` and a positive
+  coefficient shrinks the scale, exactly as the AFT model's coefficient
+  does.
 - A **rate** (an Exponential's ``failure_rate``, a Gamma's ``beta``, a
   Gompertz's ``rate`` and its ``shape``, the hazard's growth rate):
   :math:`s = +1`, so :math:`\lambda(z) = \lambda e^{b'z}` and a positive

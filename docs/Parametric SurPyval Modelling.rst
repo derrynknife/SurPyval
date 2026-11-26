@@ -1402,10 +1402,13 @@ Comparing distributions
 To choose a distribution, fit the candidates to the same data and compare an
 information criterion; lower is better. ``fit_best(x, c, n, t)`` (which also
 takes ``tl``, ``tr``, ``xl`` and ``xr``, as ``fit`` does) does this by
-maximum likelihood for eleven continuous distributions -- ``Beta``,
-``Exponential``, ``ExpoWeibull``, ``Gamma``, ``Gumbel``, ``Logistic``,
-``LogLogistic``, ``LogNormal``, ``Normal``, ``Rayleigh`` and ``Weibull`` (not
-``GumbelLEV``, the discrete distributions or offset models) -- and returns the
+maximum likelihood for sixteen continuous distributions -- ``Beta``,
+``BirnbaumSaunders``, ``Exponential``, ``ExpoWeibull``, ``Gamma``,
+``GeneralizedF``, ``GeneralizedGamma``, ``Gompertz``, ``Gumbel``,
+``InverseGaussian``, ``Logistic``, ``LogLogistic``, ``LogNormal``,
+``Normal``, ``Rayleigh`` and ``Weibull`` (not ``GumbelLEV``, the discrete
+distributions or offset models; ``Beta4`` and ``Uniform`` only when named in
+``include``) -- and returns the
 winner (see :doc:`comparison_and_validation`). ``metric`` may be ``'aic'``
 (the default), ``'aic_c'``, ``'bic'`` or ``'neg_ll'``, and ``include`` or
 ``exclude`` (lists of names, not both) narrow the candidates. The data are

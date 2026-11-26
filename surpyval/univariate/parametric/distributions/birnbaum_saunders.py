@@ -139,6 +139,14 @@ class BirnbaumSaunders_(OptimisedFitMixin, ParametricFitter):
         # fitted shape.
         self.supports_mpp = False
 
+    def _refuse_mpp_without_plot(self) -> None:
+        raise ValueError(
+            "BirnbaumSaunders distribution does not work with probability "
+            "plot fitting: its straight line mixes the time with the "
+            "probability, so no plot axis makes it straight without alpha; "
+            "use how='MLE', 'MPS', 'MSE' or 'MOM' instead"
+        )
+
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
