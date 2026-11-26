@@ -1319,6 +1319,15 @@ v0.30 (unreleased)
 
 **Fixed.**
 
+- **``param_cb(method="lr")`` of the joint frailty, shared frailty and
+  semi-parametric proportional odds models, and of the frailty and
+  interval Cox models, raised ``AttributeError: 'LikelihoodRegion' object
+  has no attribute 'dist'``.** The edge handling added for the
+  GeneralizedF's likelihood-ratio bounds read the distribution family of
+  the model searched; a region over a bare likelihood has none. It now
+  reports no family limits, and the bounds are the ones they were
+  (joint frailty ``alpha``: 0.06 to 2.57 on the documented example).
+
 - **``Dabrowska``: a series with no failures.** Where every unit of one
   series is censored, ``sf``, ``ff`` and ``cb`` raised an
   ``IndexError``. That series' margin is now 1, so the joint survival
