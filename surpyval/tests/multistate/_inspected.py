@@ -194,3 +194,45 @@ def visits_covariates(n, seed, pars, betas, clock="forward", gap=1.0):
             states.append([s for x, s in path if x <= v][-1])
             Z.append((male, w[j]))
     return ids, times, states, np.array(Z, dtype=float)
+
+
+def visits_recovery(n, seed, pars, gap=1.0, last=6.0):
+    """Visits of an illness-death model with recovery and Weibull hazards
+    of the time in the current state (a semi-Markov model): ``pars``
+    ``{(from, to): (scale, shape)}`` for healthy -> ill, healthy -> dead,
+    ill -> healthy and ill -> dead. ``n`` units healthy at 0, seen every
+    ``gap`` until ``last`` (exclusive), a death recorded at its exact
+    time (state 3). Returns ``(ids, times, states)``."""
+    from scipy.optimize import brentq
+
+    rng = np.random.default_rng(seed)
+    code = {"healthy": 1, "ill": 2, "dead": 3}
+    visits = list(np.arange(0.0, last, gap))
+    end = visits[-1]
+    ids, times, states = [], [], []
+    for u in range(n):
+        state, t, path = "healthy", 0.0, [(0.0, 1)]
+        while state != "dead":
+            out = [p for p in pars if p[0] == state]
+            e = float(rng.exponential())
+
+            def total(v, out=out, t0=t):
+                return sum(_H(pars[p], v - t0) for p in out)
+
+            if total(end) <= e:
+                break
+            t_new = brentq(lambda v: total(v) - e, t, end, xtol=1e-12)
+            rates = np.array([_h(pars[p], t_new - t) for p in out])
+            k = rng.choice(len(out), p=rates / rates.sum())
+            state, t = out[k][1], t_new
+            path.append((t, code[state]))
+        death = path[-1][0] if path[-1][1] == 3 else None
+        for v in visits:
+            ids.append(u)
+            if death is not None and v >= death:
+                times.append(death)
+                states.append(3)
+                break
+            times.append(v)
+            states.append([s for w, s in path if w <= v][-1])
+    return ids, times, states

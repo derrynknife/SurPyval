@@ -752,10 +752,12 @@ Two time scales are offered:
   starting afresh, a disease stage with its own course). The time of
   entering a state is itself not seen, so the likelihood averages over
   it, and over the entry into every state the unit may have passed
-  through between two visits unseen. This is offered for progressive
-  models (no going back to a state once left), where those routes can
-  be listed; a model with a way back is refused with the reason. Each
-  unit is taken to have entered its first state at its first visit.
+  through between two visits unseen. Each unit is taken to have entered
+  its first state at its first visit. In a progressive model (no going
+  back to a state once left) those routes can be listed and every one
+  is counted. With a way back (recovery) a unit could make any number
+  of moves between two visits, so the routes of at most ``max_moves``
+  moves (default 3) are counted; see below.
 
 The fitted model is a ``ParametricMultiState``: the same occupation
 probabilities, bounds and lengths of stay. With exponential
@@ -794,6 +796,70 @@ adaptive quadrature and, where no state can be passed unseen, against
 ``ParametricMultiState`` with the moves interval censored. Simulated
 visits recover the Weibull shapes, with bounds at their nominal
 coverage (``surpyval/tests/calibration/test_coverage_multistate_panel_parametric.py``).
+
+A way back on the reset clock
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+With recovery, a unit seen healthy at two visits may have stayed
+healthy, or fallen ill and recovered, or done that twice, and so on: on
+the reset clock each of those routes enters a state at an unknown time,
+and each needs its own integral. ``ParametricPanelMultiState`` (and the
+regression) count the routes of at most ``max_moves`` moves in each gap
+between visits (default 3) and leave out the rest. What is left out is
+worked out at the estimate, gap by gap: the chance, given what was seen
+before the gap, of more moves in it than are counted. That is how far
+the gap's factor of the likelihood can be short. The largest is
+``model.truncation_error`` and every gap's is in
+``model.truncation_errors``; a warning names the worst gap when any is
+above ``truncation_tol`` (default :math:`10^{-8}`). Raise ``max_moves``
+until the warning goes, or until the estimates stop moving.
+
+How many moves are needed depends on how many happen in a gap: about
+the rate of leaving a state times the time between visits. With rates
+of 0.2 to 0.45 a unit of time and visits a unit apart, bound 3 leaves
+out up to about :math:`2 \times 10^{-4}` of a gap and the intensities
+are within about 1% of the Markov fit's; each extra move cuts what is
+left out about tenfold. Every extra move nests one more integral, so the
+fit slows quickly as the bound rises. On 40 simulated units seen at 0 to
+5, with constant rates of 0.05 to 0.3 (fitted with exponential
+distributions, so the Markov fit is the exact answer):
+
+.. list-table::
+   :header-rows: 1
+
+   * - ``max_moves``
+     - largest share left out of a gap
+     - log-likelihood short by
+     - intensities off by up to
+     - time to fit
+   * - 1
+     - 0.029
+     - 5.6
+     - 77%
+     - 2 s
+   * - 2
+     - 0.0024
+     - 0.38
+     - 8.5%
+     - 75 s
+   * - 3
+     - 0.0002
+     - 0.030
+     - 1.0%
+     - 3 min
+
+A Weibull fit (eight parameters) of 60 such units at bound 3 had not
+finished after 40 minutes. For
+rare moves or visits close together the default bound is ample; where
+visits are far apart compared with the time a unit stays in a state,
+the forward clock (``clock="forward"``, which takes cycles exactly) or
+``PanelMultiState`` is the practical choice.
+
+With exponential hazards the reset clock is the Markov model, so the
+truncated fit approaches ``PanelMultiState``'s as ``max_moves`` rises
+(checked in the tests, along with the exact chance of each number of
+moves from one block matrix exponential, and adaptive quadrature for a
+Weibull unit that falls ill and recovers between two visits).
 
 Covariates with intensities that change with time
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -933,8 +999,10 @@ The non-parametric and Cox spell models refuse interval-censored
 changes of state (the parametric ones take them); for states seen only
 at visits use ``PanelMultiState``, which has no hidden Markov
 (misclassification) model yet.
-On the clock reset ``ParametricPanelMultiState`` and
-``ParametricPanelMultiStateRegression`` take only progressive models. The parametric models have no
+On the clock reset with a way back, ``ParametricPanelMultiState`` and
+``ParametricPanelMultiStateRegression`` count at most ``max_moves`` moves
+between two visits, and the nested integrals make large bounds slow; no
+phase-type approximation is offered. The parametric models have no
 likelihood-ratio or bootstrap bounds. The clock reset is offered for the
 parametric spell models only: a Cox model per transition on the time in
 the state would need its probabilities simulated over step hazards, and

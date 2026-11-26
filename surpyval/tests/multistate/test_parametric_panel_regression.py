@@ -345,15 +345,6 @@ def test_refusals(small):
     bad[3, 0] = np.nan
     with pytest.raises(ValueError, match="missing or infinite covariates"):
         ParametricPanelMultiStateRegression.fit(Z=bad, transitions=TM, **kw)
-    with pytest.raises(ValueError, match="progressive models only"):
-        ParametricPanelMultiStateRegression.fit(
-            Z=small["Z"],
-            transitions=TransitionMatrix.illness_death(
-                ("healthy", "ill", "dead"), recovery=True
-            ),
-            clock="reset",
-            **kw,
-        )
     with pytest.raises(TypeError, match="arrays of visits"):
         import surpyval as sp
 

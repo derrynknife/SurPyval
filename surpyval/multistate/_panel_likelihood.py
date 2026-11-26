@@ -84,6 +84,29 @@ def all_paths(tm: TransitionMatrix) -> dict:
     return paths
 
 
+def bounded_paths(tm: TransitionMatrix, max_moves: int) -> dict:
+    """``{(a, b): [path, ...]}``: every path of states from ``a`` to
+    ``b`` of one to ``max_moves`` moves, ``a == b`` included (a way out
+    and back), for a model with cycles."""
+    K = tm.n_states
+    out: list = [[] for _ in range(K)]
+    for a, b in zip(tm.from_index(), tm.to_index()):
+        out[a].append(b)
+    paths: dict = {}
+
+    def walk(path: list) -> None:
+        if len(path) > max_moves:
+            return
+        for w in out[path[-1]]:
+            new = path + [w]
+            paths.setdefault((new[0], w), []).append(tuple(new))
+            walk(new)
+
+    for a in range(K):
+        walk([a])
+    return paths
+
+
 def shortest_path(tm: TransitionMatrix, a: int, b: int) -> list | None:
     out: list = [[] for _ in range(tm.n_states)]
     for f, t in zip(tm.from_index(), tm.to_index()):
@@ -558,10 +581,31 @@ class _Evaluator:
         self.counter = 0
 
 
+def _merged(parts: list) -> list:
+    """The parts of a state with the same entry times (``anchor`` and
+    ``off``) as one, their weights added: every route into a state in a
+    gap enters it at the same nodes."""
+    out: list = []
+    for anchor, off, w in parts:
+        for k, (an, of, wk) in enumerate(out):
+            if (
+                an == anchor
+                and of.shape == off.shape
+                and np.array_equal(of, off)
+            ):
+                out[k] = (an, of, wk + w)
+                break
+        else:
+            out.append((anchor, off, w))
+    return out
+
+
 class ResetPanelLikelihood:
-    """The negative log-likelihood of panel data on the reset clock
-    (progressive models only), each unit entering its first state at its
-    first visit. ``hazard(model, t, rate, p)`` is a transition's
+    """The negative log-likelihood of panel data on the reset clock, each
+    unit entering its first state at its first visit. In a model with a
+    way back to a state (cycles) the paths between two visits are those
+    of at most ``max_moves`` moves; :meth:`omitted` gives what that
+    leaves out. ``hazard(model, t, rate, p)`` is a transition's
     cumulative hazard (its hazard with ``rate``) after ``t`` in its state
     for the covariate pattern ``p``; ``pattern`` (one per row, default
     all 0) is the pattern of the gap that starts at each row, which
@@ -573,6 +617,7 @@ class ResetPanelLikelihood:
         hazard: Any,
         pattern: npt.NDArray | None = None,
         batched: Any = None,
+        max_moves: int = 3,
     ) -> None:
         tm = pdata.tm
         self.pdata = pdata
@@ -587,7 +632,13 @@ class ResetPanelLikelihood:
         )
         self.frm, self.to = tm.from_index(), tm.to_index()
         self.K = tm.n_states
-        self.paths = all_paths(tm)
+        #: Whether a state can be come back to: the moves between two
+        #: visits are then counted only up to ``max_moves``.
+        self.cyclic = has_cycle(tm)
+        self.max_moves = int(max_moves)
+        self.paths = (
+            bounded_paths(tm, self.max_moves) if self.cyclic else all_paths(tm)
+        )
         self.index = {
             (int(a), int(b)): h
             for h, (a, b) in enumerate(zip(self.frm, self.to))
@@ -625,13 +676,161 @@ class ResetPanelLikelihood:
         dE_ = dE[..., None]
         stay = ev.Hout(a, dv + dE_) - ev.Hout(a, dE_)
         first = np.exp(-stay) * ev.rate(h, dv + dE_)
+        # (the rest of the path starts afresh in its first state, so it
+        # does not depend on dE: ``dU`` has one row, broadcast over dE)
         rest = self._path(ev, path[1:], np.zeros(rest_gap.shape), rest_gap)
         return np.sum(wV * first * rest, axis=-1)
 
-    def _unit(self, ev: _Evaluator, lo: int, hi: int) -> float:
+    def _first_move(
+        self,
+        ev: _Evaluator,
+        parts: list,
+        a: int,
+        h: int,
+        t_prev: float,
+        dU: npt.NDArray,
+        inner: bool,
+    ) -> Any:
+        """The density of the gap's first move, by the transition ``h``
+        out of ``a``, at the times ``dU`` after the gap's start (or, with
+        ``inner``, at the inner nodes of each), summed over every entry
+        time into ``a`` the unit is carried on (with its weight): every
+        path out of ``a`` through the same first move shares it."""
+        at = dU[:, None] * _FI if inner else dU
+        out: Any = 0.0
+        for anchor, off, w in parts:
+            dE = ((t_prev - anchor) + off).reshape((-1,) + (1,) * at.ndim)
+            H0 = ev.Hout(a, dE)
+            g = np.exp(-(ev.Hout(a, at[None] + dE) - H0))
+            g = g * ev.rate(h, at[None] + dE)
+            out = out + np.tensordot(w, g, axes=1)
+        return out
+
+    def _cyclic_stays(
+        self,
+        ev: _Evaluator,
+        dist: dict,
+        t_prev: float,
+        t: float,
+        kind: int,
+        allowed: list,
+        put: Any,
+    ) -> Any:
+        """The gap's stays (and its exactly seen moves): each part kept in
+        its state with the chance of no move, put by ``put``; returns the
+        chance of no move (the absorbing states' weight included)."""
+        span = t - t_prev
+        kept: Any = 0.0
+        for a, parts in dist.items():
+            for anchor, off, w in parts:
+                if self.absorbing[a]:
+                    kept = kept + np.sum(w)
+                    if a in allowed and kind != _ENTRY:
+                        put(a, (anchor, off, w))
+                    continue
+                dE = (t_prev - anchor) + off
+                stay = np.exp(-(ev.Hout(a, dE + span) - ev.Hout(a, dE)))
+                kept = kept + w @ stay
+                if a in allowed and kind != _ENTRY:
+                    put(a, (anchor, off, w * stay))
+                if kind != _EXACT:
+                    continue
+                for b in allowed:
+                    h = self.index.get((a, b))
+                    if h is None or b == a:
+                        continue
+                    dens = stay * ev.rate(h, dE + span)
+                    put(b, (t, np.zeros(1), np.array([w @ dens])))
+        return kept
+
+    def _cyclic_gap(
+        self,
+        ev: _Evaluator,
+        dist: dict,
+        t_prev: float,
+        t: float,
+        kind: int,
+        allowed: list,
+        audit: bool,
+    ) -> tuple:
+        """One gap of a model with cycles: ``(new, kept)``, the unit's
+        parts after it (as in :meth:`_unit`) and, with ``audit``, the
+        chance of at most ``max_moves`` moves in it whatever the state
+        at its end."""
+        span = t - t_prev
+        new: dict = {}
+
+        def put(b: int, part: tuple) -> None:
+            new.setdefault(b, []).append(part)
+
+        kept = self._cyclic_stays(ev, dist, t_prev, t, kind, allowed, put)
+        rests: dict = {}
+        firsts: dict = {}
+
+        def entering(dU: npt.NDArray, a: int, b: int) -> Any:
+            """The density of entering ``b`` at ``dU`` from ``a``, by
+            every counted path (each first move and each path's rest
+            worked out once in the gap)."""
+            total: Any = 0.0
+            rest_gap = dU[:, None] * _FRI
+            wV = dU[:, None] * _WI
+            for path in self.paths.get((a, b), []):
+                h = self.index[(path[0], path[1])]
+                inner = len(path) > 2
+                key = (a, h, inner, dU.size)
+                if key not in firsts:
+                    firsts[key] = self._first_move(
+                        ev, dist[a], a, h, t_prev, dU, inner
+                    )
+                if not inner:
+                    total = total + firsts[key]
+                    continue
+                rkey = (path[1:], dU.size)
+                if rkey not in rests:
+                    rests[rkey] = self._path(
+                        ev, path[1:], np.zeros(rest_gap.shape), rest_gap
+                    )
+                total = total + np.sum(wV * firsts[key] * rests[rkey], -1)
+            return total
+
+        moving = [a for a in dist if not self.absorbing[a]]
+        dU = span * _F
+        for a in moving:
+            for b in range(self.K):
+                if (a, b) not in self.paths:
+                    continue
+                into = b in allowed and kind == _PANEL
+                if not (into or audit):
+                    continue
+                weights = entering(dU, a, b) * (span * _W)
+                if self.absorbing[b]:
+                    mass = np.array([np.sum(weights)])
+                    kept = kept + mass[0]
+                    if into:
+                        put(b, (t, np.zeros(1), mass))
+                else:
+                    surv = np.exp(-ev.Hout(b, span * _FR))
+                    kept = kept + weights @ surv
+                    if into:
+                        put(b, (t, span * _FR, weights * surv))
+        if kind == _ENTRY:
+            at = np.full(1, span)
+            for a in moving:
+                for b in allowed:
+                    if (a, b) in self.paths and b != a:
+                        dens = np.ravel(entering(at, a, b))
+                        put(b, (t, np.zeros(1), dens))
+        new = {b: _merged(ps) for b, ps in new.items()}
+        return new, kept
+
+    def _unit(
+        self, ev: _Evaluator, lo: int, hi: int, audit: list | None = None
+    ) -> float:
         """The log-likelihood of one unit's visits. Its state is a dict
         ``{state: [(anchor, off, w), ...]}``: entry times ``anchor -
-        off`` with weights ``w``."""
+        off`` with weights ``w``. With ``audit`` (a list), each gap's
+        chance of more moves than are counted is appended to it, as
+        ``(row, omitted)``."""
         pdata = self.pdata
         x, obs, kind = pdata.x, pdata.obs, pdata.kind
         s0 = int(np.flatnonzero(obs[lo])[0])
@@ -649,7 +848,13 @@ class ResetPanelLikelihood:
             def put(b: int, part: tuple) -> None:
                 new.setdefault(b, []).append(part)
 
-            for a, parts in dist.items():
+            if self.cyclic:
+                new, kept = self._cyclic_gap(
+                    ev, dist, t_prev, t, kind[r], allowed, audit is not None
+                )
+                if audit is not None and ev.values is not None:
+                    audit.append((r, 1.0 - float(kept)))
+            for a, parts in dist.items() if not self.cyclic else ():
                 for anchor, off, w in parts:
                     if self.absorbing[a]:
                         if a in allowed and kind[r] != _ENTRY:
@@ -660,7 +865,11 @@ class ResetPanelLikelihood:
                     if a in allowed and kind[r] != _ENTRY:
                         put(a, (anchor, off, w * stay))
                     for b in allowed:
-                        if b == a:
+                        if b == a and (
+                            kind[r] == _EXACT or (a, a) not in self.paths
+                        ):
+                            # (staying is above; with cycles, a way out
+                            # and back is a new entry, below)
                             continue
                         if kind[r] == _EXACT:
                             h = self.index.get((a, b))
@@ -673,14 +882,14 @@ class ResetPanelLikelihood:
                         if not paths:
                             continue
                         if kind[r] == _ENTRY:
-                            dU = np.full((dE.size, 1), span)
+                            dU = np.full((1, 1), span)
                             dens = sum(
                                 self._path(ev, p, dE[:, None], dU)
                                 for p in paths
                             )
                             put(b, (t, np.zeros(1), np.ravel(w @ dens)))
                             continue
-                        dU = np.broadcast_to(span * _F, (dE.size, _F.size))
+                        dU = (span * _F)[None, :]
                         dens = sum(
                             self._path(ev, p, dE[:, None], dU) for p in paths
                         )
@@ -702,6 +911,25 @@ class ResetPanelLikelihood:
             dist = new
             t_prev = t
         return logl
+
+    def omitted(self, models: list) -> list:
+        """``[(row, omitted), ...]``: for each gap between two visits (by
+        the row ending it), the chance, given what was seen of the unit
+        before the gap, that it made more moves in the gap than are
+        counted (``max_moves``), at ``models``: what the truncation
+        leaves out of the gap's factor at most. Empty for a model
+        without cycles, whose paths are all counted."""
+        if not self.cyclic:
+            return []
+        ev = _Evaluator(self.frm, self.K)
+        for lo, hi in self.units:
+            self._unit(ev, lo, hi, [])
+        out: list = []
+        with np.errstate(all="ignore"):
+            ev.evaluate(models, self.hazard, self.batched)
+            for lo, hi in self.units:
+                self._unit(ev, lo, hi, out)
+        return out
 
     def neg_ll(self, models: list) -> float:
         ev = getattr(self, "_ev", None)
