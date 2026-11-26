@@ -613,6 +613,19 @@ Field data often arrives as a table of dates: when each unit was installed, when
 
     surv.Weibull.fit_from_df(log, x_col="x", c_col="c")
 
+``surpyval.utils.dates_to_durations`` does both steps. Give it the start dates, the end dates (a blank where the unit is still running), the ``cutoff`` if the records stop on a known date, and, in ``event``, which end dates are failures. A unit with no end date, or one that ended after the cutoff, is right censored at the cutoff (the latest date in the records, if you give none). ``unit`` is ``"D"`` (days) unless you say ``"h"``, ``"W"``, ``"Y"`` and so on: all are fixed lengths, a year is 365.25 days, a month has no fixed length so it is not offered, and the durations are not rounded. Dates with a time zone are compared as the elapsed time between them, and a mix of dates with and without a time zone is refused. lifelines' ``datetimes_to_durations`` gives the same durations and flags (its ``E`` is ``1 - c``), in whole units.
+
+.. jupyter-execute::
+
+    from surpyval.utils import dates_to_durations
+
+    x, c = dates_to_durations(
+        log["installed"], log["removed"], cutoff=study_end,
+        event=log["reason"] == "failure",
+    )
+    assert (x == log["x"]).all() and (c == log["c"]).all()
+    print(pd.DataFrame({"unit": log["unit"], "x": x, "c": c}))
+
 A common mistake is to count the preventive replacement of unit E as a failure. It was not one, and counting it as one makes the item look less reliable than it is. Another is to leave units B and D out because they "have no failure date": they are the survivors, and they carry most of the information about how long the units last.
 
 .. jupyter-execute::

@@ -58,6 +58,7 @@ from surpyval.utils.data_formats import (
 )
 from surpyval.utils.data_formats import xcnt_sort as _xcnt_sort
 from surpyval.utils.data_formats import xcnt_to_xrd, xrd_handler, xrd_to_xcnt
+from surpyval.utils.durations import dates_to_durations
 from surpyval.utils.numeric import (
     _round_vals,
     ffill_or_zero,
@@ -98,6 +99,7 @@ __all__ = [
     "missing_events",
     "normalise_unit",
     "same_unit",
+    "dates_to_durations",
 ]
 
 # The promised names are documented here, as ``surpyval.utils.<name>``, so
