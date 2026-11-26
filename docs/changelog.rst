@@ -132,7 +132,13 @@ v0.30 (unreleased)
   search off the edge rising 0.043 above it (still unverified, and
   slower: 415 s against 108 s, two more fits of four varying
   parameters). Verified fits with every spread clear of 0 are unchanged
-  and cost nothing more. A study of
+  and cost nothing more; an unverified fit is slower even where nothing
+  changes, as its spreads are checked (12.8 to 18.3 s against 7.4 to
+  14.3 s in a reviewer's straight-line fleets). A small spread just off
+  0 (above the 1% rule, the likelihood rising off the edge) is not held
+  and can still end unverified, with the warning: compare it with the
+  fit where the parameter is common by ``aic()`` or
+  ``likelihood_ratio_test``. A study of
   fleets whose bends are alike, or nearly, is described on the joint
   models page (``scripts/studies/joint_recovery/bend_null_study.py``).
 - **``likelihood_ratio_test`` of joint models takes fewer varying
