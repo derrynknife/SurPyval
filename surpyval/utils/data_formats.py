@@ -538,7 +538,10 @@ def refuse_time_values(value: Any, name: str) -> None:
             f"'{name}' holds dates or times (datetime64 or pandas "
             "Timestamp); SurPyval needs durations as numbers. Subtract "
             "each unit's start and convert to the unit you want: e.g. "
-            f"({name} - start) / pd.Timedelta(days=1) for days"
+            f"({name} - start) / pd.Timedelta(days=1) for days; or give "
+            "the start and end dates to surpyval.utils.dates_to_durations"
+            "(start, end), which returns the durations and the "
+            "censoring flags (a unit with no end date is still running)"
         )
 
 

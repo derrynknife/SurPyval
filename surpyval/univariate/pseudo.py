@@ -1077,6 +1077,9 @@ def pseudo_regression_from_df(
     >>> res.names
     ['Intercept', 'z']
     """
+    from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+    df = _as_pandas(df)
     from surpyval.univariate.regression.regression_data import (
         design_matrix_from_df,
     )

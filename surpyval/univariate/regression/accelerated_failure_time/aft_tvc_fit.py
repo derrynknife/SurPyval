@@ -501,6 +501,9 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         predicts from a DataFrame with the same design. ``fixed`` and
         ``center`` are as for :meth:`fit_tvc`.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return fit_tvc_df(
             self.fit_tvc,
             df,
@@ -561,6 +564,9 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         >>> model.feature_names
         ['z']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return fit_tvc_df(
             self.fit_tvc_timeline,
             df,

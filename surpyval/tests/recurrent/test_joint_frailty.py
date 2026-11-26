@@ -720,3 +720,19 @@ def test_gap_refuses_entry_and_zero_gaps():
     tied = {**_small(), "x": [2.0, 2.0, 9.0, 3.0, 8.0]}
     with pytest.raises(ValueError, match="gap of 0"):
         JointFrailty.fit(**tied, time_scale="gap")
+
+
+def test_lr_bound_of_a_model_with_no_distribution_family():
+    # A region over a bare likelihood has no distribution, so the
+    # searches' family hooks (edge limits, search scales) find none: the
+    # GeneralizedF edge work made them read ``region.dist``, which broke
+    # every ``param_cb(method="lr")`` of this model, the shared-frailty
+    # and the semi-parametric models. The numbers are the docstring's.
+    from surpyval.recurrent import JointFrailty
+
+    truth = JointFrailty.from_params((10.0, 1.2), (20.0, 1.5), 0.5, 1.0)
+    rows = truth.random(150, end=15.0, random_state=3)
+    model = JointFrailty.fit(**rows)
+    np.testing.assert_allclose(
+        model.param_cb("alpha", method="lr"), [0.06, 2.57], atol=0.005
+    )

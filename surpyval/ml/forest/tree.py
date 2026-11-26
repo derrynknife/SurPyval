@@ -21,6 +21,7 @@ from surpyval.ml.forest.node import (
     route_to_leaves,
     tree_lines,
 )
+from surpyval.ml.forest.random_cut import parse_splitrule
 from surpyval.ml.forest.readouts import (
     minimal_depth,
     minimal_depth_threshold,
@@ -344,6 +345,19 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
       many values and stops the tree where the data show no effect. See
       :mod:`~surpyval.ml.forest.conditional_inference`.
 
+    ``splitrule`` decides which cuts of a feature are tried:
+
+    - ``"searched"`` (default): every value of the feature.
+    - ``"random"``: an extremely randomised tree (Geurts, Ernst and
+      Wehenkel, 2006). Each feature drawn for the split is cut once, at
+      a point drawn uniformly between its smallest and largest value at
+      the node, and the best of these cuts by the kind's criterion
+      is taken. The cuts do not look at the outcome, so a node costs one
+      score a feature rather than one a distinct value, and trees in a
+      forest differ more. Seeded by ``random_state`` like the feature
+      draws. It works with every ``kind``, ``selection`` and competing
+      risks; see :mod:`~surpyval.ml.forest.random_cut`.
+
     With the cause of each failure (``e``), the tree is a competing-risks
     tree: it splits by a rule that tells the causes apart (``split``; see
     :mod:`~surpyval.ml.forest.cause_specific_split`), each leaf is a
@@ -387,8 +401,10 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         split: str | None = None,
         event: Any = None,
         causes: list | None = None,
+        splitrule: str = "searched",
     ) -> None:
         self.selection = parse_selection(selection, alpha_split)
+        self.splitrule = parse_splitrule(splitrule)
         self.alpha_split = float(alpha_split)
         Z_in, self.feature_names = covariate_matrix(Z, feature_names)
         # Set by ``fit_from_df(formula=...)``: the formula and its
@@ -425,6 +441,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             alpha_split=self.alpha_split,
             min_split_gain=self.min_split_gain,
             competing=competing,
+            splitrule=self.splitrule,
         )
         # The parametric leaves all at once, rather than one by one on
         # first use (#549)
@@ -479,6 +496,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         e: ArrayLike | None = None,
         split: str | None = None,
         event: Any = None,
+        splitrule: str = "searched",
     ) -> "SurvivalTree":
         """
         Fit a survival tree from data in the full xcnt(+truncation) data
@@ -538,6 +556,12 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             Bonferroni-adjusted p-value of its chosen feature is below
             ``alpha_split``, the size of the test of no association.
             Defaults to 0.05. Ignored by ``"greedy"``.
+        splitrule : str, optional
+            Which cuts of a feature are tried: ``"searched"`` (the
+            default), every value, or ``"random"``, one cut drawn
+            uniformly between the feature's smallest and largest value at
+            the node (an extremely randomised tree); see the class
+            docstring.
         min_split_gain : float, "aic" or "bic", optional
             The least gain in log-likelihood a split of a ``"weibull"`` or
             ``"exponential"`` tree must make: a node splits only if its
@@ -729,6 +753,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             min_split_gain,
             split=split,
             event=event,
+            splitrule=splitrule,
         )
 
     def apply_model_function(
@@ -1007,6 +1032,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             "kind": self.kind,
             "n_features_split": int(self.n_features_split),
             "selection": self.selection,
+            "splitrule": self.splitrule,
             "alpha_split": float(self.alpha_split),
             "min_split_gain": self.min_split_gain,
             "root": self._root.to_dict(),
@@ -1032,6 +1058,8 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         tree.n_features_split = model_dict["n_features_split"]
         # Trees saved before selection existed were grown greedily.
         tree.selection = model_dict.get("selection", "greedy")
+        # ... and with every cut searched
+        tree.splitrule = model_dict.get("splitrule", "searched")
         tree.alpha_split = model_dict.get("alpha_split", 0.05)
         tree.min_split_gain = model_dict.get("min_split_gain", 0.0)
         # A restored tree predicts but is not re-fittable; it holds no data.
@@ -1114,7 +1142,8 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         )
         lines = [
             f"SurvivalTree(kind={self.kind!r}, "
-            f"selection={self.selection!r}{causes})"
+            f"selection={self.selection!r}, "
+            f"splitrule={self.splitrule!r}{causes})"
         ]
         lines += tree_lines(self._root, self.feature_labels)
         return "\n".join(lines)

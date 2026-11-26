@@ -1158,6 +1158,9 @@ class _RecurrentCoxFitter(FitterRepr):
         >>> model.parameter_names
         ['load']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         columns: dict[str, str | None] = {
             "x": x_col,
             "i": i_col,
@@ -1206,6 +1209,9 @@ class _StartStopFrame(_RecurrentCoxFitter):
         >>> model.params.round(4)
         array([0.6931])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         columns: dict[str, str | None] = {
             "i": i_col,
             "xl": xl_col,

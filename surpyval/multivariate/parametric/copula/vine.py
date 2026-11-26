@@ -1301,6 +1301,9 @@ class VineFitter:
         >>> model.parameter_names
         ['theta_0_1', 'theta_1_2', 'theta_0_2|1']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return Copula.fit_from_df(
             self,
             df,

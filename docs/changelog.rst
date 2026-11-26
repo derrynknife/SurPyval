@@ -324,6 +324,53 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Extremely randomised survival trees and forests:
+  ``splitrule="random"``.** ``SurvivalTree.fit`` and
+  ``RandomSurvivalForest.fit`` draw one cut for each feature considered
+  at a node, uniformly between the feature's smallest and largest value
+  there, and take the best of those by the kind's own split statistic
+  (Geurts, Ernst and Wehenkel, 2006), instead of searching every value.
+  ``"searched"`` is the default and the trees it grows are unchanged. The
+  rule works with every ``kind``, ``selection``, interval data and
+  competing risks, is seeded by ``random_state``, is saved and restored
+  by ``to_dict``/``from_dict``, and a forest keeps its bootstrap (so
+  out-of-bag scores exist). With seeds and a noise band fixed beforehand
+  (10 seeds; within two standard deviations of the searched forest), the
+  out-of-bag log-likelihood of 100-tree Weibull forests was within the
+  band on the Rossi data (-1.6037 against -1.6038) and on the lung data
+  (-2.155 against -2.169, 1.5 standard deviations better), and the fit
+  took 0.55 of the time on both.
+- **Torch losses for the Cox partial likelihood and the discrete-time
+  hazard: ``surpyval.torch.cox_nll`` and ``discrete_time_nll``.** Losses
+  only, for a network's outputs. ``cox_nll`` (Efron or Breslow ties,
+  counts and left truncation) equals ``CoxPH``'s negative log partial
+  likelihood to 1e-8 at its fitted coefficients and at others (140.687,
+  138.509 and 157.785 on the test data for the first two methods and a
+  third coefficient vector), and ``discrete_time_nll`` equals the negative
+  log-likelihood of ``DiscreteWeibull`` and ``Geometric`` at their
+  hazards; gradients agree with finite differences.
+
+- **``surpyval.utils.dates_to_durations``: dates to durations and
+  censoring flags.** Start dates, end dates (a blank meaning still
+  running), an optional cut-off (default: the latest date seen), a
+  ``unit`` (seconds, minutes, hours, days, weeks or years; a year is
+  365.25 days) and an optional ``event`` flag return ``x`` and ``c``. A
+  unit with no end, or ending after the cut-off, is right censored at the
+  cut-off; time-zone aware dates are compared as elapsed time; a mix of
+  aware and naive dates, an end before its start and a start after the
+  cut-off are refused with a count. It agrees with lifelines'
+  ``datetimes_to_durations`` on whole days (and returns the fraction of a
+  unit it truncates). The refusals of dates in fits now point to it.
+- **Polars and Arrow tables are taken wherever a pandas DataFrame is.**
+  Every ``fit_from_df``, ``fit_bayes_from_df``, ``fit_tvc_from_df`` and
+  ``from_dataframe`` converts a Polars ``DataFrame`` or ``LazyFrame`` and
+  a PyArrow ``Table`` or ``RecordBatch`` to pandas on entry (with its own
+  ``to_pandas``), so the fit is the pandas one. Neither library is a
+  dependency or is imported unless the object passed is theirs. A
+  conformance test hands each registered ``fit_from_df`` entry point a
+  Polars-like frame, so a new entry point that reads its frame without
+  converting it fails.
+
 - **Two more bivariate survival estimators, and Kendall's tau from
   them.** ``surpyval.multivariate.Dabrowska.fit(x, c, n,
   estimator="prentice-cai")`` gives Prentice and Cai's (1992) estimate
@@ -1297,6 +1344,23 @@ v0.30 (unreleased)
   fitted both ways.
 
 **Fixed.**
+
+- **``fit_best`` no longer warns that a default candidate was set aside
+  when a regular fit was chosen.** With the GeneralizedF among the
+  default candidates, ordinary Weibull samples of 40 to 50 observations
+  gave "fit_best set aside GeneralizedF (its likelihood has no finite
+  maximum)" on every call. A candidate you name (``include=``), or a
+  choice among set-aside fits only, is still warned about; the default
+  candidates set aside stay in the table (``return_table=True``).
+
+- **``param_cb(method="lr")`` of the joint frailty, shared frailty and
+  semi-parametric proportional odds models, and of the frailty and
+  interval Cox models, raised ``AttributeError: 'LikelihoodRegion' object
+  has no attribute 'dist'``.** The edge handling added for the
+  GeneralizedF's likelihood-ratio bounds read the distribution family of
+  the model searched; a region over a bare likelihood has none. It now
+  reports no family limits, and the bounds are the ones they were
+  (joint frailty ``alpha``: 0.06 to 2.57 on the documented example).
 
 - **``Dabrowska``: a series with no failures.** Where every unit of one
   series is censored, ``sf``, ``ff`` and ``cb`` raised an

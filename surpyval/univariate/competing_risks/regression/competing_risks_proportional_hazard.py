@@ -995,6 +995,9 @@ class CompetingRisksProportionalHazards(
         ...                  model.cif(np.full(3, 5.0), new, "a")))
         True
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         design = FrameDesign(df, Z_cols, formula, drop_missing=True)
         return design.fit(
             cls.fit,

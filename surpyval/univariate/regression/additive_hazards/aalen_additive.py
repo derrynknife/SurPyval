@@ -1490,6 +1490,9 @@ class AalenAdditive_(FitterRepr):
         entry times, if any, as ``tl_col``, and sampling weights, if any,
         as ``w_col`` (the ``w`` of :meth:`fit`).
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         check_columns(
             df,
             x_col=x_col,
