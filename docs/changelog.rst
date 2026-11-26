@@ -1319,6 +1319,23 @@ v0.30 (unreleased)
 
 **Fixed.**
 
+- **``fit_best`` no longer warns that a default candidate was set aside
+  when a regular fit was chosen.** With the GeneralizedF among the
+  default candidates, ordinary Weibull samples of 40 to 50 observations
+  gave "fit_best set aside GeneralizedF (its likelihood has no finite
+  maximum)" on every call. A candidate you name (``include=``), or a
+  choice among set-aside fits only, is still warned about; the default
+  candidates set aside stay in the table (``return_table=True``).
+
+- **``param_cb(method="lr")`` of the joint frailty, shared frailty and
+  semi-parametric proportional odds models, and of the frailty and
+  interval Cox models, raised ``AttributeError: 'LikelihoodRegion' object
+  has no attribute 'dist'``.** The edge handling added for the
+  GeneralizedF's likelihood-ratio bounds read the distribution family of
+  the model searched; a region over a bare likelihood has none. It now
+  reports no family limits, and the bounds are the ones they were
+  (joint frailty ``alpha``: 0.06 to 2.57 on the documented example).
+
 - **``Dabrowska``: a series with no failures.** Where every unit of one
   series is censored, ``sf``, ``ff`` and ``cb`` raised an
   ``IndexError``. That series' margin is now 1, so the joint survival

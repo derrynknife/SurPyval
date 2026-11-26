@@ -107,6 +107,10 @@ class LikelihoodRegion(LikelihoodRatioMixin):
     offset = False
     lfp = False
     zi = False
+    # No distribution family: the searches look for its edge limits and
+    # search scales (``dist._lr_limit_nlls``, ``_lr_search_sd``,
+    # ``_lr_profile_starts``) and find none.
+    dist: Any = None
 
     def __init__(
         self,

@@ -15,6 +15,12 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### fit_best: warning about candidates set aside (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A default candidate set aside (no finite maximum, not a verified maximum, or a non-regular family) while a regular fit is chosen is not warned about; it is shown in the table (`return_table=True`). A candidate the caller named (`include=`), or a choice among set-aside fits only, still warns. The alternative considered was dropping the GeneralizedF from the default candidates. | proposed | The GeneralizedF has no finite maximum on much ordinary data (Weibull samples of 40 to 50), so the warning appeared on every default call. Dropping it would change which models `fit_best` can choose. | done |
+
 ### Dates to durations (27 Nov 2026)
 
 | Decision | By | Reason | Status |
