@@ -151,6 +151,22 @@ def _validate(
     return x, c, n, e, t
 
 
+def check_some_cause(causes: list, c: npt.NDArray) -> None:
+    """Refuse data whose failures all lack a cause (each found in a
+    window from a cause not recorded): there is no cause to fit."""
+    if causes:
+        return
+    if (np.asarray(c) != 1).any():
+        raise ValueError(
+            "No failure has a recorded cause: every failure is in a window "
+            "(c = -1 or 2) with 'e' missing, so there is no cause to fit a "
+            "distribution to. Give at least one failure its cause, or fit "
+            "one distribution to all the failures (Weibull.fit(x, c=c, ...)"
+            ") if the causes are not wanted."
+        )
+    raise ValueError("No observed events to fit a cause to.")
+
+
 class ParametricCompetingRisks(
     ParameterBoundsMixin,
     DiagnoseMixin,
@@ -2008,7 +2024,8 @@ class ParametricCompetingRisks(
         from a cause not recorded contributes the probability of a
         failure of any cause there, :math:`(S(x_l) - S(x_r)) / S(t_l)`,
         the all-cause survival over the window (the sum of the causes'
-        terms). So with any such row the causes are
+        terms); this assumes that whether a cause goes unrecorded does
+        not depend on which cause it was. So with any such row the causes are
         fitted together, by maximum likelihood over every cause's
         parameters at once (``how="MLE"`` only, continuous
         distributions); the integral is taken by Gauss-Legendre
@@ -2215,6 +2232,7 @@ class ParametricCompetingRisks(
                 "cause at once; use how='MLE'."
             )
         causes = ordered_labels(e[c != 1])
+        check_some_cause(causes, c)
         if isinstance(dist, dict):
             missing = [k for k in causes if k not in dist]
             if missing:

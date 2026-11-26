@@ -223,6 +223,15 @@ def test_seeded_recovery_with_unknown_causes():
         assert lo < truth < hi
 
 
+@pytest.mark.parametrize("fit", ["fit", "fit_bayes"])
+def test_no_recorded_cause_at_all_is_refused_saying_what_to_do(fit):
+    x = [[2, 4], [5, 5], [6, 8], [9, 9]]
+    e = [None, None, None, None]
+    c = [2, -1, 2, 1]
+    with pytest.raises(ValueError, match="No failure has a recorded cause"):
+        getattr(ParametricCompetingRisks, fit)(x, e, c=c)
+
+
 # -- a cause's joint prior -------------------------------------------------
 
 

@@ -998,8 +998,12 @@ of 2, or -1 for a window from its entry) is taken too, by ``fit`` and
 ``fit_bayes`` alike: all it says is that the part's first failure, of
 whichever kind, came in the window, so its contribution is the all-cause
 survival over the window, :math:`S(x_l) - S(x_r)` (the sum of the
-causes' incidences over it). It tells the fit about how long parts last,
-not about which cause ended them. WAIC and leave-one-out
+causes' incidences over it). It tells the fit mostly about how long
+parts last; about which cause ended them it says only a little, through
+the shape of the all-cause survival. This assumes that whether a cause
+goes unrecorded does not depend on which cause it was (an inspection
+that cannot tell wear from a crack is fine; one that records cracks and
+loses the cause of worn parts is not, and would bias the split). WAIC and leave-one-out
 (``model.result.waic()``, ``loo()``) take left truncation (``tl``) on
 this path: each row's log-likelihood carries its own entry term.
 

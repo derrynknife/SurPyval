@@ -417,7 +417,10 @@ v0.30 (unreleased)
   causes' sub-densities integrated by adaptive quadrature (1e-9), the
   Bayesian target against the fit's likelihood (1e-10), and the
   flat-prior peak against the maximum-likelihood estimate (2e-5). An
-  exact failure (``c = 0``) still needs its cause.
+  exact failure (``c = 0``) still needs its cause, and data whose
+  failures all lack a cause are refused, saying what to do. It assumes
+  that whether a cause goes unrecorded does not depend on which cause it
+  was.
 - **Competing risks with failures in a window: a cause's joint prior.**
   On the joint path (``fit_bayes`` with failures found in a window) a
   cause may now have ``prior.on_quantities``, ``prior.from_model`` or
