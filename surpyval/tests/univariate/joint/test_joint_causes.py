@@ -819,3 +819,14 @@ def test_the_fitter_with_a_link_takes_modes():
     ]
     parts = list(dict.fromkeys(model.summary().index.get_level_values(0)))
     assert parts[-1] == "shared by the failure modes"
+
+
+def test_one_mode_named_with_others_unknown_warns():
+    # one mode in 'e' and the rest of the failures unlabelled: the model
+    # of one kind of failure, said
+    arrays = _arrays(_data(120, seed=5))
+    e = np.array(arrays["e"])
+    e[e == "seal"] = None
+    with pytest.warns(UserWarning, match=r"one failure mode \('bearing'\)"):
+        model = WeibullJointPH.fit(**dict(arrays, e=e))
+    assert model.causes is None

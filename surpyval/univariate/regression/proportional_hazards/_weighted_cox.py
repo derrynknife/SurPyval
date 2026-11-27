@@ -40,6 +40,7 @@ class WeightedCox:
         tl: npt.NDArray,
         Z: npt.NDArray,
         tie_method: str,
+        rho: npt.NDArray | None = None,
     ) -> None:
         self.x = np.asarray(x, dtype=float)
         self.c = np.asarray(c)
@@ -48,6 +49,15 @@ class WeightedCox:
         self.tl = np.asarray(tl, dtype=float)
         self.Z = np.asarray(Z, dtype=float)
         self.omega = self.n * self.w
+        # A row's multiplier in the risk sums only, exp(offset) in R's
+        # coxph(... + offset(log(rho))): 1 but in the case-cohort fits,
+        # whose rows can be in a risk set at a weight other than their
+        # own (or, at 0, count as a death and never be at risk).
+        self.rho = (
+            np.ones_like(self.omega)
+            if rho is None
+            else np.asarray(rho, dtype=float)
+        )
         self.efron = tie_method == "efron"
         died = self.c == 0
         self.died = died
@@ -134,7 +144,7 @@ class WeightedCox:
     ) -> tuple[float, npt.NDArray, npt.NDArray]:
         Z = self.Z
         eta, risk, shift = self._shifted_risks(beta)
-        r = self.omega * risk
+        r = self.omega * self.rho * risk
         S0 = self._risk_sums(r)
         S1 = self._risk_sums(r[:, None] * Z)
         S2 = self._risk_sums(r[:, None, None] * Z[:, :, None] * Z[:, None, :])
@@ -177,7 +187,7 @@ class WeightedCox:
     def _score_residuals(self, beta: npt.NDArray) -> npt.NDArray:
         Z = self.Z
         _, risk, _ = self._shifted_risks(beta)
-        r = self.omega * risk
+        r = self.omega * self.rho * risk
         S0 = self._risk_sums(r)
         S1 = self._risk_sums(r[:, None] * Z)
         D0 = self._death_sums(r)
@@ -218,7 +228,9 @@ class WeightedCox:
         died = self.died
         own0 = np.where(died, e0[j_own], c0[j_own]) * at_own
         own1 = np.where(died[:, None], e1[j_own], c1[j_own]) * at_own[:, None]
-        resid = -risk[:, None] * (Z * (H0 + own0)[:, None] - (H1 + own1))
+        resid = -(self.rho * risk)[:, None] * (
+            Z * (H0 + own0)[:, None] - (H1 + own1)
+        )
         resid[died] += Z[died] - zbar[self.event_index[died]]
         return resid
 
@@ -233,6 +245,7 @@ class WeightedCox:
             self.tl,
             self.Z[:, kept],
             tie_method,
+            self.rho,
         )
 
     def baseline(
@@ -245,7 +258,7 @@ class WeightedCox:
         ``S0``, the sums of ``n w exp(beta'Z)`` over the risk sets (the
         ``r`` of the unweighted fit, which is ``n exp(beta'Z)``)."""
         _, risk, shift = self._shifted_risks(beta)
-        r = self.omega * risk
+        r = self.omega * self.rho * risk
         S0 = self._risk_sums(r)
         D0 = self._death_sums(r)
         h0 = np.zeros(self.times.size)

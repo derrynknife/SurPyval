@@ -308,6 +308,10 @@ with its own ``schema``.
      - ``"model": "MixtureCureModel"``
      - ``kind``, ``distribution``, ``links``, ``coefficient_signs``, ``covariate_positions``, ``width``, ``phi_param_map``, ``params``, ``aliased_coefficients``, ``k``, ``k_dist``, ``fixed``, ``covariance``, ``inference_centring``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``, ``latency``
      - --
+   * - ``PromotionTimeCureModel``
+     - ``"model": "PromotionTimeCureModel"``
+     - ``kind``, ``distribution``, ``links``, ``coefficient_signs``, ``covariate_positions``, ``width``, ``phi_param_map``, ``params``, ``aliased_coefficients``, ``k``, ``k_dist``, ``fixed``, ``covariance``, ``inference_centring``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``, ``latency``
+     - --
    * - ``ZeroInflatedModel``
      - ``"model": "ZeroInflatedModel"``
      - ``kind``, ``distribution``, ``links``, ``coefficient_signs``, ``covariate_positions``, ``width``, ``phi_param_map``, ``params``, ``aliased_coefficients``, ``k``, ``k_dist``, ``fixed``, ``covariance``, ``inference_centring``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``, ``latency``
@@ -522,11 +526,11 @@ with its own ``schema``.
      - ``names``
    * - ``SurvivalTree``
      - ``"model": "SurvivalTree"``
-     - ``kind``, ``n_features_split``, ``selection``, ``alpha_split``, ``min_split_gain``, ``root``, ``n_covariates``
+     - ``kind``, ``n_features_split``, ``selection``, ``splitrule``, ``alpha_split``, ``min_split_gain``, ``root``, ``n_covariates``
      - --
    * - ``RandomSurvivalForest``
      - ``"model": "RandomSurvivalForest"``
-     - ``kind``, ``n_trees``, ``bootstrap``, ``selection``, ``alpha_split``, ``min_split_gain``, ``trees``
+     - ``kind``, ``n_trees``, ``bootstrap``, ``selection``, ``splitrule``, ``alpha_split``, ``min_split_gain``, ``trees``
      - --
    * - ``NeverOccurs``
      - ``"model": "NeverOccurs"``

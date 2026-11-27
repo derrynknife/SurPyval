@@ -1563,6 +1563,20 @@ def _causes(
     mine = [labels[int(r.id)] for r in records]
     causes = ordered_labels(mine)
     if len(causes) < 2:
+        unlabelled = sum(
+            w
+            for w, label, r in zip(counts, mine, records)
+            if label is None and r.outcome != "right_censored"
+        )
+        if causes and unlabelled:
+            warnings.warn(
+                f"'e' names one failure mode ({causes[0]!r}) and "
+                f"{unlabelled:g} failure(s) have none: with one mode there "
+                "is nothing to tell apart, so every failure, labelled or "
+                "not, is fitted as one kind of failure (the model without "
+                "modes). Give the other failures' modes to fit modes.",
+                stacklevel=caller_stacklevel(),
+            )
         return None
     running = [r.outcome == "right_censored" for r in records]
     labelled = sum(
@@ -2531,7 +2545,7 @@ def _maximised(model: Model, arrays: JointArrays, theta: dict) -> Any:
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         try:
-            answer = _maximise(model, arrays, theta)
+            answer = _maximise(model, arrays, theta, on_an_edge=True)
         except (_NoStart, np.linalg.LinAlgError, ValueError):
             return None
     return answer, list(caught)
@@ -2939,12 +2953,16 @@ class _NoStart(ValueError):
     """The likelihood is not finite at a fit's starting values."""
 
 
-def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
+def _maximise(
+    model: Model, arrays: JointArrays, theta: dict, on_an_edge: bool = False
+) -> tuple:
     """The joint likelihood's maximum from the start ``theta``:
     ``(u, value, cov_u, maximum)``, the internal parameters, the negative
     log-likelihood there, their covariance (``None`` where the Hessian is
     not positive definite) and what the search reached (``"verified"`` or
-    ``"unverified"``, with a warning)."""
+    ``"unverified"``, with a warning). ``on_an_edge``: a search made in
+    handling an edge of the spread (:func:`_maximised`), whose rounds may
+    take the fallback step (:func:`_descend`)."""
     layout = model.layout
     u = layout.pack(theta)
 
@@ -2972,7 +2990,7 @@ def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
             "its starting values (check the readings and the path model)."
         )
     u, value, placed, starts, converged = _descend(
-        u, value, placed, starts, search, curvature, evaluated
+        u, value, placed, starts, search, curvature, evaluated, on_an_edge
     )
 
     # the Hessian a maximum is checked by, and the covariance taken from
@@ -3010,6 +3028,7 @@ def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
                 search,
                 curvature,
                 evaluated,
+                on_an_edge,
             )
             checked = _check_maximum(
                 retry[0], retry[2], search, checked_curvature
@@ -3111,6 +3130,7 @@ def _descend(
     search: Any,
     curvature: Any,
     evaluated: Any,
+    on_an_edge: bool = False,
 ) -> tuple:
     """Rounds of search from ``u`` (its likelihood ``value`` by the
     nodes ``placed``): ``(u, value, placed, starts, converged)``.
@@ -3144,25 +3164,18 @@ def _descend(
         trial, new_value, new_placed, new_starts, size, ok = _backtracked(
             u, value, placed, starts, S @ step, evaluated
         )
-        if not ok:
+        if not ok and on_an_edge:
             # The search with the nodes held runs off to where they are
             # far from the integrand (near the edge of the valid spreads,
             # where it is flat along a log sd), and no part of its step
-            # improves the likelihood with the nodes placed again. The
-            # Newton step from here (in the whitened coordinates, minus
-            # the gradient) is the local one; it is tried before the
-            # rounds are taken as settled. A fit whose steps improve, as
-            # an ordinary one's do, never takes it.
-            with np.errstate(all="ignore"):
-                _, grad = search(u, placed)
-            if np.all(np.isfinite(grad)):
-                newton = -(S.T @ np.asarray(grad, dtype=float))
-                tried = _backtracked(
-                    u, value, placed, starts, S @ newton, evaluated
-                )
-                if tried[5]:
-                    trial, new_value, new_placed, new_starts, size, _ = tried
-                    step = newton
+            # improves the likelihood with the nodes placed again
+            # (:func:`_descent`). (Going on also from a round that has
+            # settled, while the gradient is not zero, was tried and
+            # dropped: on a two-mode spline fixture it drove a bend's sd
+            # to 8e-20, where the nodes give a likelihood 107 too high.)
+            tried = _descent(u, value, placed, starts, S, search, evaluated)
+            if tried is not None:
+                trial, new_value, new_placed, new_starts, size, _, step = tried
         moved = float(np.max(np.abs(size * step), initial=0.0))
         settled = abs(value - new_value) <= _ROUND_TOL * max(1.0, abs(value))
         u, value, placed, starts = trial, new_value, new_placed, new_starts
@@ -3170,6 +3183,42 @@ def _descend(
             converged = True
             break
     return u, value, placed, starts, converged
+
+
+def _descent(
+    u: npt.NDArray,
+    value: float,
+    placed: tuple,
+    starts: tuple,
+    S: npt.NDArray,
+    search: Any,
+    evaluated: Any,
+) -> tuple | None:
+    """Where the gradient at ``u`` is not zero by the verification rule
+    (above :data:`_GTOL` standard errors, the whitening ``S`` giving them:
+    ``S S' = H^-1``), the step of minus the whitened gradient, ``-S S'
+    g``, taken as far as it improves (:func:`_backtracked`):
+    ``(u, value, placed, starts, size, ok, step)``, ``step`` in the
+    whitened coordinates; ``None`` where the gradient is zero or no part
+    of the step improves. With ``S' H S = I`` the step is ``-H^-1 g``,
+    the Newton step of the held nodes' Hessian ``H`` (where ``H`` is not
+    positive definite ``S`` is a diagonal scaling, and it is a scaled
+    gradient step). Taken only in the searches made in handling an edge
+    of the spread (``on_an_edge``), where the flat log scale stalls them;
+    the first search ends as it always has."""
+    with np.errstate(all="ignore"):
+        _, grad = search(u, placed)
+    grad = np.asarray(grad, dtype=float)
+    se = np.sqrt(np.sum(S**2, axis=1))
+    if not np.all(np.isfinite(grad)) or not (
+        np.max(np.abs(grad) * se, initial=0.0) >= _GTOL
+    ):
+        return None
+    descent = -(S.T @ grad)
+    tried = _backtracked(u, value, placed, starts, S @ descent, evaluated)
+    if not tried[5]:
+        return None
+    return (*tried, descent)
 
 
 def _backtracked(

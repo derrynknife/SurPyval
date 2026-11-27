@@ -162,6 +162,17 @@ def _mixture_cure():
     return surpyval.WeibullMixtureCure.fit(x, z, c=cured.astype(int))
 
 
+def _promotion_time_cure():
+    """A promotion-time cure regression on the mixture-cure data: the
+    covariate on theta."""
+    rng = np.random.default_rng(11)
+    z = np.tile([0.0, 1.0], 60)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(2.0, z.size)
+    cured = rng.random(z.size) < np.where(z == 0, 0.4, 0.6)
+    x = np.where(cured, 60.0, life)
+    return surpyval.WeibullPromotionTimeCure.fit(x, z, c=cured.astype(int))
+
+
 def _equivalence():
     """An equivalent time scale: hours and starts at three start rates,
     one start worth 10 hours, a third still running."""
@@ -443,6 +454,7 @@ def _build(name):
             surpyval.WeibullDistributional.fit(*_semipar_data()[:2])
         ),
         "mixture_cure": _mixture_cure,
+        "promotion_time_cure": _promotion_time_cure,
         "equivalence": _equivalence,
         "zero_inflated": _zero_inflated,
         "accelerated_life": _accelerated_life,
@@ -717,6 +729,7 @@ CASES = [
     "parametric_regression",
     "distributional_regression",
     "mixture_cure",
+    "promotion_time_cure",
     "equivalence",
     "zero_inflated",
     "accelerated_life",
