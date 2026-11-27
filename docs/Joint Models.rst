@@ -372,15 +372,16 @@ by as much as 1% of the readings' noise at any reading age), or ends
 unverified with a spread whose removal costs the log-likelihood less
 than 1.92 (the data cannot tell it from 0 at the 5% level), the fit is
 made again with those parameters common to all items, and then the full
-model is searched once more from there, with their spreads small. If
-that search rises off the edge (by more than one part in a million of
-the log-likelihood), its answer is kept. Otherwise the fit is held on
-the edge. A verified fit with every spread clear of 0 is not searched
-again, so ordinary fits cost nothing more. A small spread just off 0 (above
-the 1% rule, with the likelihood rising a little off the edge) is not
-held, and its fit can still end unverified, with the warning; ask
-whether the parameter varies by comparing it with the fit where it is
-common, by ``aic()`` or ``likelihood_ratio_test`` (below).
+model is searched once more from there, with their spreads small (or,
+where the first answer already beats the fit on the edge, from that
+answer). If that search rises off the edge (by more than 1e-4 in
+log-likelihood, an absolute amount: round-off of the adaptive nodes is
+below it), its answer is kept. Otherwise the fit is held on the edge.
+Either way the fit reported is never worse than any candidate the
+searches reached by more than 1e-4 in log-likelihood. A verified fit with every spread clear of
+0 is not searched again, so ordinary fits cost nothing more. Ask whether
+the parameter varies by comparing it with the fit where it is common, by
+``aic()`` or ``likelihood_ratio_test`` (below).
 
 Second, what is reported. A fit held on the edge says so:
 
@@ -403,6 +404,66 @@ out, its p-value is half that of chi-squared on the correlations left
 out and half on those and the sd (Self and Liang, 1987; Stram and Lee,
 1994), smaller than the plain chi-squared p-value. For a spread held at 0
 the statistic is 0 and the p-value 1.
+
+A correlation of +-1: one parameter a multiple of another
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The spread has a second edge. Two varying parameters can be perfectly
+correlated: each item's rate, say, is its level's departure from the
+fleet's mean times a fixed number, so an item that starts high rises
+slowly by exactly as much as its start predicts. Nothing of the rate's
+spread is then its own. This is common where a parameter barely varies
+in truth: on straight lines whose rates are all the same, the fit often
+estimates a small rate spread tied entirely to the level (a correlation
+of -1) rather than none at all, because that fits the readings' small
+wobbles a little better.
+
+The search meets this edge as it meets a spread of 0: the part of the
+rate's spread that the level's does not explain is, on the search's log
+scale, at minus infinity, so the search stalls short of it and ends
+unverified. So, where that part moves no item's marker by 1% of the
+noise at any reading age, or the search ends unverified and removing
+that part costs the log-likelihood less than 1.92, the fit is made on
+the edge: the level is integrated over, item by item, and the rate is
+the fitted multiple of its departure. Then the full model is searched
+from there with the rate given a small part of its own, as for a spread
+at 0, and kept if the likelihood rises off the edge by more than 1e-4.
+
+A fit held on this edge says so:
+
+- ``model.perfect_correlations`` names the correlation
+  (``["corr_a_b"]``), and the printout's ``Fit`` line says ``with
+  corr_a_b at its edge, -1 (b an exact multiple of a about their
+  means)``.
+- The correlation is exactly +1 or -1, with no standard error
+  (``nan``), for the reason a spread at 0 has none. The held parameter's
+  sd is the multiple times the other's, with its standard error; its
+  correlations with any other varying parameter are the other one's,
+  times that sign.
+- Everything else (estimates, standard errors, ``neg_ll()``,
+  predictions, ``maximum``) is the fit on the edge's, and ``aic()``
+  counts the correlation as a parameter.
+- ``likelihood_ratio_test`` refuses to test a correlation of +-1 against
+  a free one. The two fits have the same parameters, and the null value
+  is on the edge of the valid matrices, where the statistic's reference
+  is a mixture of chi-squared distributions whose weights depend on the
+  information matrix; that is not built. The held fit is the maximum of
+  the free model, so its likelihood is the free model's.
+
+Only a pair is held: one parameter a multiple of one other. A spread of
+three or more parameters can also sit on the edge without any pair at
++-1 (its correlation matrix singular in a direction mixing them all);
+such a fit is not held, and can end unverified with the warning.
+
+Within about 1e-10 of a singular spread the grid's nodes, placed by the
+inverse of the integrand's curvature, need a matrix too ill-conditioned
+to invert as it is (its smallest eigenvalue below a millionth of a
+millionth of its largest, in each parameter's own scale). There the
+curvature is taken in the prior's own coordinates instead, where it is
+well conditioned. Before, the nodes were placed too wide in the narrow
+direction and the grid overstated the likelihood at such points; only a
+fit that landed exactly on a singular spread was affected, and it ended
+unverified.
 
 The data: readings on the item records
 --------------------------------------
@@ -857,9 +918,29 @@ vibration says about them.
 
 A failure found at an inspection (left or interval censored) needs its
 mode too; the likelihood is then the mode's hazard times the survival of
-every mode, integrated over the interval. What is refused, each saying
-what to do: a failure with no mode (a failure of unknown mode is not
-fitted yet), a mode on an item still running, a mode with fewer failures
+every mode, integrated over the interval.
+
+A failure whose mode was not recorded (``None`` in ``e``) is a failure
+of unknown mode, and the fit takes it: the item failed by one mode or
+another, so its chance is the sum over the modes of each mode's term.
+For a failure at a known age that is the hazard of failing at all (every
+mode's hazard added) times the survival of every mode; for one found at
+an inspection, the chance of failing in the interval by any mode. Such
+failures tell the fit about the path and the total hazard, but nothing
+about which mode is which: each mode's own estimates rest on the
+failures whose mode is known. With few of a mode known, its scale and
+shape can trade against each other and against the marker's effect
+along a nearly flat ridge, and its scale's standard error is then large
+(in a fleet with 43 bearing failures known and 33 of either mode, a
+bearing scale of 21,800 with a standard error of 25,800, where every
+label known gave 4,800): read it on the log scale, as its interval is. The printout's ``Failure modes`` line
+counts them (``; 12 of unknown mode``), and ``n_events_by_cause`` holds
+only the known ones. This assumes the mode went unrecorded for reasons
+unrelated to which mode it was (missing at random); where, say, one mode
+is harder to identify than another, the modes' estimates are biased.
+
+What is refused, each saying what to do: a mode on an item still
+running, a mode with fewer failures
 than it has parameters of its own (the message gives the counts),
 ``"alpha"`` in ``shared``, the accelerated survival part (``JointAFT``)
 and the two-stage estimate. Data with one mode only, or with no event
@@ -996,6 +1077,31 @@ each item's own:
     assert exponential.maximum == "verified"
     z = (exponential.params[-1] - 0.9) / exponential.standard_errors()[-1]
     assert abs(z) < 3
+
+A path of your own with a kink, a corner where its slope jumps (a line
+that turns at a known age, ``a + b t + c max(t - 365, 0)``), should say
+where: give the class a ``breaks`` attribute with those ages, as a
+spline's knots are given. The integrals of the hazard over age are then
+split there (and with a ``lag``, that much later). Without it a single
+Gauss-Legendre rule runs over the corner and loses its accuracy: about
+1e-4 to 1e-3 of the cumulative hazard for a modest turn, more for a
+sharper one or with a lag. On that line with a rise of 3 a year after
+day 365 the cumulative hazard to 400 days was off by 4e-4 of itself
+(1.9e-3 to two years with a 90-day lag; 9% with a rise of 30 a year),
+against 3e-15 with ``breaks = (365.0,)``. The fit checks a path of your
+own that names no ``breaks``: on the five items observed longest, it
+compares the integral by the one rule with the same rule on each half
+of the ages, an estimate of the one rule's error, and where they differ
+by more than 1e-5 of the integral it warns that the rule loses accuracy
+along the path. That comes of a corner, or of a very steep or sudden
+change in a smooth path (an exponential rising nine times over the
+ages, a logistic step over a month), where ``breaks`` through the
+steep part helps too; a gentle smooth path stays well below 1e-5. The
+check is of one-marker models only (several markers' paths are not
+probed), and a corner close to the end of the observed ages, where
+little of the integral lies past it, can be missed. A corner whose age
+varies between items or is estimated cannot be named this way, and is
+not supported.
 
 Each parameter is on its own scale by default: the rate ``b`` above is
 normal between items, so a fleet whose rates are near 0 would give some

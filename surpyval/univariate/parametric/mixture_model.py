@@ -1378,6 +1378,47 @@ class MixtureModel(
         self.params = params
         self.w = np.ones(shape=(self.m)) / self.m
 
+    @staticmethod
+    def fit_bayes(*args: Any, **kwargs: Any) -> Any:
+        """
+        Refuses: a mixture has no Bayesian fit in SurPyval.
+
+        Its likelihood is the same whichever component is called the
+        first (label switching), so its posterior has a peak for every
+        numbering of the components, and neither a single normal (the
+        Laplace approximation) nor the grid describes it. Sample it with
+        PyMC through :func:`surpyval.pymc.mixture_likelihood`, which
+        numbers the components in order of one parameter (by default
+        the family's scale or location, component 0 the shortest-lived)
+        so that the labels cannot switch.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> sp.MixtureModel.fit_bayes(
+        ...     [1, 2, 3], dist=sp.Weibull)  # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        ValueError: A mixture has no fit_bayes: ...
+        """
+        raise ValueError(
+            "A mixture has no fit_bayes: its likelihood is the same "
+            "whichever component is called the first, so the posterior "
+            "has a peak for every numbering of the components (label "
+            "switching), which the Laplace approximation (one normal) and "
+            "the grid cannot describe. Sample it with PyMC: "
+            "surpyval.pymc.mixture_likelihood(dist, x=..., weights=w, "
+            "alpha=..., beta=...) inside a pm.Model, which numbers the "
+            "components in order of one parameter (by default the "
+            "family's scale or location, so that component 0 has the "
+            "shortest life: a Weibull's alpha increasing) so that the "
+            "labels cannot switch; see 'Mixtures' in PyMC with SurPyval. "
+            "For a "
+            "cured fraction (a single component and units that never "
+            "fail), dist.fit_bayes(..., lfp=True) or "
+            "MixtureCure(dist).fit_bayes is the Bayesian fit."
+        )
+
     @_FitMethod
     @takes_unit
     @accepts_surpyval_data

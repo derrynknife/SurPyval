@@ -43,7 +43,7 @@ from surpyval.univariate.competing_risks.parametric.bayes import (
     labelled,
     split_priors,
 )
-from surpyval.univariate.regression.life_at import _one_row
+from surpyval.univariate.regression.life_at import life_at_one_row
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import unknown_cause_error
 from surpyval.utils.warnings import ignoring_warnings
@@ -137,7 +137,7 @@ class BayesianCompetingRisksAt(BayesianCompetingRisks):
     def __init__(self, regression: Any, Z: Any) -> None:
         self.regression = regression
         first = regression.models[regression.causes[0]]
-        self.Z = _one_row(first.at_params(), Z)
+        self.Z = life_at_one_row(first.at_params(), Z)
         super().__init__(
             {k: _CauseAt(m, self.Z) for k, m in regression.models.items()},
             regression.mle,
@@ -187,8 +187,8 @@ class BayesianCompetingRisksAt(BayesianCompetingRisks):
             raise ValueError("A regression's draws are models, not points.")
         x = np.atleast_1d(np.asarray(x, dtype=float)).ravel()
         from surpyval.univariate.competing_risks.parametric.bayes import (
-            _NODES,
-            _WEIGHTS,
+            GAUSS_NODES,
+            GAUSS_WEIGHTS,
         )
 
         out = np.full((DRAWS, x.size), np.nan)
@@ -203,14 +203,14 @@ class BayesianCompetingRisksAt(BayesianCompetingRisks):
             top = np.where(np.isposinf(xs)[None, :], 1.0, top)
             top = np.where(np.isneginf(xs)[None, :], 0.0, top)
             top = np.clip(np.where(np.isfinite(top), top, 0.0), 0.0, 1.0)
-            p = top[:, :, None] * _NODES[None, None, :]
+            p = top[:, :, None] * GAUSS_NODES[None, None, :]
             t = self._at(event, "q", p, 2)
             g = np.ones(p.shape)
             for k in self.causes:
                 if k != event:
                     g = g * self._at(k, "R", t, 2)
             g = np.where(np.isfinite(g), g, 0.0)
-            out[:, cols] = top * np.einsum("dtq,q->dt", g, _WEIGHTS)
+            out[:, cols] = top * np.einsum("dtq,q->dt", g, GAUSS_WEIGHTS)
         return out
 
     def sf_draws(self, x: npt.ArrayLike) -> npt.NDArray:

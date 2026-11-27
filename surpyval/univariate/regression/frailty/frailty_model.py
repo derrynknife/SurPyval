@@ -9,9 +9,13 @@ group (a lot, a site, a repairable unit):
 
 with the frailties drawn once per group from a Gamma distribution of mean 1 and
 variance :math:`\\theta` (``theta``), or, with ``family="lognormal"``, as
-``u = exp(w)`` with ``w`` normal of mean 0 and variance :math:`\\theta`.
-``theta`` measures the unexplained between-group variability; ``theta = 0``
-recovers an ordinary parametric PH model.
+``u = exp(w)`` with ``w`` normal of mean 0 and variance :math:`\\theta`, or
+from an inverse Gaussian distribution of mean 1 and variance ``theta``
+(``family="inverse_gaussian"``), or a positive stable one of index
+``alpha = 1 - theta`` (``family="positive_stable"``; its Laplace transform
+is ``exp(-s^alpha)``, it has no finite mean, and ``theta`` is Kendall's
+tau). ``theta`` measures the unexplained between-group variability;
+``theta = 0`` recovers an ordinary parametric PH model.
 
 Because the frailty enters multiplicatively on the *cumulative* hazard, a Gamma
 frailty integrates out of a group's likelihood in closed form, and the same
@@ -72,7 +76,14 @@ from ..regression_data import (
     restore_covariate_meta,
     serialise_covariate_meta,
 )
-from .families import frailty_cv2, kendall_tau, lognormal_log_integral
+from .families import (
+    LAPLACE_FAMILIES,
+    frailty_cv2,
+    kendall_tau,
+    laplace_log_integral,
+    lognormal_log_integral,
+    theta_upper,
+)
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -236,6 +247,10 @@ class _SharedFrailty(
             return u * s
         if self.family == "lognormal":
             return -lognormal_log_integral(0.0, s, self.theta)
+        if self.family in LAPLACE_FAMILIES:
+            # the log of the Laplace transform: (q - 1) / theta for the
+            # inverse Gaussian, s^alpha for the positive stable
+            return -laplace_log_integral(self.family, 0.0, s, self.theta)
         if self.theta < 1e-12:
             # theta -> 0 is the no-frailty PH limit
             # log(1 + theta s)/theta -> s; dividing by a zero theta
@@ -284,6 +299,16 @@ class _SharedFrailty(
                 lognormal_log_integral(1.0, s, self.theta)
                 - lognormal_log_integral(0.0, s, self.theta)
             )
+            return eta * h0 * mean_u
+        if u is None and self.family in LAPLACE_FAMILIES:
+            # eta h0 times the mean frailty of the survivors to t, which
+            # is finite (the positive stable's: alpha s^(alpha - 1))
+            s = eta * H0
+            with np.errstate(divide="ignore"):
+                mean_u = np.exp(
+                    laplace_log_integral(self.family, 1.0, s, self.theta)
+                    - laplace_log_integral(self.family, 0.0, s, self.theta)
+                )
             return eta * h0 * mean_u
         if u is None:
             return eta * h0 / (1.0 + self.theta * eta * H0)
@@ -372,9 +397,12 @@ class _SharedFrailty(
         / E(u)^2`, which compares the families: :math:`\\hat\\theta` for the
         gamma frailty (mean 1, variance ``theta``) and
         :math:`e^{\\hat\\theta} - 1` for the log-normal (``theta`` the
-        variance of :math:`\\log u`). A baseline whose scale multiplies the
-        hazard (Weibull, Exponential) absorbs the frailty's mean, so this
-        is the spread the data identify.
+        variance of :math:`\\log u`), :math:`\\hat\\theta` for the inverse
+        Gaussian (mean 1, variance ``theta``), and ``inf`` for the
+        positive stable, which has no finite mean or variance (compare
+        families by :attr:`kendall_tau` instead). A baseline whose scale
+        multiplies the hazard (Weibull, Exponential) absorbs the frailty's
+        mean, so this is the spread the data identify.
 
         Examples
         --------
@@ -481,6 +509,14 @@ class _SharedFrailty(
         else:
             q = _z(1 - alpha_ci)
             signs = np.array([1.0])
+        if positive and name == "theta" and self.family == "positive_stable":
+            # theta = 1 - alpha is in (0, 1): its interval on the logit
+            # scale stays there (the delta method: se / (theta (1 - theta)))
+            if est <= 0:
+                return np.zeros_like(signs, dtype=float)
+            logit = np.log(est / (1.0 - est))
+            half = q * se / (est * (1.0 - est))
+            return 1.0 / (1.0 + np.exp(-(logit + signs * half)))
         if positive:
             if est <= 0:
                 # A boundary estimate (theta -> 0: no detectable frailty)
@@ -656,6 +692,19 @@ class _SharedFrailty(
         return table
 
     def _family_line(self) -> str:
+        if self.family == "inverse_gaussian":
+            return (
+                "inverse Gaussian (mean 1, variance theta); Kendall's "
+                "tau = {:.4g}".format(self.kendall_tau)
+            )
+        if self.family == "positive_stable":
+            return (
+                "positive stable (Laplace transform exp(-s^a), index a = "
+                "1 - theta = {:.4g}; no finite mean); Kendall's tau = "
+                "theta; a marginal hazard ratio is exp(a coef)".format(
+                    1.0 - self.theta
+                )
+            )
         if self.family == "lognormal":
             return (
                 "lognormal (log u ~ N(0, theta)); Var(u)/E(u)^2 = "
@@ -884,10 +933,11 @@ class FrailtyModel(_SharedFrailty):
                 n_beta,
             )
 
+        upper = theta_upper(self.family)
         bounds = [
             *self.dist.bounds,
             *((None, None),) * self.beta.size,
-            (0, None),
+            (0, None if not np.isfinite(upper) else upper),
         ]
         search = LikelihoodRegion(
             neg_ll,
@@ -951,7 +1001,11 @@ class FrailtyModel(_SharedFrailty):
                 "given the frailty; {}\n".format(wald)
             ) + coefficient_repr(table.loc["coefficients"])
         out += (
-            "\nFrailty variance    : "
+            (
+                "\nFrailty theta (tau) : "
+                if self.family == "positive_stable"
+                else "\nFrailty variance    : "
+            )
             + ("Wald 95% interval" if self.penalty is None else "no interval")
             + "\n"
             + block("frailty")

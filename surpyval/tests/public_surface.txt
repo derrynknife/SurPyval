@@ -453,6 +453,8 @@ surpyval.pymc.SUPPORTED
 surpyval.pymc.censored_likelihood
 surpyval.pymc.group_models
 surpyval.pymc.log_likelihood
+surpyval.pymc.mixture_likelihood
+surpyval.pymc.mixture_log_likelihood
 surpyval.pymc.nhpp_likelihood
 surpyval.pymc.nhpp_log_likelihood
 surpyval.pymc.pooled_likelihood

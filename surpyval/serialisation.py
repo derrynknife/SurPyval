@@ -93,10 +93,12 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "BayesianParametric": "surpyval.bayes.model",
     "BayesianRegression": "surpyval.bayes.regression",
+    "BayesianMixtureCure": "surpyval.bayes.regression",
     "BayesianResult": "surpyval.bayes.result",
     "BayesianRecurrence": "surpyval.recurrent.bayes",
     "BayesianProportionalIntensity": "surpyval.recurrent.bayes",
     "BayesianCauseSpecific": "surpyval.recurrent.bayes",
+    "BayesianRenewal": "surpyval.recurrent.renewal.bayes",
     "BayesianProcessModel": "surpyval.degradation.bayes",
     "BayesianCompetingRisks": (
         "surpyval.univariate.competing_risks.parametric.bayes"

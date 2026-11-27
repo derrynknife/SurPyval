@@ -1430,6 +1430,8 @@ for _name in (
     "GammaFrailty",
     "LogNormalFrailty",
     "WeibullFrailty[lognormal]",
+    "WeibullFrailty[inverse_gaussian]",
+    "WeibullFrailty[positive_stable]",
 ):
     PLANS[_name] = Plan(
         _regression(own_random=False),
@@ -1468,7 +1470,12 @@ PLANS["ProportionalOdds"] = Plan(
     "between their jumps, a proportional odds model with no ties (see "
     "_interpolated_odds)",
 )
-for _name in ("CoxFrailty", "CoxMixedEffects"):
+for _name in (
+    "CoxFrailty",
+    "CoxFrailty[inverse_gaussian]",
+    "CoxFrailty[positive_stable]",
+    "CoxMixedEffects",
+):
     PLANS[_name] = Plan(
         _regression(own_random=False, step=True),
         _REG_N,
@@ -1801,6 +1808,12 @@ EXCLUDED: dict[str, str] = {
         "a posterior, whose calibration is the simulation-based "
         "calibration study (calibration/test_sbc_recurrent_bayes.py)",
     ),
+    **dict.fromkeys(
+        ("GeneralizedRenewal[bayes]", "ARA[bayes]", "ARI[bayes]"),
+        "a posterior, not a point estimate to recover: its calibration, "
+        "with truths piled against perfect repair, is the simulation-based "
+        "calibration study (calibration/test_sbc_renewal_bayes.py)",
+    ),
     "CauseSpecificNHPP[bayes]": "a posterior, not a point estimate to "
     "recover: each cause's process is fitted by its own fit_bayes, "
     "checked in tests/bayes/test_recurrent_bayes_more.py (no "
@@ -1829,10 +1842,18 @@ EXCLUDED: dict[str, str] = {
         "checked in tests/bayes/test_multistate_bayes.py and "
         "tests/bayes/test_regression_cr_ms_bayes.py",
     ),
+    "WeibullMixtureCure[bayes]": "a posterior, not a point estimate to "
+    "recover: the coverage of its credible intervals on simulated data is "
+    "the calibration study calibration/test_coverage_mixture_cure_bayes.py",
     "WeibullPH[bayes]": "a posterior, not a point estimate to recover: "
     "the Laplace engine checks its normal against the exact posterior "
     "(tests/bayes/test_laplace.py) and the fit is tested in "
     "tests/bayes/test_fit_regression.py",
+    "ParametricMultiState[truncated]": "a history of moves between "
+    "states kept only where the unit reached a state by its cut-off, "
+    "which a model draw does not give (no simulator of paths): recovery "
+    "under simulated truncation, and the bias of ignoring it, is in "
+    "tests/multistate/test_parametric_truncation.py",
     **dict.fromkeys(
         (
             "ParametricMultiState[interval]",
@@ -1947,6 +1968,11 @@ EXCLUDED: dict[str, str] = {
         "test of no frailty; recovery with covariates is in "
         "recurrent/test_shared_frailty.py",
     ),
+    "CrowAMSAA[frailty=inverse_gaussian]": "a fleet whose units each have "
+    "a frailty, which a model draw does not give (the model has no "
+    "simulator): calibration/test_coverage_laplace_frailty.py simulates "
+    "fleets with inverse Gaussian and positive stable frailties from the "
+    "definition and checks the parameters' recovery and coverage",
     "JointFrailty": "recurrent events and a terminal event per unit, "
     "which a model draw of one function does not give: its own study, "
     "calibration/test_coverage_joint_frailty.py, simulates units with "

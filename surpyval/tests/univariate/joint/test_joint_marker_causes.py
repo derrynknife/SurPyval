@@ -516,7 +516,21 @@ def test_what_the_fit_of_modes_cannot_take_is_refused():
         JointAFT(Weibull, PATHS).fit(**data)
     with pytest.raises(ValueError, match="two-stage.*how='MLE'"):
         _fitter().fit(**data, how="two-stage")
-    e = data["e"].copy()
-    e[np.flatnonzero(data["c"] == 0)[:2]] = None
-    with pytest.raises(ValueError, match="2 failure.*no failure mode"):
-        _fitter().fit(**dict(data, e=e))
+
+
+def test_an_unknown_mode_is_the_sum_of_the_known_ones():
+    # several markers: an item's likelihood with its failure's mode
+    # unknown is the sum of its likelihoods with each mode
+    model = _model()
+    data = _data()
+    row = int(np.flatnonzero(data["c"] == 0)[0])
+    each = []
+    for label in (None, "bearing", "seal"):
+        e = data["e"].copy()
+        e[row] = label
+        f, u, _ = search_space(model, **dict(data, e=e))
+        each.append(float(f(u)))
+    unknown, bearing, seal = each
+    assert np.exp(bearing - unknown) == pytest.approx(
+        1.0 + np.exp(bearing - seal), rel=1e-9
+    )

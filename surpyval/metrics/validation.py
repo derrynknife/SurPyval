@@ -322,7 +322,7 @@ def survival_probability(
     return np.column_stack(cols)
 
 
-def _brier_score(
+def brier_score_at(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
     survival: npt.ArrayLike,
@@ -518,7 +518,7 @@ def _integrated_brier_score(
     >>> round(integrated_brier_score(x, c, S_km, times), 4)
     0.1038
     """
-    times_arr, bs = _brier_score(
+    times_arr, bs = brier_score_at(
         x, c, survival, times, x_train, c_train, e=e, cause=cause
     )
     # Integrate over the grid in time order: an unsorted grid otherwise gave
@@ -535,7 +535,7 @@ def _integrated_brier_score(
     return float(area / span)
 
 
-def _auc_td(
+def time_dependent_auc(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
     risk: npt.ArrayLike,
@@ -1570,8 +1570,8 @@ def brier_score(
     *,
     alpha_ci: float = 0.05,
 ) -> TimeScores:
-    __doc__ = _brier_score.__doc__  # noqa: F841 - set below
-    out = _brier_score(x, c, survival, times, x_train, c_train, e, cause)
+    __doc__ = brier_score_at.__doc__  # noqa: F841 - set below
+    out = brier_score_at(x, c, survival, times, x_train, c_train, e, cause)
     check_alpha_ci(alpha_ci)
     trained = x_train is not None or c_train is not None
     se, lower, upper, why = _uncertainty(
@@ -1647,7 +1647,9 @@ def auc_td(
     *,
     alpha_ci: float = 0.05,
 ) -> TimeScores:
-    out = _auc_td(x, c, risk, times, x_train, c_train, e, cause, controls)
+    out = time_dependent_auc(
+        x, c, risk, times, x_train, c_train, e, cause, controls
+    )
     check_alpha_ci(alpha_ci)
     trained = x_train is not None or c_train is not None
     if not trained and np.isnan(np.asarray(risk, dtype=float)).any():
@@ -1726,13 +1728,13 @@ def _document(public: Any, private: Any, returns: str | None) -> None:
 
 _document(
     brier_score,
-    _brier_score,
+    brier_score_at,
     _TIME_SCORES_DOC.format(name="bs", what="Brier score", extra=""),
 )
 _document(integrated_brier_score, _integrated_brier_score, None)
 _document(
     auc_td,
-    _auc_td,
+    time_dependent_auc,
     _TIME_SCORES_DOC.format(
         name="auc",
         what="AUC",
@@ -1740,3 +1742,9 @@ _document(
         "whose\n        weight is not identified, yields ``nan``.",
     ),
 )
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_auc_td = time_dependent_auc
+_brier_score = brier_score_at

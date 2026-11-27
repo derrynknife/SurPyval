@@ -1139,6 +1139,15 @@ def _validate(model: Any) -> None:
     # A penalised fit has no p-values; the message is the one its
     # covariance gives.
     refuse_if_penalised(model)
+    family = getattr(model, "family", "gamma")
+    if family not in FRAILTY_FAMILIES:
+        raise ValueError(
+            "diagnose() covers the gamma and log-normal frailties, whose "
+            "refits its tests are built on; this model's frailty is "
+            "{!r}. Refit with family='gamma' or 'lognormal' to diagnose "
+            "the covariates and the baseline, and compare the families "
+            "by AIC (aic()) or Kendall's tau (kendall_tau).".format(family)
+        )
     cox = _is_cox(model)
     fitter = "CoxFrailty" if cox else frailty_fitter_name(model)
     if getattr(model, "_fit_data", None) is None:
