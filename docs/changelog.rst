@@ -417,6 +417,22 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Cox fits to case-cohort and nested case-control samples:
+  ``CoxPH.fit_case_cohort`` and ``CoxPH.fit_nested_case_control``.** A
+  case-cohort sample (a random subcohort plus every case) is fitted by
+  Prentice's, Self and Prentice's, Lin and Ying's or Barlow's estimator,
+  or, for a subcohort drawn within strata, Borgan's I or II, each with
+  its design-based variance, with delayed entry; the coefficients and
+  standard errors match R's ``survival::cch`` (and ``coxph`` with
+  Barlow's weights) on the Wilms tumour example to about 1e-9. Its
+  baseline is weighted to stand for the cohort, so the curves are given
+  (their bounds refuse). A nested case-control sample (each case with
+  controls drawn from its risk set) is fitted by the conditional logistic
+  likelihood, as ``clogit``; it has no baseline, so its curves refuse.
+  See :doc:`Case-Cohort and Nested Case-Control`.
+- ``WeightedCox`` (internal) takes a multiplier ``rho`` of a row's
+  place in the risk sums only (an offset of ``log rho``), which the
+  case-cohort fits use; its default 1 changes nothing.
 - **``fit_bayes_from_df`` for the competing-risks and multi-state
   fitters.** ``ParametricCompetingRisks``,
   ``ParametricCompetingRisksRegression``, ``ParametricMultiState`` and
