@@ -10,6 +10,7 @@ from autograd.tracer import getval, isbox
 from numpy.typing import ArrayLike
 
 from surpyval import Weibull
+from surpyval.recurrent.renewal._bayes_fit import RenewalBayesMixin
 from surpyval.recurrent.renewal._derivatives import (
     lifetime_derivatives,
     negated,
@@ -472,7 +473,7 @@ defvjp(
 
 
 @singleton_fitter
-class GeneralizedRenewal(RenewalFitMixin):
+class GeneralizedRenewal(RenewalBayesMixin, RenewalFitMixin):
     """
     A class to handle the generalized renewal process with different Kijima
     models.

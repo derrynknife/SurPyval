@@ -344,6 +344,10 @@ with its own ``schema``.
      - ``"model": "BuckleyJamesModel"``
      - ``beta``, ``resid``, ``resid_surv``, ``n_iter``, ``converged``, ``data``
      - --
+   * - ``RankAFTModel``
+     - ``"model": "RankAFTModel"``
+     - ``beta``, ``covariance``, ``smoothing``, ``resid``, ``resid_surv``, ``rank_weights``, ``n_iter``, ``converged``, ``data``
+     - --
    * - ``QuantileRegressionModel``
      - ``"model": "QuantileRegressionModel"``
      - ``method``, ``step``, ``taus``, ``intercepts``, ``coefs``, ``data``
@@ -571,6 +575,14 @@ with its own ``schema``.
    * - ``BayesianCauseSpecific``
      - ``"model": "BayesianCauseSpecific"``
      - ``event_types``, ``models``, ``surpyval_version``
+     - --
+   * - ``BayesianRenewal``
+     - ``"model": "BayesianRenewal"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianMixtureCure``
+     - ``"model": "BayesianMixtureCure"``
+     - ``kind``, ``mle``, ``priors``, ``default_priors``, ``posterior``, ``data``, ``diagnostics``, ``surpyval_version``
      - --
    * - ``BayesianProcessModel``
      - ``"model": "BayesianProcessModel"``

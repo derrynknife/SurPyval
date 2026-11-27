@@ -28,7 +28,7 @@ def _covariate_width(regression: Any) -> int:
     return int(np.asarray(regression.beta).shape[0])
 
 
-def _one_row(regression: Any, Z: Any) -> Any:
+def life_at_one_row(regression: Any, Z: Any) -> Any:
     """``Z`` as the one covariate row the regression's functions take,
     refused, with what to do instead, where it is several rows."""
     if type(Z).__name__ == "DataFrame":
@@ -105,7 +105,7 @@ class LifeAtCovariates:
 
     def __init__(self, regression: Any, Z: Any, stratum: Any = None) -> None:
         self.regression = regression
-        self.Z = _one_row(regression, Z)
+        self.Z = life_at_one_row(regression, Z)
         self.stratum = stratum
 
     def _kwargs(self) -> dict:
@@ -324,3 +324,9 @@ class AtCovariatesMixin:
         8.575
         """
         return LifeAtCovariates(self, Z)
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_one_row = life_at_one_row

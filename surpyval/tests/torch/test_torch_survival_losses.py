@@ -123,6 +123,72 @@ def test_cox_mean_is_per_failure_and_large_risks_do_not_overflow():
     assert float(big) == pytest.approx(total, rel=1e-9)
 
 
+@pytest.mark.parametrize(
+    "dtype, spread", [(torch.float32, 110.0), (torch.float64, 800.0)]
+)
+def test_cox_efron_large_risk_spread_matches_exact_value_and_gradient(
+    dtype, spread
+):
+    # Row 0 is censored before the tied failures at t = 1; its risk score
+    # does not enter any risk set, so neither loss nor gradient depends on it.
+    y = spt.targets(x=[0.5, 1.0, 1.0, 2.0], c=[1, 0, 0, 0])
+    eta = torch.tensor(
+        [spread, 0.0, 0.0, 0.0], dtype=dtype, requires_grad=True
+    )
+    loss = spt.cox_nll(eta, y, ties="efron", reduction="sum")
+    loss.backward()
+    assert float(loss.detach()) == pytest.approx(np.log(6.0), rel=1e-6)
+    np.testing.assert_allclose(
+        eta.grad.numpy(),
+        [0.0, -5.0 / 12.0, -5.0 / 12.0, 10.0 / 12.0],
+        rtol=1e-5,
+        atol=1e-6,
+    )
+
+
+@pytest.mark.parametrize("ties", ["breslow", "efron"])
+@pytest.mark.parametrize(
+    "dtype, spread", [(torch.float32, 20.0), (torch.float64, 50.0)]
+)
+def test_cox_delayed_entry_large_late_risk_avoids_cancellation(
+    ties, dtype, spread
+):
+    # Row 1 enters at t = 2.5 with a much larger risk score than the units
+    # at risk at t = 2.0, where subtracting the late-entry suffix sum cancels.
+    x = np.array([2.0, 3.0, 3.0, 5.0, 8.0])
+    c = np.array([0, 0, 0, 1, 0])
+    tl = np.array([0.0, 2.5, 2.5, 0.0, 0.0])
+    y = spt.targets(x=x, c=c, tl=tl)
+    eta_vals = np.array([0.0, spread, 0.0, 0.0, 0.0])
+    eta = torch.tensor(eta_vals, dtype=dtype, requires_grad=True)
+
+    loss = spt.cox_nll(eta, y, ties=ties, reduction="sum")
+    loss.backward()
+
+    ref_loss = float(
+        _reference(x, eta_vals[:, None], c, np.ones(len(x)), tl, ties)(
+            np.array([1.0])
+        )
+    )
+    loss_val = float(loss.detach())
+    assert np.isfinite(loss_val)
+    assert loss_val == pytest.approx(ref_loss, rel=1e-5, abs=1e-5)
+    assert np.all(np.isfinite(eta.grad.numpy()))
+    # Check gradient against float64 central differences on CoxPH's likelihood
+    Z_id = np.eye(len(x))
+    ref_fn = _reference(x, Z_id, c, np.ones(len(x)), tl, ties)
+    h = 1e-6
+    expected_grad = np.array(
+        [
+            (ref_fn(eta_vals + h * e) - ref_fn(eta_vals - h * e)) / (2 * h)
+            for e in Z_id
+        ]
+    )
+    np.testing.assert_allclose(
+        eta.grad.numpy(), expected_grad, rtol=1e-5, atol=1e-5
+    )
+
+
 def test_cox_refusals_say_what_to_do():
     y = spt.targets(x=[1.0, 2.0, 3.0], c=[0, 0, 1])
     eta = torch.zeros(3, dtype=F64)
@@ -266,3 +332,30 @@ def test_discrete_refusals_say_what_to_do():
         torch.zeros(4, dtype=F64), [0, 2, 3], c=[0, 0, 1], reduction="sum"
     )
     assert float(shared) == pytest.approx(8 * np.log(2.0), rel=1e-12)
+
+
+@pytest.mark.parametrize("ties", ["breslow", "efron"])
+def test_cox_delayed_entry_suffix_path_matches_reference_at_scale(ties):
+    # Many rows and failure times with delayed entry and ordinary risk
+    # scores: the suffix-sum path (with the direct sum only where it would
+    # cancel) gives CoxPH's likelihood and its gradient.
+    rng = np.random.default_rng(1496)
+    n = 400
+    entry = rng.uniform(0, 5, n) * (rng.uniform(size=n) < 0.5)
+    x = entry + rng.exponential(3.0, n) + 1e-3
+    c = (rng.uniform(size=n) < 0.3).astype(int)
+    eta_vals = rng.normal(0, 1.5, n)
+    y = spt.targets(x=x, c=c, tl=entry)
+    eta = torch.tensor(eta_vals, dtype=F64, requires_grad=True)
+    loss = spt.cox_nll(eta, y, ties=ties, reduction="sum")
+    loss.backward()
+    ref = _reference(x, np.eye(n), c, np.ones(n), entry, ties)
+    assert float(loss.detach()) == pytest.approx(
+        float(ref(eta_vals)), rel=1e-10
+    )
+    h = 1e-6
+    for i in rng.choice(n, 8, replace=False):
+        e = np.zeros(n)
+        e[i] = h
+        num = (ref(eta_vals + e) - ref(eta_vals - e)) / (2 * h)
+        assert float(eta.grad[i]) == pytest.approx(num, rel=1e-5, abs=1e-6)

@@ -522,6 +522,44 @@ def _interpolated_odds_curve(case, truth, grid):
     )
 
 
+def _interpolated_residuals(case, model, t, row, kw=None):
+    """``sf`` of a residual-Kaplan-Meier AFT model (Buckley-James, the
+    rank-based AFT) at one row with its residual distribution made
+    continuous: each atom's mass spread uniformly over the interval
+    below it (the first over one mean spacing), so the residual survival
+    is linear between ``(r_0 - spacing, 1)``, ``(r_0, S_0)``, ...,
+    ``(r_K, S_K = 0)``. The coefficients are the model's, so this is an
+    AFT model still, ``sf(t | Z) = S(log t + beta'Z)``, with a continuous
+    error: data drawn from it have no ties. (Drawn from the step function,
+    300 units share its 26 atoms, and the mean refitted curve, judged
+    beside the steps, missed the rule on 4 to 6 of 12 seeds for each of
+    the three models.) The plan, its seeds (the registry's, from the
+    name), n = 300, 40 refits and the curve rule (3 Monte Carlo SE plus
+    0.02) were written down before it was first run."""
+    r = np.asarray(model._resid, dtype=float)
+    S = np.asarray(model._resid_surv, dtype=float)
+    spacing = (r[-1] - r[0]) / max(r.size - 1, 1) if r.size > 1 else 1.0
+    knots = np.r_[r[0] - spacing, r]
+    values = np.r_[1.0, S]
+    t = np.asarray(t, dtype=float)
+    lp = float(model._linear_predictor(np.empty(1), row)[0])
+    with np.errstate(divide="ignore"):
+        e = np.log(np.where(t > 0, t, 1.0)) + lp
+    out = np.interp(e, knots, values, left=1.0, right=0.0)
+    return np.where(t > 0, out, 1.0)
+
+
+def _interpolated_residuals_curve(case, truth, grid):
+    # The true curve of a plan drawing from _interpolated_residuals, in
+    # default_curve's order.
+    return np.concatenate(
+        [
+            _interpolated_residuals(case, truth, grid, row)
+            for row in _z_rows(case)
+        ]
+    )
+
+
 def _positive_additive_rows(truth, Z):
     # An additive-hazards model is a distribution only where its hazard
     # h0(t) + beta'Z stays positive (documented; the registry excludes
@@ -1392,6 +1430,8 @@ for _name in (
     "GammaFrailty",
     "LogNormalFrailty",
     "WeibullFrailty[lognormal]",
+    "WeibullFrailty[inverse_gaussian]",
+    "WeibullFrailty[positive_stable]",
 ):
     PLANS[_name] = Plan(
         _regression(own_random=False),
@@ -1402,12 +1442,24 @@ for _name in (
         "is biased upwards by design, is not held to the bias rule",
     )
 _SEMI = "semi-parametric: the curve only"
-for _name in ("CoxPH", "CoxPH[strata]", "BuckleyJames"):
+for _name in ("CoxPH", "CoxPH[strata]"):
     PLANS[_name] = Plan(
         _regression(own_random=False, step=True),
         _REG_N,
         _REG_REPS,
         note=_SEMI,
+    )
+# The residual-Kaplan-Meier AFT models: drawn from the fixture's fit with
+# its residual distribution made continuous (see _interpolated_residuals).
+for _name in ("BuckleyJames", "RankAFT", "RankAFT[logrank]"):
+    PLANS[_name] = Plan(
+        _regression(own_random=False, sf=_interpolated_residuals),
+        _REG_N,
+        _REG_REPS,
+        truth_curve=_interpolated_residuals_curve,
+        note=_SEMI + "; drawn with the residual distribution interpolated "
+        "linearly between its atoms, an AFT model with a continuous error "
+        "(see _interpolated_residuals)",
     )
 PLANS["ProportionalOdds"] = Plan(
     _regression(own_random=False, sf=_interpolated_odds),
@@ -1418,7 +1470,12 @@ PLANS["ProportionalOdds"] = Plan(
     "between their jumps, a proportional odds model with no ties (see "
     "_interpolated_odds)",
 )
-for _name in ("CoxFrailty", "CoxMixedEffects"):
+for _name in (
+    "CoxFrailty",
+    "CoxFrailty[inverse_gaussian]",
+    "CoxFrailty[positive_stable]",
+    "CoxMixedEffects",
+):
     PLANS[_name] = Plan(
         _regression(own_random=False, step=True),
         _REG_N,
@@ -1751,6 +1808,12 @@ EXCLUDED: dict[str, str] = {
         "a posterior, whose calibration is the simulation-based "
         "calibration study (calibration/test_sbc_recurrent_bayes.py)",
     ),
+    **dict.fromkeys(
+        ("GeneralizedRenewal[bayes]", "ARA[bayes]", "ARI[bayes]"),
+        "a posterior, not a point estimate to recover: its calibration, "
+        "with truths piled against perfect repair, is the simulation-based "
+        "calibration study (calibration/test_sbc_renewal_bayes.py)",
+    ),
     "CauseSpecificNHPP[bayes]": "a posterior, not a point estimate to "
     "recover: each cause's process is fitted by its own fit_bayes, "
     "checked in tests/bayes/test_recurrent_bayes_more.py (no "
@@ -1779,6 +1842,9 @@ EXCLUDED: dict[str, str] = {
         "checked in tests/bayes/test_multistate_bayes.py and "
         "tests/bayes/test_regression_cr_ms_bayes.py",
     ),
+    "WeibullMixtureCure[bayes]": "a posterior, not a point estimate to "
+    "recover: the coverage of its credible intervals on simulated data is "
+    "the calibration study calibration/test_coverage_mixture_cure_bayes.py",
     "WeibullPH[bayes]": "a posterior, not a point estimate to recover: "
     "the Laplace engine checks its normal against the exact posterior "
     "(tests/bayes/test_laplace.py) and the fit is tested in "
@@ -1824,9 +1890,10 @@ EXCLUDED: dict[str, str] = {
         "with jumps of up to 0.17: data drawn from it are tied at those "
         "steps, a refit's steps fall beside the truth's, and the curve check, "
         "read at the data's own times, sees a whole jump (0.09 at worst over "
-        "40 refits of 300, with the plan of BuckleyJames). Recovery of the "
-        "coefficient process from continuous data with known quantiles is "
-        "tested in tests/univariate/regression/test_quantile_regression.py",
+        "40 refits of 300, with the step-function plan BuckleyJames then "
+        "had). Recovery of the coefficient process from continuous data "
+        "with known quantiles is tested in "
+        "tests/univariate/regression/test_quantile_regression.py",
     ),
     "NeverOccurs": _NO_DATA,
     "InstantlyOccurs": _NO_DATA,
@@ -1890,6 +1957,11 @@ EXCLUDED: dict[str, str] = {
         "test of no frailty; recovery with covariates is in "
         "recurrent/test_shared_frailty.py",
     ),
+    "CrowAMSAA[frailty=inverse_gaussian]": "a fleet whose units each have "
+    "a frailty, which a model draw does not give (the model has no "
+    "simulator): calibration/test_coverage_laplace_frailty.py simulates "
+    "fleets with inverse Gaussian and positive stable frailties from the "
+    "definition and checks the parameters' recovery and coverage",
     "JointFrailty": "recurrent events and a terminal event per unit, "
     "which a model draw of one function does not give: its own study, "
     "calibration/test_coverage_joint_frailty.py, simulates units with "

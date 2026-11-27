@@ -44,82 +44,29 @@ import numpy.typing as npt
 if TYPE_CHECKING:
     import pandas as pd
 
-from surpyval.diagnostics.mixin import DiagnoseMixin
-from surpyval.serialisation import (
-    SerialisableMixin,
-    require_model_tag,
-    stamp_schema,
-)
+from surpyval.serialisation import require_model_tag, stamp_schema
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.rng import as_generator
-from surpyval.utils.shapes import covariate_rows, keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from .._aliasing import aliased_columns, constant_columns, expand, warn_aliased
-from .._concordance import ConcordanceMixin
-from .._prediction import (
-    ConditionalSurvivalMixin,
-    paired_probabilities,
-    step_quantiles,
-)
-from .._summary import coefficient_names, coefficient_table
+from .._residual_aft import RESID_ROUNDING  # noqa: F401 (kept importable)
+from .._residual_aft import ResidualAFTModel
+from .._residual_aft import residual_km as _residual_km
+from .._summary import coefficient_table
 from ..regression_data import (
     FrameDesign,
-    LinearPredictorMixin,
-    NoLikelihoodMixin,
     canonical_rows,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
 )
-
-# How far below a residual Kaplan-Meier step a query's residual may round
-# and still be at the step, relative to max(|r|, 1) (see ``_resid_sf``).
-RESID_ROUNDING = 1e-12
-
-
-def _residual_km(
-    e: npt.NDArray, delta: npt.NDArray, w: npt.NDArray
-) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-    """
-    Weighted Kaplan-Meier of the residuals with an Efron tail-correction.
-
-    Returns the sorted unique residual values, the (right-continuous) survival
-    at each, and the probability mass (jump) the estimator places at each.
-    Forcing the largest residual to be an event makes the estimator proper, so
-    the jumps sum to one and conditional expectations above any point are
-    finite.
-    """
-    order = np.argsort(e, kind="mergesort")
-    e = e[order]
-    delta = delta[order].astype(float).copy()
-    w = w[order].astype(float)
-
-    # Efron tail-correction: the largest residual(s) act as an event.
-    delta[e == e[-1]] = 1.0
-
-    uniq, first_idx = np.unique(e, return_index=True)
-    w_cum = np.concatenate([[0.0], np.cumsum(w)])
-    total = w_cum[-1]
-    # At-risk weight for each unique time (residuals >= that time).
-    r = total - w_cum[first_idx]
-
-    d = np.zeros(uniq.shape[0])
-    grp = np.searchsorted(uniq, e)
-    np.add.at(d, grp, np.where(delta == 1.0, w, 0.0))
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        surv = np.cumprod(1.0 - d / r)
-    surv = np.clip(surv, 0.0, 1.0)
-    s_prev = np.concatenate([[1.0], surv[:-1]])
-    jumps = s_prev - surv
-    return uniq, surv, jumps
 
 
 def _impute(
@@ -163,7 +110,7 @@ def _wls_slope(Z: npt.NDArray, Y: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return np.linalg.solve(A, b.ravel())
 
 
-def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
+def aliased_design_columns(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     """The columns whose coefficients the least-squares step cannot
     determine (#476), to be aliased (see
     :mod:`surpyval.univariate.regression._aliasing`).
@@ -212,14 +159,7 @@ def _fit_beta(
     return beta, it, converged
 
 
-class BuckleyJamesModel(
-    ConditionalSurvivalMixin,
-    NoLikelihoodMixin,
-    LinearPredictorMixin,
-    ConcordanceMixin,
-    DiagnoseMixin,
-    SerialisableMixin,
-):
+class BuckleyJamesModel(ResidualAFTModel):
     """
     A fitted Buckley-James accelerated-failure-time model.
 
@@ -275,14 +215,6 @@ class BuckleyJamesModel(
     #: ``concordance``; ``None`` when not kept.
     _data: tuple | None
 
-    @property
-    def parameter_names(self) -> list[str]:
-        """The names of ``params``, entry by entry: each covariate's
-        column (a formula, ``fit_from_df`` or a DataFrame ``Z``), else
-        ``coef_0``, ``coef_1``, ... (#614), as in the parametric
-        regression models."""
-        return coefficient_names(self, len(self.params))
-
     def __init__(
         self,
         beta: npt.ArrayLike,
@@ -310,34 +242,6 @@ class BuckleyJamesModel(
         "log times, with the residual distribution left unspecified; "
         "there is no likelihood to maximise"
     )
-
-    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
-        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
-        return -(Z_arr.reshape(x.size, -1) @ self._coef())
-
-    def _concordance_data(self) -> tuple | None:
-        if self._data is None:
-            return None
-        Y, delta, Z, w = self._data
-        return np.exp(Y), (delta == 0).astype(int), w, Z
-
-    def _resid_sf(self, r: npt.NDArray) -> npt.NDArray:
-        # Right-continuous residual survival at query points ``r``. A
-        # residual within RESID_ROUNDING of a step is at the step: a time
-        # is mapped to its residual by ``log t + beta'Z``, and ``qf``'s time
-        # ``exp(r_k - beta'Z)`` mapped back lands an ulp either side of
-        # ``r_k``, depending on how numpy's exp and log round (its AVX2 and
-        # AVX-512 kernels differ). Landing below it, ``ff(qf(p))`` was the
-        # step before p for one random query in ten, and on CI's runners
-        # in #662's test. 1e-12 on the log scale is 1e-12 relative in time.
-        tol = RESID_ROUNDING * np.maximum(np.abs(r), 1.0)
-        idx = np.searchsorted(self._resid, r + tol, side="right") - 1
-        out = np.where(
-            idx < 0,
-            1.0,
-            self._resid_surv[np.clip(idx, 0, len(self._resid_surv) - 1)],
-        )
-        return out
 
     # -- serialisation -----------------------------------------------------
 
@@ -406,109 +310,6 @@ class BuckleyJamesModel(
         )
         restore_covariate_meta(out, model_dict)
         return out
-
-    def _linear_predictor(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
-        """``beta'Z`` for each time in ``x``: ``Z`` is one covariate vector
-        (used at every time) or one row per time, paired in the order
-        given, as for the other regression models (#426)."""
-        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
-        p = self.beta.size
-        if Z_arr.ndim == 0:
-            Z_arr = Z_arr.reshape(1)
-        if Z_arr.ndim == 1:
-            Z_arr = Z_arr.reshape(1, -1)
-        if Z_arr.ndim != 2 or Z_arr.shape[1] != p:
-            raise ValueError(
-                "Z must be one covariate vector of length {} or one such "
-                "row per time; got an array of shape {}.".format(
-                    p, np.shape(Z)
-                )
-            )
-        if Z_arr.shape[0] not in (1, x.size):
-            raise ValueError(
-                "Z has {} covariate rows but there are {} times; give one "
-                "covariate vector, or one row per time.".format(
-                    Z_arr.shape[0], x.size
-                )
-            )
-        # An aliased coefficient (nan, #476) is predicted with as 0.
-        return Z_arr @ np.where(np.isnan(self.beta), 0.0, self.beta)
-
-    @keeps_query_shape
-    def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Survival ``P(T > x | Z) = S_eps(log x + beta'Z)``; ``Z`` is one
-        covariate vector (used at every time) or one row per time in
-        ``x``, paired in the order given."""
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        # beta is the accelerated-failure (negated) slope, so the residual
-        # r = log t - gamma'Z = log t + beta'Z. At and below time 0 nothing
-        # has failed: survival 1 (log(0) = -inf gives that already, but
-        # warned, and a negative time gave nan).
-        positive = x > 0
-        with np.errstate(divide="ignore"):
-            r = np.log(np.where(positive, x, 1.0)) + self._linear_predictor(
-                x, Z
-            )
-        # A missing covariate (a DataFrame row with a nan) gives nan, as in
-        # the other families; the residual lookup read it as the last step
-        # (survival 0). So does a missing time, which ``positive`` read as
-        # "not after time 0" (survival 1).
-        out = np.where(positive, self._resid_sf(r), 1.0)
-        return np.where(np.isnan(r) | np.isnan(x), np.nan, out)
-
-    @keeps_query_shape
-    def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Failure probability ``1 - sf(x, Z)``; ``Z`` as for
-        :meth:`sf`."""
-        return 1.0 - self.sf(x, Z)
-
-    @keeps_query_shape
-    def Hf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Cumulative hazard ``-log sf(x, Z)``; ``Z`` as for
-        :meth:`sf`."""
-        with np.errstate(divide="ignore"):
-            # 0.0 - log: where sf is 1, -log(1) is -0.0 (#746).
-            return 0.0 - np.log(self.sf(x, Z))
-
-    @keeps_query_shape
-    def qf(self, p: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """
-        The quantile function: the first time at which the predicted
-        failure probability ``ff(x, Z)`` reaches ``p`` (#662), ``nan``
-        where it never does -- the residual Kaplan-Meier stops at the
-        last residual, above ``1 - p`` where the data end censored. It is
-        :math:`e^{q_\\epsilon(p) - \\beta' Z}`, :math:`q_\\epsilon` the
-        residual Kaplan-Meier's quantile, taken as the non-parametric
-        ``qf`` takes it (a curve within ``1e-9`` of ``p`` reaches it).
-        ``Z`` is paired with ``p`` as :meth:`sf` pairs it with ``x``. A
-        probability outside [0, 1] gives ``nan``, with a warning.
-
-        Examples
-        --------
-        >>> from surpyval import BuckleyJames
-        >>> from surpyval.datasets import load_rossi_static
-        >>> df = load_rossi_static()
-        >>> x, c = df["week"].values, 1 - df["arrest"].values
-        >>> model = BuckleyJames.fit(x, df[["fin", "age", "prio"]].values, c=c)
-        >>> rows = [[0, 25, 3], [1, 25, 3], [0, 25, 10]]
-        >>> b10 = model.qf(0.1, rows)
-        >>> b10.round(2)
-        array([21.71, 28.33, 14.38])
-        >>> model.ff(b10, rows).round(3)
-        array([0.102, 0.102, 0.102])
-        """
-        rows = covariate_rows(
-            np.asarray(self._prepare_Z(Z), dtype=float), self.beta.size
-        )
-        u, rows, _ = paired_probabilities(p, rows)
-        lp = self._linear_predictor(np.empty(u.size), rows)
-        resid = step_quantiles(
-            (1.0 - np.asarray(self._resid_surv, dtype=float))[None, :],
-            self._resid,
-            u,
-        )
-        with np.errstate(over="ignore", invalid="ignore"):
-            return np.exp(resid - lp)
 
     def summary(
         self,
@@ -827,7 +628,7 @@ class BuckleyJames_(FitterRepr):
                 "estimate."
             )
         p = Z_a.shape[1]
-        aliased = _aliased(Z_a, n_a)
+        aliased = aliased_design_columns(Z_a, n_a)
         kept = np.setdiff1d(np.arange(p), aliased)
         if aliased.size:
             warn_aliased(
@@ -921,3 +722,8 @@ class BuckleyJames_(FitterRepr):
 
 
 BuckleyJames = BuckleyJames_()
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_aliased = aliased_design_columns
