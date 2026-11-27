@@ -271,6 +271,13 @@ def kendall_tau(family: str, theta: float) -> float:
 # -- the families with a closed-form Laplace transform ----------------------
 
 
+#: The most events in one group that the positive stable frailty's
+#: integral takes: its coefficient table is a recursion of ``O(D^2)`` time
+#: and memory (a million entries at 1000 events, evaluated at every step
+#: of a fit).
+STABLE_MAX_EVENTS = 1000
+
+
 def whole_counts(D: npt.ArrayLike, family: str) -> npt.NDArray:
     """
     ``D`` as whole numbers, or a ``ValueError`` saying why they must be.
@@ -292,7 +299,18 @@ def whole_counts(D: npt.ArrayLike, family: str) -> npt.NDArray:
                 family
             )
         )
-    return whole.astype(int)
+    whole = whole.astype(int)
+    top = int(np.max(whole, initial=0))
+    if family == "positive_stable" and top > STABLE_MAX_EVENTS:
+        raise ValueError(
+            "family='positive_stable' takes at most {} events in one group "
+            "(its likelihood is a recursion whose cost grows with the "
+            "square of the count), and a group here has {}. Use "
+            "family='inverse_gaussian' or 'gamma', whose integrals cost "
+            "no more for many events, or split the group (a cluster of "
+            "units into the units).".format(STABLE_MAX_EVENTS, top)
+        )
+    return whole
 
 
 def inverse_gaussian_log_integral(D: npt.ArrayLike, H: Any, theta: Any) -> Any:

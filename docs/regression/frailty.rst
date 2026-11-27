@@ -132,7 +132,9 @@ The formulas. Each group's contribution to the marginal likelihood is
 :math:`D` events and summed cumulative hazard :math:`H`, which is
 :math:`(-1)^D L^{(D)}(H)`, the :math:`D`-th derivative of the frailty's
 Laplace transform :math:`L`. Both families have closed forms for a whole
-number of events (a fractional count is refused):
+number of events (a fractional count is refused; the positive stable's
+recursion costs the square of the count, so a group with more than 1000
+events is refused for it):
 
 * inverse Gaussian, :math:`L(s) = \exp((1 - \sqrt{1 + 2\theta s}) /
   \theta)`: with :math:`q = \sqrt{1 + 2\theta H}`,

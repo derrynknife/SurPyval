@@ -479,7 +479,8 @@ v0.30 (unreleased)
   tau, and a population curve that is still one of proportional hazards,
   with the coefficients multiplied by ``1 - theta``. Each group's integral
   is a closed form of the Laplace transform's derivatives (whole counts
-  only), checked against direct integration over the frailty's density
+  only; at most 1000 events in a group for the positive stable, whose
+  recursion costs the square of the count), checked against direct integration over the frailty's density
   and, for the positive stable, arbitrary-precision derivatives. The Cox
   fit of these families is EM on the full likelihood (Breslow's ties),
   with standard errors from its observed information; where ``theta`` is

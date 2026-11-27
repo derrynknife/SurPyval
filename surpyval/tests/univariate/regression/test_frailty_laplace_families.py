@@ -171,6 +171,10 @@ def test_no_frailty_limit(family):
 def test_fractional_counts_are_refused():
     with pytest.raises(ValueError, match="whole number of events"):
         inverse_gaussian_log_integral(1.5, 1.0, 0.5)
+    # the positive stable's recursion is O(D^2): a cap, refused by name
+    with pytest.raises(ValueError, match="at most 1000 events"):
+        positive_stable_log_integral(1001, 1.0, 0.5)
+    assert np.isfinite(positive_stable_log_integral(1000, 900.0, 0.3))
     rng = np.random.default_rng(0)
     g = np.repeat(np.arange(10), 3)
     x = rng.exponential(size=30)
