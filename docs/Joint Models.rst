@@ -353,6 +353,57 @@ than the full one saves as schema 5, which SurPyval 0.28 refuses rather
 than read its parameters as a full one's; a model saved before the
 choice existed reads as ``"full"``.
 
+A spread at 0: a parameter that does not vary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes a parameter named in ``varying`` does not, in these data, vary
+between items: every item's rate looks the same, say. Its spread is then
+estimated at 0, the lower edge of what a spread can be, and the model is
+the same as the one with that parameter common to all items. Two things
+follow, and SurPyval handles both.
+
+First, the search. It works on the log of each sd, so an sd of 0 sits at
+minus infinity, where the likelihood is flat: the search can wander
+towards it and stall before the other parameters reach their best
+values, ending (unverified) below the fit with the parameter common. A
+fit of the larger model should never be worse than the smaller model it
+contains. So, where a fit puts a spread at 0 (it moves no item's marker
+by as much as 1% of the readings' noise at any reading age), or ends
+unverified with a spread whose removal costs the log-likelihood less
+than 1.92 (the data cannot tell it from 0 at the 5% level), the fit is
+made again with those parameters common to all items, and then the full
+model is searched once more from there, with their spreads small. If
+that search rises off the edge (by more than one part in a million of
+the log-likelihood), its answer is kept. Otherwise the fit is held on
+the edge. A verified fit with every spread clear of 0 is not searched
+again, so ordinary fits cost nothing more. A small spread just off 0 (above
+the 1% rule, with the likelihood rising a little off the edge) is not
+held, and its fit can still end unverified, with the warning; ask
+whether the parameter varies by comparing it with the fit where it is
+common, by ``aic()`` or ``likelihood_ratio_test`` (below).
+
+Second, what is reported. A fit held on the edge says so:
+
+- ``model.spreads_at_zero`` names the parameters, and the printout's
+  ``Fit`` line says ``with sd_rate at the lower bound, 0``.
+- ``sd_<name>`` is exactly 0, and its correlations with the other varying
+  parameters are 0. None of them has a standard error (``nan``): a Wald
+  interval needs the likelihood to curve on both sides of the estimate,
+  and at an edge there is only one side.
+- Everything else (the other parameters, their standard errors and
+  bounds, ``neg_ll()``, predictions) is that of the fit with the
+  parameter common to all items. ``aic()`` still counts the spread's
+  parameters, so it is that fit's AIC plus 2 for each.
+- ``maximum`` is that fit's, usually ``"verified"``, with no warning.
+
+To ask whether the parameter varies at all, compare the two fits:
+``aic()``, or the likelihood-ratio test, ``varying_fit.likelihood_ratio_test(common_fit)``.
+The test knows the null value is on an edge: with one parameter left
+out, its p-value is half that of chi-squared on the correlations left
+out and half on those and the sd (Self and Liang, 1987; Stram and Lee,
+1994), smaller than the plain chi-squared p-value. For a spread held at 0
+the statistic is 0 and the p-value 1.
+
 The data: readings on the item records
 --------------------------------------
 
@@ -816,6 +867,73 @@ types, give the model of one kind of failure, exactly as before. Each
 mode adds its cumulative hazard to every item's likelihood, so a fit
 with two modes takes about twice as long.
 
+The chance of each mode for a running item
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For a pump still running, its readings so far say not only how likely it
+is to fail in the next year but by which mode: a planner wants, say,
+"bearing 34%, seal 8%" to know which job to prepare. ``predict(...).cif(x, mode)``
+gives the chance that the item fails by ``mode`` by age ``x``, given its
+readings and that it was running at the age now (the mode's cumulative
+incidence from now). The modes' chances add up to ``ff(x)``, the chance
+of failing at all, and with ``sf(x)`` to 1; ``total_cif(x)`` is that sum.
+``cb(x, on="cif", mode=...)`` bounds each mode's chance (the same delta
+method as ``cb(on="ff")``, on ``log(-log(1 - cif))``, so the bounds stay
+between 0 and 1), and ``to_dict()`` carries each mode's curve and bounds
+under ``"cif"``, so a saved prediction can be drawn without the model.
+
+.. jupyter-execute::
+
+    pump = modes.predict(markers={0: 3.4, 120: 3.9, 240: 4.3, 360: 4.8},
+                         given=400)
+    year_on = 765
+    for mode in modes.causes:
+        lower, upper = pump.cb(year_on, on="cif", mode=mode)
+        print(f"{mode}: {pump.cif(year_on, mode):.3f} ({lower:.3f} to {upper:.3f})")
+    print(f"still running: {pump.sf(year_on):.3f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    every = sum(pump.cif(year_on, m) for m in modes.causes)
+    assert abs(every + pump.sf(year_on) - 1) < 1e-10
+    assert pump.cif(year_on, "bearing") > pump.cif(year_on, "seal")
+
+A pump whose vibration is climbing is most at risk from its bearing.
+
+How it is worked out: over the item's path, given its readings and its
+survival to now, each mode's chance is the chance of failing by that
+mode before any other, the mode's hazard times the survival of every
+mode,
+
+.. math::
+
+    \mathrm{CIF}_k(x \mid T > u, y) = E\left[\int_u^x h_k(s \mid \theta)
+    \frac{S(s \mid \theta)}{S(u \mid \theta)}\, ds
+    \;\middle|\; T > u, y\right],
+
+averaged on the nodes placed at the item's distribution given its
+readings and its survival to ``u``. In practice each mode's chance is
+the chance of failing at all, ``ff(x)`` (as ``sf`` computes it), times
+the mode's share of it from that average, the integral over age by the
+15-point rule of the cumulative hazard. The share is taken at each
+node, inside the integral over age and the average over the item's path,
+so the result is that expectation; the shares add to 1, so the chances
+add to ``ff(x)`` exactly, and the time rule's error moves only the split
+between the modes: against a brute-force integral, 1e-8 or less within
+500 days of now and 1.3e-5 at 1100 days beyond it.
+With the marker effects 0 the chances are ``ParametricCompetingRisks``'
+cumulative incidences from the age now, ``(CIF_k(x) - CIF_k(u)) /
+S(u)``, to 1.1e-11 (relative). Each mode's bounds are its own, one age at a time: the
+upper bounds of the modes need not add to the upper bound on ``ff``. An
+infinite age gives ``nan`` (use a late finite one for the chance of
+ever failing by a mode). A model of one way of failing has
+``cif(x) == ff(x)`` and refuses a ``mode``.
+
+In RePyability a ``JointNode`` follows the item's overall ``sf``; a node
+for each mode is not part of this.
+
 The marker reference
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -1106,14 +1224,11 @@ parameter more. No warning is given where a bend's spread is estimated
 at 0: the study below shows the readings usually cannot tell a small
 spread from none, so a warning on the estimate alone misled. On such
 data the search for the larger fit could stop short of the common-bend
-fit's likelihood, with a spread run to 0 (#1334). So where the search
-ends unverified, or with a bend's spread at 0 (it moves no item's marker
-by as much as 1% of the readings' noise at any reading age), the fit
-searches once more. The second search starts from the common-bend fit, with each
-bend's spread small, and the better of the two maxima is kept. A verified
-fit with every spread clear of 0 is not searched again, so it costs
-nothing more. A varying fit therefore reaches at least the likelihood of
-the common-bend fit it contains.
+fit's likelihood, with a spread run to 0 (#1334). A spread at 0 is now
+held on its edge, as for any varying parameter (`A spread at 0: a
+parameter that does not vary`_): the fit is then the common-bend fit,
+with ``sd_s1`` exactly 0 and named in ``spreads_at_zero``, so a varying
+fit reaches at least the likelihood of the common-bend fit it contains.
 
 **How well it recovers the truth.** A simulation study (run on
 2026-11-25 with ``scripts/studies/joint_recovery/shape_study.py``, whose
@@ -1162,7 +1277,8 @@ by about 15 points; the design has 200.
   3 and 1. Spreads this small are not told from none by 150 pumps read
   monthly for two years.
 - No varying fit fell short of the common-bend fit's likelihood (30 of
-  30, with the second search above).
+  30, with the second search from the common-bend fit that this run
+  had, which the boundary fit above has since replaced).
 - The readings rule refused none of the fleets, even cut at 450 or 540
   days. The bend ``s1`` of a one-knot spline acts from the start of the
   boundary, so every reading counts (a median of 15 or 18 per pump), and
@@ -2631,6 +2747,12 @@ References
   longitudinal data measured with error. *Biometrics*, 53, 330--339.
 - Tsiatis, A. A. and Davidian, M. (2004). Joint modeling of longitudinal and
   time-to-event data: an overview. *Statistica Sinica*, 14, 809--834.
+- Self, S. G. and Liang, K.-Y. (1987). Asymptotic properties of maximum
+  likelihood estimators and likelihood ratio tests under nonstandard
+  conditions. *Journal of the American Statistical Association*, 82,
+  605--610.
+- Stram, D. O. and Lee, J. W. (1994). Variance components testing in the
+  longitudinal mixed effects model. *Biometrics*, 50, 1171--1177.
 
 API reference
 -------------
