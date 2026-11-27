@@ -1,0 +1,1207 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Test Planning with SurPyval &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="PyMC with SurPyval" href="PyMC%20with%20SurPyval.html" />
+    <link rel="prev" title="Multivariate Modelling with SurPyval" href="Multivariate%20Modelling%20with%20SurPyval.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Test Planning with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#demonstration-tests">Demonstration tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sequential-tests">Sequential tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#supplier-s-and-consumer-s-risk-in-procurement">Supplier’s and consumer’s risk in procurement</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-supplier-s-risk-hidden-in-a-zero-failure-test">The supplier’s risk hidden in a zero-failure test</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#agreeing-a-plan-that-bounds-both-risks">Agreeing a plan that bounds both risks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#an-mtbf-acceptance-test-mil-hdbk-781">An MTBF acceptance test (MIL-HDBK-781)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#checking-a-test-clause-that-is-already-written">Checking a test clause that is already written</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#planning-a-life-test-for-precision">Planning a life test for precision</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#accelerated-life-tests">Accelerated life tests</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#comparing-two-groups">Comparing two groups</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#when-the-plain-log-rank-calculation-is-wrong">When the plain log-rank calculation is wrong</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#group-sequential-designs">Group-sequential designs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Test Planning with SurPyval</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Test Planning with SurPyval.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="test-planning-with-surpyval">
+<h1>Test Planning with SurPyval<a class="headerlink" href="#test-planning-with-surpyval" title="Link to this heading"></a></h1>
+<p>Before a reliability test is run, four questions decide what it costs and
+what it can show:</p>
+<ul class="simple">
+<li><p><strong>Will it demonstrate the target?</strong> A demonstration test shows, at a
+confidence level, that a design meets a reliability or MTBF target.</p></li>
+<li><p><strong>Can it decide sooner?</strong> A sequential test stops as soon as the
+evidence is clear.</p></li>
+<li><p><strong>How precise will the estimate be?</strong> A life test run to estimate a
+B-life or a mean needs enough units and time for the precision wanted;
+an accelerated test also needs the right stresses.</p></li>
+<li><p><strong>Will a comparison detect the difference?</strong> Comparing a new design with
+an old one needs enough events to detect the improvement.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">surpyval.test_planning</span></code> answers each from planning values: the target,
+and assumed values of what the test will measure. Every function here plans
+a test; the fitters elsewhere in SurPyval analyse it once it is run. As
+everywhere in SurPyval, a confidence level is given as <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>, the
+significance level: for a demonstration test it is the <em>consumer’s risk</em>,
+the chance that a design no better than the target passes, <code class="docutils literal notranslate"><span class="pre">0.05</span></code> for 95%
+confidence. The other party’s risk, the <em>supplier’s</em> or producer’s (that a
+good design fails), is <code class="docutils literal notranslate"><span class="pre">producer_risk</span></code>; the section on procurement below
+works through both.</p>
+<section id="demonstration-tests">
+<h2>Demonstration tests<a class="headerlink" href="#demonstration-tests" title="Link to this heading"></a></h2>
+<p>A pass/fail (attribute) test runs <code class="docutils literal notranslate"><span class="pre">n</span></code> units for a mission each. With no
+failures allowed, 59 units demonstrate 95% reliability at 95% confidence,
+the success run of <code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.success_run()</span></code>; allowing one failure takes
+93:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">demonstrated_reliability</span><span class="p">,</span>
+    <span class="n">demonstration_pass_probability</span><span class="p">,</span>
+    <span class="n">demonstration_plan</span><span class="p">,</span>
+    <span class="n">demonstration_sample_size</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">demonstration_sample_size</span><span class="p">(</span><span class="mf">0.95</span><span class="p">),</span> <span class="n">demonstration_sample_size</span><span class="p">(</span><span class="mf">0.95</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">demonstrated_reliability</span><span class="p">(</span><span class="mi">59</span><span class="p">),</span> <span class="mi">4</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>59 93
+0.9505
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>A test has a second risk, the <em>producer’s</em>: that a good design fails. The
+22-unit zero-failure test that demonstrates 90% reliability at 90%
+confidence passes a design of 95% reliability only about a third of the
+time. <a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.demonstration_plan" title="surpyval.test_planning.demonstration_plan"><code class="xref py py-func docutils literal notranslate"><span class="pre">demonstration_plan()</span></code></a> finds the smallest
+test that keeps both risks: here 128 units, allowing 8 failures.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">demonstration_pass_probability</span><span class="p">(</span><span class="mf">0.95</span><span class="p">,</span> <span class="mi">22</span><span class="p">),</span> <span class="mi">2</span><span class="p">))</span>
+<span class="n">plan</span> <span class="o">=</span> <span class="n">demonstration_plan</span><span class="p">(</span><span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">producer_risk</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span>
+<span class="n">plan</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>0.32
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Demonstration Plan
+==================
+Units            : 128
+Test length      : 1 mission
+Failures allowed : 8
+Consumer's risk  : 0.0971274
+Producer's risk  : 0.191852
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>When the lifetime’s Weibull shape is known, testing each unit for longer
+than a mission trades units for test time (the extended success run, or
+Weibayes): for a wear-out shape of 2, two missions per unit need a quarter
+of the units, 15 instead of 59.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">demonstration_sample_size</span><span class="p">(</span><span class="mf">0.95</span><span class="p">,</span> <span class="n">test_multiple</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>15
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>With the units fixed, <a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.demonstration_test_time" title="surpyval.test_planning.demonstration_test_time"><code class="xref py py-func docutils literal notranslate"><span class="pre">demonstration_test_time()</span></code></a>
+gives how long each must run, in hours rather than missions: ten units, a
+believed shape of 2, to show 90% reliability over 1000 hours at 90%
+confidence, each run about 1478 hours with no failure (the Weibayes closed
+form, <span class="math notranslate nohighlight">\(t_m (\ln \alpha / (n \ln R))^{1/\beta}\)</span>). Given <code class="docutils literal notranslate"><span class="pre">n</span></code> and
+<code class="docutils literal notranslate"><span class="pre">shape</span></code>, <a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.demonstration_plan" title="surpyval.test_planning.demonstration_plan"><code class="xref py py-func docutils literal notranslate"><span class="pre">demonstration_plan()</span></code></a> searches the
+test length that keeps both risks, and <code class="docutils literal notranslate"><span class="pre">mission_time</span></code> reports it in
+hours: ten units are too few to keep a 20% producer’s risk at any length,
+which the refusal says with the units that are enough; twenty run about
+2820 hours each, allowing 8 failures.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">demonstration_test_time</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">demonstration_test_time</span><span class="p">(</span><span class="mf">0.9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="n">mission_time</span><span class="o">=</span><span class="mf">1000.0</span><span class="p">,</span>
+                                    <span class="n">shape</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)))</span>
+<span class="n">demonstration_plan</span><span class="p">(</span><span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span>
+                   <span class="n">mission_time</span><span class="o">=</span><span class="mf">1000.0</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>1478
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Demonstration Plan
+==================
+Units            : 20
+Test length      : 2.81985 missions (2819.85 per unit)
+Failures allowed : 8
+Consumer's risk  : 0.1
+Producer's risk  : 0.194823
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>At a constant failure rate an MTBF is demonstrated by total test time,
+failed units repaired or replaced: about three MTBFs of testing with no
+failures, at 95% confidence. <a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.mtbf_demonstration_plan" title="surpyval.test_planning.mtbf_demonstration_plan"><code class="xref py py-func docutils literal notranslate"><span class="pre">mtbf_demonstration_plan()</span></code></a>
+gives the fixed-length plans of MIL-HDBK-781 that keep both risks; to show
+an MTBF of 1000 hours at 90% confidence, passing a 2000-hour design 80% of
+the time, the test runs about 14,200 unit hours and allows 9 failures.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">mtbf_demonstration_plan</span><span class="p">,</span> <span class="n">mtbf_test_time</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">mtbf_test_time</span><span class="p">(</span><span class="mf">1000.0</span><span class="p">)))</span>
+<span class="n">mtbf_demonstration_plan</span><span class="p">(</span><span class="mf">1000.0</span><span class="p">,</span> <span class="mf">2000.0</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>2996
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Demonstration Plan
+==================
+Total test time  : 14206
+Failures allowed : 9
+Consumer's risk  : 0.1
+Producer's risk  : 0.1801
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="sequential-tests">
+<h2>Sequential tests<a class="headerlink" href="#sequential-tests" title="Link to this heading"></a></h2>
+<p>A sequential test watches the failures as they come: it accepts the design
+once enough test time has passed for the failures seen, rejects it if they
+come too soon, and otherwise keeps testing. With the same risks it usually
+stops well before the fixed-length test. Truncated at the fixed-length test,
+as MIL-HDBK-781 requires, it never runs longer.</p>
+<p>To show an MTBF of 100 hours, a 200-hour design to pass, both risks 10%,
+the fixed-length test runs 2,013 hours; the sequential test about 1,080 on
+average for the good design and 910 for one at the target:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">sequential_mtbf_test</span>
+
+<span class="n">test</span> <span class="o">=</span> <span class="n">sequential_mtbf_test</span><span class="p">(</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">200.0</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">producer_risk</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">expected_test_time</span><span class="p">(</span><span class="mf">200.0</span><span class="p">)),</span> <span class="nb">round</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">expected_test_time</span><span class="p">(</span><span class="mf">100.0</span><span class="p">)))</span>
+<span class="n">test</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>1082 914
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Sequential MTBF Test
+====================
+MTBF to show     : 100
+Good MTBF        : 200
+Accept at time   : 439.445 + 138.629 per failure
+Reject by time   : -439.445 + 138.629 per failure
+Truncated at     : 2012.8 test time, failure 15
+Consumer's risk  : 0.128195
+Producer's risk  : 0.102968
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The test’s <code class="docutils literal notranslate"><span class="pre">decide</span></code> method says what to do at any point, and its risks
+are computed exactly: Wald’s boundaries and the truncation move them a
+little from the 10% asked for, here to about 13% and 10%. The pass/fail
+analogue is <a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.sequential_demonstration_test" title="surpyval.test_planning.sequential_demonstration_test"><code class="xref py py-func docutils literal notranslate"><span class="pre">sequential_demonstration_test()</span></code></a>.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">decide</span><span class="p">(</span><span class="n">failures</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">test_time</span><span class="o">=</span><span class="mf">800.0</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">consumer_risk</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">producer_risk</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>accept
+0.13 0.1
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="supplier-s-and-consumer-s-risk-in-procurement">
+<h2>Supplier’s and consumer’s risk in procurement<a class="headerlink" href="#supplier-s-and-consumer-s-risk-in-procurement" title="Link to this heading"></a></h2>
+<p>A reliability requirement in a contract is usually checked by an acceptance
+test, and every acceptance test carries two risks, one for each party:</p>
+<ul class="simple">
+<li><p>the <strong>consumer’s risk</strong> (the buyer’s): that a design no better than the
+requirement passes the test and is accepted;</p></li>
+<li><p>the <strong>supplier’s risk</strong>, or producer’s risk: that a design which is good
+fails the test and is rejected.</p></li>
+</ul>
+<p>A contract that states only a reliability “at 90% confidence” fixes the
+first and leaves the second to chance. The examples below show how large it
+can be, how to agree a test that bounds both, and how to check a test clause
+that is already written.</p>
+<p><strong>Notation.</strong> MIL-HDBK-781 and most procurement standards call the
+producer’s (supplier’s) risk <span class="math notranslate nohighlight">\(\alpha\)</span> and the consumer’s risk
+<span class="math notranslate nohighlight">\(\beta\)</span>. SurPyval writes every confidence level as <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>, and
+for a demonstration test that is the <em>consumer’s</em> risk; the supplier’s is
+<code class="docutils literal notranslate"><span class="pre">producer_risk</span></code>. So a handbook plan with <span class="math notranslate nohighlight">\(\alpha = 10\%\)</span> and
+<span class="math notranslate nohighlight">\(\beta = 20\%\)</span> is <code class="docutils literal notranslate"><span class="pre">producer_risk=0.1,</span> <span class="pre">alpha_ci=0.2</span></code>.</p>
+<section id="the-supplier-s-risk-hidden-in-a-zero-failure-test">
+<h3>The supplier’s risk hidden in a zero-failure test<a class="headerlink" href="#the-supplier-s-risk-hidden-in-a-zero-failure-test" title="Link to this heading"></a></h3>
+<p>The familiar 59-unit, zero-failure test demonstrates 95% reliability at 95%
+confidence: a design at exactly 95% passes it only 5% of the time. But the
+supplier’s side is far worse than most contracts realise. A design of 99%
+reliability, five times fewer failures than the requirement allows, fails
+the test 45% of the time; to pass it nine times in ten, a design needs about
+99.8%. The test’s <em>operating characteristic</em>, its chance of passing against
+the design’s true reliability, shows both risks at once:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">reliability</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.999</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+<span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">reliability</span><span class="p">,</span> <span class="n">demonstration_pass_probability</span><span class="p">(</span><span class="n">reliability</span><span class="p">,</span> <span class="mi">59</span><span class="p">),</span>
+        <span class="n">label</span><span class="o">=</span><span class="s2">"59 units, no failures allowed"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">reliability</span><span class="p">,</span> <span class="n">demonstration_pass_probability</span><span class="p">(</span><span class="n">reliability</span><span class="p">,</span> <span class="mi">128</span><span class="p">,</span> <span class="mi">8</span><span class="p">),</span>
+        <span class="n">label</span><span class="o">=</span><span class="s2">"128 units, 8 failures allowed"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">axvline</span><span class="p">(</span><span class="mf">0.95</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"grey"</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">ls</span><span class="o">=</span><span class="s2">"--"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_xlabel</span><span class="p">(</span><span class="s2">"True reliability of the design"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">set_ylabel</span><span class="p">(</span><span class="s2">"Chance of passing the test"</span><span class="p">)</span>
+<span class="n">ax</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+<span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">0.97</span><span class="p">,</span> <span class="mf">0.98</span><span class="p">,</span> <span class="mf">0.99</span><span class="p">,</span> <span class="mf">0.995</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">r</span><span class="si">}</span><span class="s2">: supplier's risk </span><span class="si">{</span><span class="mi">1</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">demonstration_pass_probability</span><span class="p">(</span><span class="n">r</span><span class="p">,</span><span class="w"> </span><span class="mi">59</span><span class="p">)</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Test%20Planning%20with%20SurPyval_14_0.png" src="_images/Test%20Planning%20with%20SurPyval_14_0.png" />
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>0.97: supplier's risk 0.834
+0.98: supplier's risk 0.696
+0.99: supplier's risk 0.447
+0.995: supplier's risk 0.256
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The steeper the curve, the better the test separates good designs from bad
+ones; allowing a few failures with more units is what makes it steep.</p>
+</section>
+<section id="agreeing-a-plan-that-bounds-both-risks">
+<h3>Agreeing a plan that bounds both risks<a class="headerlink" href="#agreeing-a-plan-that-bounds-both-risks" title="Link to this heading"></a></h3>
+<p>A fair acceptance test is agreed from four numbers, two from each party:
+the buyer’s requirement and consumer’s risk, and the supplier’s expected
+(“good”) reliability and supplier’s risk.
+<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.demonstration_plan" title="surpyval.test_planning.demonstration_plan"><code class="xref py py-func docutils literal notranslate"><span class="pre">demonstration_plan()</span></code></a> gives the smallest test
+that keeps both. The closer the good reliability is to the requirement, the
+larger the test: for a requirement of 95% and both risks 10%, a supplier
+confident of 99% needs 105 units allowing 2 failures, but one expecting only
+97% needs 628 units allowing 24.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">good</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">0.99</span><span class="p">,</span> <span class="mf">0.98</span><span class="p">,</span> <span class="mf">0.97</span><span class="p">):</span>
+    <span class="n">plan</span> <span class="o">=</span> <span class="n">demonstration_plan</span><span class="p">(</span><span class="mf">0.95</span><span class="p">,</span> <span class="n">good</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">producer_risk</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"good design </span><span class="si">{</span><span class="n">good</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">plan</span><span class="o">.</span><span class="n">n</span><span class="si">}</span><span class="s2"> units, "</span>
+          <span class="sa">f</span><span class="s2">"accept with up to </span><span class="si">{</span><span class="n">plan</span><span class="o">.</span><span class="n">failures</span><span class="si">}</span><span class="s2"> failures "</span>
+          <span class="sa">f</span><span class="s2">"(consumer's risk </span><span class="si">{</span><span class="n">plan</span><span class="o">.</span><span class="n">consumer_risk</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">, "</span>
+          <span class="sa">f</span><span class="s2">"supplier's risk </span><span class="si">{</span><span class="n">plan</span><span class="o">.</span><span class="n">producer_risk</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>good design 0.99: 105 units, accept with up to 2 failures (consumer's risk 0.099, supplier's risk 0.089)
+good design 0.98: 258 units, accept with up to 8 failures (consumer's risk 0.099, supplier's risk 0.077)
+good design 0.97: 628 units, accept with up to 24 failures (consumer's risk 0.100, supplier's risk 0.096)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="an-mtbf-acceptance-test-mil-hdbk-781">
+<h3>An MTBF acceptance test (MIL-HDBK-781)<a class="headerlink" href="#an-mtbf-acceptance-test-mil-hdbk-781" title="Link to this heading"></a></h3>
+<p>For equipment with a constant failure rate the requirement is an MTBF, and
+the test runs a total number of unit-hours, failed units repaired. The
+handbook calls the requirement the <em>lower test MTBF</em> (<span class="math notranslate nohighlight">\(\theta_1\)</span>), the
+supplier’s design goal the <em>upper test MTBF</em> (<span class="math notranslate nohighlight">\(\theta_0\)</span>), and their
+ratio the <em>discrimination ratio</em> <span class="math notranslate nohighlight">\(d = \theta_0 / \theta_1\)</span>. For a
+requirement of 500 hours, the test shrinks quickly as the ratio grows or the
+risks are relaxed: with both risks 20% and a ratio of 3 it is about 2,140
+unit hours, accepting with up to 2 failures (the handbook’s plan XVII-D,
+4.3 times the requirement).</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">risk</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">ratio</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">):</span>
+        <span class="n">plan</span> <span class="o">=</span> <span class="n">mtbf_demonstration_plan</span><span class="p">(</span>
+            <span class="mf">500.0</span><span class="p">,</span> <span class="mf">500.0</span> <span class="o">*</span> <span class="n">ratio</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="n">risk</span><span class="p">,</span> <span class="n">producer_risk</span><span class="o">=</span><span class="n">risk</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"risks </span><span class="si">{</span><span class="n">risk</span><span class="si">:</span><span class="s2">.0%</span><span class="si">}</span><span class="s2">, d = </span><span class="si">{</span><span class="n">ratio</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">plan</span><span class="o">.</span><span class="n">test_time</span><span class="si">:</span><span class="s2">,.0f</span><span class="si">}</span><span class="s2"> unit hours, "</span>
+              <span class="sa">f</span><span class="s2">"accept with up to </span><span class="si">{</span><span class="n">plan</span><span class="o">.</span><span class="n">failures</span><span class="si">}</span><span class="s2"> failures"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>risks 10%, d = 1.5: 24,695 unit hours, accept with up to 40 failures
+risks 10%, d = 2.0: 10,064 unit hours, accept with up to 14 failures
+risks 10%, d = 3.0: 4,637 unit hours, accept with up to 5 failures
+risks 20%, d = 1.5: 10,720 unit hours, accept with up to 17 failures
+risks 20%, d = 2.0: 4,538 unit hours, accept with up to 6 failures
+risks 20%, d = 3.0: 2,140 unit hours, accept with up to 2 failures
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>A sequential test with the same risks
+(<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.sequential_mtbf_test" title="surpyval.test_planning.sequential_mtbf_test"><code class="xref py py-func docutils literal notranslate"><span class="pre">sequential_mtbf_test()</span></code></a>) usually finishes much
+sooner: for the requirement of 500 hours, a goal of 1000 and both risks 10%,
+about 5,400 unit hours on average for a design at the goal, against 10,064
+for the fixed-length test. Its exact risks as run are a little different
+from the 10% asked for (about 13% consumer’s and 10% supplier’s), because of
+the truncation; a contract that must not exceed a stated consumer’s risk
+should say which kind of test is meant.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">test</span> <span class="o">=</span> <span class="n">sequential_mtbf_test</span><span class="p">(</span><span class="mf">500.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">producer_risk</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">expected_test_time</span><span class="p">(</span><span class="mf">1000.0</span><span class="p">)),</span> <span class="nb">round</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">max_time</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">consumer_risk</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">producer_risk</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>5409 10064
+0.128 0.103
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="checking-a-test-clause-that-is-already-written">
+<h3>Checking a test clause that is already written<a class="headerlink" href="#checking-a-test-clause-that-is-already-written" title="Link to this heading"></a></h3>
+<p>Contracts often state a test without its risks: <em>“the equipment shall be
+tested for 3,000 hours and accepted with no more than 2 failures; required
+MTBF 500 hours.”</em> <a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.mtbf_pass_probability" title="surpyval.test_planning.mtbf_pass_probability"><code class="xref py py-func docutils literal notranslate"><span class="pre">mtbf_pass_probability()</span></code></a>
+gives both risks. Equipment at the required MTBF passes 6% of the time, so
+the buyer is well protected; but equipment twice as good, at 1000 hours,
+fails 58% of the time. The clause puts almost all of the risk on the
+supplier, who would want either a longer test allowing more failures, or a
+design goal well above 1000 hours.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">mtbf_pass_probability</span>
+
+<span class="k">for</span> <span class="n">mtbf</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">500.0</span><span class="p">,</span> <span class="mf">750.0</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">,</span> <span class="mf">1500.0</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"true MTBF </span><span class="si">{</span><span class="n">mtbf</span><span class="si">:</span><span class="s2">,.0f</span><span class="si">}</span><span class="s2"> h: passes </span><span class="si">{</span><span class="n">mtbf_pass_probability</span><span class="p">(</span><span class="n">mtbf</span><span class="p">,</span><span class="w"> </span><span class="mf">3000.0</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="si">:</span><span class="s2">.1%</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>true MTBF 500 h: passes 6.2%
+true MTBF 750 h: passes 23.8%
+true MTBF 1,000 h: passes 42.3%
+true MTBF 1,500 h: passes 67.7%
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+</section>
+<section id="planning-a-life-test-for-precision">
+<h2>Planning a life test for precision<a class="headerlink" href="#planning-a-life-test-for-precision" title="Link to this heading"></a></h2>
+<p>A life test run to <em>estimate</em> a B-life or a mean needs enough failures for
+the precision wanted. The precision is the factor <code class="docutils literal notranslate"><span class="pre">R</span></code> of the confidence
+interval <code class="docutils literal notranslate"><span class="pre">[estimate</span> <span class="pre">/</span> <span class="pre">R,</span> <span class="pre">estimate</span> <span class="pre">*</span> <span class="pre">R]</span></code>; “within 20%” is <code class="docutils literal notranslate"><span class="pre">R</span> <span class="pre">=</span> <span class="pre">1.2</span></code>. It
+depends on planning values of the distribution, above all its shape, which
+earlier tests or engineering knowledge give.</p>
+<p>Thirty units of a wear-out part (Weibull, scale 1000 hours, shape 2) on a
+500-hour test, about 7 failures, estimate its B10 life of 325 hours to
+within a factor of 1.62 at 95% confidence:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">life_test_length</span><span class="p">,</span>
+    <span class="n">life_test_precision</span><span class="p">,</span>
+    <span class="n">life_test_sample_size</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">plan</span> <span class="o">=</span> <span class="n">life_test_precision</span><span class="p">(</span><span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="p">(</span><span class="mf">1000.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">),</span> <span class="mi">30</span><span class="p">,</span>
+                           <span class="n">censor_time</span><span class="o">=</span><span class="mf">500.0</span><span class="p">)</span>
+<span class="n">plan</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Life Test Plan
+==============
+Distribution     : Weibull(1000, 2)
+Units            : 30
+Test             : time-censored at 500
+Expected failures: 6.63598
+Estimating       : B10 = 324.593
+Precision factor : 1.61898 (95% interval)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The same functions answer the question the other way round: how many units,
+or how long a test, for a precision. To estimate the B10 life within 30% at
+90% confidence takes 72 units on a 600-hour test; forty units need a test of
+about 330 hours to estimate it within a factor of 1.5.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">life_test_sample_size</span><span class="p">(</span><span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="p">(</span><span class="mf">1000.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">),</span> <span class="mf">1.3</span><span class="p">,</span>
+                            <span class="n">censor_time</span><span class="o">=</span><span class="mf">600.0</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">life_test_length</span><span class="p">(</span><span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="p">(</span><span class="mf">1000.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">),</span> <span class="mi">40</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span>
+                             <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span><span class="o">.</span><span class="n">censor_time</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>72
+329
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The precision is a large-sample approximation, from the test’s expected
+Fisher information. <code class="docutils literal notranslate"><span class="pre">simulate</span></code> checks it: it simulates the test, fits the
+distribution to each simulated data set, and reports the precision the
+estimates actually had, and how often they fell within the planned factor.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plan</span><span class="o">.</span><span class="n">simulate</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Simulated Precision
+===================
+Precision factor : 1.63799
+Within planned   : 0.969697
+Simulated tests  : 200
+Unusable         : 2
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="accelerated-life-tests">
+<h2>Accelerated life tests<a class="headerlink" href="#accelerated-life-tests" title="Link to this heading"></a></h2>
+<p>An accelerated test runs units at raised stress to get failures in time, and
+estimates the life at the use stress through a life-stress model. Where to
+put the stresses matters as much as how many units: the units at the lowest
+stress, closest to use, carry the extrapolation, but fail least.
+<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.accelerated_test_plan" title="surpyval.test_planning.accelerated_test_plan"><code class="xref py py-func docutils literal notranslate"><span class="pre">accelerated_test_plan()</span></code></a> chooses the lowest
+stress and the share of units at it, with the highest stress fixed.</p>
+<p>For a voltage endurance test (power law, life <span class="math notranslate nohighlight">\(10^6 V^{-2}\)</span> hours,
+Weibull shape 2), 40 units for 1000 hours, the highest stress 60 V, to
+estimate the B10 life at 10 V: the optimum plan tests about 78% of the units
+near 25 V and the rest at 60 V. A compromise plan of three equally spaced
+levels (Meeker and Hahn) puts 20% of the units in the middle, giving up a
+little precision for protection against a life-stress relation that bends:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">life_models</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">accelerated_test_plan</span>
+
+<span class="n">voltage</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">use_stress</span><span class="o">=</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">high_stress</span><span class="o">=</span><span class="mf">60.0</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">40</span><span class="p">,</span> <span class="n">censor_time</span><span class="o">=</span><span class="mf">1000.0</span><span class="p">)</span>
+<span class="n">optimum</span> <span class="o">=</span> <span class="n">accelerated_test_plan</span><span class="p">(</span>
+    <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">life_models</span><span class="o">.</span><span class="n">Power</span><span class="p">,</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mf">1e6</span><span class="p">,</span> <span class="s2">"n"</span><span class="p">:</span> <span class="o">-</span><span class="mf">2.0</span><span class="p">},</span> <span class="mf">2.0</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">voltage</span><span class="p">)</span>
+<span class="n">compromise</span> <span class="o">=</span> <span class="n">accelerated_test_plan</span><span class="p">(</span>
+    <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">life_models</span><span class="o">.</span><span class="n">Power</span><span class="p">,</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mf">1e6</span><span class="p">,</span> <span class="s2">"n"</span><span class="p">:</span> <span class="o">-</span><span class="mf">2.0</span><span class="p">},</span> <span class="mf">2.0</span><span class="p">,</span>
+    <span class="n">levels</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="o">**</span><span class="n">voltage</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">optimum</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">compromise</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Accelerated Test Plan
+=====================
+Model            : Weibull, Power(a=1e+06, n=-2), beta=2
+Censor time      : 1000
+Stress    Units  Expected failures  Acceleration
+24.8854   31     9.87               6.193
+60        9      9                  36
+Estimating       : B10 at 10 = 3245.93
+Precision factor : 2.05946 (95% interval)
+At use stress    : 2482.78 test time for 40 units, the same precision
+Accelerated Test Plan
+=====================
+Model            : Weibull, Power(a=1e+06, n=-2), beta=2
+Censor time      : 1000
+Stress    Units  Expected failures  Acceleration
+23.1967   24     6.03               5.381
+37.3068   8      6.85               13.92
+60        8      8                  36
+Estimating       : B10 at 10 = 3245.93
+Precision factor : 2.19558 (95% interval)
+At use stress    : 2370.36 test time for 40 units, the same precision
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Each plan reports what the acceleration buys: the acceleration factor at
+each stress (an hour at 60 V ages a unit as much as 36 hours at 10 V), and
+how long the same 40 units would have to run at the use stress to estimate
+the B10 life as precisely, about 2480 hours against the 1000 of the
+accelerated test.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.accelerated_test_precision" title="surpyval.test_planning.accelerated_test_precision"><code class="xref py py-func docutils literal notranslate"><span class="pre">accelerated_test_precision()</span></code></a> gives the
+precision of a test you propose, and the plans’ <code class="docutils literal notranslate"><span class="pre">simulate</span></code> method checks
+the approximation by fitting <code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.AcceleratedLife</span></code> to simulated
+tests.</p>
+</section>
+<section id="comparing-two-groups">
+<h2>Comparing two groups<a class="headerlink" href="#comparing-two-groups" title="Link to this heading"></a></h2>
+<p>To show that a new design fails less often than the old, a log-rank test
+needs enough <em>events</em>: detecting a halving of the hazard with 80% power at
+the 5% level takes 66, with equal groups (Schoenfeld’s formula). The units
+follow from the chance each has of failing during the study: if 25% of the
+new units and 35% of the old would fail, detecting a 30% lower hazard takes
+412 units in each group.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">logrank_design</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">logrank_design</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span><span class="o">.</span><span class="n">events</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">logrank_design</span><span class="p">(</span><span class="mf">0.7</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">event_probability</span><span class="o">=</span><span class="p">(</span><span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.35</span><span class="p">))</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+<span class="n">plan</span> <span class="o">=</span> <span class="n">logrank_design</span><span class="p">(</span><span class="mf">0.7</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="mi">200</span><span class="p">),</span> <span class="n">event_probability</span><span class="o">=</span><span class="p">(</span><span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.35</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">solved_for</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">power</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>66
+(412, 412)
+power 0.5
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Freedman’s formula, as lifelines’ <code class="docutils literal notranslate"><span class="pre">sample_size_necessary_under_cph</span></code> uses,
+is the option <code class="docutils literal notranslate"><span class="pre">method=&quot;freedman&quot;</span></code>.</p>
+<p>A difference stated in mean lives becomes a hazard ratio only through the
+shape. For exponential lives, a mean life 30% longer is a hazard ratio of
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">1.3</span></code>; for Weibull lives with a common shape <span class="math notranslate nohighlight">\(\beta\)</span>, it is
+<code class="docutils literal notranslate"><span class="pre">1.3</span> <span class="pre">**</span> <span class="pre">-beta</span></code>. Where the shape is known,
+<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.mean_ratio_design" title="surpyval.test_planning.mean_ratio_design"><code class="xref py py-func docutils literal notranslate"><span class="pre">mean_ratio_design()</span></code></a> plans the exact F test of
+the two means themselves (Epstein and Sobel; Lawless, section 3.5): 458
+failures for exponential lives, against the log-rank test’s 457, and 116
+for a shape of 2.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">mean_ratio_design</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">mean_ratio_design</span><span class="p">(</span><span class="mf">1.3</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span><span class="o">.</span><span class="n">events</span><span class="p">,</span>
+      <span class="n">logrank_design</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mf">1.3</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span><span class="o">.</span><span class="n">events</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mean_ratio_design</span><span class="p">(</span><span class="mf">1.3</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span><span class="o">.</span><span class="n">events</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>458 457
+116
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Every design below works the same way: give all of its quantities (the
+power, the size and the effect) but one, and the one left <code class="docutils literal notranslate"><span class="pre">None</span></code> is
+solved for. The answer, a
+<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.PowerCalculation" title="surpyval.test_planning.PowerCalculation"><code class="xref py py-class docutils literal notranslate"><span class="pre">PowerCalculation</span></code></a>, says what was solved
+for (<code class="docutils literal notranslate"><span class="pre">solved_for</span></code>) and holds it (<code class="docutils literal notranslate"><span class="pre">value</span></code>) beside the power, the events
+and the units. Giving none, or more than one, is refused, naming them.</p>
+<p>To show that a change to a repairable system lowered its <em>rate</em> of
+failures, the comparison is of the failures before and after the change,
+over the operating time of each: <a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.rate_ratio_design" title="surpyval.test_planning.rate_ratio_design"><code class="xref py py-func docutils literal notranslate"><span class="pre">rate_ratio_design()</span></code></a>
+gives the power, the smallest change detectable or the operating time
+needed, whichever is left <code class="docutils literal notranslate"><span class="pre">None</span></code>, for the test of
+<a class="reference internal" href="counting/intervention.html#surpyval.recurrent.intervention_test" title="surpyval.recurrent.intervention_test"><code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.recurrent.intervention_test()</span></code></a>. They are worked through in
+<a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html"><span class="doc">Intervention Analysis with SurPyval</span></a>.</p>
+</section>
+<section id="when-the-plain-log-rank-calculation-is-wrong">
+<h2>When the plain log-rank calculation is wrong<a class="headerlink" href="#when-the-plain-log-rank-calculation-is-wrong" title="Link to this heading"></a></h2>
+<p>Schoenfeld’s events answer one question: a test that the hazard ratio of
+two groups is 1, when it is the same at every age. Four common plans ask
+something else.</p>
+<p><strong>A covariate that is measured, or correlated with others.</strong> To detect the
+effect of a measurement (a temperature, a dose, a load) in a Cox model,
+the information is the covariate’s variance, and a covariate partly
+explained by the others in the model carries less: its coefficient’s
+variance is inflated by <span class="math notranslate nohighlight">\(1 / (1 - R^2)\)</span>, <span class="math notranslate nohighlight">\(R^2\)</span> its squared
+multiple correlation with them (Hsieh and Lavori 2000). A hazard ratio of
+1.5 per standard deviation takes 48 events alone, 69 if the other
+covariates explain 30% of its variance. For a covariate of two levels give
+<code class="docutils literal notranslate"><span class="pre">proportion</span></code> instead of <code class="docutils literal notranslate"><span class="pre">sd</span></code>; with <code class="docutils literal notranslate"><span class="pre">r_squared=0</span></code> that is
+Schoenfeld’s formula.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">cox_design</span>
+
+<span class="n">alone</span> <span class="o">=</span> <span class="n">cox_design</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">sd</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<span class="n">adjusted</span> <span class="o">=</span> <span class="n">cox_design</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">sd</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">r_squared</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">alone</span><span class="o">.</span><span class="n">events</span><span class="p">,</span> <span class="n">adjusted</span><span class="o">.</span><span class="n">events</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">cox_design</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">event_probability</span><span class="o">=</span><span class="mf">0.4</span><span class="p">,</span> <span class="n">sd</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">r_squared</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+<span class="n">smallest</span> <span class="o">=</span> <span class="n">cox_design</span><span class="p">(</span><span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">event_probability</span><span class="o">=</span><span class="mf">0.4</span><span class="p">,</span> <span class="n">sd</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+               <span class="n">r_squared</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">smallest</span><span class="o">.</span><span class="n">solved_for</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">smallest</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>48 69
+171
+hazard_ratio 1.45
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><strong>Showing that a change is no worse, or as good.</strong> A cheaper part, a
+shorter procedure: the aim is to show the new group’s hazard is at most a
+margin above the old’s (non-inferiority), or within margins on both sides
+(equivalence), not that it differs. The null hypothesis is then the
+margin, not a ratio of 1: non-inferiority is shown when the upper limit of
+the <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code> confidence interval of the hazard ratio is below the
+margin, and equivalence when the whole interval is inside the margins
+(two one-sided tests; the classical 5% tests compare a 90% interval,
+<code class="docutils literal notranslate"><span class="pre">alpha_ci=0.1</span></code>). Showing a raise of at most 30% when the two are in fact
+equally good takes 457 events, which is Schoenfeld’s count for a hazard
+ratio of 1.3 at one side of a 95% interval.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">equivalence_design</span><span class="p">,</span> <span class="n">noninferiority_design</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">noninferiority_design</span><span class="p">(</span><span class="mf">1.3</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span><span class="o">.</span><span class="n">events</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">noninferiority_design</span><span class="p">(</span><span class="mf">1.3</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">event_probability</span><span class="o">=</span><span class="mf">0.4</span><span class="p">)</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">equivalence_design</span><span class="p">(</span><span class="mf">1.25</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span><span class="o">.</span><span class="n">events</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>457
+(571, 571)
+688
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><strong>A difference in restricted mean survival time.</strong> When the hazards are
+not expected to be proportional (an effect that starts late, curves that
+cross), the hazard ratio is not one number, and a log-rank plan can be far
+off. The restricted mean survival time (RMST) to a horizon <span class="math notranslate nohighlight">\(\tau\)</span>,
+the area under the survival curve up to <span class="math notranslate nohighlight">\(\tau\)</span>, needs no such
+assumption, and its difference reads in time: “over five years, the new
+units run on average 0.8 years longer before failing”.
+<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.rmst_design" title="surpyval.test_planning.rmst_design"><code class="xref py py-func docutils literal notranslate"><span class="pre">rmst_design()</span></code></a> takes the survival curve
+expected in each group (any SurPyval distribution, fitted or with given
+parameters, or a function of time, such as a piecewise exponential), the
+time over which units enter, the follow-up after the last enters and the
+dropout rate, and computes the variance of each group’s Kaplan-Meier RMST
+from them (not by simulation):</p>
+<div class="math notranslate nohighlight">
+\[\sigma_j^2 = \int_0^\tau
+    \frac{\left(\int_t^\tau S_j(u)\,du\right)^2}
+         {S_j(t)^2\, G(t)}\, dF_j(t),\]</div>
+<p>with <span class="math notranslate nohighlight">\(G\)</span> the chance of still being observed at <span class="math notranslate nohighlight">\(t\)</span>. The test
+planned is <code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.rmst_diff()</span></code>’s.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">rmst_design</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">piecewise</span><span class="p">(</span><span class="n">t</span><span class="p">):</span>
+    <span class="c1"># hazard 0.15 for two years, 0.25 after</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">t</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">,</span> <span class="mf">0.15</span> <span class="o">*</span> <span class="n">t</span><span class="p">,</span> <span class="mf">0.3</span> <span class="o">+</span> <span class="mf">0.25</span> <span class="o">*</span> <span class="p">(</span><span class="n">t</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)))</span>
+
+<span class="n">curves</span> <span class="o">=</span> <span class="p">(</span><span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">8.0</span><span class="p">,</span> <span class="mf">1.3</span><span class="p">]),</span> <span class="n">piecewise</span><span class="p">)</span>
+<span class="n">study</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">accrual_time</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">follow_up</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span> <span class="n">dropout_rate</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">rmst_design</span><span class="p">(</span><span class="n">curves</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="o">**</span><span class="n">study</span><span class="p">)</span><span class="o">.</span><span class="n">n</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">rmst_design</span><span class="p">(</span><span class="n">curves</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="o">**</span><span class="n">study</span><span class="p">)</span><span class="o">.</span><span class="n">power</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>(84, 84) 0.8
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><strong>Some units never fail.</strong> When a fraction of the units is cured, immune
+or free of the defect, each group’s survival levels off at its cured
+fraction, <span class="math notranslate nohighlight">\(S(t) = \pi + (1 - \pi) S_u(t)\)</span>, and the hazard ratio
+drifts towards 1 as the uncured fail. Schoenfeld’s count for one hazard
+ratio is then wrong, by an amount that depends on the follow-up.
+<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.cure_logrank_design" title="surpyval.test_planning.cure_logrank_design"><code class="xref py py-func docutils literal notranslate"><span class="pre">cure_logrank_design()</span></code></a> uses the mean and
+variance of the log-rank statistic under the two mixture-cure curves
+(Schoenfeld 1981), over the study’s entry, follow-up and dropout. A
+difference in the cured fraction, in the latency (<code class="docutils literal notranslate"><span class="pre">latency_hazard_ratio</span></code>
+or a pair of latency distributions), or both, may be given:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">cure_logrank_design</span>
+
+<span class="n">latency</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">])</span>
+<span class="n">study</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">accrual_time</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">follow_up</span><span class="o">=</span><span class="mf">3.0</span><span class="p">)</span>
+<span class="n">plan</span> <span class="o">=</span> <span class="n">cure_logrank_design</span><span class="p">((</span><span class="mf">0.45</span><span class="p">,</span> <span class="mf">0.30</span><span class="p">),</span> <span class="n">latency</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="o">**</span><span class="n">study</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">plan</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">plan</span><span class="o">.</span><span class="n">events</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>(247, 247) 265
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>A difference only in the cured fraction shows late, when the uncured have
+failed: with half a year of follow-up instead of three, the same plan
+needs several times the units.</p>
+</section>
+<section id="group-sequential-designs">
+<h2>Group-sequential designs<a class="headerlink" href="#group-sequential-designs" title="Link to this heading"></a></h2>
+<p>A comparison that runs for years is usually looked at along the way: if
+the difference is already clear it can stop early, and if it is clearly not
+coming it can stop for futility. Each extra look is another chance of a
+false finding, so a group-sequential design holds each look to a stricter
+level, chosen so that the chance of a false finding over all the looks is
+still the level asked for. The price is a few more events at most (the
+<em>inflation factor</em>); the gain is fewer on average, because the study often
+stops early.</p>
+<p>To detect a 30% lower hazard with 90% power at the one-sided 2.5% level,
+one analysis needs 331 events. Looking after a third, two thirds and all of
+the events, with O’Brien-Fleming-type boundaries (very strict early, close
+to the single analysis’s level at the end) and a non-binding futility
+boundary, needs at most 353, but about 272 on average if the difference is there
+and 207 if there is none:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">logrank_group_sequential</span>
+
+<span class="n">design</span> <span class="o">=</span> <span class="n">logrank_group_sequential</span><span class="p">(</span>
+    <span class="mf">0.7</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s2">"one-sided"</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.025</span><span class="p">,</span>
+    <span class="n">futility</span><span class="o">=</span><span class="s2">"hwang-shih-decani"</span><span class="p">,</span> <span class="n">futility_parameter</span><span class="o">=-</span><span class="mi">2</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">design</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Group Sequential Log-rank Design
+================================
+Hazard ratio     : 0.7 (first group to second, 1 : 1)
+Looks            : 3, at 33.33%, 66.67%, 100% of the information
+Efficacy         : O'Brien-Fleming-type spending, one-sided, 2.5% level
+Futility         : Hwang-Shih-DeCani spending (gamma -2), non-binding
+Power            : 90%
+Inflation factor : 1.0665 (the most information is 6.65% more than one analysis needs)
+Expected stop    : at 58.5% of the information with no difference, 77.2% with the difference
+Events           : 353 at most (330.4 for one analysis); expected 206.6 with no difference, 272.5 with it
+
+Look       Events  Efficacy z  Nominal p  Futility z  Alpha spent  HR at bound
+   1          118        3.71  0.0001035     -0.2418    0.0001035        0.505
+   2          236       2.511   0.006012      0.9367     0.006048       0.7211
+   3          353       1.993    0.02313       1.993        0.025       0.8088
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>At each look the log-rank statistic (signed so that large values favour the
+new design) is compared with the boundaries: at or above the efficacy
+boundary the study stops with the difference shown; at or below the
+futility boundary it may stop without it. The “HR at bound” column is the
+observed hazard ratio that is on the efficacy boundary.</p>
+<p>The events rarely arrive exactly as planned. With a spending function (the
+default) the boundaries are re-computed for the events the looks actually
+came at, and the level is still kept. Here the second look came at 230
+events with a log-rank statistic of 2.6, past its boundary, so the study
+stops; the estimate of the hazard ratio allows for having stopped early
+(stopping when the difference looks large makes the plain estimate too
+optimistic):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">actual</span> <span class="o">=</span> <span class="n">design</span><span class="o">.</span><span class="n">update</span><span class="p">([</span><span class="mi">120</span><span class="p">,</span> <span class="mi">230</span><span class="p">,</span> <span class="mi">349</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">actual</span><span class="o">.</span><span class="n">decide</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mf">2.6</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">actual</span><span class="o">.</span><span class="n">p_value</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mf">2.6</span><span class="p">),</span> <span class="mi">4</span><span class="p">))</span>
+<span class="n">estimate</span> <span class="o">=</span> <span class="n">actual</span><span class="o">.</span><span class="n">hazard_ratio_estimate</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mf">2.6</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">({</span><span class="n">k</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">estimate</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="s2">"repeated"</span><span class="p">})</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>efficacy
+0.0047
+{'estimate': 0.71, 'lower': 0.548, 'upper': 0.919}
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The p-value and the median-unbiased estimate with its confidence interval
+use the stage-wise ordering (an earlier stop is a stronger result); the
+repeated confidence interval (<code class="docutils literal notranslate"><span class="pre">estimate[&quot;repeated&quot;]</span></code>) holds at any look,
+whether or not the study stops there.</p>
+<p>The boundaries can be O’Brien-Fleming’s, Pocock’s, Wang and Tsiatis’ or
+Haybittle and Peto’s classical shapes, or the Lan-DeMets spending functions
+(O’Brien-Fleming-type, Pocock-type, Hwang-Shih-DeCani, Kim-DeMets); the
+futility boundary spends the type II error with one of the spending
+functions, binding or not. <a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.group_sequential_design" title="surpyval.test_planning.group_sequential_design"><code class="xref py py-func docutils literal notranslate"><span class="pre">group_sequential_design()</span></code></a>
+gives the same designs for any normal test statistic (a difference of means
+or proportions, a Cox coefficient), on the scale of the information, and
+<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.boundary_crossing" title="surpyval.test_planning.boundary_crossing"><code class="xref py py-func docutils literal notranslate"><span class="pre">boundary_crossing()</span></code></a> the chances of crossing
+any boundaries. They are computed by recursive numerical integration
+(Jennison and Turnbull 2000, chapter 19), not simulated, and agree with R’s
+<code class="docutils literal notranslate"><span class="pre">gsDesign</span></code> and <code class="docutils literal notranslate"><span class="pre">rpact</span></code> to about 1e-6.</p>
+<p><em>Which sequential test?</em> Wald’s sequential tests above
+(<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.sequential_mtbf_test" title="surpyval.test_planning.sequential_mtbf_test"><code class="xref py py-func docutils literal notranslate"><span class="pre">sequential_mtbf_test()</span></code></a>,
+<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.sequential_demonstration_test" title="surpyval.test_planning.sequential_demonstration_test"><code class="xref py py-func docutils literal notranslate"><span class="pre">sequential_demonstration_test()</span></code></a>) look after
+every failure or unit and decide between a target and a good value of one
+MTBF or reliability: they suit a demonstration test watched continuously. A
+group-sequential design looks a few planned times at a normal test
+statistic: it suits a comparison of groups analysed in batches, such as a
+log-rank test at interim analyses.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Meeker, W. Q. and Escobar, L. A. (1998). <em>Statistical Methods for
+Reliability Data</em>, chapters 10 and 20. Wiley.</p></li>
+<li><p>Nelson, W. (1990). <em>Accelerated Testing</em>, chapter 6. Wiley.</p></li>
+<li><p>Meeker, W. Q. and Hahn, G. J. (1985). <em>How to Plan an Accelerated Life
+Test</em>. ASQC.</p></li>
+<li><p>MIL-HDBK-781A (1996). <em>Reliability Test Methods, Plans, and Environments
+for Engineering, Development, Qualification, and Production</em>.</p></li>
+<li><p>Wald, A. (1947). <em>Sequential Analysis</em>. Wiley.</p></li>
+<li><p>Schoenfeld, D. (1983). Sample-size formula for the proportional-hazards
+regression model. <em>Biometrics</em> 39, 499-503.</p></li>
+<li><p>Freedman, L. S. (1982). Tables of the number of patients required in
+clinical trials using the logrank test. <em>Statistics in Medicine</em> 1,
+121-129.</p></li>
+<li><p>Hsieh, F. Y. and Lavori, P. W. (2000). Sample-size calculations for the
+Cox proportional hazards regression model with nonbinary covariates.
+<em>Controlled Clinical Trials</em> 21, 552-560.</p></li>
+<li><p>Chow, S.-C., Shao, J. and Wang, H. (2008). <em>Sample Size Calculations in
+Clinical Research</em>, 2nd edition, chapter 7. Chapman and Hall.</p></li>
+<li><p>Royston, P. and Parmar, M. K. B. (2013). Restricted mean survival time:
+an alternative to the hazard ratio for the design and analysis of
+randomized trials with a time-to-event outcome. <em>BMC Medical Research
+Methodology</em> 13, 152.</p></li>
+<li><p>Schoenfeld, D. (1981). The asymptotic properties of nonparametric tests
+for comparing survival distributions. <em>Biometrika</em> 68, 316-319.</p></li>
+<li><p>Jennison, C. and Turnbull, B. W. (2000). <em>Group Sequential Methods with
+Applications to Clinical Trials</em>. Chapman &amp; Hall/CRC.</p></li>
+<li><p>Lan, K. K. G. and DeMets, D. L. (1983). Discrete sequential boundaries
+for clinical trials. <em>Biometrika</em> 70, 659-663.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Multivariate%20Modelling%20with%20SurPyval.html" class="btn btn-neutral float-left" title="Multivariate Modelling with SurPyval" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="PyMC%20with%20SurPyval.html" class="btn btn-neutral float-right" title="PyMC with SurPyval" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

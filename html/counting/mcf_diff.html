@@ -1,0 +1,654 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Comparing Two MCFs &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Panel Counts (Events Counted at Inspections)" href="panel_count.html" />
+    <link rel="prev" title="Non-Parametric Counting (MCF)" href="nonparametric_mcf.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#software-reliability-growth-models">Software Reliability Growth Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#models-of-the-times-between-failures">Models of the Times Between Failures</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="nonparametric_mcf.html">Non-Parametric Counting (MCF)</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Comparing Two MCFs</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#panel-counts">Panel Counts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#trend-tests-and-diagnostics">Trend Tests and Diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#interventions">Interventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">Comparing Two MCFs</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/mcf_diff.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="comparing-two-mcfs">
+<h1>Comparing Two MCFs<a class="headerlink" href="#comparing-two-mcfs" title="Link to this heading"></a></h1>
+<p>The difference between two groups’ mean cumulative functions, with
+pointwise confidence bounds from the Lawless-Nadeau robust variance, and
+the pseudo-score tests of Cook, Lawless and Nadeau (1996) of whether the
+groups’ event rates differ (constant and linear weights; robust or
+Poisson variance). Fit a <a class="reference internal" href="nonparametric_mcf.html"><span class="doc">NonParametricCounting</span></a>
+to each group and pass both. A worked example is in
+<a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Modelling with SurPyval</span></a>.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.recurrent.mcf_diff">
+<span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.</span></span><span class="sig-name descname"><span class="pre">mcf_diff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_a</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NonParametricCounting</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_b</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NonParametricCounting</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_variance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'robust'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.MCFDiffResult" title="surpyval.recurrent.MCFDiffResult"><span class="pre">MCFDiffResult</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.mcf_diff" title="Link to this definition"></a></dt>
+<dd><p>Compare the mean cumulative functions (MCFs) of two groups of items:
+the difference between them at each time, with a confidence interval,
+and a test of whether one group has events at a higher rate than the
+other over the follow-up.</p>
+<p>The MCF of a group is the average number of events per item by time
+<span class="math notranslate nohighlight">\(t\)</span>. Fit one <code class="xref py py-class docutils literal notranslate"><span class="pre">NonParametricCounting</span></code> per group (two fleets
+of pumps, two maintenance policies, treated and untreated patients)
+and pass both. The difference <span class="math notranslate nohighlight">\(\hat M_a(t) - \hat M_b(t)\)</span> says
+how many more events per item group a has had by <span class="math notranslate nohighlight">\(t\)</span>; its
+variance is the sum of the groups’ Lawless-Nadeau robust variances,
+which do not assume the items share one Poisson process, and its
+pointwise interval is the difference plus or minus <span class="math notranslate nohighlight">\(z\)</span> standard
+errors. <code class="docutils literal notranslate"><span class="pre">intervention_test</span></code> compares the same systems before and
+after a change; this compares two separate groups.</p>
+<p>The tests (Cook, Lawless and Nadeau 1996, the pseudo-score tests of
+R’s <code class="docutils literal notranslate"><span class="pre">reda::mcfDiff.test</span></code>) add up, over the times where both groups
+have items under observation, the differences between the groups’ MCF
+increments, each weighted by how much information that time carries:</p>
+<div class="math notranslate nohighlight">
+\[U = \sum_j w(t_j) \big(d\hat M_a(t_j) - d\hat M_b(t_j)\big),
+\qquad
+w(t) = \frac{r_a(t)\, r_b(t)}{r_a(t) + r_b(t)},\]</div>
+<p>with <span class="math notranslate nohighlight">\(r_a, r_b\)</span> the items under observation. The constant
+weight treats every time alike; the linear weight,
+<span class="math notranslate nohighlight">\(w(t) (\tau - t)/\tau\)</span> with <span class="math notranslate nohighlight">\(\tau\)</span> the last time both
+groups are observed, gives early times more say, which compares the
+average gap between the curves over the follow-up rather than the gap
+at its end. <span class="math notranslate nohighlight">\(U^2 / \widehat{Var}(U)\)</span> is chi-squared with one
+degree of freedom when the groups’ rates are the same. The robust
+variance of <span class="math notranslate nohighlight">\(U\)</span> sums, over the items of both groups, the square
+of each item’s weighted deviations from its group’s increments; the
+Poisson variance, <span class="math notranslate nohighlight">\(\sum_j w_j^2 (d\hat M_a/r_a + d\hat M_b/r_b)\)</span>,
+is right only when every item follows the same Poisson process.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model_a</strong> (<em>NonParametricCounting</em>) – Group a’s MCF, fitted with <code class="docutils literal notranslate"><span class="pre">NonParametricCounting.fit</span></code> (it keeps
+the per-item data the robust variance needs).</p></li>
+<li><p><strong>model_b</strong> (<em>NonParametricCounting</em>) – Group b’s MCF, fitted the same way.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The significance level of the tests and one minus the confidence
+level of the pointwise interval. Defaults to 0.05.</p></li>
+<li><p><strong>test_variance</strong> (<em>str</em><em>, </em><em>optional</em>) – The variance of the test statistics: <code class="docutils literal notranslate"><span class="pre">&quot;robust&quot;</span></code> (the default)
+or <code class="docutils literal notranslate"><span class="pre">&quot;poisson&quot;</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The difference (<code class="docutils literal notranslate"><span class="pre">diff</span></code>, <code class="docutils literal notranslate"><span class="pre">diff_cb</span></code>, <code class="docutils literal notranslate"><span class="pre">plot</span></code>) and the tests
+(<code class="docutils literal notranslate"><span class="pre">tests</span></code>, <code class="docutils literal notranslate"><span class="pre">statistic</span></code>, <code class="docutils literal notranslate"><span class="pre">p_value</span></code>).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.recurrent.MCFDiffResult" title="surpyval.recurrent.MCFDiffResult">MCFDiffResult</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>TypeError</strong> – If a model is not a fitted <code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code>.</p></li>
+<li><p><strong>ValueError</strong> – If a model has no per-item data (built by <code class="docutils literal notranslate"><span class="pre">from_xrd</span></code>,
+    <code class="docutils literal notranslate"><span class="pre">from_dict</span></code> or a simulation), <code class="docutils literal notranslate"><span class="pre">test_variance</span></code> is not one of its
+    values, or the groups are never under observation at the same
+    time.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Two groups of two systems each, observed to t = 10:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span><span class="p">,</span> <span class="n">mcf_diff</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">mcf_diff</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span><span class="o">.</span><span class="n">diff</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span>
+<span class="go">array([0. , 1. , 0.5])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">tests</span><span class="p">[</span><span class="s2">"linear"</span><span class="p">][</span><span class="s2">"p_value"</span><span class="p">],</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">0.294</span>
+</pre></div>
+</div>
+<p class="rubric">Notes</p>
+<p>The difference is estimated from the later of the two origins to the
+end of the shorter follow-up; beyond it one MCF is not estimated, and
+<code class="docutils literal notranslate"><span class="pre">diff</span></code> is NaN there (R’s <code class="docutils literal notranslate"><span class="pre">reda::mcfDiff</span></code> carries the shorter
+group’s MCF at its last value instead). It agrees with
+<code class="docutils literal notranslate"><span class="pre">reda::mcfDiff</span></code> and the tests with <code class="docutils literal notranslate"><span class="pre">reda::mcfDiff.test</span></code> (both
+variances) to rounding on the times both estimate.</p>
+<p>The robust tests rest on large-sample theory. With few items per group
+they reject a true null somewhat more often than <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>: in a
+simulation with strongly varying rates (an exponential frailty), 20
+items per group rejected 7-8% of the time at a 5% level, and 80 items
+per group 5%.</p>
+<p class="rubric">References</p>
+<p>Lawless, J. F. and Nadeau, C. (1995), “Some simple robust methods for
+the analysis of recurrent events”, Technometrics 37, 158-168.</p>
+<p>Cook, R. J., Lawless, J. F. and Nadeau, C. (1996), “Robust tests for
+treatment comparisons based on recurrent event responses”, Biometrics
+52, 557-571.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.</span></span><span class="sig-name descname"><span class="pre">MCFDiffResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x:</span> <span class="pre">NDArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">difference:</span> <span class="pre">NDArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">var:</span> <span class="pre">NDArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">origin:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_variance:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tests:</span> <span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">statistic:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p_value:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tau:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_items:</span> <span class="pre">list</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_events:</span> <span class="pre">list</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit:</span> <span class="pre">str</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>The result of <a class="reference internal" href="#surpyval.recurrent.mcf_diff" title="surpyval.recurrent.mcf_diff"><code class="xref py py-func docutils literal notranslate"><span class="pre">mcf_diff()</span></code></a>: the difference between two groups’
+mean cumulative functions (group a minus group b) with its pointwise
+confidence interval, and the tests of whether the groups’ event rates
+differ over the follow-up.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.x">
+<span class="sig-name descname"><span class="pre">x</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.x" title="Link to this definition"></a></dt>
+<dd><p>The times at which the difference changes: every observed time of
+either group, up to the end of the shorter follow-up.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.difference">
+<span class="sig-name descname"><span class="pre">difference</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.difference" title="Link to this definition"></a></dt>
+<dd><p>The MCF of group a minus the MCF of group b at each <code class="docutils literal notranslate"><span class="pre">x</span></code>: how
+many more events per item group a has had by then.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.var">
+<span class="sig-name descname"><span class="pre">var</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.var" title="Link to this definition"></a></dt>
+<dd><p>The variance of <code class="docutils literal notranslate"><span class="pre">difference</span></code>: the sum of the groups’
+Lawless-Nadeau robust variances (the groups are independent).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.origin">
+<span class="sig-name descname"><span class="pre">origin</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.origin" title="Link to this definition"></a></dt>
+<dd><p>Where both MCFs are defined from (the later of the two origins);
+the difference is 0 from there to the first <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.alpha_ci">
+<span class="sig-name descname"><span class="pre">alpha_ci</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.alpha_ci" title="Link to this definition"></a></dt>
+<dd><p>The significance level of the tests and one minus the confidence
+level of <a class="reference internal" href="#surpyval.recurrent.MCFDiffResult.diff_cb" title="surpyval.recurrent.MCFDiffResult.diff_cb"><code class="xref py py-meth docutils literal notranslate"><span class="pre">diff_cb()</span></code></a> (unless it is given another).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.test_variance">
+<span class="sig-name descname"><span class="pre">test_variance</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.test_variance" title="Link to this definition"></a></dt>
+<dd><p>The variance of the test statistics: <code class="docutils literal notranslate"><span class="pre">&quot;robust&quot;</span></code> (no assumption
+that the items share one Poisson process) or <code class="docutils literal notranslate"><span class="pre">&quot;poisson&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.tests">
+<span class="sig-name descname"><span class="pre">tests</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.tests" title="Link to this definition"></a></dt>
+<dd><p>One entry per weight, <code class="docutils literal notranslate"><span class="pre">&quot;constant&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;linear&quot;</span></code>, each a dict
+of <code class="docutils literal notranslate"><span class="pre">score</span></code> (the weighted sum of the differences of the groups’
+MCF increments), <code class="docutils literal notranslate"><span class="pre">score_var</span></code> (its variance), <code class="docutils literal notranslate"><span class="pre">statistic</span></code> (the
+chi-squared statistic <code class="docutils literal notranslate"><span class="pre">score**2</span> <span class="pre">/</span> <span class="pre">score_var</span></code>, one degree of
+freedom) and <code class="docutils literal notranslate"><span class="pre">p_value</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.statistic">
+<span class="sig-name descname"><span class="pre">statistic</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.statistic" title="Link to this definition"></a></dt>
+<dd><p>The constant-weight test’s chi-squared statistic.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.p_value">
+<span class="sig-name descname"><span class="pre">p_value</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.p_value" title="Link to this definition"></a></dt>
+<dd><p>The constant-weight test’s p-value.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.tau">
+<span class="sig-name descname"><span class="pre">tau</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.tau" title="Link to this definition"></a></dt>
+<dd><p>The last time both groups have items under observation; the tests
+use the times up to it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.n_items">
+<span class="sig-name descname"><span class="pre">n_items</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.n_items" title="Link to this definition"></a></dt>
+<dd><p>The items in group a and in group b.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list of int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.n_events">
+<span class="sig-name descname"><span class="pre">n_events</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.n_events" title="Link to this definition"></a></dt>
+<dd><p>The events in group a and in group b.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list of int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.unit" title="Link to this definition"></a></dt>
+<dd><p>The time unit of the models, when they have one.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span><span class="p">,</span> <span class="n">mcf_diff</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">mcf_diff</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span><span class="o">.</span><span class="n">diff</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span>
+<span class="go">array([1. , 0.5])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">statistic</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">(0.4, 0.5271)</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.diff">
+<span class="sig-name descname"><span class="pre">diff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.diff" title="Link to this definition"></a></dt>
+<dd><p>The difference of the MCFs, group a minus group b, at <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>x</strong> (<em>array like</em>) – The times at which to evaluate the difference.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The difference at each <code class="docutils literal notranslate"><span class="pre">x</span></code>: a step function, 0 before the
+first observed time, and NaN before the origin and past the
+end of the shorter follow-up, where one of the MCFs is not
+estimated.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.diff_cb">
+<span class="sig-name descname"><span class="pre">diff_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.diff_cb" title="Link to this definition"></a></dt>
+<dd><p>Pointwise confidence bounds on the difference of the MCFs at <code class="docutils literal notranslate"><span class="pre">x</span></code>:
+the difference plus or minus <code class="docutils literal notranslate"><span class="pre">z</span></code> standard errors (Wald bounds;
+a difference can be negative, so there is no log scale).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em>) – The times at which to compute the bounds.</p></li>
+<li><p><strong>bound</strong> (<em>str</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;two-sided&quot;</span></code> (the default), <code class="docutils literal notranslate"><span class="pre">&quot;upper&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;lower&quot;</span></code>.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The total tail probability of the bound(s): a two-sided
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code> interval, or a one-sided bound exceeded with
+probability <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>. Defaults to the result’s
+<code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>. Keyword only.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Two-sided bounds as one row per query, <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>;
+one-sided bounds as a 1-D array. 0 before the first observed
+time and NaN where <a class="reference internal" href="#surpyval.recurrent.MCFDiffResult.diff" title="surpyval.recurrent.MCFDiffResult.diff"><code class="xref py py-meth docutils literal notranslate"><span class="pre">diff()</span></code></a> is.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span><span class="p">,</span> <span class="n">mcf_diff</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mcf_diff</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span><span class="o">.</span><span class="n">diff_cb</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([[ 0.02  ,  1.98  ],</span>
+<span class="go">       [-1.0495,  2.0495]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.from_dict">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.MCFDiffResult" title="surpyval.recurrent.nonparametric.mcf_diff.MCFDiffResult"><span class="pre">MCFDiffResult</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.from_dict" title="Link to this definition"></a></dt>
+<dd><p>The result <a class="reference internal" href="#surpyval.recurrent.MCFDiffResult.to_dict" title="surpyval.recurrent.MCFDiffResult.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> wrote.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.recurrent.MCFDiffResult.to_dict" title="surpyval.recurrent.MCFDiffResult.to_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_dict</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.plot">
+<span class="sig-name descname"><span class="pre">plot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">plot_bounds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Axes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Axes</span></span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.plot" title="Link to this definition"></a></dt>
+<dd><p>Plot the difference of the MCFs as a step function, with its
+pointwise confidence bounds and a line at 0 (no difference). The
+arguments are keyword only.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The total tail probability of the two-sided bounds. Defaults
+to the result’s <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>.</p></li>
+<li><p><strong>plot_bounds</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to draw the bounds. Defaults to <code class="code docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>ax</strong> (<em>matplotlib Axes</em><em>, </em><em>optional</em>) – The axes to draw on. Defaults to the current axes.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>matplotlib Axes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.se">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">se</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.se" title="Link to this definition"></a></dt>
+<dd><p>The standard error of <code class="docutils literal notranslate"><span class="pre">difference</span></code>, <code class="docutils literal notranslate"><span class="pre">sqrt(var)</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.MCFDiffResult.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.recurrent.MCFDiffResult.to_dict" title="Link to this definition"></a></dt>
+<dd><p>The result as a dict of native Python values, strict JSON: a
+missing or infinite number is written as <code class="docutils literal notranslate"><span class="pre">None</span></code> and recorded
+under <code class="docutils literal notranslate"><span class="pre">&quot;non_finite&quot;</span></code> (as every SurPyval <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> does), so
+that <a class="reference internal" href="#surpyval.recurrent.MCFDiffResult.from_dict" title="surpyval.recurrent.MCFDiffResult.from_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_dict()</span></code></a> restores it.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="gp">... </span>    <span class="n">MCFDiffResult</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">NonParametricCounting</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">mcf_diff</span><span class="p">,</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span> <span class="o">=</span> <span class="n">mcf_diff</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">isinstance</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">allow_nan</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span> <span class="nb">str</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">MCFDiffResult</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">d</span><span class="p">)</span><span class="o">.</span><span class="n">diff</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">])</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+<span class="go">[1.0, 1.0]</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="nonparametric_mcf.html" class="btn btn-neutral float-left" title="Non-Parametric Counting (MCF)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="panel_count.html" class="btn btn-neutral float-right" title="Panel Counts (Events Counted at Inspections)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

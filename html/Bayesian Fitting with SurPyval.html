@@ -1,0 +1,741 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bayesian Fitting with SurPyval &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Pooling Rates Across Sources" href="Pooling%20Rates%20Across%20Sources.html" />
+    <link rel="prev" title="Hazard Ratio" href="Hazard%20Ratio.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Bayesian Fitting with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#few-failures-and-a-belief-about-the-shape">Few failures and a belief about the shape</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-belief-about-a-b-life">A belief about a B-life</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#last-year-s-fleet-as-the-prior-for-a-new-design">Last year’s fleet as the prior for a new design</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#as-data-arrive">As data arrive</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#comparing-fits-waic-and-leave-one-out">Comparing fits: WAIC and leave-one-out</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#priors-the-helpers-and-their-dangers">Priors: the helpers, and their dangers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-formulas">The formulas</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Bayesian Fitting with SurPyval</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Bayesian Fitting with SurPyval.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="bayesian-fitting-with-surpyval">
+<h1>Bayesian Fitting with SurPyval<a class="headerlink" href="#bayesian-fitting-with-surpyval" title="Link to this heading"></a></h1>
+<p>With plenty of failures, the data say what a life distribution is. With
+three failures they say much less, but the engineer, the clinician or the
+manufacturer often knows more than the data show: “wear-out, a Weibull
+shape of about 2”, “a B10 of around 5,000 hours”, “it is the same design
+as last year’s fleet”. A Bayesian fit puts that knowledge, the <strong>prior</strong>,
+together with the data, by Bayes’ rule, and gives back a model that is
+used like any other SurPyval model.</p>
+<p><code class="docutils literal notranslate"><span class="pre">Weibull.fit_bayes(x,</span> <span class="pre">c,</span> <span class="pre">priors=...)</span></code> takes the data exactly as
+<code class="docutils literal notranslate"><span class="pre">Weibull.fit</span></code> does (any censoring, truncation, counts and intervals) and
+returns a <a class="reference internal" href="surpyval.bayes.html#surpyval.bayes.BayesianParametric" title="surpyval.bayes.BayesianParametric"><code class="xref py py-class docutils literal notranslate"><span class="pre">BayesianParametric</span></code></a>:</p>
+<ul class="simple">
+<li><p>its <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code> and
+<code class="docutils literal notranslate"><span class="pre">random</span></code> describe <strong>the life of the next unit</strong>, with the uncertainty
+about the parameters averaged in (the <em>posterior predictive</em>);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cri</span></code>, <code class="docutils literal notranslate"><span class="pre">quantile_cri</span></code>, <code class="docutils literal notranslate"><span class="pre">mean_cri</span></code> and <code class="docutils literal notranslate"><span class="pre">param_cri</span></code> say <strong>how sure
+we are</strong>: credible intervals, read as “there is a 95% chance the B10
+lies between these two values, given the prior and the data”.</p></li>
+</ul>
+<p>A credible interval is not a confidence interval. A confidence interval is
+a statement about the method (95% of such intervals contain the truth); a
+credible interval is a statement about this parameter, given what was
+believed and what was seen. A Bayesian model’s <code class="docutils literal notranslate"><span class="pre">cb</span></code> refuses and points to
+<code class="docutils literal notranslate"><span class="pre">cri</span></code>.</p>
+<section id="few-failures-and-a-belief-about-the-shape">
+<h2>Few failures and a belief about the shape<a class="headerlink" href="#few-failures-and-a-belief-about-the-shape" title="Link to this heading"></a></h2>
+<p>Forty pump seals: three have failed, at 2,100, 3,400 and 4,050 hours, and
+37 are still running. The seals wear out, and from the manufacturer’s data
+and experience the Weibull shape is “about 2, somewhere between 1.5 and
+3”.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">2100</span><span class="p">,</span> <span class="mi">3400</span><span class="p">,</span> <span class="mi">4050</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">1500</span><span class="p">,</span> <span class="mi">6000</span><span class="p">,</span> <span class="mi">37</span><span class="p">)]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">37</span><span class="p">)]</span>
+
+<span class="n">mle</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mle</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"beta"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.99 6.5 ]
+</pre></div>
+</div>
+</div>
+</div>
+<p>With three failures, the maximum-likelihood fit’s 95% confidence interval
+on the shape runs from about 1 to 6.5: the data alone can hardly tell
+early failures from wear-out.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Say what is believed, and fit:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">belief</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"beta"</span><span class="p">:</span> <span class="n">sp</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">around</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">between</span><span class="o">=</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mi">3</span><span class="p">))}</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_bayes</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="n">belief</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Weibull: Bayesian fit, 40 items (3 failed, 37 running)
+Prior:      alpha: no prior given; flat on the log scale (the data alone identify it)
+            beta about 2 (90% between 1.5 and 3), read as LogNormal(median 2.121, 90% between 1.5 and 3)
+Posterior       median   95% credible interval
+  alpha         14,410   8,296 - 39,030
+  beta           2.091   1.416 - 3.059
+B10 life         4,919 hours   3,015 - 10,420 hours
+Mean life       12,800 hours   7,383 - 35,120 hours
+Compared with the maximum-likelihood fit: alpha 11,230 (95% CI 4,296-29,330); beta 2.534 (95% CI 0.9873-6.504);
+alpha came from the data alone, the prior narrowed beta's interval by about 70%.
+Computed exactly on two offset 90 x 76 grids (integration error &lt; 0.07%).
+Unit : hours
+</pre></div>
+</div>
+</div>
+</div>
+<p>The summary reads from the top: the data, the priors as they were built
+(“about 2, 90% between 1.5 and 3” is a LogNormal whose 5% and 95% points
+are 1.5 and 3), the posterior’s medians and 95% credible intervals, the
+B10 life and the mean life with theirs, and what the prior did: it
+narrowed the shape’s interval by about 70% against the maximum-likelihood
+interval, while the scale, which was given no prior, came from the data
+alone. The last line says how it was computed (below).</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The model answers the usual questions. The chance that a new seal
+survives 5,000 hours, with the 95% credible interval on that reliability:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">5000</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="n">model</span><span class="o">.</span><span class="n">cri</span><span class="p">(</span><span class="mi">5000</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>0.887 [0.744 0.975]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The B10 life comes in two forms, and they answer different questions:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>               <span class="c1"># 10% of new seals fail by</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">quantile_cri</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">point</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>  <span class="c1"># our best B10</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">quantile_cri</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>    <span class="c1"># its 95% credible interval</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>4698.0
+4919.0
+[ 3015. 10423.]
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">qf(0.1)</span></code> is the age by which 10% of new seals will have failed, all
+things considered: the uncertainty in the parameters is averaged in, which
+spreads the distribution and pulls its early quantiles in. It is what a
+spares forecast or a reliability block diagram needs. <code class="docutils literal notranslate"><span class="pre">quantile_cri</span></code>
+is about the population’s B10 itself: its posterior median, the single
+best guess, and the interval it lies in. With few failures the two differ
+(here about 4,700 against 4,900 hours).</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">model.plot()</span></code> draws the data on Weibull paper with the predictive
+curve, its credible band and, dashed, the maximum-likelihood fit, so what
+the prior did is visible at a glance; <code class="docutils literal notranslate"><span class="pre">model.plot_posterior()</span></code> draws
+each parameter’s prior and posterior, and their joint contours.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ax</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Bayesian%20Fitting%20with%20SurPyval_7_0.png" src="_images/Bayesian%20Fitting%20with%20SurPyval_7_0.png" />
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fig</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">plot_posterior</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Bayesian%20Fitting%20with%20SurPyval_8_0.png" src="_images/Bayesian%20Fitting%20with%20SurPyval_8_0.png" />
+</div>
+</div>
+</section>
+<section id="a-belief-about-a-b-life">
+<h2>A belief about a B-life<a class="headerlink" href="#a-belief-about-a-b-life" title="Link to this heading"></a></h2>
+<p>People seldom think in shapes and scales. “Our B10 is around 5,000 hours;
+we’d be surprised if it were under 3,000 or over 8,000. And it wears out.”
+<code class="docutils literal notranslate"><span class="pre">prior.on_quantities</span></code> takes the belief as said, one statement for each
+free parameter:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">belief</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">on_quantities</span><span class="p">(</span>
+    <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span>
+    <span class="n">B10</span><span class="o">=</span><span class="n">sp</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">around</span><span class="p">(</span><span class="mi">5000</span><span class="p">,</span> <span class="n">between</span><span class="o">=</span><span class="p">(</span><span class="mi">3000</span><span class="p">,</span> <span class="mi">8000</span><span class="p">)),</span>
+    <span class="n">beta</span><span class="o">=</span><span class="n">sp</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">between</span><span class="p">(</span><span class="mf">1.2</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="n">sp</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">check</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">belief</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>What the prior says before any data (Weibull)
+                  median   90% prior interval
+  B1               1,633   612.6 - 3,361
+  B10              4,899   2,999 - 7,999
+  B50             11,890   6,166 - 27,320
+  mean            12,510   6,222 - 33,810
+  alpha           14,050   6,924 - 36,260
+  beta             2.191   1.2 - 4
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">prior.check</span></code> shows what the prior says before any data, in the terms
+people use. Here its B10 is between 3,000 and 8,000 hours with 90%
+probability, as said, and so the prior is exactly the belief: SurPyval
+carries the density of the B10 and the shape to the Weibull’s parameters
+by the change of variables, with nothing approximated. Run it on any
+prior: a “vague” prior often says something nobody believes (a LogNormal
+with a spread of 10 on alpha puts B10 anywhere from a nanosecond to
+geological time).</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_bayes</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="n">belief</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Weibull: Bayesian fit, 40 items (3 failed, 37 running)
+Prior:      on quantities: B10 about 5,000 (90% between 3,000 and 8,000); beta 90% between 1.2 and 4
+Posterior       median   95% credible interval
+  alpha         13,730   7,886 - 36,640
+  beta           2.169   1.192 - 3.774
+B10 life         4,837 hours   3,343 - 7,451 hours
+Mean life       12,190 hours   7,084 - 34,240 hours
+Compared with the maximum-likelihood fit: alpha 11,230 (95% CI 4,296-29,330); beta 2.534 (95% CI 0.9873-6.504);
+alpha came mostly from the data, the prior narrowed beta's interval by about 53%.
+Computed exactly on two offset 179 x 155 grids (integration error &lt; 0.03%).
+Unit : hours
+</pre></div>
+</div>
+</div>
+</div>
+<p>The same works with the reliability at a time (<code class="docutils literal notranslate"><span class="pre">R_at={2000:</span>
+<span class="pre">sp.prior.between(0.9,</span> <span class="pre">0.99)}</span></code>), with the mean or median, or with any
+quantile (<code class="docutils literal notranslate"><span class="pre">quantile={0.5:</span> <span class="pre">...}</span></code>).</p>
+</section>
+<section id="last-year-s-fleet-as-the-prior-for-a-new-design">
+<h2>Last year’s fleet as the prior for a new design<a class="headerlink" href="#last-year-s-fleet-as-the-prior-for-a-new-design" title="Link to this heading"></a></h2>
+<p>Last year’s fleet of 60 units gave a good Weibull fit. This year’s units
+are a new design, so far with two failures among 20:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">last_year</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">60</span><span class="p">,</span> <span class="mi">9000</span><span class="p">,</span> <span class="mf">1.8</span><span class="p">,</span>
+                                             <span class="n">random_state</span><span class="o">=</span><span class="mi">2025</span><span class="p">))</span>
+<span class="n">x_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">3900</span><span class="p">,</span> <span class="mi">6100</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">5000</span><span class="p">,</span> <span class="mi">18</span><span class="p">)]</span>
+<span class="n">c_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">18</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_new</span><span class="p">,</span> <span class="n">c_new</span><span class="p">)</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"beta"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[ 3.6 19.6]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Two failures say little: the maximum-likelihood shape’s interval runs
+from about 3.6 to 20. The new design is similar, but not the same, so the
+old fleet is counted as half as much evidence:</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">prior</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">from_model</span><span class="p">(</span><span class="n">last_year</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<span class="n">new</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_bayes</span><span class="p">(</span><span class="n">x_new</span><span class="p">,</span> <span class="n">c_new</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="n">prior</span><span class="p">)</span>
+<span class="n">new</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Weibull: Bayesian fit, 20 items (2 failed, 18 running)
+Prior:      from an earlier Weibull fit (alpha 10,620, beta 1.995), weight 0.5
+Posterior       median   95% credible interval
+  alpha         10,720   8,986 - 12,800
+  beta           2.098   1.632 - 2.692
+B10 life         3,662   2,502 - 5,077
+Mean life        9,511   7,979 - 11,360
+Compared with the maximum-likelihood fit: alpha 5,919 (95% CI 4,957-7,068); beta 8.357 (95% CI 3.569-19.57);
+the prior moved alpha outside the maximum-likelihood interval, the prior moved beta outside the maximum-likelihood interval.
+Computed exactly on two offset 69 x 76 grids (integration error &lt; 0.09%).
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">from_model</span></code> takes the old fit’s estimates and their covariance (how
+sure they were and how they move together), so a fit from 60 failures
+counts for a lot and one from five for little; <code class="docutils literal notranslate"><span class="pre">weight</span></code> discounts it
+(0.5 counts it as half the evidence) and <code class="docutils literal notranslate"><span class="pre">widen</span></code> loosens it further; and
+<code class="docutils literal notranslate"><span class="pre">param=&quot;beta&quot;</span></code> takes only one parameter’s prior from it. The weight is a
+judgement: try two and compare. Where the old data are at hand,
+<code class="docutils literal notranslate"><span class="pre">prior.from_data(x_old,</span> <span class="pre">c_old,</span> <span class="pre">weight=0.5)</span></code> uses their likelihood itself
+(a <em>power prior</em>), which is exact, and better with few old failures. A
+model known only by its numbers (a handbook, a data sheet) is
+<code class="docutils literal notranslate"><span class="pre">prior.from_params(sp.Weibull,</span> <span class="pre">[9000,</span> <span class="pre">1.8],</span> <span class="pre">within=0.2)</span></code>: each within
+about 20%.</p>
+<p>Is the new design’s B10 longer than the old one’s?</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">new</span><span class="o">.</span><span class="n">compare_to</span><span class="p">(</span><span class="n">last_year</span><span class="p">,</span> <span class="n">on</span><span class="o">=</span><span class="s2">"qf"</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="mf">0.10</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>There is a 60.1% chance that this model's 10% quantile (B10 life) is greater than the other's.
+Assumption: the other model's estimate taken as normal on the log scale with its delta-method standard error (its large-sample posterior under a flat prior), independent of this posterior.
+</pre></div>
+</div>
+</div>
+</div>
+<p>The answer is a probability, with the assumption it rests on.</p>
+</section>
+<section id="as-data-arrive">
+<h2>As data arrive<a class="headerlink" href="#as-data-arrive" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">update</span></code> adds data to a Bayesian fit. It keeps the original prior and
+all the data, so updating in steps gives exactly the posterior of fitting
+everything at once:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">first</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_bayes</span><span class="p">(</span><span class="n">x</span><span class="p">[:</span><span class="mi">20</span><span class="p">],</span> <span class="n">c</span><span class="p">[:</span><span class="mi">20</span><span class="p">],</span> <span class="n">priors</span><span class="o">=</span><span class="p">{</span>
+    <span class="s2">"beta"</span><span class="p">:</span> <span class="n">sp</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">around</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">between</span><span class="o">=</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mi">3</span><span class="p">))})</span>
+<span class="n">both</span> <span class="o">=</span> <span class="n">first</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">20</span><span class="p">:],</span> <span class="n">c</span><span class="p">[</span><span class="mi">20</span><span class="p">:])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">both</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>True
+</pre></div>
+</div>
+</div>
+</div>
+<p>Units that were running at the last update and are still running (or have
+since failed) are the same units: pass the current records with
+<code class="docutils literal notranslate"><span class="pre">replace=True</span></code>, so that no unit counts twice.</p>
+</section>
+<section id="comparing-fits-waic-and-leave-one-out">
+<h2>Comparing fits: WAIC and leave-one-out<a class="headerlink" href="#comparing-fits-waic-and-leave-one-out" title="Link to this heading"></a></h2>
+<p>Which belief predicts the seals better: wear-out (the shape about 2),
+random failures (an Exponential), or early failures (a shape below 1)?
+AIC compares maximum-likelihood fits and ignores the priors. For Bayesian
+fits the question is how well each predicts a seal it has not seen,
+averaged over its posterior: the <em>expected log predictive density</em>
+(<code class="docutils literal notranslate"><span class="pre">elpd</span></code>), estimated by leaving out each unit in turn (<code class="docutils literal notranslate"><span class="pre">loo()</span></code>) or by
+WAIC (<code class="docutils literal notranslate"><span class="pre">waic()</span></code>). Higher is better; <code class="docutils literal notranslate"><span class="pre">ic</span></code> is <code class="docutils literal notranslate"><span class="pre">-2</span> <span class="pre">elpd</span></code>, on AIC’s
+scale.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">random</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Exponential</span><span class="o">.</span><span class="n">fit_bayes</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="p">{</span><span class="s2">"failure_rate"</span><span class="p">:</span> <span class="n">sp</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">between</span><span class="p">(</span><span class="mf">1e-6</span><span class="p">,</span> <span class="mf">1e-3</span><span class="p">)})</span>
+<span class="n">early</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_bayes</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="p">{</span><span class="s2">"beta"</span><span class="p">:</span> <span class="n">sp</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">around</span><span class="p">(</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">between</span><span class="o">=</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">))})</span>
+<span class="n">comparison</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">bayes</span><span class="o">.</span><span class="n">compare</span><span class="p">(</span>
+    <span class="p">{</span><span class="s2">"wear-out"</span><span class="p">:</span> <span class="n">model</span><span class="p">,</span> <span class="s2">"random"</span><span class="p">:</span> <span class="n">random</span><span class="p">,</span> <span class="s2">"early"</span><span class="p">:</span> <span class="n">early</span><span class="p">})</span>
+<span class="n">comparison</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Comparison by LOO
+                elpd       se       p  elpd_diff  se_diff
+wear-out      -35.54    18.23    1.28       0.00      nan
+random        -36.44    18.69    0.99      -0.90     0.73
+early         -37.09    19.13    1.31      -1.54     1.11
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Wear-out comes first, but by less than one and a half standard errors of
+the difference from random failures: three failures cannot tell the two
+apart. Read <code class="docutils literal notranslate"><span class="pre">se_diff</span></code>, not <code class="docutils literal notranslate"><span class="pre">se</span></code>: each fit’s own standard error is
+large (the three failures and 37 survivors predict very differently),
+but the fits are scored on the same seals, and the paired difference
+cancels most of it.</p>
+<p>Every row counts through its own likelihood term (a survivor’s
+probability of surviving, an interval’s probability, a truncated row’s
+term over the probability of its window), and a row with count <code class="docutils literal notranslate"><span class="pre">n</span></code> is
+<code class="docutils literal notranslate"><span class="pre">n</span></code> units. Each fit is scored from its one posterior, without
+refitting, by <span class="math notranslate nohighlight">\(p(y_i \mid y_{-i}) = 1 / E[1 / p(y_i \mid \theta)]\)</span>:</p>
+<ul class="simple">
+<li><p>a conjugate fit in closed form, exactly;</p></li>
+<li><p>a grid or Laplace fit by the grid’s quadrature. <code class="docutils literal notranslate"><span class="pre">edge</span></code> is each row’s
+share of its leave-one-out posterior in the grid’s outermost cells, and
+<code class="docutils literal notranslate"><span class="pre">loo()</span></code> warns above 0.001: without that row the data say much less,
+and the grid, laid for the full posterior, may not hold it;</p></li>
+<li><p>draws from another sampler (<code class="docutils literal notranslate"><span class="pre">from_draws</span></code>) by Pareto-smoothed
+importance sampling (Vehtari, Gelman and Gabry, 2017; Vehtari, Simpson,
+Gelman, Yao and Gabry, 2024), as R’s <code class="docutils literal notranslate"><span class="pre">loo</span></code> and ArviZ do, taking the
+draws as independent. <code class="docutils literal notranslate"><span class="pre">pareto_k</span></code> is each row’s diagnostic, and
+<code class="docutils literal notranslate"><span class="pre">loo()</span></code> warns, counting the rows, above
+<span class="math notranslate nohighlight">\(\min(1 - 1/\log_{10} S, 0.7)\)</span> for <span class="math notranslate nohighlight">\(S\)</span> draws.</p></li>
+</ul>
+<p>WAIC is <span class="math notranslate nohighlight">\(\mathrm{lppd} - p_\mathrm{WAIC}\)</span>, with
+<span class="math notranslate nohighlight">\(p_\mathrm{WAIC}\)</span> the posterior variance of each row’s
+log-likelihood; it warns when a row’s term is above 0.4, where it is
+unreliable and <code class="docutils literal notranslate"><span class="pre">loo()</span></code> is the better estimate. The standard errors are
+<span class="math notranslate nohighlight">\(\sqrt{N}\)</span> times the standard deviation of the units’ values (with
+divisor <span class="math notranslate nohighlight">\(N - 1\)</span>, as R’s <code class="docutils literal notranslate"><span class="pre">loo</span></code>).</p>
+</section>
+<section id="priors-the-helpers-and-their-dangers">
+<h2>Priors: the helpers, and their dangers<a class="headerlink" href="#priors-the-helpers-and-their-dangers" title="Link to this heading"></a></h2>
+<p>A prior on a parameter is any SurPyval distribution
+(<code class="docutils literal notranslate"><span class="pre">sp.Gamma.from_params([2,</span> <span class="pre">1])</span></code>, <code class="docutils literal notranslate"><span class="pre">sp.Beta.from_params([...])</span></code> for a
+proportion) or one of the helpers:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">prior.around(m,</span> <span class="pre">between=(a,</span> <span class="pre">b),</span> <span class="pre">mass=0.9)</span></code>: “about <code class="docutils literal notranslate"><span class="pre">m</span></code>, almost
+surely between <code class="docutils literal notranslate"><span class="pre">a</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code>”; a LogNormal for a positive parameter, a
+logit-normal for a proportion, a Normal on the real line;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">prior.between(a,</span> <span class="pre">b)</span></code>: “somewhere between <code class="docutils literal notranslate"><span class="pre">a</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span></code>”;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">prior.uniform(a,</span> <span class="pre">b)</span></code>: “anything from <code class="docutils literal notranslate"><span class="pre">a</span></code> to <code class="docutils literal notranslate"><span class="pre">b</span></code> equally”, which is
+not “no opinion”: it rules out everything else, and it is not uniform on
+any other scale;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">prior.flat()</span></code>: no opinion, flat on the log scale for a positive
+parameter. It is the default for a parameter given no prior, and it is
+allowed only where the data determine the parameter (old data given as
+a prior with <code class="docutils literal notranslate"><span class="pre">prior.from_data</span></code> or <code class="docutils literal notranslate"><span class="pre">as_prior()</span></code> count with the new):
+with no failures, a flat prior on the scale is refused, with what to do
+instead, and so is a fit in which every parameter is flat where the
+maximum-likelihood fit has no verified maximum;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">prior.fixed(v)</span></code>: the value is known, as <code class="docutils literal notranslate"><span class="pre">fixed=</span></code> in <code class="docutils literal notranslate"><span class="pre">fit</span></code>.</p></li>
+</ul>
+<p>A prior that puts mass where the parameter cannot be (a Normal on a
+shape, which must be positive) is refused. Where the data contradict a
+prior, the fit warns, with the prior’s interval and the posterior median,
+and takes neither side: check both.</p>
+</section>
+<section id="the-formulas">
+<h2>The formulas<a class="headerlink" href="#the-formulas" title="Link to this heading"></a></h2>
+<p>Bayes’ rule: the posterior density of the parameters <span class="math notranslate nohighlight">\(\theta\)</span> given
+the data <span class="math notranslate nohighlight">\(D\)</span> is</p>
+<div class="math notranslate nohighlight">
+\[p(\theta \mid D) = \frac{p(\theta) \, L(\theta; D)}{\int p(\theta)
+\, L(\theta; D) \, d\theta},\]</div>
+<p>where <span class="math notranslate nohighlight">\(p(\theta)\)</span> is the prior and <span class="math notranslate nohighlight">\(L\)</span> the likelihood: the
+same one <code class="docutils literal notranslate"><span class="pre">fit</span></code> maximises, a product of <span class="math notranslate nohighlight">\(f(x)\)</span> for each failure,
+<span class="math notranslate nohighlight">\(S(x)\)</span> for each unit still running, <span class="math notranslate nohighlight">\(F(x)\)</span> for each left
+censored unit, <span class="math notranslate nohighlight">\(F(r) - F(l)\)</span> for each interval, each divided by
+<span class="math notranslate nohighlight">\(S(t_l) - S(t_r)\)</span> for a truncated one. The denominator is the
+<em>evidence</em> (<code class="docutils literal notranslate"><span class="pre">model.log_evidence</span></code>, for Bayes factors, where every prior
+is proper).</p>
+<p>The predictive survival function averages the parameters out,</p>
+<div class="math notranslate nohighlight">
+\[S_{\text{pred}}(t) = \int S(t \mid \theta) \, p(\theta \mid D) \,
+d\theta,\]</div>
+<p>and is a proper distribution: <span class="math notranslate nohighlight">\(F = 1 - S\)</span>, <span class="math notranslate nohighlight">\(f = -S'\)</span>,
+<span class="math notranslate nohighlight">\(h = f / S\)</span>, and <code class="docutils literal notranslate"><span class="pre">qf</span></code> inverts <code class="docutils literal notranslate"><span class="pre">ff</span></code>. The credible interval on
+<span class="math notranslate nohighlight">\(S(t)\)</span> is the 2.5% and 97.5% points of <span class="math notranslate nohighlight">\(S(t \mid \theta)\)</span> over
+the posterior.</p>
+<p><strong>How it is computed.</strong> For the textbook cases the posterior is in closed
+form: an Exponential with a Gamma(<span class="math notranslate nohighlight">\(a, b\)</span>) prior on its rate and
+data that are exact or right censored (with any late entry) has the
+Gamma(<span class="math notranslate nohighlight">\(a + r, b + T\)</span>) posterior, <span class="math notranslate nohighlight">\(r\)</span> the failures and
+<span class="math notranslate nohighlight">\(T\)</span> the total time on test, and a Lomax predictive; a Normal’s mean
+with its spread known, and a Bernoulli with a Beta prior, are the others.
+Otherwise, for one to three free parameters, SurPyval integrates on a grid:
+on the parameters’ unconstrained scale (logs of positive parameters,
+logits of proportions), along the posterior’s own axes at its peak,
+widened until the density at every edge is below <span class="math notranslate nohighlight">\(10^{-8}\)</span> of the
+peak, and laid twice, offset by half a cell. Half the difference between
+the two grids’ summaries is the integration error the summary reports; it
+must be below 0.1% of the 95% interval’s width (0.5% with three free
+parameters), or the grid is refined, and past its budget the fit refuses
+with the numbers. No random numbers are involved: the same data and
+prior give the same answer on every machine. <code class="docutils literal notranslate"><span class="pre">method=&quot;laplace&quot;</span></code> is a
+normal approximation at the peak instead, labelled approximate.</p>
+<p><strong>Very small and very large probabilities.</strong> A chance of failure of one
+in a million million is as much a number as one of a half, and it is
+where a safety case or a rare adverse event lives. The predictive
+<code class="docutils literal notranslate"><span class="pre">ff</span></code> is therefore the posterior average of each parameter value’s own
+failure function, <span class="math notranslate nohighlight">\(F_{\text{pred}}(t) = \sum_i w_i F(t \mid
+\theta_i)\)</span>, and not <span class="math notranslate nohighlight">\(1 - S_{\text{pred}}(t)\)</span>: a double next to 1
+holds about sixteen digits, so the subtraction would leave eight digits
+of a probability of <span class="math notranslate nohighlight">\(10^{-8}\)</span> and none of one of <span class="math notranslate nohighlight">\(10^{-16}\)</span>.
+<code class="docutils literal notranslate"><span class="pre">sf</span></code> is the same average of the survival functions, so it keeps its
+digits far past the data (whichever of the two is larger is one minus the
+other, so they always sum to 1); <code class="docutils literal notranslate"><span class="pre">Hf</span></code> is <span class="math notranslate nohighlight">\(-\log(1 - F)\)</span> (as <code class="docutils literal notranslate"><span class="pre">log1p</span></code>)
+while less than half have failed and <span class="math notranslate nohighlight">\(-\log S\)</span> after, and stays
+finite where <code class="docutils literal notranslate"><span class="pre">sf</span></code> itself underflows. The credible intervals from
+<code class="docutils literal notranslate"><span class="pre">cri</span></code> are built the same way, and <code class="docutils literal notranslate"><span class="pre">qf</span></code> solves on the log of <code class="docutils literal notranslate"><span class="pre">ff</span></code> up
+to the median and on the log of <code class="docutils literal notranslate"><span class="pre">sf</span></code> above it, so
+<code class="docutils literal notranslate"><span class="pre">model.qf(1e-12)</span></code> and <code class="docutils literal notranslate"><span class="pre">model.qf(1</span> <span class="pre">-</span> <span class="pre">1e-12)</span></code> are both found (a limited
+failure population’s quantile is infinite above the proportion that ever
+fails).</p>
+<p><strong>Many points: a table.</strong> A grid of two or three free parameters has tens
+of thousands of points, and each value of the predictive is a sum over
+all of them, too slow for a calculation that asks for tens of thousands
+of values (an optimal replacement age, an integral). Where the posterior
+has more than 2,000 points, the first predictive value builds a table:
+the predictive cumulative hazard <span class="math notranslate nohighlight">\(H(t)\)</span> is summed exactly at a few
+hundred times and read between them by a cubic in <span class="math notranslate nohighlight">\(\log H\)</span> against
+<span class="math notranslate nohighlight">\(\log t\)</span> (against <span class="math notranslate nohighlight">\(t\)</span> for a distribution on the whole line),
+with the exact slope at each time, so <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code> and
+<code class="docutils literal notranslate"><span class="pre">df</span></code> come from one curve and stay a proper distribution. The times are
+placed adaptively: each stretch is checked against the full sum at two
+points and split until <code class="docutils literal notranslate"><span class="pre">sf</span></code> and <code class="docutils literal notranslate"><span class="pre">ff</span></code> (relative to itself, so a small
+failure probability keeps its digits) are within <span class="math notranslate nohighlight">\(3 \times
+10^{-7}\)</span> and <code class="docutils literal notranslate"><span class="pre">hf</span></code> within ten times that. A stretch that cannot be
+brought within that (near the posterior points’ own offsets, say), and
+the far tails (where the points have a failure or survival probability
+below <span class="math notranslate nohighlight">\(10^{-10}\)</span>), use the full sum, so nothing is extrapolated:
+<code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code> and <code class="docutils literal notranslate"><span class="pre">Hf</span></code> are within <span class="math notranslate nohighlight">\(10^{-6}\)</span> of the full sum,
+relative, and <code class="docutils literal notranslate"><span class="pre">hf</span></code> and <code class="docutils literal notranslate"><span class="pre">df</span></code> within <span class="math notranslate nohighlight">\(10^{-5}\)</span>. Building it
+takes under a second for 37,500 points; after it a value takes
+microseconds. Set <code class="docutils literal notranslate"><span class="pre">model.predictive_table</span> <span class="pre">=</span> <span class="pre">False</span></code> for the full sum
+everywhere.</p>
+<p><strong>Random lives.</strong> <code class="docutils literal notranslate"><span class="pre">model.random(size,</span> <span class="pre">random_state)</span></code> takes one uniform
+number per life. With a closed-form predictive the life is its quantile
+at that number. Otherwise the number picks a parameter value by where it
+falls among the cumulative weights <span class="math notranslate nohighlight">\(w_i\)</span>, and its place within that
+value’s share, rescaled to (0, 1), is the probability at which that
+value’s own quantile function gives the life. The draws follow the
+distribution that <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code> and <code class="docutils literal notranslate"><span class="pre">qf</span></code> describe, and the same seed
+gives the same lives.</p>
+<p>The posterior itself is <code class="docutils literal notranslate"><span class="pre">model.posterior</span></code>: <code class="docutils literal notranslate"><span class="pre">draws(k,</span> <span class="pre">random_state)</span></code>,
+<code class="docutils literal notranslate"><span class="pre">to_dataframe()</span></code>, <code class="docutils literal notranslate"><span class="pre">density(points)</span></code> (exact for the grid), and
+<code class="docutils literal notranslate"><span class="pre">marginal(name)</span></code>; <code class="docutils literal notranslate"><span class="pre">model.draw_models(k)</span></code> gives ordinary models, one
+per draw. <a class="reference internal" href="surpyval.bayes.html#surpyval.bayes.BayesianParametric.from_draws" title="surpyval.bayes.BayesianParametric.from_draws"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_draws()</span></code></a> builds a
+Bayesian model from another sampler’s draws, and
+<a class="reference internal" href="surpyval.bayes.html#surpyval.bayes.log_likelihood_fn" title="surpyval.bayes.log_likelihood_fn"><code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.bayes.log_likelihood_fn()</span></code></a> gives SurPyval’s likelihood, at
+many parameter points at once, to any sampler.</p>
+<p>References: Gelman et al., <em>Bayesian Data Analysis</em> (3rd ed., 2013);
+Hamada, Wilson, Reese and Martz, <em>Bayesian Reliability</em> (2008); Meeker,
+Escobar and Pascual, <em>Statistical Methods for Reliability Data</em> (2nd ed.,
+2021), chapter 16; Ibrahim and Chen, “Power prior distributions for
+regression models” (2000); Talts et al., “Validating Bayesian inference
+algorithms with simulation-based calibration” (2018).</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Hazard%20Ratio.html" class="btn btn-neutral float-left" title="Hazard Ratio" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Pooling%20Rates%20Across%20Sources.html" class="btn btn-neutral float-right" title="Pooling Rates Across Sources" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

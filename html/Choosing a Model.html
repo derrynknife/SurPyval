@@ -1,0 +1,789 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Choosing a Model &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Survival Analysis from Scratch" href="Survival%20Analysis%20from%20Scratch.html" />
+    <link rel="prev" title="Quickstart" href="Quickstart.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Choosing a Model</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#stage-1-the-shape-of-the-problem">Stage 1: the shape of the problem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stage-2-writing-the-data">Stage 2: writing the data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stage-3-the-question">Stage 3: the question</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#parametric-or-non-parametric">Parametric or non-parametric?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#check-the-answer">Check the answer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#lookup-situations-and-the-calls-that-handle-them">Lookup: situations and the calls that handle them</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Choosing a Model</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Choosing a Model.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="choosing-a-model">
+<h1>Choosing a Model<a class="headerlink" href="#choosing-a-model" title="Link to this heading"></a></h1>
+<p>This page takes you from your data to a model by asking one yes-or-no
+question at a time. There are three stages:</p>
+<ol class="arabic simple">
+<li><p><strong>The shape of the problem</strong> (questions 1 to 5): can a unit have the
+event more than once, can the event be of several kinds, and do you have
+readings along the way? Most data ends this stage at “one event per
+unit”.</p></li>
+<li><p><strong>Writing the data</strong> (questions 6 to 11): what you know about each
+unit’s time, written as the <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code> and <code class="docutils literal notranslate"><span class="pre">tr</span></code> every
+fitter takes.</p></li>
+<li><p><strong>The question</strong> (questions 12 to 24): what you want to know, which
+decides between test planning, regression, a non-parametric estimate and
+a parametric distribution.</p></li>
+</ol>
+<p>Then check the answer, and use the lookup table at the end to find the call
+for a situation you recognise. Censoring, counts and truncation change how
+you <em>write</em> the data (stage 2), not which model family you are in (stage 1)
+or which question you are asking (stage 3).</p>
+<p>Each question has exactly two answers. Follow “Yes” or “No” to the next
+question or to a model. If the words are new, <a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html"><span class="doc">Survival Analysis from Scratch</span></a> explains them from the beginning, and <a class="reference internal" href="Glossary.html"><span class="doc">Glossary</span></a> maps the
+engineering, medical and statistical names for the same ideas.</p>
+<nav class="contents local" id="on-this-page">
+<p class="topic-title">On this page</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#stage-1-the-shape-of-the-problem" id="id1">Stage 1: the shape of the problem</a></p></li>
+<li><p><a class="reference internal" href="#stage-2-writing-the-data" id="id2">Stage 2: writing the data</a></p></li>
+<li><p><a class="reference internal" href="#stage-3-the-question" id="id3">Stage 3: the question</a></p></li>
+<li><p><a class="reference internal" href="#parametric-or-non-parametric" id="id4">Parametric or non-parametric?</a></p></li>
+<li><p><a class="reference internal" href="#check-the-answer" id="id5">Check the answer</a></p></li>
+<li><p><a class="reference internal" href="#lookup-situations-and-the-calls-that-handle-them" id="id6">Lookup: situations and the calls that handle them</a></p></li>
+</ul>
+</nav>
+<section id="stage-1-the-shape-of-the-problem">
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">Stage 1: the shape of the problem</a><a class="headerlink" href="#stage-1-the-shape-of-the-problem" title="Link to this heading"></a></h2>
+<p>Most analyses have one event per unit: a failure, a death, a default. If a
+unit can fail and be repaired, can fail in different ways, or has its
+condition measured along the way, you are in a different family before
+anything else, and a single-event model fitted to that data gives wrong
+numbers without an error.</p>
+<ol class="arabic simple">
+<li><p><strong>Can one unit have the event more than once?</strong> (it is repaired and goes
+back into service; a patient is admitted again)</p>
+<ul class="simple">
+<li><p>Yes: <strong>recurrent events</strong>. Add the unit’s id <code class="docutils literal notranslate"><span class="pre">i</span></code> to each row (<code class="docutils literal notranslate"><span class="pre">x</span></code>
+is the unit’s age at each event, and its last row, flagged <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>,
+is the end of watching). The mean cumulative function is
+<code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code>, a non-homogeneous Poisson process such as
+<code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code>, and repair quality the renewal models
+(<code class="docutils literal notranslate"><span class="pre">GeneralizedRenewal</span></code>, <code class="docutils literal notranslate"><span class="pre">GeneralizedOneRenewal</span></code>), all in
+<code class="docutils literal notranslate"><span class="pre">surpyval.recurrent</span></code>. See <a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Modelling with SurPyval</span></a>. Stop here.</p></li>
+<li><p>No: go to question 2.</p></li>
+</ul>
+</li>
+<li><p><strong>Can the event be one of several different kinds?</strong> (wear or shock;
+death from one of several causes)</p>
+<ul class="simple">
+<li><p>Yes: go to question 3.</p></li>
+<li><p>No: go to question 4.</p></li>
+</ul>
+</li>
+<li><p><strong>Does the first event end the unit’s record?</strong></p>
+<ul class="simple">
+<li><p>Yes: <strong>competing risks</strong>. Pass the kind of each event as <code class="docutils literal notranslate"><span class="pre">e</span></code>.
+<code class="docutils literal notranslate"><span class="pre">CompetingRisks.fit(x,</span> <span class="pre">e=e,</span> <span class="pre">c=c)</span></code> gives the cumulative incidence of
+each kind, and <code class="docutils literal notranslate"><span class="pre">FineGray.fit(x,</span> <span class="pre">Z,</span> <span class="pre">e,</span> <span class="pre">c=c)</span></code> regression on it. A
+Kaplan-Meier fit to one kind, with the others censored, overstates
+that kind’s incidence. See <a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html"><span class="doc">Competing Risks SurPyval Modelling</span></a>.
+Stop here.</p></li>
+<li><p>No (units move on between states: healthy, ill, dead): <strong>multi-state
+models</strong>, <code class="docutils literal notranslate"><span class="pre">MultiState.fit</span></code>. See <a class="reference internal" href="Multi-State%20Models.html"><span class="doc">Multi-State Models</span></a>. Stop
+here.</p></li>
+</ul>
+</li>
+<li><p><strong>Do you have condition readings over time?</strong> (wear, crack length,
+vibration, a biomarker)</p>
+<ul class="simple">
+<li><p>Yes: go to question 5.</p></li>
+<li><p>No: <strong>one event per unit</strong>. Go to stage 2.</p></li>
+</ul>
+</li>
+<li><p><strong>Do you also have failure times, which the readings may drive?</strong></p>
+<ul class="simple">
+<li><p>Yes: a <strong>joint model</strong> of the readings and the failures together,
+<code class="docutils literal notranslate"><span class="pre">WeibullJointPH.fit</span></code>. See <a class="reference internal" href="Joint%20Models.html"><span class="doc">Joint Models</span></a>. Stop here.</p></li>
+<li><p>No: <strong>degradation analysis</strong>, the readings to a failure threshold,
+<code class="docutils literal notranslate"><span class="pre">DegradationAnalysis.fit(x,</span> <span class="pre">y,</span> <span class="pre">i,</span> <span class="pre">threshold=...)</span></code>, which also
+predicts a monitored unit’s remaining useful life. See
+<a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html"><span class="doc">Degradation Modelling with SurPyval</span></a>. Stop here.</p></li>
+</ul>
+</li>
+</ol>
+</section>
+<section id="stage-2-writing-the-data">
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">Stage 2: writing the data</a><a class="headerlink" href="#stage-2-writing-the-data" title="Link to this heading"></a></h2>
+<p>Ask these questions of every unit. Each unit is one row: a time <code class="docutils literal notranslate"><span class="pre">x</span></code>, a
+censoring flag <code class="docutils literal notranslate"><span class="pre">c</span></code>, and where needed a count <code class="docutils literal notranslate"><span class="pre">n</span></code> and a truncation
+window <code class="docutils literal notranslate"><span class="pre">tl</span></code>, <code class="docutils literal notranslate"><span class="pre">tr</span></code>. Rows of different kinds mix freely in one data set.
+<a class="reference internal" href="Types%20of%20Data.html"><span class="doc">Types of Data</span></a> explains each kind with examples, and <a class="reference internal" href="Data%20Model.html"><span class="doc">The data model</span></a> lists every letter a row can carry.</p>
+<ol class="arabic simple" start="6">
+<li><p><strong>Did the unit have the event while you were watching?</strong></p>
+<ul class="simple">
+<li><p>Yes: go to question 7.</p></li>
+<li><p>No (it was still running when you stopped, or was removed): it is
+<strong>right censored</strong>, <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>, with <code class="docutils literal notranslate"><span class="pre">x</span></code> the last time you saw it
+working. Go to question 9.</p></li>
+</ul>
+</li>
+<li><p><strong>Do you know the exact time of the event?</strong></p>
+<ul class="simple">
+<li><p>Yes: it is <strong>observed</strong>, <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>, with <code class="docutils literal notranslate"><span class="pre">x</span></code> that time. Go to
+question 9.</p></li>
+<li><p>No: go to question 8.</p></li>
+</ul>
+</li>
+<li><p><strong>Did the event happen before you first looked?</strong></p>
+<ul class="simple">
+<li><p>Yes: it is <strong>left censored</strong>, <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code>, with <code class="docutils literal notranslate"><span class="pre">x</span></code> the time of the
+first look. Go to question 9.</p></li>
+<li><p>No (it happened between two looks): it is <strong>interval censored</strong>,
+<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>, with <code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">=</span> <span class="pre">[last</span> <span class="pre">seen</span> <span class="pre">working,</span> <span class="pre">found</span> <span class="pre">failed]</span></code>. Go to
+question 9.</p></li>
+</ul>
+</li>
+<li><p><strong>Do several units have exactly the same record?</strong></p>
+<ul class="simple">
+<li><p>Yes: write the record once with <code class="docutils literal notranslate"><span class="pre">n</span></code>, how many units share it. Go to
+question 10.</p></li>
+<li><p>No: go to question 10 (<code class="docutils literal notranslate"><span class="pre">n</span></code> is 1 for every row by default).</p></li>
+</ul>
+</li>
+<li><p><strong>Is the unit in your data only because it had already lasted to some
+age?</strong> (installed before monitoring began; a patient enrolled some time
+after diagnosis)</p>
+<ul class="simple">
+<li><p>Yes: it is <strong>left truncated</strong>, with <code class="docutils literal notranslate"><span class="pre">tl</span></code> that age. Go to
+question 11.</p></li>
+<li><p>No: go to question 11.</p></li>
+</ul>
+</li>
+<li><p><strong>Is the unit in your data only because it failed by some time?</strong>
+(warranty returns, where the units that did not fail are never seen)</p>
+<ul class="simple">
+<li><p>Yes: it is <strong>right truncated</strong>, with <code class="docutils literal notranslate"><span class="pre">tr</span></code> that time. The record is
+done.</p></li>
+<li><p>No: the record is done.</p></li>
+</ul>
+</li>
+</ol>
+<p>When every unit has its record, go to stage 3.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>In SurPyval <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code> means <strong>censored</strong> and <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code> an observed
+event. That is the opposite of R’s <code class="docutils literal notranslate"><span class="pre">Surv(time,</span> <span class="pre">status)</span></code>, where
+<code class="docutils literal notranslate"><span class="pre">status</span> <span class="pre">=</span> <span class="pre">1</span></code> is the event. Data brought from R needs <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span>
+<span class="pre">status</span></code>.</p>
+</div>
+<p>Ten units, written with these questions: two observed failures, at 310
+and 450; two found failed between the inspections at 400 and 520 (one row
+with <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">2</span></code>); one already failed at the first look, at 150; and five
+still running when the test stopped at 600:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">310</span><span class="p">,</span> <span class="mi">450</span><span class="p">,</span> <span class="p">[</span><span class="mi">400</span><span class="p">,</span> <span class="mi">520</span><span class="p">],</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">600</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">n</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 10 units: 5 events (2 exact at 2 unique times, 1 left censored, 2 interval censored), 5 right censored
+Parameters          :
+     alpha: 745.2351600017015
+      beta: 1.714695682689106
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="stage-3-the-question">
+<h2><a class="toc-backref" href="#id3" role="doc-backlink">Stage 3: the question</a><a class="headerlink" href="#stage-3-the-question" title="Link to this heading"></a></h2>
+<p>Every unit now has a record. What do you want to know?</p>
+<ol class="arabic" start="12">
+<li><p><strong>Are you planning a test before you have the data?</strong> (how many units,
+for how long, to show a reliability or estimate a life)</p>
+<ul class="simple">
+<li><p>Yes: <strong>test planning</strong>, <code class="docutils literal notranslate"><span class="pre">surpyval.test_planning</span></code>. See <a class="reference internal" href="Test%20Planning%20with%20SurPyval.html"><span class="doc">Test Planning with SurPyval</span></a>. Stop here.</p></li>
+<li><p>No: go to question 13.</p></li>
+</ul>
+</li>
+<li><p><strong>Do the units differ in something that may change their life?</strong> (a
+treatment, a stress, a design, an age at entry)</p>
+<ul class="simple">
+<li><p>Yes: <strong>regression</strong>, with the covariates as <code class="docutils literal notranslate"><span class="pre">Z</span></code>, one row per row of
+<code class="docutils literal notranslate"><span class="pre">x</span></code>. Go to question 14.</p></li>
+<li><p>No: go to question 17.</p></li>
+</ul>
+</li>
+<li><p><strong>Is the covariate a stress you set, such as temperature or voltage,
+and do you want to extrapolate to the stress in use?</strong></p>
+<ul class="simple">
+<li><p>Yes: an <strong>accelerated life</strong> model, a life-stress relationship such
+as Arrhenius, Eyring or the inverse power law:
+<code class="docutils literal notranslate"><span class="pre">AcceleratedLife(Weibull,</span> <span class="pre">life_models.Arrhenius).fit(x,</span> <span class="pre">Z,</span> <span class="pre">c)</span></code>.
+Stop here.</p></li>
+<li><p>No: go to question 15.</p></li>
+</ul>
+</li>
+<li><p><strong>Do you want to assume a life distribution?</strong></p>
+<ul class="simple">
+<li><p>Yes: go to question 16.</p></li>
+<li><p>No: <strong>Cox proportional hazards</strong>, <code class="docutils literal notranslate"><span class="pre">CoxPH.fit(x,</span> <span class="pre">Z,</span> <span class="pre">c=c)</span></code>: hazard
+ratios with no assumed baseline shape. Stop here.</p></li>
+</ul>
+</li>
+<li><p><strong>Does the covariate stretch or shrink time, rather than scale the
+risk?</strong></p>
+<ul class="simple">
+<li><p>Yes: <strong>accelerated failure time</strong>, such as <code class="docutils literal notranslate"><span class="pre">WeibullAFT.fit(x,</span> <span class="pre">Z,</span>
+<span class="pre">c)</span></code>. Stop here.</p></li>
+<li><p>No: <strong>proportional hazards</strong> with a distribution, such as
+<code class="docutils literal notranslate"><span class="pre">WeibullPH.fit(x,</span> <span class="pre">Z,</span> <span class="pre">c)</span></code>. Stop here.</p></li>
+</ul>
+<p><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Regression Modelling with SurPyval</span></a> covers these and the other
+forms (proportional odds, additive hazards, Buckley-James).</p>
+</li>
+<li><p><strong>Do you need answers beyond your longest observed time?</strong>
+(extrapolation: a warranty period longer than the test, a life past
+the end of the study)</p>
+<ul class="simple">
+<li><p>Yes: you need a <strong>parametric</strong> model. Go to question 20.</p></li>
+<li><p>No: go to question 18.</p></li>
+</ul>
+</li>
+<li><p><strong>Do you need a mean life, a B-life below your first failure, or a
+smooth curve to predict from?</strong></p>
+<ul class="simple">
+<li><p>Yes: you need a <strong>parametric</strong> model. Go to question 20.</p></li>
+<li><p>No: a <strong>non-parametric</strong> estimate describes your data with no
+assumed shape. Go to question 19.</p></li>
+</ul>
+</li>
+<li><p><strong>Is any record interval or left censored, or any unit right
+truncated?</strong></p>
+<ul class="simple">
+<li><p>Yes: <strong>Turnbull</strong>, <code class="docutils literal notranslate"><span class="pre">Turnbull.fit(x,</span> <span class="pre">c=c,</span> <span class="pre">...)</span></code>, which takes every
+kind of censoring and truncation. Stop here.</p></li>
+<li><p>No: <strong>Kaplan-Meier</strong>, <code class="docutils literal notranslate"><span class="pre">KaplanMeier.fit(x,</span> <span class="pre">c=c,</span> <span class="pre">...)</span></code> (it takes
+left truncation, <code class="docutils literal notranslate"><span class="pre">tl</span></code>); <code class="docutils literal notranslate"><span class="pre">NelsonAalen</span></code> is its cumulative-hazard
+counterpart. Stop here.</p></li>
+</ul>
+</li>
+<li><p><strong>Has at least one unit failed?</strong></p>
+<ul class="simple">
+<li><p>Yes: fit a <strong>Weibull</strong> first, <code class="docutils literal notranslate"><span class="pre">Weibull.fit(x,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">...)</span></code>, and go
+to question 21.</p></li>
+<li><p>No: there is no fit to make, but there is a bound. With a Weibull
+shape you are willing to assume, <code class="docutils literal notranslate"><span class="pre">weibayes(x,</span> <span class="pre">c,</span> <span class="pre">beta=...)</span></code> gives
+the lower bound on the life (<strong>Weibayes</strong>); with none,
+<code class="docutils literal notranslate"><span class="pre">success_run(n)</span></code> gives the reliability a run of <code class="docutils literal notranslate"><span class="pre">n</span></code> successes
+demonstrates. Planning such a test is question 12. Stop here.</p></li>
+</ul>
+</li>
+<li><p><strong>Will some units never fail?</strong> (a defect only some carry; a cured
+fraction)</p>
+<ul class="simple">
+<li><p>Yes: add <code class="docutils literal notranslate"><span class="pre">lfp=True</span></code> (a limited failure population). Go to
+question 22.</p></li>
+<li><p>No: go to question 22.</p></li>
+</ul>
+</li>
+<li><p><strong>Do some units fail at time zero?</strong> (dead on arrival)</p>
+<ul class="simple">
+<li><p>Yes: add <code class="docutils literal notranslate"><span class="pre">zi=True</span></code> (zero inflation). Go to question 23.</p></li>
+<li><p>No: go to question 23.</p></li>
+</ul>
+</li>
+<li><p><strong>Is there an age before which nothing fails?</strong></p>
+<ul class="simple">
+<li><p>Yes: add <code class="docutils literal notranslate"><span class="pre">offset=True</span></code> (the three-parameter Weibull). Go to
+question 24.</p></li>
+<li><p>No: go to question 24.</p></li>
+</ul>
+</li>
+<li><p><strong>Do the failures look like two different modes mixed together?</strong>
+(a probability plot with a kink)</p>
+<ul class="simple">
+<li><p>Yes: a <strong>mixture</strong>, <code class="docutils literal notranslate"><span class="pre">MixtureModel.fit(x,</span> <span class="pre">c=c,</span> <span class="pre">dist=Weibull,</span>
+<span class="pre">m=2)</span></code>. Then check the answer.</p></li>
+<li><p>No: compare distributions. <code class="docutils literal notranslate"><span class="pre">fit_best(x,</span> <span class="pre">c,</span> <span class="pre">...)</span></code> fits the plain
+candidates and returns the one with the lowest AIC; with <code class="docutils literal notranslate"><span class="pre">lfp</span></code>,
+<code class="docutils literal notranslate"><span class="pre">zi</span></code> or <code class="docutils literal notranslate"><span class="pre">offset</span></code>, fit each candidate with the same option and
+compare their <code class="docutils literal notranslate"><span class="pre">aic()</span></code>. Then check the answer.</p></li>
+</ul>
+</li>
+</ol>
+<p><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a> explains each option, and
+<a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html"><span class="doc">Non-Parametric SurPyval Modelling</span></a> each estimator.</p>
+</section>
+<section id="parametric-or-non-parametric">
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">Parametric or non-parametric?</a><a class="headerlink" href="#parametric-or-non-parametric" title="Link to this heading"></a></h2>
+<p>Questions 17 and 18 decide this, and the reason is extrapolation.</p>
+<ul class="simple">
+<li><p>A <strong>non-parametric</strong> estimate (Kaplan-Meier, Nelson-Aalen, Turnbull)
+describes only what was seen. It stops at the longest observation: past
+it there is no estimate, and its mean is only the area up to that point
+(the restricted mean), not the mean life. <code class="docutils literal notranslate"><span class="pre">mean()</span></code> gives that area,
+and warns with the survival left at the longest observation when units
+are still at risk there; ask for <code class="docutils literal notranslate"><span class="pre">rmst(tau)</span></code> to state the restricted
+mean by name.</p></li>
+<li><p>A <strong>parametric</strong> distribution assumes a shape, and the shape is what
+lets it answer beyond the data: a mean life, a B1 life below the first
+failure, the survival at a time no unit reached.</p></li>
+<li><p>Check the shape against the non-parametric estimate: <code class="docutils literal notranslate"><span class="pre">diagnose()</span></code>
+compares them, and <code class="docutils literal notranslate"><span class="pre">plot()</span></code> draws both.</p></li>
+<li><p>The further you extrapolate, the more the answer rests on the assumed
+shape rather than on the data. That judgement is the analyst’s:
+SurPyval does not warn when a parametric model is asked about a time
+past the data.</p></li>
+</ul>
+<p>The ball-bearing data of the <a class="reference internal" href="Quickstart.html"><span class="doc">Quickstart</span></a>, with the test stopped at
+100 million revolutions, shows the difference. Up to 100 the two agree; the
+Weibull also answers at 150, which no bearing reached in the test:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">17.88</span><span class="p">,</span> <span class="mf">28.92</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mf">41.52</span><span class="p">,</span> <span class="mf">42.12</span><span class="p">,</span> <span class="mf">45.6</span><span class="p">,</span> <span class="mf">48.4</span><span class="p">,</span> <span class="mf">51.84</span><span class="p">,</span>
+              <span class="mf">51.96</span><span class="p">,</span> <span class="mf">54.12</span><span class="p">,</span> <span class="mf">55.56</span><span class="p">,</span> <span class="mf">67.8</span><span class="p">,</span> <span class="mf">68.64</span><span class="p">,</span> <span class="mf">68.64</span><span class="p">,</span> <span class="mf">68.88</span><span class="p">,</span> <span class="mf">84.12</span><span class="p">,</span>
+              <span class="mf">93.12</span><span class="p">,</span> <span class="mf">98.64</span><span class="p">,</span> <span class="mf">105.12</span><span class="p">,</span> <span class="mf">105.84</span><span class="p">,</span> <span class="mf">127.92</span><span class="p">,</span> <span class="mf">128.04</span><span class="p">,</span> <span class="mf">173.4</span><span class="p">])</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">&gt;</span> <span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>       <span class="c1"># 1 = still running when the test stopped</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>
+
+<span class="n">km</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="n">weibull</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"R(90), Kaplan-Meier :"</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">90</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"R(90), Weibull      :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">90</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"R(150), Weibull     :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">150</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Mean life to 100, Kaplan-Meier:"</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">rmst</span><span class="p">(</span><span class="mi">100</span><span class="p">)[</span><span class="s2">"rmst"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Mean life to 100, Weibull     :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">rmst</span><span class="p">(</span><span class="mi">100</span><span class="p">)[</span><span class="s2">"rmst"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Mean life, Weibull            :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>R(90), Kaplan-Meier : 0.30434782608695654
+R(90), Weibull      : 0.27513185836939624
+R(150), Weibull     : 0.017403715139401636
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Mean life to 100, Kaplan-Meier: 66.11999999999999
+Mean life to 100, Weibull     : 66.84409611246652
+Mean life, Weibull            : 71.13288705483022
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Both curves give a mean life to 100 of about 66 to 67; only the Weibull
+gives a mean life (about 71), and it does so by assuming the Weibull’s
+shape past 100.</p>
+</section>
+<section id="check-the-answer">
+<h2><a class="toc-backref" href="#id5" role="doc-backlink">Check the answer</a><a class="headerlink" href="#check-the-answer" title="Link to this heading"></a></h2>
+<p>Every parametric and regression model has <code class="docutils literal notranslate"><span class="pre">diagnose()</span></code>: the goodness of
+fit against the non-parametric estimate, the alternatives it would suggest
+(another distribution, an offset, a limited failure population) and why.
+<a class="reference internal" href="Model%20Diagnostics.html"><span class="doc">Model Diagnostics</span></a> explains every check. Seed it, so its bootstrap
+p-values are the same each time:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">report</span> <span class="o">=</span> <span class="n">weibull</span><span class="o">.</span><span class="n">diagnose</span><span class="p">(</span><span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="o">.</span><span class="n">ok</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>True
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Ask for bounds on whatever you report: <code class="docutils literal notranslate"><span class="pre">cb</span></code> on a function of time
+(<code class="docutils literal notranslate"><span class="pre">on=&quot;sf&quot;</span></code> by default, or <code class="docutils literal notranslate"><span class="pre">&quot;ff&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;Hf&quot;</span></code>, …), <code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code> on a
+B-life and <code class="docutils literal notranslate"><span class="pre">param_cb</span></code> on a parameter. SurPyval’s default bounds on a
+maximum-likelihood fit are two-sided 95% Wald bounds (<code class="docutils literal notranslate"><span class="pre">alpha_ci=0.05</span></code>,
+<code class="docutils literal notranslate"><span class="pre">bound=&quot;two-sided&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">method=&quot;wald&quot;</span></code>). <strong>With few failures (under about
+20), prefer likelihood-ratio bounds, ``method=”lr”``</strong>, which do not assume
+the estimate is normally distributed, and treat a choice between
+distributions as weak:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"R(50), Wald           :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="mi">50</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"R(50), likelihood ratio:"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"lr"</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"B10, likelihood ratio  :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">quantile_cb</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"lr"</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>R(50), Wald           : [0.52173879 0.83190912]
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>R(50), likelihood ratio: [0.53920351 0.84078261]
+B10, likelihood ratio  : [16.35328442 42.30182007]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Compare models only on the same data: an AIC from one data set says nothing
+about a fit to another.</p>
+<p>A few more of the answers above, run as written. A zero-failure test of
+ten units for 500 hours, assuming a Weibull shape of 2 (question 20), and
+the units a demonstration with no failures needs (question 12):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">test_planning</span>
+
+<span class="n">bound</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">weibayes</span><span class="p">([</span><span class="mi">500</span><span class="p">]</span> <span class="o">*</span> <span class="mi">10</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="mi">10</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"R(500) is at least        :"</span><span class="p">,</span> <span class="n">bound</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">500</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"same, from the success run:"</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">success_run</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"units to show R = 0.9     :"</span><span class="p">,</span>
+      <span class="n">test_planning</span><span class="o">.</span><span class="n">demonstration_sample_size</span><span class="p">(</span><span class="mf">0.9</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>R(500) is at least        : 0.7411344491069478
+same, from the success run: 0.7411344491069477
+units to show R = 0.9     : 29
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Covariates (questions 13 to 16): a life that doubles in one condition,
+fitted with no assumed shape and with a Weibull that stretches time:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">Z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+<span class="n">t</span> <span class="o">=</span> <span class="mi">50</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.7</span> <span class="o">*</span> <span class="n">Z</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="n">c_z</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">80</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>        <span class="c1"># the study stopped at 80</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">80</span><span class="p">)</span>
+
+<span class="n">cox</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">CoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c_z</span><span class="p">)</span>
+<span class="n">aft</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullAFT</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c_z</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Cox hazard ratio of condition 1:"</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">cox</span><span class="o">.</span><span class="n">beta</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Weibull AFT coefficient        :"</span><span class="p">,</span> <span class="n">aft</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Cox hazard ratio of condition 1: 0.39183755791333863
+Weibull AFT coefficient        : -0.6102452486199724
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="lookup-situations-and-the-calls-that-handle-them">
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">Lookup: situations and the calls that handle them</a><a class="headerlink" href="#lookup-situations-and-the-calls-that-handle-them" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 18.0%" />
+<col style="width: 48.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Situation</p></th>
+<th class="head"><p>Data</p></th>
+<th class="head"><p>Call</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Failure times, some units still running</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Weibull.fit(x,</span> <span class="pre">c)</span></code>; <code class="docutils literal notranslate"><span class="pre">KaplanMeier.fit(x,</span> <span class="pre">c)</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Failures found between inspections</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">=</span> <span class="pre">[[l,</span> <span class="pre">r],</span> <span class="pre">...]</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Weibull.fit(x,</span> <span class="pre">c)</span></code>; <code class="docutils literal notranslate"><span class="pre">Turnbull.fit(x,</span> <span class="pre">c)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Units installed before monitoring began</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Weibull.fit(x,</span> <span class="pre">c,</span> <span class="pre">tl=tl)</span></code>; <code class="docutils literal notranslate"><span class="pre">KaplanMeier.fit(x,</span> <span class="pre">c,</span> <span class="pre">tl=tl)</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Grouped counts (a life table)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Weibull.fit(x,</span> <span class="pre">c,</span> <span class="pre">n)</span></code>; <code class="docutils literal notranslate"><span class="pre">life_table(x,</span> <span class="pre">c,</span> <span class="pre">n)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Warranty returns only</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">tr</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Weibull.fit(x,</span> <span class="pre">tr=tr)</span></code>; <code class="docutils literal notranslate"><span class="pre">Turnbull.fit(x,</span> <span class="pre">tr=tr)</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Which distribution fits best</p></td>
+<td><p>as above</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">fit_best(x,</span> <span class="pre">c)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Few failures, bounds on a B-life</p></td>
+<td><p>as above</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">model.quantile_cb(0.1,</span> <span class="pre">method=&quot;lr&quot;)</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Zero failures, a known shape</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">weibayes(x,</span> <span class="pre">c,</span> <span class="pre">beta=...)</span></code>; <code class="docutils literal notranslate"><span class="pre">success_run(n)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Two groups compared</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, a group</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">KaplanMeier.fit</span></code> for each; <code class="docutils literal notranslate"><span class="pre">logrank</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Patients with covariates</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">Z</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">CoxPH.fit(x,</span> <span class="pre">Z,</span> <span class="pre">c=c)</span></code>; <code class="docutils literal notranslate"><span class="pre">WeibullPH.fit(x,</span> <span class="pre">Z,</span> <span class="pre">c)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>A test at high temperature, predicting at use</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">Z</span></code> (kelvin)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">AcceleratedLife(Weibull,</span> <span class="pre">life_models.Arrhenius).fit(x,</span> <span class="pre">Z,</span> <span class="pre">c)</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Repairs on a fleet</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">surpyval.recurrent</span></code>: <code class="docutils literal notranslate"><span class="pre">NonParametricCounting.fit(x=x,</span> <span class="pre">i=i,</span>
+<span class="pre">c=c)</span></code>; <code class="docutils literal notranslate"><span class="pre">CrowAMSAA.fit(x=x,</span> <span class="pre">i=i,</span> <span class="pre">c=c)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Several causes, the first one ends it</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">e</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">CompetingRisks.fit(x,</span> <span class="pre">e=e,</span> <span class="pre">c=c)</span></code>; <code class="docutils literal notranslate"><span class="pre">FineGray.fit(x,</span> <span class="pre">Z,</span> <span class="pre">e,</span> <span class="pre">c=c)</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Readings until a threshold</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">y</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">surpyval.degradation</span></code>: <code class="docutils literal notranslate"><span class="pre">DegradationAnalysis.fit(x,</span> <span class="pre">y,</span> <span class="pre">i,</span>
+<span class="pre">threshold=...)</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Readings and failures together</p></td>
+<td><p>items with <code class="docutils literal notranslate"><span class="pre">markers</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">WeibullJointPH.fit</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Demonstrating a reliability before testing</p></td>
+<td><p>none yet</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">test_planning.demonstration_sample_size(R)</span></code>;
+<code class="docutils literal notranslate"><span class="pre">test_planning.demonstration_plan</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Quickstart.html" class="btn btn-neutral float-left" title="Quickstart" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Survival%20Analysis%20from%20Scratch.html" class="btn btn-neutral float-right" title="Survival Analysis from Scratch" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

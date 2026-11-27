@@ -1,0 +1,573 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Types of Data &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="The data model" href="Data%20Model.html" />
+    <link rel="prev" title="Survival Analysis from Scratch" href="Survival%20Analysis%20from%20Scratch.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Types of Data</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#exactly-observed">Exactly Observed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#censored-data">Censored Data</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#flagging-censoring-in-surpyval">Flagging censoring in SurPyval</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#condensing-repeated-values-with-counts">Condensing repeated values with counts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pitfalls-with-censored-data">Pitfalls with censored data</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#truncated-data">Truncated Data</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#what-goes-wrong-if-truncation-is-ignored">What goes wrong if truncation is ignored</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#rules-and-conventions-for-truncation">Rules and conventions for truncation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#concluding-points">Concluding Points</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#which-methods-handle-which-data">Which methods handle which data</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Types of Data</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Types of Data.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="types-of-data">
+<h1>Types of Data<a class="headerlink" href="#types-of-data" title="Link to this heading"></a></h1>
+<p>Survival analysis is the statistics about durations. To understand durations, or time to events, we must have data that captures how long something lasts. This is the start of survival analysis where we have data in the form of a list of durations of some time to event. This time to event can be engineering failure data, health data on time to death from a given disease, economic data on the duration of a recession or time between recessions, or it could be race times for a group of athletes in a triathlon.</p>
+<p>Survival analysis is unique in statistics because of the types of data that we encounter, specifically censoring and truncation. The purpose of this section is to explain these types of data and the scenarios under which they are generated so that you can understand when you might need to use the different flags in surpyval in your analysis.</p>
+<p>Throughout, the quantity being measured is called <span class="math notranslate nohighlight">\(x\)</span> (and passed to SurPyval as <code class="docutils literal notranslate"><span class="pre">x</span></code>). It is usually a time, but it does not have to be: it can be a distance, a number of cycles, a stress at which something broke, or a dollar value. What matters is that we are interested in the distribution of <span class="math notranslate nohighlight">\(x\)</span>, and that the way we collected the data may have hidden some of the values from us. Censoring and truncation are two different ways in which values can be hidden, and they need different treatment:</p>
+<ul class="simple">
+<li><p><strong>Censoring</strong>: we know an item exists, but we only know a <em>range</em> in which its value lies.</p></li>
+<li><p><strong>Truncation</strong>: some items are missing from the data altogether, because their values fell outside the range in which we could have seen them.</p></li>
+</ul>
+<p>This page covers the ideas behind the censoring flag <code class="docutils literal notranslate"><span class="pre">c</span></code> and the truncation <code class="docutils literal notranslate"><span class="pre">t</span></code>. <a class="reference internal" href="Data%20Model.html"><span class="doc">The data model</span></a> is the reference for every letter a row of data can carry, including the unit <code class="docutils literal notranslate"><span class="pre">i</span></code>, event types and states (<code class="docutils literal notranslate"><span class="pre">e</span></code>, <code class="docutils literal notranslate"><span class="pre">s</span></code>), the terminal flag <code class="docutils literal notranslate"><span class="pre">a</span></code>, measurements <code class="docutils literal notranslate"><span class="pre">m</span></code> and covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code>, and for which models take which.</p>
+<p>The running example on this page is a test of light bulbs, so it speaks of <em>items</em> and <em>failures</em>. Nothing depends on that: read <em>subject</em> for item and <em>event</em> (a death, a relapse, a loan default) for failure, and every statement holds. The <a class="reference internal" href="Glossary.html"><span class="doc">Glossary</span></a> maps the words each field uses.</p>
+<section id="exactly-observed">
+<h2>Exactly Observed<a class="headerlink" href="#exactly-observed" title="Link to this heading"></a></h2>
+<p>The first type of data is exactly observed data. This is the type of data where we know exactly when the death or failure occurred. For example, if I run a test on how long some light bulbs will last, I get 5 and turn them on and watch them continuously. Then as each fail I record their failure times 983, 1321, 1889, 1923, and 2932 hours. Each of these times is exact because I saw the exact moment at which they failed. So the task is then understanding the distribution of these exact failures.</p>
+<p>Exactly observed data is the default in SurPyval: if you pass only <code class="docutils literal notranslate"><span class="pre">x</span></code>, every value is taken to be an exact observation.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+
+<span class="n">bulbs</span> <span class="o">=</span> <span class="p">[</span><span class="mi">983</span><span class="p">,</span> <span class="mi">1321</span><span class="p">,</span> <span class="mi">1889</span><span class="p">,</span> <span class="mi">1923</span><span class="p">,</span> <span class="mi">2932</span><span class="p">]</span>
+<span class="n">exact_model</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">bulbs</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">exact_model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[2033.36786911    2.95783883]
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="censored-data">
+<h2>Censored Data<a class="headerlink" href="#censored-data" title="Link to this heading"></a></h2>
+<p>Say that I got bored of sitting and looking at light bulbs. And because of this boredom I stopped looking at the light bulbs at 1900 hours. I would therefore not have seen two of the light bulbs fail, the failures that would have occurred at 1923 and 2932 hours. All we would know about these two light bulbs is that they failed sometime <em>after</em> 1,900 hours. That is, we know that these two light bulbs would have failed if they continued the test but that this failure time is greater than 1,900. This is to say that the failure time has been <em>censored</em>. Specifically the failure has been right censored. ‘Right’ is used because if we consider a (horizontal) timeline with time progressing along the line from left to right, we know that the failure would have occurred to the right of the time at which we stopped our observation. Hence, the observation is right censored.</p>
+<p>If on the other hand, I also knew it would take some time for the bulbs to start failing so instead of waiting from the very start of the test I did not sit there for the first 1,000 hours. That is, the test continues to run but is not being observed for the first 1,000 hours, then after the first 1,000 hours I return to the test and start my observations. When I return I find that a bulb has failed. From the original data, I see that there was a bulb that failed at 983 hours. But if I was not observing for the first 1,000 hours all I would know about this failure is that it occurred sometime <em>before</em> 1,000 hours. Using the timeline concept again, I know that the failure would have occurred to the left of the 1,000 hour mark. Therefore, we say that the failure is <em>left</em> censored.</p>
+<p>Finally, had I not been patient enough to sit down for any extended period of time and instead inspected the light bulbs at different times to see if any had failed. So say I inspect the bulbs every 100 hours from 1000 hours till 2,000 hours. The first and last failures would be left and right censored. But the middle failures would be known to fail between inspections. So the second failure would have occurred between the 1300 and 1400 hours inspections, the third between 1800 and 1900, and the second last failure would have happened between the 1900 and 2000 hours inspections. These failures are said to be <em>intervally</em> censored. That is because they are known to have happened in a given interval on a timeline.</p>
+<p>In each case the item is <em>in</em> the data set: we know it exists and that it failed (or will fail), we just do not know exactly when. Censoring replaces an exact value with a range:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 35.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Type</p></th>
+<th class="head"><p>What we know about the value <span class="math notranslate nohighlight">\(X\)</span></p></th>
+<th class="head"><p>Typical cause</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Exactly observed</p></td>
+<td><p><span class="math notranslate nohighlight">\(X = x\)</span></p></td>
+<td><p>continuous observation</p></td>
+</tr>
+<tr class="row-odd"><td><p>Right censored</p></td>
+<td><p><span class="math notranslate nohighlight">\(X &gt; x\)</span></p></td>
+<td><p>the study ended, or the item was withdrawn (the subject was lost to follow-up), before it failed</p></td>
+</tr>
+<tr class="row-even"><td><p>Left censored</p></td>
+<td><p><span class="math notranslate nohighlight">\(X \leq x\)</span></p></td>
+<td><p>the failure had already happened at the first look</p></td>
+</tr>
+<tr class="row-odd"><td><p>Interval censored</p></td>
+<td><p><span class="math notranslate nohighlight">\(x_l &lt; X \leq x_r\)</span></p></td>
+<td><p>failures found at periodic inspections</p></td>
+</tr>
+</tbody>
+</table>
+<p>Survival analysis has several methods for handling censored data in the parametric and non-parametric analysis. Surpyval is able to handle an input that has an arbitrary combination of observed and left, right, and intervally censored failure data, although not all methods can handle all types of data. This is covered in the sections on each of the estimation and fitting methods, and summarised at the end of this page.</p>
+<section id="flagging-censoring-in-surpyval">
+<h3>Flagging censoring in SurPyval<a class="headerlink" href="#flagging-censoring-in-surpyval" title="Link to this heading"></a></h3>
+<p>Surpyval uses a convention regarding censoring. Specifically, surpyval takes as input, with a list of failure times ‘x’, an optional censoring flag array ‘c’. If no flagging array is provided, it is assumed that all the data are exact observations, i.e. that they are not censored. But if the ‘c’ array is provided, it must have a value for each value in the x input. That is, they must be the same length. The possible values of c are -1, 0, 1, and 2. The convention tries to illustrate the concept of left, right, and interval censoring on the timeline. An observed failure is 0, the centre of the timeline. -1 is the flag for left censoring because the failure lies to the <em>left</em> of the recorded value. 1 is used to flag a value as right censored, because the failure lies to the <em>right</em>. Finally, 2 is used to flag a value as being intervally censored because it has 2 data points, a left and right point. In practice this will therefore look like:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="mi">8</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Applying the flags to the inspected light bulbs from above: the bulb found failed at the first inspection is left censored at 1000, the three bulbs found failed between inspections are interval censored, and the bulb still working at the last inspection is right censored at 2000.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1000</span><span class="p">,</span> <span class="p">[</span><span class="mi">1300</span><span class="p">,</span> <span class="mi">1400</span><span class="p">],</span> <span class="p">[</span><span class="mi">1800</span><span class="p">,</span> <span class="mi">1900</span><span class="p">],</span> <span class="p">[</span><span class="mi">1900</span><span class="p">,</span> <span class="mi">2000</span><span class="p">],</span> <span class="mi">2000</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">inspected_model</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"exact failure times :"</span><span class="p">,</span> <span class="n">exact_model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"inspection data     :"</span><span class="p">,</span> <span class="n">inspected_model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>exact failure times : [2033.36786911    2.95783883]
+inspection data     : [1836.41021827    3.34971209]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The two fits differ, and they should: the inspection data carries less information than the exact failure times (with five bulbs, a lot less). The point is that the censored fit uses exactly the information that was collected, no more and no less.</p>
+<p>A few rules make the flags unambiguous:</p>
+<ul class="simple">
+<li><p>An interval censored row (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>) must have two values, <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>, with <code class="docutils literal notranslate"><span class="pre">lower</span> <span class="pre">&lt;</span> <span class="pre">upper</span></code>. Every other row has a single value. If <code class="docutils literal notranslate"><span class="pre">x</span></code> is given as two columns, a row that is not an interval repeats its value, <code class="docutils literal notranslate"><span class="pre">[v,</span> <span class="pre">v]</span></code>, and its flag says whether it is observed, left censored or right censored (flagging such a row <code class="docutils literal notranslate"><span class="pre">2</span></code> is an error).</p></li>
+<li><p>An interval with an infinite end is really a one-sided censoring, and SurPyval converts it: <code class="docutils literal notranslate"><span class="pre">[v,</span> <span class="pre">inf]</span></code> becomes right censored at <code class="docutils literal notranslate"><span class="pre">v</span></code> and <code class="docutils literal notranslate"><span class="pre">[-inf,</span> <span class="pre">v]</span></code> becomes left censored at <code class="docutils literal notranslate"><span class="pre">v</span></code>. This is convenient when data comes as “last seen working” and “first seen failed” columns (see <a class="reference internal" href="Data%20Wrangler%20Examples.html"><span class="doc">Data Wrangling Examples</span></a>).</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">c</span></code> is not given but <code class="docutils literal notranslate"><span class="pre">x</span></code> has two columns, each row with different values is flagged as interval censored and each row with equal values as observed.</p></li>
+</ul>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">SurpyvalData</span><span class="p">(</span>
+    <span class="n">x</span><span class="o">=</span><span class="p">[[</span><span class="mi">1000</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mi">1000</span><span class="p">],</span> <span class="p">[</span><span class="mi">1300</span><span class="p">,</span> <span class="mi">1400</span><span class="p">],</span> <span class="p">[</span><span class="mi">1200</span><span class="p">,</span> <span class="mi">1200</span><span class="p">]]</span>
+<span class="p">)</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">c</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[[1000. 1000.]
+ [1000. 1000.]
+ [1200. 1200.]
+ [1300. 1400.]]
+[-1  1  0  2]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The rows come back sorted, which is how SurPyval stores data internally: the first two rows are the converted one-sided intervals (left censored, <code class="docutils literal notranslate"><span class="pre">-1</span></code>, and right censored, <code class="docutils literal notranslate"><span class="pre">1</span></code>, both at 1000), followed by the exact observation at 1200 (<code class="docutils literal notranslate"><span class="pre">0</span></code>) and the interval (<code class="docutils literal notranslate"><span class="pre">2</span></code>).</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The same data can be given as two separate arrays with <code class="docutils literal notranslate"><span class="pre">xl</span></code> and <code class="docutils literal notranslate"><span class="pre">xr</span></code> in place of <code class="docutils literal notranslate"><span class="pre">x</span></code>, which is often more natural when every row is an interval.</p>
+<p>If, after the one-sided rows are converted, no row is an interval, the two columns carry nothing extra and SurPyval stores <code class="docutils literal notranslate"><span class="pre">x</span></code> as a single column. Two-column data with no real intervals, such as a DataFrame with separate left and right columns that are always equal, is therefore accepted by every fitter, including those that cannot use intervals (Kaplan-Meier, Nelson-Aalen, Fleming-Harrington, and the MPP, MPS, MSE and MOM methods). Real intervals need a fitter that handles them, such as maximum likelihood or Turnbull.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">km</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">xl</span><span class="o">=</span><span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">],</span> <span class="n">xr</span><span class="o">=</span><span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mi">9</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">km</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[3. 5. 8. 9.] [0.75 0.5 ]
+</pre></div>
+</div>
+</div>
+</div>
+<p>In a list, any element that is a pair, whether a list, a tuple or an array, is an interval row: <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">(2,</span> <span class="pre">3),</span> <span class="pre">4]</span></code> is the same as <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">[2,</span> <span class="pre">3],</span> <span class="pre">4]</span></code>.</p>
+</section>
+<section id="condensing-repeated-values-with-counts">
+<h3>Condensing repeated values with counts<a class="headerlink" href="#condensing-repeated-values-with-counts" title="Link to this heading"></a></h3>
+<p>This example shows the flexibility surpyval offers. It allows users to analyse data that has any arbitrary combination of the different types of censoring. The surpyval format is even more powerful, because the first example above can be condensed even further through using the ‘n’ value, the number of items that share the same value and censoring flag.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="mi">8</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">n</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The first step of the fit method actually wrangles the input data into the densest form possible. So internally, the example without the n value, will be condensed to be the second example without you seeing it. But it shows the capability of how data can be input to surpyval if you have different formats. Counts must be positive integers: <code class="docutils literal notranslate"><span class="pre">n</span></code> is a number of items, not a weight.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="pitfalls-with-censored-data">
+<h3>Pitfalls with censored data<a class="headerlink" href="#pitfalls-with-censored-data" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Censoring must not carry information about the failure time.</strong> Every method in SurPyval assumes that the reason an item was censored is unrelated to when it would have failed (<em>non-informative</em> censoring). Stopping a test at a fixed time, or at a fixed number of failures, is fine. Withdrawing units <em>because</em> they look about to fail is not: those units are systematically the weak ones, and treating them as ordinary survivors makes the population look more reliable than it is.</p></li>
+<li><p><strong>Do not drop or “fill in” censored values.</strong> Dropping the survivors, or treating a censoring time as if it were a failure, biases life estimates downwards (the <a class="reference internal" href="Quickstart.html"><span class="doc">Quickstart</span></a> shows an example). Pass the censored values with their flags instead.</p></li>
+<li><p><strong>There must be some failures.</strong> A data set in which every value is right censored (or every value is left censored) cannot identify a distribution, and SurPyval raises an error. More generally, a parametric fit needs at least as many distinct non-right-censored values as it has free parameters to estimate, otherwise the answer would be wherever the optimiser happened to stop; SurPyval rejects such fits with an explanation. Fixing a parameter (<code class="docutils literal notranslate"><span class="pre">fixed={...}</span></code>) buys back a degree of freedom.</p></li>
+</ul>
+</section>
+</section>
+<section id="truncated-data">
+<h2>Truncated Data<a class="headerlink" href="#truncated-data" title="Link to this heading"></a></h2>
+<p>For my light bulb test, let’s say I test a different manufacturers bulbs. This time, I know that the bulbs from this manufacturer have been tested for 500 hours prior to shipping them. This situation needs to be treated differently because we know that in this circumstance we only have the bulbs because they survived more than 500 hours. If there were any failures prior to 500 hours the bulb would not have been shipped and therefore would not be being tested by me. This is to say, that my observation of the distribution of the light bulb failures has been <em>truncated</em>. In this regime there is no way I can have any observation below 500 hours because of the testing then discarding done by the manufacturer. The astute reader might have observed that this data is in fact <em>left</em> truncated. This is because the truncation occurs to the left of the observation on a timeline. In this example, all the bulbs are left truncated at the 500 hour mark.</p>
+<p>The difference from censoring is worth dwelling on. A censored bulb is in my data set, with partial information about its life. A bulb that failed in the manufacturer’s burn-in is simply <em>not in my data set at all</em>; I do not even know how many there were. So truncation does not change what we know about any single value, it changes which values could have reached us. Mathematically, an observation left truncated at <span class="math notranslate nohighlight">\(t_l\)</span> does not follow the density <span class="math notranslate nohighlight">\(f(x)\)</span> but the <em>conditional</em> density given that it survived past <span class="math notranslate nohighlight">\(t_l\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[f(x \mid X &gt; t_l) = \frac{f(x)}{R(t_l)}, \qquad x &gt; t_l\]</div>
+<p>and, in general, an observation that could only have been seen inside a window <span class="math notranslate nohighlight">\((t_l, t_r]\)</span> follows <span class="math notranslate nohighlight">\(f(x) / \left(F(t_r) - F(t_l)\right)\)</span>. Dividing by the probability of the window is what corrects for the values we never had the chance to see.</p>
+<p>In biostatistics left truncation is known as ‘late-entry’, this is because in clinical trials a participant can enter a trial later than other participants. Therefore this participant was at risk of not being present in the trial. This is because they could have died prior to entering the trial. Morbid, yes, but the estimate of the distribution needs to account for this risk otherwise the estimate will overestimate the true survival: everyone who enters late has, by construction, already survived to their entry time.</p>
+<p>Right truncated data is when you only observe a value because it happened below some time. For example, in the light bulb experiment, I received some of the bulbs that passed the burn in test. That is, I received some of the bulbs that survived the original 500 hours of testing. But if the failed bulbs were then given to an engineering team to investigate possible design changes that will improve reliability; they will have a series of failure times that must be below 500 hours. That is, from their perspective, they have data that is right truncated. There is one condition to this situation, they must not know how many other bulbs were tested. If they knew how many other bulbs were tested, they would know how many would fail after 500 hours. That is, they would know that all the other bulbs are right censored. So for our engineers investigating the failed bulbs, they must be ignorant of how many other bulbs were actually tested for the right truncation to work for them. In many applications we do know how many were under test and therefore right truncation becomes right censoring, but from our engineers’ circumstance, we can see that their data is right truncated.</p>
+<p>Parametric and non-parametric analysis can both handle left truncated data. This is explained further in the estimation methods for both these methods. Right truncation can be handled in surpyval with parametric analysis, with Maximum Likelihood Estimation, with Maximum Product Spacing when every observation shares the same truncation value, and with probability plotting using the Turnbull heuristic; non-parametrically it is handled by the Turnbull estimator. This is also explained in their respective sections of these notes.</p>
+<p>In surpyval, passing truncated data to the fitting method looks like:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span>  <span class="o">=</span> <span class="p">[</span><span class="mi">674</span><span class="p">,</span> <span class="mi">792</span><span class="p">,</span> <span class="mi">1153</span><span class="p">,</span> <span class="mi">1450</span><span class="p">,</span> <span class="mi">1555</span><span class="p">,</span> <span class="mi">1923</span><span class="p">,</span> <span class="mi">2019</span><span class="p">]</span>
+<span class="n">tl</span> <span class="o">=</span> <span class="mi">500</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Truncation values can be given in three ways:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">tl</span></code> and/or <code class="docutils literal notranslate"><span class="pre">tr</span></code> as a <strong>scalar</strong>: every observation shares the same bound, as with the burn-in above.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tl</span></code> and/or <code class="docutils literal notranslate"><span class="pre">tr</span></code> as an <strong>array</strong> the same length as <code class="docutils literal notranslate"><span class="pre">x</span></code>: each observation has its own bound. This is the late-entry case, where each person or unit came under observation at a different age.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">t</span></code> as a <strong>two-column array</strong> of <code class="docutils literal notranslate"><span class="pre">[tl,</span> <span class="pre">tr]</span></code> rows. <code class="docutils literal notranslate"><span class="pre">t</span></code> cannot be combined with <code class="docutils literal notranslate"><span class="pre">tl</span></code> or <code class="docutils literal notranslate"><span class="pre">tr</span></code>.</p></li>
+</ul>
+<p>A missing bound means no truncation on that side: internally it is stored as <span class="math notranslate nohighlight">\(-\infty\)</span> (left) or <span class="math notranslate nohighlight">\(+\infty\)</span> (right).</p>
+<section id="what-goes-wrong-if-truncation-is-ignored">
+<h3>What goes wrong if truncation is ignored<a class="headerlink" href="#what-goes-wrong-if-truncation-is-ignored" title="Link to this heading"></a></h3>
+<p>To see why truncation matters, simulate bulbs whose true life is Weibull with <span class="math notranslate nohighlight">\(\alpha = 1500\)</span> and <span class="math notranslate nohighlight">\(\beta = 2\)</span>, and keep only those that survived the 500 hour burn-in:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="n">life</span> <span class="o">=</span> <span class="mi">1500</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">2.0</span><span class="p">,</span> <span class="mi">400</span><span class="p">)</span>
+<span class="n">shipped</span> <span class="o">=</span> <span class="n">life</span><span class="p">[</span><span class="n">life</span> <span class="o">&gt;</span> <span class="mi">500</span><span class="p">]</span>              <span class="c1"># the burn-in failures never reach us</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"ignoring truncation :"</span><span class="p">,</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">shipped</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"with tl=500         :"</span><span class="p">,</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">shipped</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>ignoring truncation : [1693.06677152    2.42386528]
+with tl=500         : [1568.01984358    2.0411609 ]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Ignoring the truncation, the fit only ever sees bulbs that were strong enough to pass burn-in, so it overestimates the characteristic life and makes the failures look more tightly bunched (a larger <span class="math notranslate nohighlight">\(\beta\)</span>) than they really are. Telling SurPyval about the burn-in with <code class="docutils literal notranslate"><span class="pre">tl=500</span></code> recovers estimates close to the true values.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="rules-and-conventions-for-truncation">
+<h3>Rules and conventions for truncation<a class="headerlink" href="#rules-and-conventions-for-truncation" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>A value must lie strictly above its left truncation.</strong> An item that entered observation at <span class="math notranslate nohighlight">\(t_l\)</span> can only be seen to fail <em>after</em> <span class="math notranslate nohighlight">\(t_l\)</span>, so SurPyval rejects a value equal to its own left truncation bound (it would have a zero-length observation window). Right truncation must be at or above the value, and strictly above a right censored value: an item censored at exactly <span class="math notranslate nohighlight">\(t_r\)</span> would have to fail after <span class="math notranslate nohighlight">\(t_r\)</span> and at or before it. These rules are the same whether <code class="docutils literal notranslate"><span class="pre">x</span></code> has one column or two. An interval <span class="math notranslate nohighlight">\((x_l, x_r]\)</span> may start at its left truncation (<span class="math notranslate nohighlight">\(t_l \le x_l\)</span>) and must end by its right truncation (<span class="math notranslate nohighlight">\(x_r \le t_r\)</span>). One-sided rows such as <code class="docutils literal notranslate"><span class="pre">[v,</span> <span class="pre">inf]</span></code> are converted before they are checked, so they behave exactly like the one-column form.</p></li>
+<li><p><strong>Truncation bounds cannot be NaN.</strong> Use <code class="docutils literal notranslate"><span class="pre">-inf</span></code> for no left truncation and <code class="docutils literal notranslate"><span class="pre">inf</span></code> for no right truncation; a NaN bound is an error.</p></li>
+<li><p><strong>Risk sets use the (entry, exit] convention.</strong> For the non-parametric estimators, an item with left truncation <span class="math notranslate nohighlight">\(t_l\)</span> and value <span class="math notranslate nohighlight">\(x\)</span> is counted in the risk set at every time <span class="math notranslate nohighlight">\(s\)</span> with <span class="math notranslate nohighlight">\(t_l &lt; s \le x\)</span>. An item entering at exactly the time of someone else’s failure is therefore <em>not</em> at risk for that failure. This is the convention used by R’s <code class="docutils literal notranslate"><span class="pre">survival</span></code> package and by lifelines.</p></li>
+<li><p><strong>Censoring and truncation combine.</strong> A right censored item that was also right truncated at <span class="math notranslate nohighlight">\(t_r\)</span> is known to have failed in <span class="math notranslate nohighlight">\((x, t_r]\)</span>, and a left censored item that was also left truncated at <span class="math notranslate nohighlight">\(t_l\)</span> failed in <span class="math notranslate nohighlight">\((t_l, x]\)</span>. SurPyval uses these intervals in the likelihood automatically, so no special handling is needed on your part. A parametric fit’s checks read the rows the same way: data whose every row is right censored with a finite <span class="math notranslate nohighlight">\(t_r\)</span> is fitted as those intervals, not refused as having no failure. Such data still bound no failure from above, so the likelihood has no finite maximum unless a parameter is fixed: a free Weibull, Normal or Gamma fit is refused (as the intervals are), and an Exponential, Rayleigh or discrete fit warns <code class="docutils literal notranslate"><span class="pre">No</span> <span class="pre">finite</span> <span class="pre">maximum</span></code>.</p></li>
+</ul>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">try</span><span class="p">:</span>
+    <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">500</span><span class="p">,</span> <span class="mi">674</span><span class="p">,</span> <span class="mi">792</span><span class="p">],</span> <span class="n">tl</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>All left truncated values must be strictly less than the respective observed values: a value at its own left truncation time has a zero-length observation window.
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+<section id="concluding-points">
+<h2>Concluding Points<a class="headerlink" href="#concluding-points" title="Link to this heading"></a></h2>
+<p>Having read through the above explanation you might be thinking how often these scenarios appear in real data, if ever. The vast majority of data used in survival analysis is observed or right censored. This is what happens when you observe a whole population but finish the observation before the event happens on all the items being observed.</p>
+<p>Right truncation is extremely rare because it only happens if you do not know the size of the whole population under test. It can happen with scientific instruments where say, a camera is limited in the frequencies of light it can capture. So if we were to try capture a distribution of light of an object, say a star, this distribution could be truncated above and below certain frequencies. Meeker and Escobar provide an example in their book on reliability statistics for warranty analysis, similar to the contrived example provided above. If you have some returns of products from the field, these are right-truncated because you do not know what has been bought and used in the field. A more realistic example could be the estimation of race finish times at a triathlon or marathon. If I arrive at the finish line of a race and record the times of participants as they cross the line during that window I will have truncated data. I do not know how many people started the race (presumably) and I only stay and watch for a given period of time, therefore all the observations I make are truncated within the window of my observation time. In conclusion though, right truncation in survival analysis is rare.</p>
+<p>Left truncation is common in insurance studies. If an insurance company wants to estimate the distribution of losses due to property crime based on policy payouts they need to consider the impact of ‘excess’. Excess is the cost of making a claim on an insurance policy. So if I have an insurance policy with an excess of $500, if I lose $20,000 worth of property in a robbery I will have to pay $500 to be paid $20,000. Because of this, it is clear that if I lost $400 in a robbery I would not pay the $500 excess to make a claim. Therefore the distribution of property crime will be truncated by the value of the excesses on the policies. Actuaries need to consider this in their calculations of policy fees.</p>
+<p>Insurance is also a good example of right censoring. An insurance policy will also have a maximum payout. So if calculating the distribution of the value of property crime an analyst will need to consider that those payouts that are at the maximum of that policy value are in fact censored. That is, the value of the loss or damage was greater than the actual payout and therefore the payout is a censored value. In the classic Boston housing pricing data there is censored data! A histogram of the values of houses shows that there is a large number of houses at the highest price. This can be understood because a limit was set on the highest possible value, therefore these house prices are actually censored, not exact observations. This example is worked through in <a class="reference internal" href="applications.html"><span class="doc">Example Applications</span></a>.</p>
+<p>A checklist for identifying the type of each value:</p>
+<ol class="arabic simple">
+<li><p>Do I know the value exactly? Then it is observed (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>).</p></li>
+<li><p>Do I know only a range for it? Then it is censored: right (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>) if I only know a lower limit, left (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code>) if I only know an upper limit, interval (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>) if I know both.</p></li>
+<li><p>Could items with values outside some range have failed to reach my data set at all, without my knowing how many? Then the data is truncated at the limits of that range (<code class="docutils literal notranslate"><span class="pre">tl</span></code>, <code class="docutils literal notranslate"><span class="pre">tr</span></code>). A value can be both censored and truncated.</p></li>
+</ol>
+<section id="which-methods-handle-which-data">
+<h3>Which methods handle which data<a class="headerlink" href="#which-methods-handle-which-data" title="Link to this heading"></a></h3>
+<p>Not every estimator can use every type of data. For the univariate estimators:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Method</p></th>
+<th class="head"><p>Right censored</p></th>
+<th class="head"><p>Left censored</p></th>
+<th class="head"><p>Interval censored</p></th>
+<th class="head"><p>Left truncated</p></th>
+<th class="head"><p>Right truncated</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Kaplan-Meier, Nelson-Aalen, Fleming-Harrington</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-odd"><td><p>Turnbull</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-even"><td><p>Maximum Likelihood (MLE)</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p>Maximum Product Spacing (MPS)</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>One value for all</p></td>
+<td><p>One value for all</p></td>
+</tr>
+<tr class="row-even"><td><p>Probability Plotting (MPP)</p></td>
+<td><p>Yes</p></td>
+<td><p>With <code class="docutils literal notranslate"><span class="pre">heuristic=&quot;Turnbull&quot;</span></code></p></td>
+<td><p>With <code class="docutils literal notranslate"><span class="pre">heuristic=&quot;Turnbull&quot;</span></code></p></td>
+<td><p>Yes, with the (default) Nelson-Aalen, Kaplan-Meier, Fleming-Harrington or Turnbull heuristic</p></td>
+<td><p>With <code class="docutils literal notranslate"><span class="pre">heuristic=&quot;Turnbull&quot;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Mean Square Error (MSE)</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-even"><td><p>Method of Moments (MOM)</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+</tbody>
+</table>
+<p>When in doubt, use Turnbull for a non-parametric view and MLE (the default <code class="docutils literal notranslate"><span class="pre">how</span></code>) for a parametric fit: between them they handle every combination. Where a method cannot handle your data, SurPyval raises an error saying so rather than silently ignoring part of the data.</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Survival%20Analysis%20from%20Scratch.html" class="btn btn-neutral float-left" title="Survival Analysis from Scratch" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Data%20Model.html" class="btn btn-neutral float-right" title="The data model" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,642 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pooled Rates Across Sources &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Parametric" href="../surpyval.parametric.html" />
+    <link rel="prev" title="Exposure (Person-Years) Tables" href="person_years.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#non-parametric-class">Non-Parametric Class</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#non-parametric-estimators">Non-Parametric Estimators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#relative-survival">Relative Survival</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#plotting">Plotting</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.nonparametric.html#other-non-parametric-functions">Other Non-Parametric Functions</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="success_run.html">Success Run</a></li>
+<li class="toctree-l4"><a class="reference internal" href="plotting_positions.html">Plotting Positions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="person_years.html">Exposure (Person-Years) Tables</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Pooled Rates Across Sources</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+      <li class="breadcrumb-item active">Pooled Rates Across Sources</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/univariate/pooled_rate.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pooled-rates-across-sources">
+<h1>Pooled Rates Across Sources<a class="headerlink" href="#pooled-rates-across-sources" title="Link to this heading"></a></h1>
+<p>The two-stage (hierarchical) pooling of event counts from several
+sources: gamma-Poisson for events in a time at risk, beta-binomial for
+events out of a number of trials. It gives the population (between-source)
+distribution, the average across sources, the range for a new source like
+these, each source’s own and shrunk estimate, and a heterogeneity test.
+The guide, in plain words and then the maths, is
+<a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html"><span class="doc">Pooling Rates Across Sources</span></a>.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.pooled_rate">
+<span class="sig-prename descclassname"><span class="pre">surpyval.</span></span><span class="sig-name descname"><span class="pre">pooled_rate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">events</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exposure</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kind</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'rate'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'probability'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'rate'</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Bayes'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'MLE'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Bayes'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_sources</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_boot</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.PooledRate" title="surpyval.univariate.pooled_rate.PooledRate"><span class="pre">PooledRate</span></a></span></span><a class="headerlink" href="#surpyval.pooled_rate" title="Link to this definition"></a></dt>
+<dd><p>Pool event counts from several sources that may each have their own
+true rate: the two-stage (hierarchical) estimate of how the rate
+varies between sources.</p>
+<p>Each source (a site, a hospital, a study, a fleet, a batch) gives the
+number of events it saw and its exposure: the total time at risk
+(<code class="docutils literal notranslate"><span class="pre">kind=&quot;rate&quot;</span></code>: events per unit of time, distance or person-years),
+or the number of trials (<code class="docutils literal notranslate"><span class="pre">kind=&quot;probability&quot;</span></code>: events per trial,
+such as failures to start per demand or adverse events per dose).
+Adding everything into one pot assumes every source has the same
+rate, and reports a precision nobody has when they differ. This
+treats the sources as a sample from a population of sources instead,
+estimates how their true rates are spread, and gives:</p>
+<ul class="simple">
+<li><p>the <strong>population</strong> (between-source) distribution: a gamma for rates,
+a beta for probabilities;</p></li>
+<li><p>the <strong>average across sources</strong> (the population mean) with its
+interval: how well the middle of the spread is known;</p></li>
+<li><p>the range for <strong>a new source like these</strong> (the predictive
+interval): where the rate of one more source, about which nothing
+else is known, probably lies. It is wider, and is the one to use as
+a starting belief for a new source;</p></li>
+<li><p>each <strong>source’s own</strong> estimate and interval, alone and <em>shrunk</em>
+(pulled towards the others: a source with little exposure is
+pulled a long way, one with a lot hardly at all);</p></li>
+<li><p>a <strong>heterogeneity</strong> test and measures: do the sources differ by
+more than chance?</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>events</strong> (<em>array like</em>) – The number of events at each source (0 is allowed: a source with
+no events in a long exposure is evidence of a low rate).</p></li>
+<li><p><strong>exposure</strong> (<em>array like</em>) – Each source’s exposure: the total time at risk for
+<code class="docutils literal notranslate"><span class="pre">kind=&quot;rate&quot;</span></code> (any unit; the rates are per that unit), or the
+number of trials (demands) for <code class="docutils literal notranslate"><span class="pre">kind=&quot;probability&quot;</span></code>.</p></li>
+<li><p><strong>kind</strong> (<em>{&quot;rate&quot;</em><em>, </em><em>&quot;probability&quot;}</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;rate&quot;</span></code> (default): events in a time at risk, Poisson within a
+source, gamma between sources. <code class="docutils literal notranslate"><span class="pre">&quot;probability&quot;</span></code>: events in a
+number of trials, binomial within a source, beta between sources.</p></li>
+<li><p><strong>labels</strong> (<em>sequence</em><em>, </em><em>optional</em>) – A name for each source; default <code class="docutils literal notranslate"><span class="pre">&quot;source</span> <span class="pre">1&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;source</span> <span class="pre">2&quot;</span></code>,
+…</p></li>
+<li><p><strong>method</strong> (<em>{&quot;Bayes&quot;</em><em>, </em><em>&quot;MLE&quot;}</em><em>, </em><em>optional</em>) – <p>How the population’s two parameters are estimated.</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;Bayes&quot;</span></code> (default): their posterior on a grid under a weak
+prior (flat on the log of the mean rate, or the logit of the
+mean probability; <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">(1</span> <span class="pre">+</span> <span class="pre">a)^2</span></code> on the shape <code class="docutils literal notranslate"><span class="pre">a</span></code>). Every
+interval averages over that posterior, so it carries the
+uncertainty in how spread the sources are. Exact up to the
+grid, deterministic, and calibrated for small numbers of
+sources.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code>: marginal maximum likelihood (the negative binomial
+or beta-binomial likelihood, the empirical-Bayes estimate). The
+average’s interval is the profile-likelihood interval; the new
+source’s interval and the shrunk intervals average over a
+parametric bootstrap of the population (<code class="docutils literal notranslate"><span class="pre">n_boot</span></code> refits).</p></li>
+</ul>
+</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – Every interval is two-sided <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code>. Default 0.05 (95%);
+<code class="docutils literal notranslate"><span class="pre">alpha_ci=0.1</span></code> gives the 5th to 95th percentiles usual for
+generic rate data.</p></li>
+<li><p><strong>min_sources</strong> (<em>int</em><em>, </em><em>optional</em>) – The fewest sources a population is estimated from. Default 4:
+with two or three, the spread between sources cannot be told
+apart from the sources themselves, and the range for a new source
+is very wide or wrong. With fewer, the result gives the sources
+side by side (each with its own interval), the one-pot estimate
+and the heterogeneity test, and no population, with a warning.</p></li>
+<li><p><strong>n_boot</strong> (<em>int</em><em>, </em><em>optional</em>) – The bootstrap refits for <code class="docutils literal notranslate"><span class="pre">method=&quot;MLE&quot;</span></code>. Default 200.</p></li>
+<li><p><strong>random_state</strong> (<em>None</em><em>, </em><em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – The seed of the bootstrap (<code class="docutils literal notranslate"><span class="pre">method=&quot;MLE&quot;</span></code> only).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#surpyval.PooledRate" title="surpyval.PooledRate">PooledRate</a></p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>For rates, source <span class="math notranslate nohighlight">\(i\)</span> has <span class="math notranslate nohighlight">\(x_i\)</span> events in exposure
+<span class="math notranslate nohighlight">\(T_i\)</span>, <span class="math notranslate nohighlight">\(x_i \sim \text{Poisson}(\lambda_i T_i)\)</span>, and the
+sources’ rates are a sample <span class="math notranslate nohighlight">\(\lambda_i \sim \text{Gamma}(a,
+b)\)</span> (shape <span class="math notranslate nohighlight">\(a\)</span>, rate <span class="math notranslate nohighlight">\(b\)</span>, mean <span class="math notranslate nohighlight">\(a / b\)</span>). With
+<span class="math notranslate nohighlight">\(\lambda_i\)</span> integrated out, <span class="math notranslate nohighlight">\(x_i\)</span> is negative binomial,
+and the likelihood of <span class="math notranslate nohighlight">\((a, b)\)</span> is the product over the sources.
+For probabilities, <span class="math notranslate nohighlight">\(x_i \sim \text{Binomial}(n_i, p_i)\)</span>,
+<span class="math notranslate nohighlight">\(p_i \sim \text{Beta}(a, b)\)</span> and <span class="math notranslate nohighlight">\(x_i\)</span> is beta-binomial.</p>
+<p>Given the population, a source’s own rate has the conjugate
+posterior <span class="math notranslate nohighlight">\(\text{Gamma}(a + x_i, b + T_i)\)</span> (or
+<span class="math notranslate nohighlight">\(\text{Beta}(a + x_i, b + n_i - x_i)\)</span>): the shrunk estimate.
+The new source’s distribution is the population itself. Under
+<code class="docutils literal notranslate"><span class="pre">&quot;Bayes&quot;</span></code> each is averaged over the posterior of <span class="math notranslate nohighlight">\((a, b)\)</span>;
+under <code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code> over the bootstrap refits (the point values are the
+plug-in ones at the MLE). This is the “two-stage” or hierarchical
+Bayes treatment of generic data in probabilistic risk assessment
+(NUREG/CR-6823, chapter 8); its empirical-Bayes form fixes
+<span class="math notranslate nohighlight">\((a, b)\)</span> at their MLE.</p>
+<p>The heterogeneity test is Pearson’s chi-square test that every
+source has one rate (<code class="docutils literal notranslate"><span class="pre">k</span> <span class="pre">-</span> <span class="pre">1</span></code> degrees of freedom; NUREG/CR-6823,
+section 6.2.3); it is approximate when the expected counts are small.
+<span class="math notranslate nohighlight">\(I^2 = \max(0, (Q - \text{df}) / Q)\)</span> is the share of the
+variation beyond chance (Higgins and Thompson 2002).</p>
+<p>A source’s own interval is the Jeffreys interval
+(<span class="math notranslate nohighlight">\(\text{Gamma}(x + 1/2, T)\)</span>, <span class="math notranslate nohighlight">\(\text{Beta}(x + 1/2, n - x
++ 1/2)\)</span>), which is defined with no events.</p>
+<p class="rubric">References</p>
+<p>Atwood, C. L., LaChance, J. L., Martz, H. F., Anderson, D. J.,
+Englehardt, M., Whitehead, D. and Wheeler, T. (2003), <em>Handbook of
+Parameter Estimation for Probabilistic Risk Assessment</em>, NUREG/CR-6823,
+US Nuclear Regulatory Commission, chapters 6 and 8.</p>
+<p>Gaver, D. P. and O’Muircheartaigh, I. G. (1987), “Robust empirical
+Bayes analyses of event rates”, Technometrics 29, 1-15.</p>
+<p>Gelfand, A. E. and Smith, A. F. M. (1990), “Sampling-based approaches
+to calculating marginal densities”, JASA 85, 398-409.</p>
+<p>Higgins, J. P. T. and Thompson, S. G. (2002), “Quantifying
+heterogeneity in a meta-analysis”, Statistics in Medicine 21,
+1539-1558.</p>
+<p class="rubric">Examples</p>
+<p>Six sources of failures to start, out of a number of demands:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">pooled_rate</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pooled</span> <span class="o">=</span> <span class="n">pooled_rate</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="mi">227</span><span class="p">,</span> <span class="mi">137</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">42</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="mi">410593</span><span class="p">,</span> <span class="mi">49000</span><span class="p">,</span> <span class="mi">2100</span><span class="p">,</span> <span class="mi">260</span><span class="p">,</span> <span class="mi">3700</span><span class="p">,</span> <span class="mi">2400</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">kind</span><span class="o">=</span><span class="s2">"probability"</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">p</span> <span class="o">=</span> <span class="n">pooled</span><span class="o">.</span><span class="n">predictive</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s2">"median"</span><span class="p">],</span> <span class="mi">4</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s2">"lower"</span><span class="p">],</span> <span class="mi">5</span><span class="p">))</span>
+<span class="go">0.0046 0.00017</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s2">"upper"</span><span class="p">],</span> <span class="mi">3</span><span class="p">))</span>
+<span class="go">0.026</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.PooledRate">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.</span></span><span class="sig-name descname"><span class="pre">PooledRate</span></span><a class="headerlink" href="#surpyval.PooledRate" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>What <a class="reference internal" href="#surpyval.pooled_rate" title="surpyval.pooled_rate"><code class="xref py py-func docutils literal notranslate"><span class="pre">pooled_rate()</span></code></a> estimated from several sources’ counts.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PooledRate.kind">
+<span class="sig-name descname"><span class="pre">kind</span></span><a class="headerlink" href="#surpyval.PooledRate.kind" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">&quot;rate&quot;</span></code> (events per unit of exposure) or <code class="docutils literal notranslate"><span class="pre">&quot;probability&quot;</span></code>
+(events per trial).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PooledRate.method">
+<span class="sig-name descname"><span class="pre">method</span></span><a class="headerlink" href="#surpyval.PooledRate.method" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">&quot;Bayes&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PooledRate.alpha_ci">
+<span class="sig-name descname"><span class="pre">alpha_ci</span></span><a class="headerlink" href="#surpyval.PooledRate.alpha_ci" title="Link to this definition"></a></dt>
+<dd><p>Every interval is two-sided <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">labels,</span> <span class="pre">events,</span> <span class="pre">exposure</span></span></dt>
+<dd><p>The sources, as given.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PooledRate.pooled">
+<span class="sig-name descname"><span class="pre">pooled</span></span><a class="headerlink" href="#surpyval.PooledRate.pooled" title="Link to this definition"></a></dt>
+<dd><p>Whether a population was estimated. <code class="docutils literal notranslate"><span class="pre">False</span></code> with fewer than
+<code class="docutils literal notranslate"><span class="pre">min_sources</span></code> sources, or with no events at any source (and for
+a probability, with every trial an event), when <a class="reference internal" href="#surpyval.PooledRate.message" title="surpyval.PooledRate.message"><code class="xref py py-attr docutils literal notranslate"><span class="pre">message</span></code></a>
+says why; the per-source results, <a class="reference internal" href="#surpyval.PooledRate.common" title="surpyval.PooledRate.common"><code class="xref py py-attr docutils literal notranslate"><span class="pre">common</span></code></a> and the
+heterogeneity test are still given.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PooledRate.message">
+<span class="sig-name descname"><span class="pre">message</span></span><a class="headerlink" href="#surpyval.PooledRate.message" title="Link to this definition"></a></dt>
+<dd><p>Why there is no population (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> when there is one).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PooledRate.population_params">
+<span class="sig-name descname"><span class="pre">population_params</span></span><a class="headerlink" href="#surpyval.PooledRate.population_params" title="Link to this definition"></a></dt>
+<dd><p>The population’s parameters: <code class="docutils literal notranslate"><span class="pre">{&quot;shape&quot;,</span> <span class="pre">&quot;rate&quot;,</span> <span class="pre">&quot;mean&quot;}</span></code> for a
+gamma, <code class="docutils literal notranslate"><span class="pre">{&quot;a&quot;,</span> <span class="pre">&quot;b&quot;,</span> <span class="pre">&quot;mean&quot;}</span></code> for a beta, and <code class="docutils literal notranslate"><span class="pre">&quot;cv&quot;</span></code>, its
+coefficient of variation (0 when there is no spread). The MLE’s
+shape is <code class="docutils literal notranslate"><span class="pre">inf</span></code> when the likelihood is largest with no spread.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PooledRate.average">
+<span class="sig-name descname"><span class="pre">average</span></span><a class="headerlink" href="#surpyval.PooledRate.average" title="Link to this definition"></a></dt>
+<dd><p>The population mean (the average across sources): <code class="docutils literal notranslate"><span class="pre">estimate</span></code>
+(the MLE, or under <code class="docutils literal notranslate"><span class="pre">&quot;Bayes&quot;</span></code> the posterior median), <code class="docutils literal notranslate"><span class="pre">lower</span></code>,
+<code class="docutils literal notranslate"><span class="pre">upper</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PooledRate.predictive">
+<span class="sig-name descname"><span class="pre">predictive</span></span><a class="headerlink" href="#surpyval.PooledRate.predictive" title="Link to this definition"></a></dt>
+<dd><p>A new source like these: <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">median</span></code>, <code class="docutils literal notranslate"><span class="pre">lower</span></code>,
+<code class="docutils literal notranslate"><span class="pre">upper</span></code> of the population averaged over the uncertainty in its
+parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PooledRate.common">
+<span class="sig-name descname"><span class="pre">common</span></span><a class="headerlink" href="#surpyval.PooledRate.common" title="Link to this definition"></a></dt>
+<dd><p>Everything in one pot (assumes one rate for all): <code class="docutils literal notranslate"><span class="pre">estimate</span></code>
+(<code class="docutils literal notranslate"><span class="pre">sum</span> <span class="pre">events</span> <span class="pre">/</span> <span class="pre">sum</span> <span class="pre">exposure</span></code>), <code class="docutils literal notranslate"><span class="pre">lower</span></code>, <code class="docutils literal notranslate"><span class="pre">upper</span></code> (Jeffreys).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PooledRate.heterogeneity">
+<span class="sig-name descname"><span class="pre">heterogeneity</span></span><a class="headerlink" href="#surpyval.PooledRate.heterogeneity" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">chi2</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code> and <code class="docutils literal notranslate"><span class="pre">p_value</span></code> of Pearson’s test that every
+source has one rate, and <code class="docutils literal notranslate"><span class="pre">I2</span></code>; <code class="docutils literal notranslate"><span class="pre">None</span></code> values with one source.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">pooled_rate</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pooled</span> <span class="o">=</span> <span class="n">pooled_rate</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">1200</span><span class="p">,</span> <span class="mi">900</span><span class="p">,</span> <span class="mi">1500</span><span class="p">,</span> <span class="mi">800</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pooled</span><span class="o">.</span><span class="n">pooled</span><span class="p">,</span> <span class="n">pooled</span><span class="o">.</span><span class="n">n_sources</span>
+<span class="go">(True, 5)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">sorted</span><span class="p">(</span><span class="n">pooled</span><span class="o">.</span><span class="n">predictive</span><span class="p">)</span>
+<span class="go">['lower', 'mean', 'median', 'upper']</span>
+</pre></div>
+</div>
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.PooledRate.assumptions">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">assumptions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#surpyval.PooledRate.assumptions" title="Link to this definition"></a></dt>
+<dd><p>The assumptions behind the numbers, in words.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.PooledRate.from_dict">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.PooledRate" title="surpyval.univariate.pooled_rate.PooledRate"><span class="pre">PooledRate</span></a></span></span><a class="headerlink" href="#surpyval.PooledRate.from_dict" title="Link to this definition"></a></dt>
+<dd><p>The result <a class="reference internal" href="#surpyval.PooledRate.to_dict" title="surpyval.PooledRate.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> wrote.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>result_dict</strong> (<em>dict</em>) – A dictionary from <a class="reference internal" href="#surpyval.PooledRate.to_dict" title="surpyval.PooledRate.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#surpyval.PooledRate" title="surpyval.PooledRate">PooledRate</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.PooledRate.method_description">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">method_description</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#surpyval.PooledRate.method_description" title="Link to this definition"></a></dt>
+<dd><p>The method, in one sentence.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.PooledRate.n_sources">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">n_sources</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#surpyval.PooledRate.n_sources" title="Link to this definition"></a></dt>
+<dd><p>The number of sources.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.PooledRate.population">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">population</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Any</span></em><a class="headerlink" href="#surpyval.PooledRate.population" title="Link to this definition"></a></dt>
+<dd><p>The population (between-source) distribution, as a SurPyval
+<code class="docutils literal notranslate"><span class="pre">Gamma</span></code> (shape, rate) or <code class="docutils literal notranslate"><span class="pre">Beta</span></code> (a, b); <code class="docutils literal notranslate"><span class="pre">None</span></code> without a
+population, or for an MLE with no spread, whose population is the
+single value <code class="docutils literal notranslate"><span class="pre">population_params[&quot;mean&quot;]</span></code>.</p>
+<p>Under <code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code> it is the MLE. Under <code class="docutils literal notranslate"><span class="pre">&quot;Bayes&quot;</span></code> the population
+averaged over the posterior is not exactly a gamma or beta; this
+is the gamma or beta with the same median and upper
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span> <span class="pre">/</span> <span class="pre">2</span></code> quantile as <a class="reference internal" href="#surpyval.PooledRate.predictive" title="surpyval.PooledRate.predictive"><code class="xref py py-attr docutils literal notranslate"><span class="pre">predictive</span></code></a> (its upper
+side, which matters most, is kept). It updates with a new
+source’s own counts by conjugacy (see <a class="reference internal" href="#surpyval.PooledRate.update" title="surpyval.PooledRate.update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update()</span></code></a> for the
+exact update).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.PooledRate.sources">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sources</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span></em><a class="headerlink" href="#surpyval.PooledRate.sources" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">events</span></code>, <code class="docutils literal notranslate"><span class="pre">exposure</span></code>, <code class="docutils literal notranslate"><span class="pre">own</span></code> (events
+/ exposure) with its Jeffreys interval <code class="docutils literal notranslate"><span class="pre">own_lower</span></code> and
+<code class="docutils literal notranslate"><span class="pre">own_upper</span></code>, and <code class="docutils literal notranslate"><span class="pre">shrunk</span></code> (the posterior mean given the
+population) with <code class="docutils literal notranslate"><span class="pre">shrunk_lower</span></code> and <code class="docutils literal notranslate"><span class="pre">shrunk_upper</span></code> (<code class="docutils literal notranslate"><span class="pre">nan</span></code>
+without a population).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>One row per source</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.PooledRate.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.PooledRate.to_dict" title="Link to this definition"></a></dt>
+<dd><p>The result as a dict of native Python values, strict JSON (a
+non-finite number is written as <code class="docutils literal notranslate"><span class="pre">None</span></code> and recorded under
+<code class="docutils literal notranslate"><span class="pre">&quot;non_finite&quot;</span></code>). It holds the population’s parameter sets
+(posterior cells or bootstrap refits), so <a class="reference internal" href="#surpyval.PooledRate.update" title="surpyval.PooledRate.update"><code class="xref py py-meth docutils literal notranslate"><span class="pre">update()</span></code></a> works
+on the restored result.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">pooled_rate</span><span class="p">,</span> <span class="n">PooledRate</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pooled</span> <span class="o">=</span> <span class="n">pooled_rate</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">1200</span><span class="p">,</span> <span class="mi">900</span><span class="p">,</span> <span class="mi">1500</span><span class="p">,</span> <span class="mi">800</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">text</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">pooled</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">back</span> <span class="o">=</span> <span class="n">PooledRate</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">back</span><span class="o">.</span><span class="n">predictive</span> <span class="o">==</span> <span class="n">pooled</span><span class="o">.</span><span class="n">predictive</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.PooledRate.update">
+<span class="sig-name descname"><span class="pre">update</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">events</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exposure</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.PooledRate.update" title="Link to this definition"></a></dt>
+<dd><p>A new source’s estimate from its own counts and the
+population (the second stage): its posterior given these sources
+and its own <code class="docutils literal notranslate"><span class="pre">events</span></code> in <code class="docutils literal notranslate"><span class="pre">exposure</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>events</strong> (<em>float</em>) – The new source’s events.</p></li>
+<li><p><strong>exposure</strong> (<em>float</em>) – Its time at risk (<code class="docutils literal notranslate"><span class="pre">kind=&quot;rate&quot;</span></code>) or trials
+(<code class="docutils literal notranslate"><span class="pre">kind=&quot;probability&quot;</span></code>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">median</span></code>, <code class="docutils literal notranslate"><span class="pre">lower</span></code> and <code class="docutils literal notranslate"><span class="pre">upper</span></code> (two-sided
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code>), averaged over the population’s uncertainty
+as <a class="reference internal" href="#surpyval.PooledRate.predictive" title="surpyval.PooledRate.predictive"><code class="xref py py-attr docutils literal notranslate"><span class="pre">predictive</span></code></a> is.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">pooled_rate</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">pooled</span> <span class="o">=</span> <span class="n">pooled_rate</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">1200</span><span class="p">,</span> <span class="mi">900</span><span class="p">,</span> <span class="mi">1500</span><span class="p">,</span> <span class="mi">800</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">new</span> <span class="o">=</span> <span class="n">pooled</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">400</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">new</span><span class="p">[</span><span class="s2">"lower"</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">new</span><span class="p">[</span><span class="s2">"mean"</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">new</span><span class="p">[</span><span class="s2">"upper"</span><span class="p">]</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="person_years.html" class="btn btn-neutral float-left" title="Exposure (Person-Years) Tables" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../surpyval.parametric.html" class="btn btn-neutral float-right" title="Parametric" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

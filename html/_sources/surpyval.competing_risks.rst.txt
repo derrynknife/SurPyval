@@ -1,0 +1,80 @@
+Competing Risks
+===============
+
+Models for units that can fail from one of several distinct causes,
+where the occurrence of one cause removes the unit from risk of the
+others. Import them from ``surpyval.univariate.competing_risks``.
+
+For a narrative introduction with worked examples, see
+:doc:`Competing Risks SurPyval Modelling`; for the statistical
+background, see :doc:`Competing Risks Analysis`. The Gray test for
+comparing cumulative incidence between groups is documented with the
+other hypothesis tests in :doc:`comparison_and_validation`.
+
+Non-Parametric (Aalen-Johansen)
+-------------------------------
+
+The cumulative incidence of each cause estimated without a model, the
+incidence-increment helper it (and Gray's test) is built on, and the
+variance its confidence bounds (``cb``) use.
+
+.. autoclass:: surpyval.univariate.competing_risks.nonparametric.competing_risks.CompetingRisks
+   :members:
+
+.. autofunction:: surpyval.univariate.competing_risks.aalen_johansen.aalen_johansen_iif
+
+.. autofunction:: surpyval.univariate.competing_risks.aalen_johansen.aalen_johansen_variance
+
+The restricted mean time lost to a cause (``CompetingRisks.rmtl``, and
+``ParametricCompetingRisks.rmtl`` below), its variance, and the
+comparison of two groups.
+
+.. autofunction:: surpyval.univariate.competing_risks.rmtl.rmtl_diff
+
+.. autofunction:: surpyval.univariate.competing_risks.rmtl.aalen_johansen_rmtl
+
+Non-Parametric, Interval-Censored
+---------------------------------
+
+``CompetingRisks.fit`` given left- or interval-censored rows (or failures
+whose cause was not recorded, with ``masked="include"``) estimates each
+cause's cumulative incidence without a model by the non-parametric
+maximum-likelihood estimate (Hudgens, Satten and Longini 2001); the fitted
+model's ``estimator`` is then ``"NPMLE"``, and its ``innermost_intervals``,
+``beyond``, ``log_likelihood``, ``converged``, ``gap`` and ``iterations``
+describe the estimate (see :meth:`CompetingRisks.fit
+<surpyval.univariate.competing_risks.nonparametric.competing_risks.CompetingRisks.fit>`).
+``gray_test`` takes the same rows, by multiple imputation; it is with the
+other hypothesis tests in :doc:`comparison_and_validation`.
+
+Parametric
+----------
+
+One distribution per cause, combined into cumulative incidence
+functions.
+
+.. autoclass:: surpyval.univariate.competing_risks.parametric.parametric_competing_risks.ParametricCompetingRisks
+   :members:
+
+Regression
+----------
+
+Covariate models for competing risks: the Fine-Gray subdistribution
+hazards model (``FineGray`` is an instance of ``FineGray_`` below; its
+``fit`` returns a ``FineGrayModel``),
+``CompetingRisksProportionalHazards``, which fits either a cause-specific
+Cox model per cause or a Fine-Gray model per cause, and
+``ParametricCompetingRisksRegression``, which fits a parametric regression
+per cause.
+
+.. autoclass:: surpyval.univariate.competing_risks.regression.fine_gray.FineGray_
+   :members:
+
+.. autoclass:: surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel
+   :members:
+
+.. autoclass:: surpyval.univariate.competing_risks.regression.competing_risks_proportional_hazard.CompetingRisksProportionalHazards
+   :members:
+
+.. autoclass:: surpyval.univariate.competing_risks.regression.parametric_competing_risks_regression.ParametricCompetingRisksRegression
+   :members:

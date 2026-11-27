@@ -1,0 +1,1227 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Software Reliability Growth &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Degradation Modelling with SurPyval" href="Degradation%20Modelling%20with%20SurPyval.html" />
+    <link rel="prev" title="Intervention Analysis with SurPyval" href="Intervention%20Analysis%20with%20SurPyval.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Software Reliability Growth</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-models-assume">What the models assume</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fitting-failure-times">Fitting failure times</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fitting-weekly-counts">Fitting weekly counts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#which-model">Which model?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#which-model-predicts-best">Which model predicts best?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-many-faults-are-left">How many faults are left?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-reliable-is-it-now">How reliable is it now?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-much-more-testing">How much more testing?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#when-to-release">When to release</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-whole-number-of-faults-jelinski-moranda">A whole number of faults: Jelinski-Moranda</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#before-testing-starts-defects-by-phase">Before testing starts: defects by phase</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#when-a-fix-may-not-help-littlewood-verrall">When a fix may not help: Littlewood-Verrall</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#when-the-testing-was-not-steady-effort-and-change-points">When the testing was not steady: effort and change points</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#when-not-to-trust-the-answers">When not to trust the answers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Software Reliability Growth</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Software Reliability Growth.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="software-reliability-growth">
+<h1>Software Reliability Growth<a class="headerlink" href="#software-reliability-growth" title="Link to this heading"></a></h1>
+<p>While software is tested, it fails; each failure is traced to a fault, and
+the fault is fixed. If the fixes work, failures come less and less often.
+A <em>software reliability growth model</em> is a curve fitted to those failures,
+which answers the questions a test or release manager asks:</p>
+<ul class="simple">
+<li><p>How many faults are left?</p></li>
+<li><p>How reliable is the software now?</p></li>
+<li><p>How much more testing would it take to reach a target?</p></li>
+<li><p>When is it cheapest to release?</p></li>
+</ul>
+<p>Nothing here is special to software: the same models fit any process in
+which problems are found and removed (the commissioning of a plant, the
+proving of a new design). This page shows the models SurPyval has, how to
+fit them to failure times or to weekly counts, how to choose between them,
+the three answers with their confidence bounds, and when not to believe
+them. Every class used here is documented under <a class="reference internal" href="surpyval.counting.html"><span class="doc">Recurrent Event Models</span></a>.</p>
+<section id="what-the-models-assume">
+<h2>What the models assume<a class="headerlink" href="#what-the-models-assume" title="Link to this heading"></a></h2>
+<p>All four are Poisson processes whose failure rate (the <em>intensity</em>) changes
+with the amount of testing done, <code class="docutils literal notranslate"><span class="pre">t</span></code>. Each has a curve for the expected
+number of failures by <code class="docutils literal notranslate"><span class="pre">t</span></code>, written <span class="math notranslate nohighlight">\(\Lambda(t)\)</span>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 30.0%" />
+<col style="width: 48.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Model</p></th>
+<th class="head"><p>Expected failures by <code class="docutils literal notranslate"><span class="pre">t</span></code></p></th>
+<th class="head"><p>In words</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GoelOkumoto</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(a\,(1 - e^{-bt})\)</span></p></td>
+<td><p>There are <code class="docutils literal notranslate"><span class="pre">a</span></code> faults in all, and each is found at the same rate
+<code class="docutils literal notranslate"><span class="pre">b</span></code>. The failure rate is highest at the start and falls by the
+same proportion every week.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">YamadaDelayedS</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(a\,(1 - (1 + bt)\,e^{-bt})\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">a</span></code> faults in all, but finding one takes two steps (a failure,
+then its cause), so the count is slow to start: the failure rate
+rises to a peak and then falls. An S-shaped curve.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">InflectionS</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(a\,\dfrac{1 - e^{-bt}}{1 + \psi e^{-bt}}\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">a</span></code> faults in all, some of which can only be found once others
+are out of the way. <code class="docutils literal notranslate"><span class="pre">psi</span></code> says how S-shaped the curve is;
+<code class="docutils literal notranslate"><span class="pre">psi</span> <span class="pre">=</span> <span class="pre">0</span></code> is Goel-Okumoto.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">MusaOkumoto</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\log(1 + \lambda_0 \theta t)\,/\,\theta\)</span></p></td>
+<td><p>No fixed number of faults. Each fix lowers the failure rate by the
+same proportion <code class="docutils literal notranslate"><span class="pre">theta</span></code>, so early fixes help most, and failures
+never quite stop.</p></td>
+</tr>
+</tbody>
+</table>
+<p>They share three assumptions, and the answers are only as good as these:</p>
+<ul class="simple">
+<li><p>The testing is steady: a week of testing late on is like a week early on
+(the same people, the same kind of tests, the same software apart from
+the fixes).</p></li>
+<li><p>A fix removes its fault and adds no new one.</p></li>
+<li><p>Time is measured in whatever drives failures: running time or test
+cases executed are better clocks than the calendar, if you have them.</p></li>
+</ul>
+<p>The first three models have a <em>finite</em> number of faults, <code class="docutils literal notranslate"><span class="pre">a</span></code>; the fourth
+does not, and neither do the general-purpose <code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code> and <code class="docutils literal notranslate"><span class="pre">Duane</span></code>
+power laws (see <a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Modelling with SurPyval</span></a>), which
+can be fitted to the same data and compared.</p>
+</section>
+<section id="fitting-failure-times">
+<h2>Fitting failure times<a class="headerlink" href="#fitting-failure-times" title="Link to this heading"></a></h2>
+<p>The data are the failures of the Naval Tactical Data System (NTDS), a
+classic set in this field: the days between the 26 failures found in the
+production phase of one module’s development <a class="reference internal" href="#jm1972" id="id1"><span>[JM1972]</span></a> (as tabulated in
+<a class="reference internal" href="#lxz2015" id="id2"><span>[LXZ2015]</span></a>). The models take the failure <em>times</em>, the running total:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">GoelOkumoto</span>
+
+<span class="n">days_between</span> <span class="o">=</span> <span class="p">[</span><span class="mi">9</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span>
+                <span class="mi">9</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">91</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">days</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">days_between</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">GoelOkumoto</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">days</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"days"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Recurrence SurPyval Model
+==================================
+Process             : Goel-Okumoto
+Unit                : days
+Fitted by           : MLE
+Parameters          :
+         a: 33.99333123108359
+         b: 0.005790259120844075
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The fit says that about 34 faults were there to be found, each found at a
+rate of 0.0058 a day. The last failure was on day 250, and with no other
+information the test is taken to end there. If testing went on after the
+last failure with nothing found, say so: add the end of the test as a
+last row with <code class="docutils literal notranslate"><span class="pre">c=1</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># the same failures, with testing to day 280 and nothing more found</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">days</span><span class="p">,</span> <span class="mi">280</span><span class="p">)</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">26</span> <span class="o">+</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">GoelOkumoto</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Several systems under the same test are told apart with <code class="docutils literal notranslate"><span class="pre">i</span></code>, as for the
+other recurrent models; each is then expected to hold <code class="docutils literal notranslate"><span class="pre">a</span></code> faults.</p>
+<p><code class="docutils literal notranslate"><span class="pre">plot()</span></code> draws the fitted curve over the failures actually counted, with
+its confidence band:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">();</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Software%20Reliability%20Growth_2_0.png" src="_images/Software%20Reliability%20Growth_2_0.png" />
+</div>
+</div>
+</section>
+<section id="fitting-weekly-counts">
+<h2>Fitting weekly counts<a class="headerlink" href="#fitting-weekly-counts" title="Link to this heading"></a></h2>
+<p>Often the times are not recorded, only how many failures each week (or
+build, or sprint) had. Give each period as a row <code class="docutils literal notranslate"><span class="pre">[start,</span> <span class="pre">end]</span></code> with
+<code class="docutils literal notranslate"><span class="pre">c=2</span></code> and its count as <code class="docutils literal notranslate"><span class="pre">n</span></code>. Here are the same failures counted in
+25-day periods:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">edges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">251</span><span class="p">,</span> <span class="mi">25</span><span class="p">)</span>
+<span class="n">counts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">histogram</span><span class="p">(</span><span class="n">days</span><span class="p">,</span> <span class="n">edges</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<span class="n">periods</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">edges</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">edges</span><span class="p">[</span><span class="mi">1</span><span class="p">:]])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"failures in each period:"</span><span class="p">,</span> <span class="n">counts</span><span class="p">)</span>
+
+<span class="n">grouped</span> <span class="o">=</span> <span class="n">GoelOkumoto</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">periods</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="mi">10</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">counts</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">grouped</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>failures in each period: [2 4 5 7 3 1 1 0 0 3]
+[3.29939e+01 6.20000e-03]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The answer is close to the one from the exact times: counts lose a
+little, not much. Periods need not be the same length, and a period with
+no failures is a row with <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">0</span></code> (leaving it out would say it was not
+tested).</p>
+</section>
+<section id="which-model">
+<h2>Which model?<a class="headerlink" href="#which-model" title="Link to this heading"></a></h2>
+<p>Fit them all and compare. <code class="docutils literal notranslate"><span class="pre">aic()</span></code> is the usual yardstick (lower is
+better; a difference under 2 is no real preference):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">HPP</span><span class="p">,</span> <span class="n">CrowAMSAA</span><span class="p">,</span> <span class="n">InflectionS</span><span class="p">,</span> <span class="n">MusaOkumoto</span><span class="p">,</span> <span class="n">YamadaDelayedS</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">fits</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="p">:</span> <span class="n">f</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">days</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="p">(</span><span class="n">GoelOkumoto</span><span class="p">,</span> <span class="n">YamadaDelayedS</span><span class="p">,</span> <span class="n">InflectionS</span><span class="p">,</span> <span class="n">MusaOkumoto</span><span class="p">,</span>
+              <span class="n">CrowAMSAA</span><span class="p">,</span> <span class="n">HPP</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">fit</span> <span class="ow">in</span> <span class="n">fits</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">:</span><span class="s2">28s</span><span class="si">}</span><span class="s2"> AIC </span><span class="si">{</span><span class="n">fit</span><span class="o">.</span><span class="n">aic</span><span class="p">()</span><span class="si">:</span><span class="s2">7.2f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Goel-Okumoto                 AIC  169.38
+Yamada delayed S-shaped      AIC  165.84
+Inflection S-shaped          AIC  170.14
+Musa-Okumoto                 AIC  170.17
+Crow-AMSAA                   AIC  172.82
+Homogeneous Poisson Process  AIC  171.69
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The delayed S-shaped curve fits these failures best: they were slow to
+start (2 in the first 25 days, 7 in the fourth). The constant rate
+(<code class="docutils literal notranslate"><span class="pre">HPP</span></code>) and the power law are worst. Three more checks are worth a
+line each:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">trend_test</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Laplace Trend Test
+==================
+Null hypothesis  : no trend (homogeneous Poisson process)
+Alternative      : two-sided
+Statistic        : -2.44704
+p-value          : 0.0144034
+Direction        : decreasing
+Trend            : decreasing (p &lt; 0.05)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The trend test asks whether there is growth at all: is the failure rate
+changing, or would a constant rate do? Here it is falling (p = 0.014). If
+it were not, no growth model should be believed, whatever it printed.</p>
+<p><code class="docutils literal notranslate"><span class="pre">cramer_von_mises</span></code> tests whether the failures follow the fitted curve (a
+small p-value says they do not), and a plot of each fitted curve against
+the counted failures shows where a model departs:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+
+<span class="n">yamada</span> <span class="o">=</span> <span class="n">fits</span><span class="p">[</span><span class="s2">"Yamada delayed S-shaped"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">yamada</span><span class="o">.</span><span class="n">cramer_von_mises</span><span class="p">(</span><span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">400</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">days</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">27</span><span class="p">),</span> <span class="n">where</span><span class="o">=</span><span class="s2">"post"</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"k"</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">"failures"</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">"Goel-Okumoto"</span><span class="p">,</span> <span class="s2">"Yamada delayed S-shaped"</span><span class="p">,</span> <span class="s2">"Musa-Okumoto"</span><span class="p">):</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">fits</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="n">t</span><span class="p">),</span> <span class="n">label</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">axvline</span><span class="p">(</span><span class="mi">250</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s2">"grey"</span><span class="p">,</span> <span class="n">linestyle</span><span class="o">=</span><span class="s2">":"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">"days of testing"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">"failures"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">();</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Cramer-von Mises Goodness-of-Fit Test
+=====================================
+Null hypothesis  : events follow the fitted intensity
+Statistic        : 0.123135
+p-value          : 0.109453 (200 bootstrap samples)
+</pre></div>
+</div>
+<img alt="_images/Software%20Reliability%20Growth_9_1.png" src="_images/Software%20Reliability%20Growth_9_1.png" />
+</div>
+</div>
+<p>The curves agree over the 250 days of data and part company after it:
+that is the nature of the problem. Choosing a model is choosing how to
+read the future, and the data seen so far cannot settle it alone. Give
+most weight to the model whose assumptions describe how the testing was
+done.</p>
+</section>
+<section id="which-model-predicts-best">
+<h2>Which model predicts best?<a class="headerlink" href="#which-model-predicts-best" title="Link to this heading"></a></h2>
+<p>A fit to the failures seen is a weak guide to the failures to come, as
+the last plot shows. A stronger one is to ask how each model <em>would
+have</em> predicted, had it been used all along. <code class="docutils literal notranslate"><span class="pre">compare_predictions</span></code>
+does that: at each failure it fits every model to the failures before
+it, takes the model’s prediction of the time to the next failure, and
+scores the prediction against the time that came <a class="reference internal" href="#acl1986" id="id3"><span>[ACL1986]</span></a>. Here it is
+on all 31 failures of the NTDS production and test phases, starting from
+the tenth:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_predictions</span>
+
+<span class="n">all_days</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">days_between</span> <span class="o">+</span> <span class="p">[</span><span class="mi">87</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">135</span><span class="p">])</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">compare_predictions</span><span class="p">(</span>
+    <span class="n">all_days</span><span class="p">,</span> <span class="p">[</span><span class="n">GoelOkumoto</span><span class="p">,</span> <span class="n">YamadaDelayedS</span><span class="p">,</span> <span class="n">CrowAMSAA</span><span class="p">,</span> <span class="n">HPP</span><span class="p">],</span> <span class="n">start</span><span class="o">=</span><span class="mi">10</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>One-step-ahead predictions of failures 11 to 31
+================================================
+                predicted  failed  log_likelihood  u_distance         bias  biased  y_distance  drifting
+GoelOkumoto             9      12         -51.006       0.293   optimistic   False       0.546      True
+YamadaDelayedS         21       0         -50.066       0.192   optimistic   False       0.276     False
+CrowAMSAA              21       0         -57.839       0.256  pessimistic   False       0.326      True
+HPP                    21       0         -60.173       0.215  pessimistic   False       0.400      True
+
+YamadaDelayedS predicted best over the 9 predictions every model made: its prequential log-likelihood is -50.07, against -51.01 for GoelOkumoto, the next best (a ratio of 2.56 to 1). GoelOkumoto gave no prediction at 12 of the 21 steps (its fit was refused; the first: The data show no reliability growth that the Goel-Okumoto model can fit.) GoelOkumoto's bias changed as the failures went on (y-plot distance 0.55, beyond chance at the 0.05 level). CrowAMSAA's bias changed as the failures went on (y-plot distance 0.33, beyond chance at the 0.05 level). HPP's bias changed as the failures went on (y-plot distance 0.40, beyond chance at the 0.05 level).
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The table has one row per model:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">log_likelihood</span></code> is the <em>prequential likelihood</em>, in logs: how
+probable the model’s predictions made the times that came. Higher is
+better, and a difference of 2 or 3 is a clear preference.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">u_distance</span></code> and <code class="docutils literal notranslate"><span class="pre">bias</span></code> are the <em>u-plot</em>: whether the predictions
+were biased. <em>Optimistic</em> means failures came sooner than predicted.
+<code class="docutils literal notranslate"><span class="pre">biased</span></code> says whether the bias is more than chance would give.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">y_distance</span></code> and <code class="docutils literal notranslate"><span class="pre">drifting</span></code> are the <em>y-plot</em>: whether the bias
+changed as testing went on.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">failed</span></code> counts the steps at which the model could not be fitted at
+all. Goel-Okumoto fails at 12 of the 21 steps here: until the long gap
+before failure 24 the failures were not slowing down, and it refuses
+data with no growth. A model that cannot be fitted for much of the
+test cannot be relied on to predict during it.</p></li>
+</ul>
+<p>The verdict below the table says the same in words.
+<code class="docutils literal notranslate"><span class="pre">result.plot(&quot;u&quot;)</span></code>, <code class="docutils literal notranslate"><span class="pre">result.plot(&quot;y&quot;)</span></code> and <code class="docutils literal notranslate"><span class="pre">result.plot(&quot;ratio&quot;)</span></code>
+draw the plots:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">result</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="s2">"u"</span><span class="p">);</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Software%20Reliability%20Growth_12_0.png" src="_images/Software%20Reliability%20Growth_12_0.png" />
+</div>
+</div>
+</section>
+<section id="how-many-faults-are-left">
+<h2>How many faults are left?<a class="headerlink" href="#how-many-faults-are-left" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">remaining_faults(t)</span></code> is the number the model expects to be left after
+testing to <code class="docutils literal notranslate"><span class="pre">t</span></code>: the total <code class="docutils literal notranslate"><span class="pre">a</span></code> less those expected by then.
+<code class="docutils literal notranslate"><span class="pre">remaining_faults_cb</span></code> gives its confidence bounds.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"Goel-Okumoto:"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">remaining_faults</span><span class="p">(</span><span class="mi">250</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span>
+      <span class="n">model</span><span class="o">.</span><span class="n">remaining_faults_cb</span><span class="p">(</span><span class="mi">250</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Yamada      :"</span><span class="p">,</span> <span class="n">yamada</span><span class="o">.</span><span class="n">remaining_faults</span><span class="p">(</span><span class="mi">250</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span>
+      <span class="n">yamada</span><span class="o">.</span><span class="n">remaining_faults_cb</span><span class="p">(</span><span class="mi">250</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Goel-Okumoto: 8.0 [ 2.4 27.2]
+Yamada      : 1.5 [0.6 4. ]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Goel-Okumoto expects 8 more faults, with 80% confidence somewhere from 2
+to 27; the S-shaped model, which fitted better, expects between 1 and 2.
+(In the event, 8 more were found: 5 in the test phase that followed and 3
+in use. The better-fitting model was the worse forecaster, which is not
+rare.) Read the width of the bounds and the disagreement between
+reasonable models as the honest answer: with 26 failures, the number
+left is known only roughly.</p>
+<p>A model with no fixed number of faults has no answer to this question,
+and says so:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">try</span><span class="p">:</span>
+    <span class="n">fits</span><span class="p">[</span><span class="s2">"Musa-Okumoto"</span><span class="p">]</span><span class="o">.</span><span class="n">remaining_faults</span><span class="p">(</span><span class="mi">250</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>remaining_faults needs a model with a finite number of faults, and the fitted Musa-Okumoto model expects failures without limit (its cumulative intensity keeps growing), so it has no number of faults left. Fit a finite-fault model (GoelOkumoto, YamadaDelayedS or InflectionS), or ask this one for the failures expected in a stretch of time: cif(t2) - cif(t1).
+</pre></div>
+</div>
+</div>
+</div>
+<p>Ask it instead how many failures to expect in a stretch of further use,
+<code class="docutils literal notranslate"><span class="pre">cif(t2)</span> <span class="pre">-</span> <span class="pre">cif(t1)</span></code>, which every model can answer.</p>
+</section>
+<section id="how-reliable-is-it-now">
+<h2>How reliable is it now?<a class="headerlink" href="#how-reliable-is-it-now" title="Link to this heading"></a></h2>
+<p>Two numbers describe the software as it stands at the end of the test.
+The failure rate now is <code class="docutils literal notranslate"><span class="pre">iif(250)</span></code> (and <code class="docutils literal notranslate"><span class="pre">mtbf(250)</span></code> its reciprocal,
+the mean time between failures if nothing more were fixed), with bounds
+from <code class="docutils literal notranslate"><span class="pre">iif_cb</span></code> and <code class="docutils literal notranslate"><span class="pre">mtbf_cb</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"failures a day now:"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">iif</span><span class="p">(</span><span class="mi">250</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">),</span>
+      <span class="n">model</span><span class="o">.</span><span class="n">iif_cb</span><span class="p">(</span><span class="mi">250</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"days between failures:"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">mtbf</span><span class="p">(</span><span class="mi">250</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>failures a day now: 0.0463 [0.0249 0.0859]
+days between failures: 21.6
+</pre></div>
+</div>
+</div>
+</div>
+<p>The chance of running a further stretch without any failure is
+<code class="docutils literal notranslate"><span class="pre">next_failure_sf</span></code>: the reliability over a mission of that length,
+starting from the end of the test (or from any <code class="docutils literal notranslate"><span class="pre">age=</span></code>).
+<code class="docutils literal notranslate"><span class="pre">next_failure_sf_cb</span></code> gives its bounds. For 30 days of use:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">next_failure_sf</span><span class="p">(</span><span class="mi">30</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">next_failure_sf_cb</span><span class="p">(</span><span class="mi">30</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.28]
+[[0.083 0.52 ]]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>A 28% chance of 30 days without a failure, and the bounds are wide. Both
+numbers assume the software is used the way it was tested.</p>
+</section>
+<section id="how-much-more-testing">
+<h2>How much more testing?<a class="headerlink" href="#how-much-more-testing" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">time_to_intensity(target)</span></code> is the testing time at which the failure
+rate has fallen to a target, and <code class="docutils literal notranslate"><span class="pre">time_to_reliability(target,</span> <span class="pre">x)</span></code> the
+time from which a mission of length <code class="docutils literal notranslate"><span class="pre">x</span></code> succeeds with the target
+probability. Both are on the test’s clock, so subtract the testing done
+so far. For a failure rate of one in 100 days, and for an 80% chance of
+30 days without a failure:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">t_rate</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">time_to_intensity</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"rate target reached at day"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">t_rate</span><span class="p">),</span>
+      <span class="s2">"(another"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">t_rate</span> <span class="o">-</span> <span class="mi">250</span><span class="p">),</span> <span class="s2">"days)"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"80% bounds:"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">time_to_intensity_cb</span><span class="p">(</span><span class="mf">0.01</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">())</span>
+
+<span class="n">t_rel</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">time_to_reliability</span><span class="p">(</span><span class="mf">0.8</span><span class="p">,</span> <span class="mi">30</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"reliability target reached at day"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">t_rel</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"80% bounds:"</span><span class="p">,</span>
+      <span class="n">model</span><span class="o">.</span><span class="n">time_to_reliability_cb</span><span class="p">(</span><span class="mf">0.8</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>rate target reached at day 515 (another 265 days)
+80% bounds: [ 349. 1240.]
+reliability target reached at day 551
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>80% bounds: [ 366. 1364.]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>On this model the test is about half done. The bounds are found by
+asking when the <em>bounds</em> on the failure rate (or on the reliability)
+reach the target, so an upper bound of <code class="docutils literal notranslate"><span class="pre">inf</span></code> is possible: it says the
+data cannot rule out that the target is never reached.</p>
+<p>A target the fitted curve never reaches is refused, with the reason. A
+constant failure rate, for instance, never falls to a lower target
+however long the test:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">try</span><span class="p">:</span>
+    <span class="n">fits</span><span class="p">[</span><span class="s2">"Homogeneous Poisson Process"</span><span class="p">]</span><span class="o">.</span><span class="n">time_to_intensity</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>The fitted Homogeneous Poisson Process model never reaches an intensity = 0.01: its intensity does not come down that far, however long the test (iif is 0.104 at the model's first expected failure and 0.104 a million times later; the search goes to a million million times it). Testing longer will not get there on this model; check the trend (trend_test()), or set a target the model can reach.
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="when-to-release">
+<h2>When to release<a class="headerlink" href="#when-to-release" title="Link to this heading"></a></h2>
+<p>Testing costs money, and so do faults that reach the field. If you can
+put a figure on a day of testing, on a fault fixed during testing and on
+a fault that reaches use, <code class="docutils literal notranslate"><span class="pre">release_time</span></code> finds the day on which to stop
+testing for the least expected total cost <a class="reference internal" href="#og1980" id="id4"><span>[OG1980]</span></a>. Testing pays for
+itself while the failure rate is above <code class="docutils literal notranslate"><span class="pre">test_cost</span> <span class="pre">/</span> <span class="pre">(field_cost</span> <span class="pre">-</span>
+<span class="pre">fix_cost)</span></code>; the cheapest release is the day the rate falls to that
+level. Say a day of testing costs 1 (thousand), a fault 0.5 to fix in
+testing and 40 in the field:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plan</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">release_time</span><span class="p">(</span><span class="n">test_cost</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">fix_cost</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">field_cost</span><span class="o">=</span><span class="mi">40</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"release on day"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">plan</span><span class="p">[</span><span class="s2">"time"</span><span class="p">]),</span>
+      <span class="s2">"at an expected cost of"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">plan</span><span class="p">[</span><span class="s2">"cost"</span><span class="p">]))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"within 1</span><span class="si">% o</span><span class="s2">f that cost:"</span><span class="p">,</span> <span class="p">[</span><span class="nb">round</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">plan</span><span class="p">[</span><span class="s2">"band"</span><span class="p">]])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"80% bounds on the day:"</span><span class="p">,</span>
+      <span class="n">model</span><span class="o">.</span><span class="n">release_time_cb</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>release on day 354 at an expected cost of 544
+within 1% of that cost: [313, 399]
+80% bounds on the day: [220. 571.]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">band</span></code> is the stretch of days whose cost is within 1% of the best,
+here about twelve weeks: the exact day matters little, and the bounds on the day (which come from
+the uncertainty in the fitted model) are wider still.
+<code class="docutils literal notranslate"><span class="pre">method=&quot;bootstrap&quot;</span></code> gives bounds by simulation instead.</p>
+<p>Costs are in any currency and time is in the model’s unit. A model with
+no fixed number of faults needs <code class="docutils literal notranslate"><span class="pre">life=</span></code>, the time at which the software
+goes out of use, to add up the field’s failures. A release may also have
+to meet a reliability target, whatever the costs say; give it and the
+release is the later of the two days:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">plan</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">release_time</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="n">reliability</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">mission</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"release on day"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">plan</span><span class="p">[</span><span class="s2">"time"</span><span class="p">]),</span> <span class="s2">"set by"</span><span class="p">,</span> <span class="n">plan</span><span class="p">[</span><span class="s2">"binding"</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>release on day 551 set by reliability
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="a-whole-number-of-faults-jelinski-moranda">
+<h2>A whole number of faults: Jelinski-Moranda<a class="headerlink" href="#a-whole-number-of-faults-jelinski-moranda" title="Link to this heading"></a></h2>
+<p>The oldest model of all <a class="reference internal" href="#jm1972" id="id5"><span>[JM1972]</span></a> counts the faults in whole numbers:
+the software starts with <code class="docutils literal notranslate"><span class="pre">N</span></code> faults, each causes failures at the same
+rate <code class="docutils literal notranslate"><span class="pre">phi</span></code> until it is fixed, so the failure rate steps down by
+<code class="docutils literal notranslate"><span class="pre">phi</span></code> at every failure. <code class="docutils literal notranslate"><span class="pre">JelinskiMoranda</span></code> fits it to one test’s
+failure times (or to the times between failures, with <code class="docutils literal notranslate"><span class="pre">gaps=True</span></code>):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+
+<span class="n">jm</span> <span class="o">=</span> <span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">days</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"days"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">jm</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Jelinski-Moranda SurPyval Model
+===============================
+Fitted by           : MLE
+Unit                : days
+Failures            : 26 in a test of 250
+Parameters          :
+         N: 31
+       phi: 0.00694815606627472
+Faults left         : 5
+Rate now            : 0.0347407803313736
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>It estimates 31 faults, so 5 left after the 26 found. (With <code class="docutils literal notranslate"><span class="pre">N</span></code>
+allowed to be any real number, as most texts fit it, the estimate is
+31.2: the published figure for these data <a class="reference internal" href="#lxz2015" id="id6"><span>[LXZ2015]</span></a>.) Its answers are
+methods of their own, with bounds by the likelihood ratio:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"faults left:"</span><span class="p">,</span> <span class="n">jm</span><span class="o">.</span><span class="n">remaining_faults</span><span class="p">(),</span>
+      <span class="n">jm</span><span class="o">.</span><span class="n">remaining_faults_cb</span><span class="p">(</span><span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"failures a day now:"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">jm</span><span class="o">.</span><span class="n">current_rate</span><span class="p">(),</span> <span class="mi">4</span><span class="p">),</span>
+      <span class="n">jm</span><span class="o">.</span><span class="n">current_rate_cb</span><span class="p">(</span><span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"95% bounds on the number of faults:"</span><span class="p">,</span> <span class="n">jm</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"N"</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>faults left: 5 [ 1. 21.]
+failures a day now: 0.0347 [0.0085 0.0754]
+95% bounds on the number of faults: [26. 94.]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The bounds are whole numbers, and they are wide and lopsided: 26 faults
+found, and anything from 26 to 94 in all at 95%. That is the model
+being honest. An upper bound of <code class="docutils literal notranslate"><span class="pre">inf</span></code> is possible too, and means the
+data do not limit the number of faults at that level. As with
+Goel-Okumoto, data that show no growth have no estimate at all, and the
+fit is refused, saying why. Its <code class="docutils literal notranslate"><span class="pre">aic()</span></code> compares with that of the
+other models fitted to the same failure times, and it can be one of the
+models given to <code class="docutils literal notranslate"><span class="pre">compare_predictions</span></code>.</p>
+</section>
+<section id="before-testing-starts-defects-by-phase">
+<h2>Before testing starts: defects by phase<a class="headerlink" href="#before-testing-starts-defects-by-phase" title="Link to this heading"></a></h2>
+<p>The models above need failures from testing. Earlier in a project there
+is a different record: the defects found in each phase of development
+(requirements review, design review, code inspection, unit test,
+integration, system test). Across the phases these tend to rise to a
+peak and fall away, and the <em>Rayleigh defect model</em> <a class="reference internal" href="#kan2002" id="id7"><span>[Kan2002]</span></a> fits that
+shape: <span class="math notranslate nohighlight">\(\Lambda(t) = K (1 - e^{-t^2 / (2c^2)})\)</span>, with <code class="docutils literal notranslate"><span class="pre">K</span></code> the
+defects that will be found in all and <code class="docutils literal notranslate"><span class="pre">c</span></code> where the peak is. Fitted to
+the phases done so far, it predicts what the later phases, and the
+field, will find.</p>
+<p><code class="docutils literal notranslate"><span class="pre">phases_to_data</span></code> turns a table of counts into the rows the fit takes
+(phase <code class="docutils literal notranslate"><span class="pre">j</span></code> is the interval from <code class="docutils literal notranslate"><span class="pre">j</span> <span class="pre">-</span> <span class="pre">1</span></code> to <code class="docutils literal notranslate"><span class="pre">j</span></code>; give <code class="docutils literal notranslate"><span class="pre">lengths=</span></code>
+if the phases’ durations are known and unequal). The counts here are
+made up for illustration, for a project with five of its six phases
+done:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">RayleighDefects</span><span class="p">,</span> <span class="n">phases_to_data</span>
+
+<span class="n">found</span> <span class="o">=</span> <span class="p">[</span><span class="mi">18</span><span class="p">,</span> <span class="mi">44</span><span class="p">,</span> <span class="mi">52</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">24</span><span class="p">]</span>
+<span class="n">phases</span> <span class="o">=</span> <span class="n">RayleighDefects</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">phases_to_data</span><span class="p">(</span><span class="n">found</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"defects in all:"</span><span class="p">,</span> <span class="n">phases</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(),</span> <span class="s2">" peak at phase"</span><span class="p">,</span>
+      <span class="n">phases</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"sixth phase:"</span><span class="p">,</span> <span class="n">phases</span><span class="o">.</span><span class="n">expected_events</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span>
+      <span class="n">phases</span><span class="o">.</span><span class="n">expected_events_cb</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"left for the field:"</span><span class="p">,</span> <span class="n">phases</span><span class="o">.</span><span class="n">remaining_faults</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span>
+      <span class="n">phases</span><span class="o">.</span><span class="n">remaining_faults_cb</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>defects in all: 197.0  peak at phase 2.28
+sixth phase: 11.6 [ 8.1 16.5]
+left for the field: 6.2 [ 3.3 11.3]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">expected_events(start,</span> <span class="pre">end)</span></code> is the number expected in any stretch
+(here the sixth phase), on every model on this page, and
+<code class="docutils literal notranslate"><span class="pre">remaining_faults</span></code> what is left after it. The bounds are on the
+expected numbers. The model cannot say anything until the counts have
+turned down: before the peak, any total fits, and the fit is refused.</p>
+</section>
+<section id="when-a-fix-may-not-help-littlewood-verrall">
+<h2>When a fix may not help: Littlewood-Verrall<a class="headerlink" href="#when-a-fix-may-not-help-littlewood-verrall" title="Link to this heading"></a></h2>
+<p>Every model so far takes each fix to work. The Littlewood-Verrall model
+<a class="reference internal" href="#lv1973" id="id8"><span>[LV1973]</span></a> does not: after each failure the failure rate is drawn afresh,
+lower <em>on average</em> than the one before, but possibly higher. The rates
+follow a gamma distribution with shape <code class="docutils literal notranslate"><span class="pre">alpha</span></code> whose scale shrinks as
+failures accumulate (through <code class="docutils literal notranslate"><span class="pre">psi(i)</span> <span class="pre">=</span> <span class="pre">beta0</span> <span class="pre">+</span> <span class="pre">beta1</span> <span class="pre">i</span></code>). There is no
+number of faults in this model. What it gives is a prediction of the
+next failure that allows for not knowing the rate:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">LittlewoodVerrall</span>
+
+<span class="n">lv</span> <span class="o">=</span> <span class="n">LittlewoodVerrall</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">all_days</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">lv</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"chance of 30 more days without a failure:"</span><span class="p">,</span>
+      <span class="n">lv</span><span class="o">.</span><span class="n">next_failure_sf</span><span class="p">(</span><span class="mf">30.0</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"90</span><span class="si">% i</span><span class="s2">nterval for the failure rate now:"</span><span class="p">,</span>
+      <span class="n">lv</span><span class="o">.</span><span class="n">current_rate_qf</span><span class="p">([</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Littlewood-Verrall SurPyval Model
+=================================
+Fitted by           : MLE
+psi(i)              : beta0 + beta1 i
+Failures            : 31
+Parameters          :
+     alpha: 2.3229311383201026
+     beta0: 9.538499015687602
+     beta1: 0.7179989077781003
+Median to next      : 11.305012032567126
+chance of 30 more days without a failure: 0.219
+90% interval for the failure rate now: [0.0151 0.1617]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">next_failure_qf(0.5)</span></code> is the median time to the next failure, which
+always exists; the <em>mean</em> is infinite when <code class="docutils literal notranslate"><span class="pre">alpha</span></code> is 1 or less, and
+<code class="docutils literal notranslate"><span class="pre">next_failure_mean</span></code> then refuses and points to the median. <code class="docutils literal notranslate"><span class="pre">alpha</span></code>
+is hard to pin down: <code class="docutils literal notranslate"><span class="pre">param_cb(&quot;alpha&quot;)</span></code> gives its likelihood-ratio
+bounds, whose upper end is often <code class="docutils literal notranslate"><span class="pre">inf</span></code>. If the times between failures
+are no more scattered than a model with exact rates would make them,
+<code class="docutils literal notranslate"><span class="pre">alpha</span></code> has no estimate at all and the fit is refused, naming the
+simpler models to use. <code class="docutils literal notranslate"><span class="pre">LittlewoodVerrall</span></code> can be given to
+<code class="docutils literal notranslate"><span class="pre">compare_predictions</span></code> with the others, which is the fair way to judge
+whether its extra caution earns its keep on your data.</p>
+</section>
+<section id="when-the-testing-was-not-steady-effort-and-change-points">
+<h2>When the testing was not steady: effort and change points<a class="headerlink" href="#when-the-testing-was-not-steady-effort-and-change-points" title="Link to this heading"></a></h2>
+<p>Every curve above supposes steady testing. A week with half the testers
+then looks like a week with half the faults left, and a model fitted to
+the calendar reads a holiday as growth. Two tools put the same models on
+a better clock.</p>
+<p><strong>Testing effort.</strong> If you know how much testing was done in each period
+(tester hours, test cases run, hours of execution), <code class="docutils literal notranslate"><span class="pre">EffortClock</span></code>
+runs a model on the effort spent instead of the time passed:
+<span class="math notranslate nohighlight">\(\Lambda(t) = \Lambda_0(W(t))\)</span>, with <span class="math notranslate nohighlight">\(W(t)\)</span> the effort
+spent by <code class="docutils literal notranslate"><span class="pre">t</span></code>. With <code class="docutils literal notranslate"><span class="pre">GoelOkumoto</span></code> this is the testing-effort model of
+Yamada, Ohtera and Narihisa <a class="reference internal" href="#yon1986" id="id9"><span>[YON1986]</span></a>, <span class="math notranslate nohighlight">\(a (1 - e^{-b W(t)})\)</span>:
+<code class="docutils literal notranslate"><span class="pre">b</span></code> is then the detection rate per unit of effort. The counts and
+hours here are made up for illustration: eight weeks of testing by a
+team that grew and then moved on.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">EffortClock</span>
+
+<span class="n">weeks</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mf">8.0</span><span class="p">)</span>
+<span class="n">periods</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">weeks</span><span class="p">,</span> <span class="n">weeks</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
+<span class="n">hours</span> <span class="o">=</span> <span class="p">[</span><span class="mi">40</span><span class="p">,</span> <span class="mi">80</span><span class="p">,</span> <span class="mi">160</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">120</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">40</span><span class="p">]</span>
+<span class="n">found</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">data</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">periods</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="mi">8</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">found</span><span class="p">)</span>
+
+<span class="n">on_hours</span> <span class="o">=</span> <span class="n">EffortClock</span><span class="p">(</span><span class="n">GoelOkumoto</span><span class="p">,</span> <span class="p">(</span><span class="n">weeks</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">hours</span><span class="p">))</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">data</span><span class="p">)</span>
+<span class="n">by_week</span> <span class="o">=</span> <span class="n">GoelOkumoto</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">data</span><span class="p">)</span>
+<span class="n">s_shaped</span> <span class="o">=</span> <span class="n">YamadaDelayedS</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">data</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">m</span> <span class="ow">in</span> <span class="p">((</span><span class="s2">"Goel-Okumoto on hours"</span><span class="p">,</span> <span class="n">on_hours</span><span class="p">),</span>
+                <span class="p">(</span><span class="s2">"Goel-Okumoto by week"</span><span class="p">,</span> <span class="n">by_week</span><span class="p">),</span>
+                <span class="p">(</span><span class="s2">"delayed S-shaped by week"</span><span class="p">,</span> <span class="n">s_shaped</span><span class="p">)):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">name</span><span class="si">:</span><span class="s2">25s</span><span class="si">}</span><span class="s2"> aic </span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">aic</span><span class="p">()</span><span class="si">:</span><span class="s2">5.1f</span><span class="si">}</span><span class="s2">   faults left "</span>
+          <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">m</span><span class="o">.</span><span class="n">remaining_faults</span><span class="p">(</span><span class="mf">8.0</span><span class="p">)</span><span class="si">:</span><span class="s2">4.1f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"next week, at 40 hours:"</span><span class="p">,</span> <span class="n">on_hours</span><span class="o">.</span><span class="n">expected_events</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Goel-Okumoto on hours     aic  34.1   faults left 23.6
+Goel-Okumoto by week      aic  63.3   faults left 32.3
+delayed S-shaped by week  aic  44.2   faults left  5.7
+next week, at 40 hours: 1.3
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The effort is a table of amounts per period, <code class="docutils literal notranslate"><span class="pre">(ends,</span> <span class="pre">amounts)</span></code>, spent
+evenly within each; the fit takes the same data as before, in time, and
+every answer (<code class="docutils literal notranslate"><span class="pre">remaining_faults</span></code>, <code class="docutils literal notranslate"><span class="pre">time_to_intensity</span></code>,
+<code class="docutils literal notranslate"><span class="pre">release_time</span></code>, the bounds) is in time. Here the model on hours fits
+far better than either calendar model, and tells a different story: the
+failures fell away in the last weeks because the testing did, not
+because the faults ran out. The S-shaped curve, which fits the rise and
+fall of the counts well enough by week, puts a quarter as many faults
+left. After the table’s last period the effort is taken to carry on at
+the last period’s rate; a table that runs on into the plan (the hours
+you intend to spend) answers “how many will next month’s testing find”.
+Where the effort follows a smooth rise and fall, <code class="docutils literal notranslate"><span class="pre">WeibullEffort.fit</span></code>
+fits the curve <span class="math notranslate nohighlight">\(W(t) = N (1 - e^{-\beta t^m})\)</span> to the table, and
+can be given in its place. Effort cannot fall, and a failure recorded in
+a period with no effort is refused: check the table against the
+failures.</p>
+<p><strong>A change point.</strong> Where the testing changed at a known time (a new
+team, a new test strategy, a new release), <code class="docutils literal notranslate"><span class="pre">ChangePoint(model,</span>
+<span class="pre">tau=...)</span></code> lets the model’s clock run at a different speed from <code class="docutils literal notranslate"><span class="pre">tau</span></code>
+on: every rate of the model is multiplied by <code class="docutils literal notranslate"><span class="pre">ratio</span></code> after it, an
+extra parameter. For <code class="docutils literal notranslate"><span class="pre">GoelOkumoto</span></code> the detection rate <code class="docutils literal notranslate"><span class="pre">b</span></code> becomes
+<code class="docutils literal notranslate"><span class="pre">ratio</span> <span class="pre">*</span> <span class="pre">b</span></code>, the change-point model of Zhao <a class="reference internal" href="#zhao1993" id="id10"><span>[Zhao1993]</span></a>; the curve is
+continuous at <code class="docutils literal notranslate"><span class="pre">tau</span></code> and the number of faults is unchanged. Where the
+time is not known, leave <code class="docutils literal notranslate"><span class="pre">tau</span></code> out and it is estimated, from failure
+<em>times</em> of one system.</p>
+<p>The NTDS failures above are a case. <code class="docutils literal notranslate"><span class="pre">GoelOkumoto</span></code> fitted them with
+growth all the way; but look for a change, and the growth model with a
+change point is refused:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">HPP</span><span class="p">,</span> <span class="n">ChangePoint</span>
+
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">ChangePoint</span><span class="p">(</span><span class="n">GoelOkumoto</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">days</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>The data show no reliability growth that the Goel-Okumoto model can fit: the fitted likelihood is no higher than that of the model's limit, a constant rate. The likelihood then keeps rising as a grows without bound and b falls to 0, so the expected total number of faults a has no estimate. Fit HPP (a constant rate) or CrowAMSAA (a power law, which also fits a rising rate) and compare them with aic(); or test for longer, until the failures slow. (With the change at tau = 105: the limit is a constant rate on each side of it, at different levels. ChangePoint(HPP, tau=...) fits that: a constant rate that changes at tau.)
+</pre></div>
+</div>
+</div>
+</div>
+<p>Either side of the best change point the failures are steady: there is
+no growth left for the curve to measure, and the fit says which model to
+use instead, a constant rate that changes.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">change_point_cb</span><span class="p">,</span> <span class="n">change_point_test</span>
+
+<span class="n">steps</span> <span class="o">=</span> <span class="n">ChangePoint</span><span class="p">(</span><span class="n">HPP</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">days</span><span class="p">)</span>
+<span class="n">growth</span> <span class="o">=</span> <span class="n">GoelOkumoto</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">days</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"change at day"</span><span class="p">,</span> <span class="n">steps</span><span class="o">.</span><span class="n">change_point</span><span class="p">[</span><span class="s2">"tau"</span><span class="p">],</span>
+      <span class="s2">" 90% bounds"</span><span class="p">,</span> <span class="n">change_point_cb</span><span class="p">(</span><span class="n">steps</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"rate before:"</span><span class="p">,</span> <span class="n">steps</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="s2">"a day;  after:"</span><span class="p">,</span>
+      <span class="p">(</span><span class="n">steps</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">steps</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"aic"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">steps</span><span class="o">.</span><span class="n">aic</span><span class="p">()</span> <span class="o">+</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="s2">"against"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">growth</span><span class="o">.</span><span class="n">aic</span><span class="p">(),</span> <span class="mi">1</span><span class="p">),</span>
+      <span class="s2">"for Goel-Okumoto"</span><span class="p">)</span>
+<span class="n">test</span> <span class="o">=</span> <span class="n">change_point_test</span><span class="p">(</span><span class="n">steps</span><span class="p">,</span> <span class="n">n_boot</span><span class="o">=</span><span class="mi">99</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"no change: p ="</span><span class="p">,</span> <span class="n">test</span><span class="p">[</span><span class="s2">"p_value"</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>change at day 105.0  90% bounds [104. 116.]
+rate before: 0.19 a day;  after: 0.041
+aic 162.5 against 169.4 for Goel-Okumoto
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>no change: p = 0.01
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>A failure every five days until day 105, and one every twenty-four days
+after: these data read as well as one step as they do as steady growth
+(better, by <code class="docutils literal notranslate"><span class="pre">aic</span></code>), and the two readings predict differently: the
+growth curve expects the rate to keep falling, the step expects it to
+stay where it is. Nothing in the failure times says which; the test
+log might.</p>
+<p>Three cautions. An estimated <code class="docutils literal notranslate"><span class="pre">tau</span></code> is searched for, so its fit looks
+better than a change at a time chosen in advance would: the fitted
+model’s <code class="docutils literal notranslate"><span class="pre">aic()</span></code> and bounds take <code class="docutils literal notranslate"><span class="pre">tau</span></code> as given (2 is added above for
+it), and <code class="docutils literal notranslate"><span class="pre">change_point_cb</span></code> gives likelihood-ratio bounds for <code class="docutils literal notranslate"><span class="pre">tau</span></code>
+itself, whose level is approximate. For the same reason the usual
+chi-squared test of “no change” is wrong, and <code class="docutils literal notranslate"><span class="pre">change_point_test</span></code> uses
+a parametric bootstrap instead: it simulates data with no change from
+the fitted model, searches each for its best change point, and reports
+how often the improvement is as large as the one seen (so <code class="docutils literal notranslate"><span class="pre">n_boot=99</span></code>
+gives a p-value in steps of 0.01, and takes about 99 times as long as
+the fit). And a change point will always be found if you look: ask for
+one where something did change, and compare its predictions with the
+plain model’s by <code class="docutils literal notranslate"><span class="pre">compare_predictions</span></code>, which takes both.</p>
+</section>
+<section id="when-not-to-trust-the-answers">
+<h2>When not to trust the answers<a class="headerlink" href="#when-not-to-trust-the-answers" title="Link to this heading"></a></h2>
+<p><strong>No growth seen.</strong> If the failures are not slowing down, there is
+nothing for a growth model to measure: the best-fitting curve is a
+straight line, and “the number of faults” runs off to infinity. SurPyval
+refuses such a fit rather than print a huge number, and says what it saw:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">steady</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">260.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">)</span>   <span class="c1"># a failure every 10 days</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="n">GoelOkumoto</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">steady</span><span class="p">)</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>The data show no reliability growth that the Goel-Okumoto model can fit: the failures' mean time, 130, is not earlier than the 125 that the model's limit, a constant rate, would give over the same observation. The likelihood then keeps rising as a grows without bound and b falls to 0, so the expected total number of faults a has no estimate. Fit HPP (a constant rate) or CrowAMSAA (a power law, which also fits a rising rate) and compare them with aic(); or test for longer, until the failures slow.
+</pre></div>
+</div>
+</div>
+</div>
+<p>Keep testing (growth may show later), or report the constant rate
+(<code class="docutils literal notranslate"><span class="pre">HPP</span></code>) for what it is. Beware the S-shaped models here: they can fit
+steady failures by supposing the peak has just passed, and will name a
+number of faults a little above the number found. If <code class="docutils literal notranslate"><span class="pre">GoelOkumoto</span></code>
+refuses the data and <code class="docutils literal notranslate"><span class="pre">YamadaDelayedS</span></code> does not, the data show no
+growth, and the S-shaped answer rests on its assumption, not on
+evidence.</p>
+<p><strong>Few failures.</strong> With a dozen failures any of these curves fits, the
+bounds are wide, and they are still too narrow: they come from the
+curvature of the likelihood at its peak, and the likelihood of a growth
+model falls away slowly towards “many more faults”. Treat an upper bound
+on the faults left as a floor on your uncertainty.</p>
+<p><strong>Most of the faults still to find.</strong> The models learn the total from the
+way the curve bends over. If the failure rate has not fallen to well
+below where it started, the total is a guess; compare <code class="docutils literal notranslate"><span class="pre">iif</span></code> at the end
+of the test with <code class="docutils literal notranslate"><span class="pre">iif</span></code> early on.</p>
+<p><strong>The testing changed.</strong> A new test team, a new kind of test, a big
+release of new code or a holiday all break the assumption that testing is
+steady. Fit the stretch of testing that is like what comes next, use a
+clock that measures effort (test cases run, hours of execution) in
+place of days, or fit the change: see “When the testing was not steady”
+above.</p>
+<p><strong>The use is not like the test.</strong> Reliability “now” is the reliability
+under more of the same testing. If customers use the software
+differently, the failure rate in use is a different number.</p>
+<p><strong>The models disagree.</strong> That is information. Above, two well-fitting
+models put the faults left at 8 and at 1.5. Report the range, not the
+one you prefer.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<div role="list" class="citation-list">
+<div class="citation" id="jm1972" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>JM1972<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id1">1</a>,<a role="doc-backlink" href="#id5">2</a>)</span>
+<p>Jelinski, Z. and Moranda, P. B. (1972), “Software
+reliability research”, in <em>Statistical Computer Performance
+Evaluation</em> (ed. W. Freiberger), Academic Press, 465-484.</p>
+</div>
+<div class="citation" id="lxz2015" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>LXZ2015<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id2">1</a>,<a role="doc-backlink" href="#id6">2</a>)</span>
+<p>Liu, J., Xu, M. and Zhou, Z. (2015), “Parameter estimation
+of Jelinski-Moranda model based on weighted nonlinear least squares
+and heteroscedasticity”, arXiv:1503.00094 (Table 1: the NTDS data).</p>
+</div>
+<div class="citation" id="acl1986" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">ACL1986</a><span class="fn-bracket">]</span></span>
+<p>Abdel-Ghaly, A. A., Chan, P. Y. and Littlewood, B. (1986),
+“Evaluation of competing software reliability predictions”, <em>IEEE
+Transactions on Software Engineering</em> SE-12(9), 950-967.</p>
+</div>
+<div class="citation" id="lv1973" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id8">LV1973</a><span class="fn-bracket">]</span></span>
+<p>Littlewood, B. and Verrall, J. L. (1973), “A Bayesian
+reliability growth model for computer software”, <em>Journal of the Royal
+Statistical Society C</em> 22(3), 332-346.</p>
+</div>
+<div class="citation" id="og1980" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">OG1980</a><span class="fn-bracket">]</span></span>
+<p>Okumoto, K. and Goel, A. L. (1980), “Optimum release time
+for software systems based on reliability and cost criteria”, <em>Journal
+of Systems and Software</em> 1, 315-318.</p>
+</div>
+<div class="citation" id="kan2002" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id7">Kan2002</a><span class="fn-bracket">]</span></span>
+<p>Kan, S. H. (2002), <em>Metrics and Models in Software Quality
+Engineering</em> (2nd ed.), Addison-Wesley, chapter 7.</p>
+</div>
+<div class="citation" id="yon1986" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id9">YON1986</a><span class="fn-bracket">]</span></span>
+<p>Yamada, S., Ohtera, H. and Narihisa, H. (1986), “Software
+reliability growth models with testing-effort”, <em>IEEE Transactions on
+Reliability</em> R-35(1), 19-23.</p>
+</div>
+<div class="citation" id="zhao1993" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id10">Zhao1993</a><span class="fn-bracket">]</span></span>
+<p>Zhao, M. (1993), “Change-point problems in software and
+hardware reliability”, <em>Communications in Statistics: Theory and
+Methods</em> 22(3), 757-768.</p>
+</div>
+</div>
+<p>Goel, A. L. and Okumoto, K. (1979), “Time-dependent error-detection rate
+model for software reliability and other performance measures”, <em>IEEE
+Transactions on Reliability</em> R-28(3), 206-211.</p>
+<p>Yamada, S., Ohba, M. and Osaki, S. (1983), “S-shaped reliability growth
+modeling for software error detection”, <em>IEEE Transactions on
+Reliability</em> R-32(5), 475-484.</p>
+<p>Ohba, M. (1984), “Inflection S-shaped software reliability growth model”,
+in <em>Stochastic Models in Reliability Theory</em>, Springer, 144-162.</p>
+<p>Musa, J. D. and Okumoto, K. (1984), “A logarithmic Poisson execution time
+model for software reliability measurement”, <em>Proceedings of the 7th
+International Conference on Software Engineering</em>, 230-238.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Intervention%20Analysis%20with%20SurPyval.html" class="btn btn-neutral float-left" title="Intervention Analysis with SurPyval" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Degradation%20Modelling%20with%20SurPyval.html" class="btn btn-neutral float-right" title="Degradation Modelling with SurPyval" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,635 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trend Tests and Diagnostics &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Intervention Test" href="intervention.html" />
+    <link rel="prev" title="Shared Frailty (Poisson Processes Whose Units Differ)" href="shared_frailty.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#software-reliability-growth-models">Software Reliability Growth Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#models-of-the-times-between-failures">Models of the Times Between Failures</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#panel-counts">Panel Counts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#trend-tests-and-diagnostics">Trend Tests and Diagnostics</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Trend Tests and Diagnostics</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#interventions">Interventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">Trend Tests and Diagnostics</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/trend_tests.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="trend-tests-and-diagnostics">
+<h1>Trend Tests and Diagnostics<a class="headerlink" href="#trend-tests-and-diagnostics" title="Link to this heading"></a></h1>
+<p>Hypothesis tests for whether a system’s rate of events is changing
+over time – the question that decides between an HPP and an NHPP –
+plus the result classes returned by the tests and by the per-model
+goodness-of-fit method.</p>
+<p>The corresponding per-model diagnostics (<code class="docutils literal notranslate"><span class="pre">residuals</span></code>,
+<code class="docutils literal notranslate"><span class="pre">trend_test</span></code>, <code class="docutils literal notranslate"><span class="pre">cramer_von_mises</span></code>) are methods on the fitted model
+classes; see <a class="reference internal" href="parametric_recurrence_model.html"><span class="doc">Parametric Recurrence Model</span></a>.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.laplace">
+<span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.tests.</span></span><span class="sig-name descname"><span class="pre">laplace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alternative</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.tests.TrendTestResult" title="surpyval.recurrent.tests.TrendTestResult"><span class="pre">TrendTestResult</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.tests.laplace" title="Link to this definition"></a></dt>
+<dd><p>The Laplace (centroid) trend test for recurrent-event data.</p>
+<p>Under the null hypothesis that the events of each system follow a
+homogeneous Poisson process, the event times are uniformly distributed on
+the observation window <span class="math notranslate nohighlight">\((s_q, T_q]\)</span>, so their mean sits at the
+centre. The standardised departure of the observed event-time total from
+its null expectation,</p>
+<div class="math notranslate nohighlight">
+\[U = \frac{\sum_q \sum_j t_{qj} - \sum_q n_q (s_q + T_q) / 2}
+         {\sqrt{\sum_q n_q (T_q - s_q)^2 / 12}},\]</div>
+<p>is asymptotically standard normal (Ascher and Feingold 1984; the pooled
+form of Kvaloy and Lindqvist 1998). Without <code class="docutils literal notranslate"><span class="pre">tl</span></code> every
+<span class="math notranslate nohighlight">\(s_q = 0\)</span>, the textbook statistic. <code class="docutils literal notranslate"><span class="pre">U</span> <span class="pre">&gt;</span> <span class="pre">0</span></code> (events bunched late) is
+evidence of an <em>increasing</em> intensity (deterioration); <code class="docutils literal notranslate"><span class="pre">U</span> <span class="pre">&lt;</span> <span class="pre">0</span></code> of a
+<em>decreasing</em> intensity (reliability growth).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – Event (failure) times, each after its system’s observation start
+(strictly positive when there is no <code class="docutils literal notranslate"><span class="pre">tl</span></code>). For multiple systems,
+the times of every system are concatenated and identified by
+<code class="docutils literal notranslate"><span class="pre">i</span></code>.</p></li>
+<li><p><strong>i</strong> (<em>array_like</em><em>, </em><em>optional</em>) – System / item id for each event in <code class="docutils literal notranslate"><span class="pre">x</span></code>. Defaults to a single system.</p></li>
+<li><p><strong>T</strong> (<em>scalar</em><em>, </em><em>array_like</em><em> or </em><em>dict</em><em>, </em><em>optional</em>) – Observation (truncation) time. A scalar applies the same window to
+every system; an array gives one window per sorted-unique system; a
+dict is keyed by system id. If omitted, each system is treated as
+failure-truncated – observed up to its last event, which is then
+excluded from the statistic.</p></li>
+<li><p><strong>alternative</strong> (<em>str</em><em>, </em><em>optional</em>) – Direction of the alternative hypothesis: <code class="docutils literal notranslate"><span class="pre">&quot;two-sided&quot;</span></code> (default),
+<code class="docutils literal notranslate"><span class="pre">&quot;increasing&quot;</span></code> (upper tail; deterioration) or <code class="docutils literal notranslate"><span class="pre">&quot;decreasing&quot;</span></code>
+(lower tail; reliability growth).</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Keyword only: censoring flags in the fitters’ form (0 an event, 1
+the end of a system’s observation), in place of <code class="docutils literal notranslate"><span class="pre">T</span></code>, as
+<code class="docutils literal notranslate"><span class="pre">CrowAMSAA.fit(x,</span> <span class="pre">i,</span> <span class="pre">c)</span></code> takes them. A system with a <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>
+row is observed to that time; one without is failure-truncated.</p></li>
+<li><p><strong>tl</strong> (<em>scalar</em><em>, </em><em>array_like</em><em> or </em><em>dict</em><em>, </em><em>optional</em>) – Keyword only: each system’s observation start <span class="math notranslate nohighlight">\(s_q\)</span>, for
+delayed entry (left truncation), in the forms <code class="docutils literal notranslate"><span class="pre">T</span></code> takes; with
+<code class="docutils literal notranslate"><span class="pre">c</span></code> it may instead be one value per row, as the fitters take it
+(the same on every row of a system). Events must fall after it.
+Default: every system is observed from time 0.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The significance level at which <code class="docutils literal notranslate"><span class="pre">trend</span></code> is judged (default
+0.05, keyword only): the result names a trend only when
+<code class="docutils literal notranslate"><span class="pre">p_value</span> <span class="pre">&lt;</span> <span class="pre">alpha_ci</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Object carrying the <code class="docutils literal notranslate"><span class="pre">statistic</span></code> (the z-score <code class="docutils literal notranslate"><span class="pre">U</span></code>), the
+<code class="docutils literal notranslate"><span class="pre">p_value</span></code>, the <code class="docutils literal notranslate"><span class="pre">direction</span></code> of the statistic and the <code class="docutils literal notranslate"><span class="pre">trend</span></code>
+concluded at <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.recurrent.tests.TrendTestResult" title="surpyval.recurrent.tests.TrendTestResult">TrendTestResult</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent.tests</span><span class="w"> </span><span class="kn">import</span> <span class="n">laplace</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Inter-arrival times shrinking -&gt; failures speeding up.</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">27</span><span class="p">,</span> <span class="mi">34</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">49</span><span class="p">,</span> <span class="mi">52</span><span class="p">,</span> <span class="mi">54</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">res</span> <span class="o">=</span> <span class="n">laplace</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">statistic</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">res</span><span class="o">.</span><span class="n">direction</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="go">('increasing', 0.248)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">res</span><span class="o">.</span><span class="n">trend</span>  <span class="c1"># not significant at the default alpha_ci = 0.05</span>
+<span class="go">'none'</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">laplace</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s2">"increasing"</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.2</span><span class="p">)</span><span class="o">.</span><span class="n">trend</span>
+<span class="go">'increasing'</span>
+</pre></div>
+</div>
+<p>A second system that entered the study at time 30 and was watched to
+80 adds its events on its own window, <code class="docutils literal notranslate"><span class="pre">(30,</span> <span class="pre">80]</span></code>:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x2</span> <span class="o">=</span> <span class="p">[</span><span class="mi">35</span><span class="p">,</span> <span class="mi">48</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">66</span><span class="p">,</span> <span class="mi">71</span><span class="p">,</span> <span class="mi">75</span><span class="p">,</span> <span class="mi">78</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">res</span> <span class="o">=</span> <span class="n">laplace</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">x</span> <span class="o">+</span> <span class="n">x2</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="mi">9</span> <span class="o">+</span> <span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="mi">7</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="mi">80</span><span class="p">},</span> <span class="n">tl</span><span class="o">=</span><span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="mi">30</span><span class="p">}</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">statistic</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="n">res</span><span class="o">.</span><span class="n">n_events</span>
+<span class="go">(1.6748, 16)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.mil_hdbk_189c">
+<span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.tests.</span></span><span class="sig-name descname"><span class="pre">mil_hdbk_189c</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alternative</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.tests.TrendTestResult" title="surpyval.recurrent.tests.TrendTestResult"><span class="pre">TrendTestResult</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.tests.mil_hdbk_189c" title="Link to this definition"></a></dt>
+<dd><p>The Military Handbook (MIL-HDBK-189C) trend test for recurrent-event data.</p>
+<p>Derived from the power-law (Crow-AMSAA) NHPP, the statistic</p>
+<div class="math notranslate nohighlight">
+\[\chi^2 = 2 \sum_q \sum_j \ln\!\left(\frac{T_q}{t_{qj}}\right)\]</div>
+<p>is chi-squared distributed with <span class="math notranslate nohighlight">\(2N\)</span> degrees of freedom under the HPP
+null (where <span class="math notranslate nohighlight">\(N\)</span> is the number of events used). It equals
+<span class="math notranslate nohighlight">\(2N / \hat\beta\)</span> for the power-law shape estimate <span class="math notranslate nohighlight">\(\hat\beta\)</span>,
+so a <em>small</em> statistic (large <span class="math notranslate nohighlight">\(\hat\beta &gt; 1\)</span>) indicates an
+<em>increasing</em> intensity (deterioration) and a <em>large</em> statistic (small
+<span class="math notranslate nohighlight">\(\hat\beta &lt; 1\)</span>) a <em>decreasing</em> intensity (reliability growth). It is
+the most powerful test against a power-law alternative.</p>
+<p>With delayed entry (<code class="docutils literal notranslate"><span class="pre">tl</span></code>) system <span class="math notranslate nohighlight">\(q\)</span> is observed on
+<span class="math notranslate nohighlight">\((s_q, T_q]\)</span>, and time is measured from its start: the statistic
+is <span class="math notranslate nohighlight">\(2 \sum_q \sum_j \ln\{(T_q - s_q) / (t_{qj} - s_q)\}\)</span>. Under
+the HPP null the <span class="math notranslate nohighlight">\((t_{qj} - s_q) / (T_q - s_q)\)</span> are independent
+uniforms, so it is still exactly <span class="math notranslate nohighlight">\(\chi^2_{2N}\)</span> and the test holds
+its size. It is then most powerful against a power law in the time since
+each system’s start, and no longer equals <span class="math notranslate nohighlight">\(2N / \hat\beta\)</span> of a
+power law fitted in age (<code class="docutils literal notranslate"><span class="pre">CrowAMSAA.fit(...,</span> <span class="pre">tl=...)</span></code>); a trend in age
+is monotone in the time since the start too, so the direction it reports
+still holds. The Laplace test, whose centring needs no time origin, is
+the default for such data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – Event (failure) times, each after its system’s observation start
+(strictly positive when there is no <code class="docutils literal notranslate"><span class="pre">tl</span></code>). For multiple systems,
+the times of every system are concatenated and identified by
+<code class="docutils literal notranslate"><span class="pre">i</span></code>.</p></li>
+<li><p><strong>i</strong> (<em>array_like</em><em>, </em><em>optional</em>) – System / item id for each event in <code class="docutils literal notranslate"><span class="pre">x</span></code>. Defaults to a single system.</p></li>
+<li><p><strong>T</strong> (<em>scalar</em><em>, </em><em>array_like</em><em> or </em><em>dict</em><em>, </em><em>optional</em>) – Observation (truncation) time. A scalar applies the same window to
+every system; an array gives one window per sorted-unique system; a
+dict is keyed by system id. If omitted, each system is treated as
+failure-truncated – observed up to its last event, which is then
+excluded (giving <span class="math notranslate nohighlight">\(2(n-1)\)</span> degrees of freedom per system).</p></li>
+<li><p><strong>alternative</strong> (<em>str</em><em>, </em><em>optional</em>) – Direction of the alternative hypothesis: <code class="docutils literal notranslate"><span class="pre">&quot;two-sided&quot;</span></code> (default),
+<code class="docutils literal notranslate"><span class="pre">&quot;increasing&quot;</span></code> (deterioration; lower tail of the chi-squared) or
+<code class="docutils literal notranslate"><span class="pre">&quot;decreasing&quot;</span></code> (reliability growth; upper tail).</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Keyword only: censoring flags in the fitters’ form (0 an event, 1
+the end of a system’s observation), in place of <code class="docutils literal notranslate"><span class="pre">T</span></code>, as
+<code class="docutils literal notranslate"><span class="pre">CrowAMSAA.fit(x,</span> <span class="pre">i,</span> <span class="pre">c)</span></code> takes them. A system with a <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>
+row is observed to that time; one without is failure-truncated.</p></li>
+<li><p><strong>tl</strong> (<em>scalar</em><em>, </em><em>array_like</em><em> or </em><em>dict</em><em>, </em><em>optional</em>) – Keyword only: each system’s observation start <span class="math notranslate nohighlight">\(s_q\)</span>, for
+delayed entry (left truncation), in the forms <code class="docutils literal notranslate"><span class="pre">T</span></code> takes; with
+<code class="docutils literal notranslate"><span class="pre">c</span></code> it may instead be one value per row, as the fitters take it
+(the same on every row of a system). Events must fall after it.
+Default: every system is observed from time 0.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The significance level at which <code class="docutils literal notranslate"><span class="pre">trend</span></code> is judged (default
+0.05, keyword only): the result names a trend only when
+<code class="docutils literal notranslate"><span class="pre">p_value</span> <span class="pre">&lt;</span> <span class="pre">alpha_ci</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Object carrying the chi-squared <code class="docutils literal notranslate"><span class="pre">statistic</span></code>, its <code class="docutils literal notranslate"><span class="pre">dof</span></code>, the
+<code class="docutils literal notranslate"><span class="pre">p_value</span></code>, the <code class="docutils literal notranslate"><span class="pre">direction</span></code> of the statistic and the <code class="docutils literal notranslate"><span class="pre">trend</span></code>
+concluded at <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.recurrent.tests.TrendTestResult" title="surpyval.recurrent.tests.TrendTestResult">TrendTestResult</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent.tests</span><span class="w"> </span><span class="kn">import</span> <span class="n">mil_hdbk_189c</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">27</span><span class="p">,</span> <span class="mi">34</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">49</span><span class="p">,</span> <span class="mi">52</span><span class="p">,</span> <span class="mi">54</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">res</span> <span class="o">=</span> <span class="n">mil_hdbk_189c</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">res</span><span class="o">.</span><span class="n">dof</span>
+<span class="go">18</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">res</span><span class="o">.</span><span class="n">direction</span><span class="p">,</span> <span class="n">res</span><span class="o">.</span><span class="n">trend</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="go">('increasing', 'none', 0.203)</span>
+</pre></div>
+</div>
+<p>With a second system observed on <code class="docutils literal notranslate"><span class="pre">(30,</span> <span class="pre">80]</span></code>:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x2</span> <span class="o">=</span> <span class="p">[</span><span class="mi">35</span><span class="p">,</span> <span class="mi">48</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">66</span><span class="p">,</span> <span class="mi">71</span><span class="p">,</span> <span class="mi">75</span><span class="p">,</span> <span class="mi">78</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">res</span> <span class="o">=</span> <span class="n">mil_hdbk_189c</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">x</span> <span class="o">+</span> <span class="n">x2</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="mi">9</span> <span class="o">+</span> <span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="mi">7</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="mi">80</span><span class="p">},</span> <span class="n">tl</span><span class="o">=</span><span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="mi">30</span><span class="p">}</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">statistic</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="n">res</span><span class="o">.</span><span class="n">dof</span>
+<span class="go">(19.921, 32)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.tests.</span></span><span class="sig-name descname"><span class="pre">TrendTestResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">statistic</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alternative</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">direction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_events</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_systems</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dof</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Result of a recurrent-event trend test (<a class="reference internal" href="#surpyval.recurrent.tests.laplace" title="surpyval.recurrent.tests.laplace"><code class="xref py py-func docutils literal notranslate"><span class="pre">laplace()</span></code></a> or
+<a class="reference internal" href="#surpyval.recurrent.tests.mil_hdbk_189c" title="surpyval.recurrent.tests.mil_hdbk_189c"><code class="xref py py-func docutils literal notranslate"><span class="pre">mil_hdbk_189c()</span></code></a>).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult.statistic">
+<span class="sig-name descname"><span class="pre">statistic</span></span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult.statistic" title="Link to this definition"></a></dt>
+<dd><p>The test statistic (a z-score for the Laplace test, a chi-squared
+value for the MIL-HDBK-189C test).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult.p_value">
+<span class="sig-name descname"><span class="pre">p_value</span></span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult.p_value" title="Link to this definition"></a></dt>
+<dd><p>The p-value for the requested <code class="docutils literal notranslate"><span class="pre">alternative</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult.alternative">
+<span class="sig-name descname"><span class="pre">alternative</span></span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult.alternative" title="Link to this definition"></a></dt>
+<dd><p>The alternative hypothesis tested: <code class="docutils literal notranslate"><span class="pre">&quot;two-sided&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;increasing&quot;</span></code>
+or <code class="docutils literal notranslate"><span class="pre">&quot;decreasing&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult.test">
+<span class="sig-name descname"><span class="pre">test</span></span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult.test" title="Link to this definition"></a></dt>
+<dd><p>The name of the test.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult.trend">
+<span class="sig-name descname"><span class="pre">trend</span></span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult.trend" title="Link to this definition"></a></dt>
+<dd><p>The conclusion at the <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code> level: <code class="docutils literal notranslate"><span class="pre">&quot;increasing&quot;</span></code> or
+<code class="docutils literal notranslate"><span class="pre">&quot;decreasing&quot;</span></code> when the test rejects the no-trend null
+(<code class="docutils literal notranslate"><span class="pre">p_value</span> <span class="pre">&lt;</span> <span class="pre">alpha_ci</span></code>), and <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> otherwise.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult.direction">
+<span class="sig-name descname"><span class="pre">direction</span></span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult.direction" title="Link to this definition"></a></dt>
+<dd><p>The direction the statistic points to, whether or not it is
+significant: <code class="docutils literal notranslate"><span class="pre">&quot;increasing&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;decreasing&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> (a
+statistic exactly at its null centre). It is not evidence of a
+trend on its own; <code class="docutils literal notranslate"><span class="pre">trend</span></code> is.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult.alpha_ci">
+<span class="sig-name descname"><span class="pre">alpha_ci</span></span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult.alpha_ci" title="Link to this definition"></a></dt>
+<dd><p>The significance level <code class="docutils literal notranslate"><span class="pre">trend</span></code> is judged at.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult.dof">
+<span class="sig-name descname"><span class="pre">dof</span></span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult.dof" title="Link to this definition"></a></dt>
+<dd><p>Degrees of freedom (MIL-HDBK-189C only; <code class="docutils literal notranslate"><span class="pre">None</span></code> for Laplace).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult.n_events">
+<span class="sig-name descname"><span class="pre">n_events</span></span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult.n_events" title="Link to this definition"></a></dt>
+<dd><p>The number of events contributing to the statistic.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.tests.TrendTestResult.n_systems">
+<span class="sig-name descname"><span class="pre">n_systems</span></span><a class="headerlink" href="#surpyval.recurrent.tests.TrendTestResult.n_systems" title="Link to this definition"></a></dt>
+<dd><p>The number of systems (items) in the data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Examples</p>
+<p><a class="reference internal" href="#surpyval.recurrent.tests.laplace" title="surpyval.recurrent.tests.laplace"><code class="xref py py-func docutils literal notranslate"><span class="pre">laplace()</span></code></a> returns one. The gaps between these failures shrink,
+so the statistic points to an increasing rate, but with nine events
+it is not significant, so no trend is reported:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent.tests</span><span class="w"> </span><span class="kn">import</span> <span class="n">laplace</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">27</span><span class="p">,</span> <span class="mi">34</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">49</span><span class="p">,</span> <span class="mi">52</span><span class="p">,</span> <span class="mi">54</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">laplace</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span><span class="o">.</span><span class="n">direction</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">trend</span>
+<span class="go">('increasing', 'none')</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">statistic</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">(1.1547, 0.2482)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.recurrent.diagnostics.GoodnessOfFitResult">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.diagnostics.</span></span><span class="sig-name descname"><span class="pre">GoodnessOfFitResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">statistic</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_boot</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_events</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_systems</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.diagnostics.GoodnessOfFitResult" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Result of the Cramer-von Mises goodness-of-fit test
+(<code class="xref py py-meth docutils literal notranslate"><span class="pre">ParametricRecurrenceModel.cramer_von_mises()</span></code>).</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.diagnostics.GoodnessOfFitResult.statistic">
+<span class="sig-name descname"><span class="pre">statistic</span></span><a class="headerlink" href="#surpyval.recurrent.diagnostics.GoodnessOfFitResult.statistic" title="Link to this definition"></a></dt>
+<dd><p>The Cramer-von Mises statistic <code class="docutils literal notranslate"><span class="pre">C^2_M</span></code> of the pooled
+conditionally-uniform transforms of the event times.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.diagnostics.GoodnessOfFitResult.p_value">
+<span class="sig-name descname"><span class="pre">p_value</span></span><a class="headerlink" href="#surpyval.recurrent.diagnostics.GoodnessOfFitResult.p_value" title="Link to this definition"></a></dt>
+<dd><p>Parametric-bootstrap p-value: the proportion of statistics from
+data simulated (and refitted) under the fitted model that are at
+least as large as the observed one.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.diagnostics.GoodnessOfFitResult.n_boot">
+<span class="sig-name descname"><span class="pre">n_boot</span></span><a class="headerlink" href="#surpyval.recurrent.diagnostics.GoodnessOfFitResult.n_boot" title="Link to this definition"></a></dt>
+<dd><p>The number of successful bootstrap replicates behind <code class="docutils literal notranslate"><span class="pre">p_value</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.diagnostics.GoodnessOfFitResult.n_events">
+<span class="sig-name descname"><span class="pre">n_events</span></span><a class="headerlink" href="#surpyval.recurrent.diagnostics.GoodnessOfFitResult.n_events" title="Link to this definition"></a></dt>
+<dd><p>The number of (transformed) event times in the statistic.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.diagnostics.GoodnessOfFitResult.n_systems">
+<span class="sig-name descname"><span class="pre">n_systems</span></span><a class="headerlink" href="#surpyval.recurrent.diagnostics.GoodnessOfFitResult.n_systems" title="Link to this definition"></a></dt>
+<dd><p>The number of systems (items) in the data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Examples</p>
+<p>Is a constant failure rate (<code class="docutils literal notranslate"><span class="pre">HPP</span></code>) consistent with these failure
+times of one system? The p-value comes from a parametric bootstrap:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">HPP</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">27</span><span class="p">,</span> <span class="mi">34</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">49</span><span class="p">,</span> <span class="mi">52</span><span class="p">,</span> <span class="mi">54</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">HPP</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">cramer_von_mises</span><span class="p">(</span><span class="n">n_boot</span><span class="o">=</span><span class="mi">99</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">statistic</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">0.1872</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span><span class="o">.</span><span class="n">n_events</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">n_systems</span>
+<span class="go">(8, 1)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">p_value</span> <span class="o">&gt;</span> <span class="mf">0.05</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="shared_frailty.html" class="btn btn-neutral float-left" title="Shared Frailty (Poisson Processes Whose Units Differ)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="intervention.html" class="btn btn-neutral float-right" title="Intervention Test" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

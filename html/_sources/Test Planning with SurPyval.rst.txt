@@ -1,0 +1,819 @@
+Test Planning with SurPyval
+===========================
+
+Before a reliability test is run, four questions decide what it costs and
+what it can show:
+
+- **Will it demonstrate the target?** A demonstration test shows, at a
+  confidence level, that a design meets a reliability or MTBF target.
+- **Can it decide sooner?** A sequential test stops as soon as the
+  evidence is clear.
+- **How precise will the estimate be?** A life test run to estimate a
+  B-life or a mean needs enough units and time for the precision wanted;
+  an accelerated test also needs the right stresses.
+- **Will a comparison detect the difference?** Comparing a new design with
+  an old one needs enough events to detect the improvement.
+
+``surpyval.test_planning`` answers each from planning values: the target,
+and assumed values of what the test will measure. Every function here plans
+a test; the fitters elsewhere in SurPyval analyse it once it is run. As
+everywhere in SurPyval, a confidence level is given as ``alpha_ci``, the
+significance level: for a demonstration test it is the *consumer's risk*,
+the chance that a design no better than the target passes, ``0.05`` for 95%
+confidence. The other party's risk, the *supplier's* or producer's (that a
+good design fails), is ``producer_risk``; the section on procurement below
+works through both.
+
+Demonstration tests
+-------------------
+
+A pass/fail (attribute) test runs ``n`` units for a mission each. With no
+failures allowed, 59 units demonstrate 95% reliability at 95% confidence,
+the success run of :func:`surpyval.success_run`; allowing one failure takes
+93:
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import (
+        demonstrated_reliability,
+        demonstration_pass_probability,
+        demonstration_plan,
+        demonstration_sample_size,
+    )
+
+    print(demonstration_sample_size(0.95), demonstration_sample_size(0.95, 1))
+    print(round(demonstrated_reliability(59), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert demonstration_sample_size(0.95) == 59
+    assert demonstration_sample_size(0.95, 1) == 93
+
+A test has a second risk, the *producer's*: that a good design fails. The
+22-unit zero-failure test that demonstrates 90% reliability at 90%
+confidence passes a design of 95% reliability only about a third of the
+time. :func:`~surpyval.test_planning.demonstration_plan` finds the smallest
+test that keeps both risks: here 128 units, allowing 8 failures.
+
+.. jupyter-execute::
+
+    print(round(demonstration_pass_probability(0.95, 22), 2))
+    plan = demonstration_plan(0.9, 0.95, alpha_ci=0.1, producer_risk=0.2)
+    plan
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(demonstration_pass_probability(0.95, 22), 2) == 0.32
+    assert (plan.n, plan.failures) == (128, 8)
+
+When the lifetime's Weibull shape is known, testing each unit for longer
+than a mission trades units for test time (the extended success run, or
+Weibayes): for a wear-out shape of 2, two missions per unit need a quarter
+of the units, 15 instead of 59.
+
+.. jupyter-execute::
+
+    demonstration_sample_size(0.95, test_multiple=2.0, shape=2.0)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert demonstration_sample_size(0.95, test_multiple=2.0, shape=2.0) == 15
+
+With the units fixed, :func:`~surpyval.test_planning.demonstration_test_time`
+gives how long each must run, in hours rather than missions: ten units, a
+believed shape of 2, to show 90% reliability over 1000 hours at 90%
+confidence, each run about 1478 hours with no failure (the Weibayes closed
+form, :math:`t_m (\ln \alpha / (n \ln R))^{1/\beta}`). Given ``n`` and
+``shape``, :func:`~surpyval.test_planning.demonstration_plan` searches the
+test length that keeps both risks, and ``mission_time`` reports it in
+hours: ten units are too few to keep a 20% producer's risk at any length,
+which the refusal says with the units that are enough; twenty run about
+2820 hours each, allowing 8 failures.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import demonstration_test_time
+
+    print(round(demonstration_test_time(0.9, 10, mission_time=1000.0,
+                                        shape=2.0, alpha_ci=0.1)))
+    demonstration_plan(0.9, 0.95, alpha_ci=0.1, n=20, shape=2.0,
+                       mission_time=1000.0)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(demonstration_test_time(
+        0.9, 10, mission_time=1000.0, shape=2.0, alpha_ci=0.1)) == 1478
+    _plan = demonstration_plan(0.9, 0.95, alpha_ci=0.1, n=20, shape=2.0,
+                               mission_time=1000.0)
+    assert (round(_plan.unit_test_time, -1), _plan.failures) == (2820, 8)
+
+At a constant failure rate an MTBF is demonstrated by total test time,
+failed units repaired or replaced: about three MTBFs of testing with no
+failures, at 95% confidence. :func:`~surpyval.test_planning.mtbf_demonstration_plan`
+gives the fixed-length plans of MIL-HDBK-781 that keep both risks; to show
+an MTBF of 1000 hours at 90% confidence, passing a 2000-hour design 80% of
+the time, the test runs about 14,200 unit hours and allows 9 failures.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import mtbf_demonstration_plan, mtbf_test_time
+
+    print(round(mtbf_test_time(1000.0)))
+    mtbf_demonstration_plan(1000.0, 2000.0, alpha_ci=0.1)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(mtbf_test_time(1000.0)) == 2996
+    fixed = mtbf_demonstration_plan(1000.0, 2000.0, alpha_ci=0.1)
+    assert (round(fixed.test_time, -2), fixed.failures) == (14200, 9)
+
+Sequential tests
+----------------
+
+A sequential test watches the failures as they come: it accepts the design
+once enough test time has passed for the failures seen, rejects it if they
+come too soon, and otherwise keeps testing. With the same risks it usually
+stops well before the fixed-length test. Truncated at the fixed-length test,
+as MIL-HDBK-781 requires, it never runs longer.
+
+To show an MTBF of 100 hours, a 200-hour design to pass, both risks 10%,
+the fixed-length test runs 2,013 hours; the sequential test about 1,080 on
+average for the good design and 910 for one at the target:
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import sequential_mtbf_test
+
+    test = sequential_mtbf_test(100.0, 200.0, alpha_ci=0.1, producer_risk=0.1)
+    print(round(test.expected_test_time(200.0)), round(test.expected_test_time(100.0)))
+    test
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(test.max_time) == 2013
+    assert round(test.expected_test_time(200.0), -1) == 1080
+    assert round(test.expected_test_time(100.0), -1) == 910
+
+The test's ``decide`` method says what to do at any point, and its risks
+are computed exactly: Wald's boundaries and the truncation move them a
+little from the 10% asked for, here to about 13% and 10%. The pass/fail
+analogue is :func:`~surpyval.test_planning.sequential_demonstration_test`.
+
+.. jupyter-execute::
+
+    print(test.decide(failures=2, test_time=800.0))
+    print(round(test.consumer_risk, 2), round(test.producer_risk, 2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert test.decide(failures=2, test_time=800.0) == "accept"
+    assert round(test.consumer_risk, 2) == 0.13
+    assert round(test.producer_risk, 2) == 0.10
+
+Supplier's and consumer's risk in procurement
+---------------------------------------------
+
+A reliability requirement in a contract is usually checked by an acceptance
+test, and every acceptance test carries two risks, one for each party:
+
+- the **consumer's risk** (the buyer's): that a design no better than the
+  requirement passes the test and is accepted;
+- the **supplier's risk**, or producer's risk: that a design which is good
+  fails the test and is rejected.
+
+A contract that states only a reliability "at 90% confidence" fixes the
+first and leaves the second to chance. The examples below show how large it
+can be, how to agree a test that bounds both, and how to check a test clause
+that is already written.
+
+**Notation.** MIL-HDBK-781 and most procurement standards call the
+producer's (supplier's) risk :math:`\alpha` and the consumer's risk
+:math:`\beta`. SurPyval writes every confidence level as ``alpha_ci``, and
+for a demonstration test that is the *consumer's* risk; the supplier's is
+``producer_risk``. So a handbook plan with :math:`\alpha = 10\%` and
+:math:`\beta = 20\%` is ``producer_risk=0.1, alpha_ci=0.2``.
+
+The supplier's risk hidden in a zero-failure test
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The familiar 59-unit, zero-failure test demonstrates 95% reliability at 95%
+confidence: a design at exactly 95% passes it only 5% of the time. But the
+supplier's side is far worse than most contracts realise. A design of 99%
+reliability, five times fewer failures than the requirement allows, fails
+the test 45% of the time; to pass it nine times in ten, a design needs about
+99.8%. The test's *operating characteristic*, its chance of passing against
+the design's true reliability, shows both risks at once:
+
+.. jupyter-execute::
+
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    reliability = np.linspace(0.9, 0.999, 200)
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(reliability, demonstration_pass_probability(reliability, 59),
+            label="59 units, no failures allowed")
+    ax.plot(reliability, demonstration_pass_probability(reliability, 128, 8),
+            label="128 units, 8 failures allowed")
+    ax.axvline(0.95, color="grey", lw=0.8, ls="--")
+    ax.set_xlabel("True reliability of the design")
+    ax.set_ylabel("Chance of passing the test")
+    ax.legend()
+    plt.show()
+
+    for r in (0.97, 0.98, 0.99, 0.995):
+        print(f"{r}: supplier's risk {1 - demonstration_pass_probability(r, 59):.3f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    from scipy import optimize
+
+    assert round(1 - demonstration_pass_probability(0.99, 59), 2) == 0.45
+    needed = optimize.brentq(
+        lambda r: demonstration_pass_probability(r, 59) - 0.9, 0.95, 0.99999)
+    assert round(needed, 3) == 0.998
+
+The steeper the curve, the better the test separates good designs from bad
+ones; allowing a few failures with more units is what makes it steep.
+
+Agreeing a plan that bounds both risks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A fair acceptance test is agreed from four numbers, two from each party:
+the buyer's requirement and consumer's risk, and the supplier's expected
+("good") reliability and supplier's risk.
+:func:`~surpyval.test_planning.demonstration_plan` gives the smallest test
+that keeps both. The closer the good reliability is to the requirement, the
+larger the test: for a requirement of 95% and both risks 10%, a supplier
+confident of 99% needs 105 units allowing 2 failures, but one expecting only
+97% needs 628 units allowing 24.
+
+.. jupyter-execute::
+
+    for good in (0.99, 0.98, 0.97):
+        plan = demonstration_plan(0.95, good, alpha_ci=0.1, producer_risk=0.1)
+        print(f"good design {good}: {plan.n} units, "
+              f"accept with up to {plan.failures} failures "
+              f"(consumer's risk {plan.consumer_risk:.3f}, "
+              f"supplier's risk {plan.producer_risk:.3f})")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    near = demonstration_plan(0.95, 0.99, alpha_ci=0.1, producer_risk=0.1)
+    far = demonstration_plan(0.95, 0.97, alpha_ci=0.1, producer_risk=0.1)
+    assert (near.n, near.failures) == (105, 2)
+    assert (far.n, far.failures) == (628, 24)
+
+An MTBF acceptance test (MIL-HDBK-781)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For equipment with a constant failure rate the requirement is an MTBF, and
+the test runs a total number of unit-hours, failed units repaired. The
+handbook calls the requirement the *lower test MTBF* (:math:`\theta_1`), the
+supplier's design goal the *upper test MTBF* (:math:`\theta_0`), and their
+ratio the *discrimination ratio* :math:`d = \theta_0 / \theta_1`. For a
+requirement of 500 hours, the test shrinks quickly as the ratio grows or the
+risks are relaxed: with both risks 20% and a ratio of 3 it is about 2,140
+unit hours, accepting with up to 2 failures (the handbook's plan XVII-D,
+4.3 times the requirement).
+
+.. jupyter-execute::
+
+    for risk in (0.1, 0.2):
+        for ratio in (1.5, 2.0, 3.0):
+            plan = mtbf_demonstration_plan(
+                500.0, 500.0 * ratio, alpha_ci=risk, producer_risk=risk)
+            print(f"risks {risk:.0%}, d = {ratio}: {plan.test_time:,.0f} unit hours, "
+                  f"accept with up to {plan.failures} failures")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    xvii = mtbf_demonstration_plan(500.0, 1500.0, alpha_ci=0.2,
+                                   producer_risk=0.2)
+    assert (round(xvii.test_time, -1), xvii.failures) == (2140, 2)
+    assert round(xvii.test_time / 500.0, 1) == 4.3
+
+A sequential test with the same risks
+(:func:`~surpyval.test_planning.sequential_mtbf_test`) usually finishes much
+sooner: for the requirement of 500 hours, a goal of 1000 and both risks 10%,
+about 5,400 unit hours on average for a design at the goal, against 10,064
+for the fixed-length test. Its exact risks as run are a little different
+from the 10% asked for (about 13% consumer's and 10% supplier's), because of
+the truncation; a contract that must not exceed a stated consumer's risk
+should say which kind of test is meant.
+
+.. jupyter-execute::
+
+    test = sequential_mtbf_test(500.0, 1000.0, alpha_ci=0.1, producer_risk=0.1)
+    print(round(test.expected_test_time(1000.0)), round(test.max_time))
+    print(round(test.consumer_risk, 3), round(test.producer_risk, 3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(test.expected_test_time(1000.0), -2) == 5400
+    assert round(test.max_time) == 10064
+    assert round(test.consumer_risk, 2) == 0.13
+    assert round(test.producer_risk, 2) == 0.10
+
+Checking a test clause that is already written
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Contracts often state a test without its risks: *"the equipment shall be
+tested for 3,000 hours and accepted with no more than 2 failures; required
+MTBF 500 hours."* :func:`~surpyval.test_planning.mtbf_pass_probability`
+gives both risks. Equipment at the required MTBF passes 6% of the time, so
+the buyer is well protected; but equipment twice as good, at 1000 hours,
+fails 58% of the time. The clause puts almost all of the risk on the
+supplier, who would want either a longer test allowing more failures, or a
+design goal well above 1000 hours.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import mtbf_pass_probability
+
+    for mtbf in (500.0, 750.0, 1000.0, 1500.0):
+        print(f"true MTBF {mtbf:,.0f} h: passes {mtbf_pass_probability(mtbf, 3000.0, 2):.1%}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(mtbf_pass_probability(500.0, 3000.0, 2), 2) == 0.06
+    assert round(1 - mtbf_pass_probability(1000.0, 3000.0, 2), 2) == 0.58
+
+Planning a life test for precision
+----------------------------------
+
+A life test run to *estimate* a B-life or a mean needs enough failures for
+the precision wanted. The precision is the factor ``R`` of the confidence
+interval ``[estimate / R, estimate * R]``; "within 20%" is ``R = 1.2``. It
+depends on planning values of the distribution, above all its shape, which
+earlier tests or engineering knowledge give.
+
+Thirty units of a wear-out part (Weibull, scale 1000 hours, shape 2) on a
+500-hour test, about 7 failures, estimate its B10 life of 325 hours to
+within a factor of 1.62 at 95% confidence:
+
+.. jupyter-execute::
+
+    import surpyval
+    from surpyval.test_planning import (
+        life_test_length,
+        life_test_precision,
+        life_test_sample_size,
+    )
+
+    plan = life_test_precision(surpyval.Weibull, (1000.0, 2.0), 30,
+                               censor_time=500.0)
+    plan
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(plan.expected_failures) == 7
+    assert round(plan.estimate) == 325
+    assert round(plan.precision, 2) == 1.62
+
+The same functions answer the question the other way round: how many units,
+or how long a test, for a precision. To estimate the B10 life within 30% at
+90% confidence takes 72 units on a 600-hour test; forty units need a test of
+about 330 hours to estimate it within a factor of 1.5.
+
+.. jupyter-execute::
+
+    print(life_test_sample_size(surpyval.Weibull, (1000.0, 2.0), 1.3,
+                                censor_time=600.0, alpha_ci=0.1).n)
+    print(round(life_test_length(surpyval.Weibull, (1000.0, 2.0), 40, 1.5,
+                                 alpha_ci=0.1).censor_time))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert life_test_sample_size(surpyval.Weibull, (1000.0, 2.0), 1.3,
+                                 censor_time=600.0, alpha_ci=0.1).n == 72
+    assert round(life_test_length(surpyval.Weibull, (1000.0, 2.0), 40, 1.5,
+                                  alpha_ci=0.1).censor_time, -1) == 330
+
+The precision is a large-sample approximation, from the test's expected
+Fisher information. ``simulate`` checks it: it simulates the test, fits the
+distribution to each simulated data set, and reports the precision the
+estimates actually had, and how often they fell within the planned factor.
+
+.. jupyter-execute::
+
+    plan.simulate(200, random_state=1)
+
+Accelerated life tests
+----------------------
+
+An accelerated test runs units at raised stress to get failures in time, and
+estimates the life at the use stress through a life-stress model. Where to
+put the stresses matters as much as how many units: the units at the lowest
+stress, closest to use, carry the extrapolation, but fail least.
+:func:`~surpyval.test_planning.accelerated_test_plan` chooses the lowest
+stress and the share of units at it, with the highest stress fixed.
+
+For a voltage endurance test (power law, life :math:`10^6 V^{-2}` hours,
+Weibull shape 2), 40 units for 1000 hours, the highest stress 60 V, to
+estimate the B10 life at 10 V: the optimum plan tests about 78% of the units
+near 25 V and the rest at 60 V. A compromise plan of three equally spaced
+levels (Meeker and Hahn) puts 20% of the units in the middle, giving up a
+little precision for protection against a life-stress relation that bends:
+
+.. jupyter-execute::
+
+    from surpyval import life_models
+    from surpyval.test_planning import accelerated_test_plan
+
+    voltage = dict(use_stress=10.0, high_stress=60.0, n=40, censor_time=1000.0)
+    optimum = accelerated_test_plan(
+        surpyval.Weibull, life_models.Power, {"a": 1e6, "n": -2.0}, 2.0,
+        **voltage)
+    compromise = accelerated_test_plan(
+        surpyval.Weibull, life_models.Power, {"a": 1e6, "n": -2.0}, 2.0,
+        levels=3, **voltage)
+    print(optimum)
+    print(compromise)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(optimum.fractions[0], 2) == 0.78
+    assert round(optimum.stresses[0]) == 25
+    assert optimum.precision < compromise.precision
+
+Each plan reports what the acceleration buys: the acceleration factor at
+each stress (an hour at 60 V ages a unit as much as 36 hours at 10 V), and
+how long the same 40 units would have to run at the use stress to estimate
+the B10 life as precisely, about 2480 hours against the 1000 of the
+accelerated test.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(optimum.acceleration_factors[-1]) == 36
+    assert round(optimum.use_test_time, -1) == 2480
+
+:func:`~surpyval.test_planning.accelerated_test_precision` gives the
+precision of a test you propose, and the plans' ``simulate`` method checks
+the approximation by fitting :class:`surpyval.AcceleratedLife` to simulated
+tests.
+
+Comparing two groups
+--------------------
+
+To show that a new design fails less often than the old, a log-rank test
+needs enough *events*: detecting a halving of the hazard with 80% power at
+the 5% level takes 66, with equal groups (Schoenfeld's formula). The units
+follow from the chance each has of failing during the study: if 25% of the
+new units and 35% of the old would fail, detecting a 30% lower hazard takes
+412 units in each group.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import logrank_design
+
+    print(logrank_design(0.5, power=0.8).events)
+    print(logrank_design(0.7, power=0.8, event_probability=(0.25, 0.35)).n)
+    plan = logrank_design(0.7, n=(200, 200), event_probability=(0.25, 0.35))
+    print(plan.solved_for, round(plan.power, 2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert logrank_design(0.5, power=0.8).events == 66
+    assert logrank_design(0.7, power=0.8, event_probability=(0.25, 0.35)).n == (
+        412,
+        412,
+    )
+
+Freedman's formula, as lifelines' ``sample_size_necessary_under_cph`` uses,
+is the option ``method="freedman"``.
+
+A difference stated in mean lives becomes a hazard ratio only through the
+shape. For exponential lives, a mean life 30% longer is a hazard ratio of
+``1 / 1.3``; for Weibull lives with a common shape :math:`\beta`, it is
+``1.3 ** -beta``. Where the shape is known,
+:func:`~surpyval.test_planning.mean_ratio_design` plans the exact F test of
+the two means themselves (Epstein and Sobel; Lawless, section 3.5): 458
+failures for exponential lives, against the log-rank test's 457, and 116
+for a shape of 2.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import mean_ratio_design
+
+    print(mean_ratio_design(1.3, power=0.8).events,
+          logrank_design(1 / 1.3, power=0.8).events)
+    print(mean_ratio_design(1.3, shape=2.0, power=0.8).events)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert mean_ratio_design(1.3, power=0.8).events == 458
+    assert logrank_design(1 / 1.3, power=0.8).events == 457
+    assert mean_ratio_design(1.3, shape=2.0, power=0.8).events == 116
+
+Every design below works the same way: give all of its quantities (the
+power, the size and the effect) but one, and the one left ``None`` is
+solved for. The answer, a
+:class:`~surpyval.test_planning.PowerCalculation`, says what was solved
+for (``solved_for``) and holds it (``value``) beside the power, the events
+and the units. Giving none, or more than one, is refused, naming them.
+
+To show that a change to a repairable system lowered its *rate* of
+failures, the comparison is of the failures before and after the change,
+over the operating time of each: :func:`~surpyval.test_planning.rate_ratio_design`
+gives the power, the smallest change detectable or the operating time
+needed, whichever is left ``None``, for the test of
+:func:`surpyval.recurrent.intervention_test`. They are worked through in
+:doc:`Intervention Analysis with SurPyval`.
+
+When the plain log-rank calculation is wrong
+--------------------------------------------
+
+Schoenfeld's events answer one question: a test that the hazard ratio of
+two groups is 1, when it is the same at every age. Four common plans ask
+something else.
+
+**A covariate that is measured, or correlated with others.** To detect the
+effect of a measurement (a temperature, a dose, a load) in a Cox model,
+the information is the covariate's variance, and a covariate partly
+explained by the others in the model carries less: its coefficient's
+variance is inflated by :math:`1 / (1 - R^2)`, :math:`R^2` its squared
+multiple correlation with them (Hsieh and Lavori 2000). A hazard ratio of
+1.5 per standard deviation takes 48 events alone, 69 if the other
+covariates explain 30% of its variance. For a covariate of two levels give
+``proportion`` instead of ``sd``; with ``r_squared=0`` that is
+Schoenfeld's formula.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import cox_design
+
+    alone = cox_design(1.5, power=0.8, sd=1.0)
+    adjusted = cox_design(1.5, power=0.8, sd=1.0, r_squared=0.3)
+    print(alone.events, adjusted.events)
+    print(cox_design(1.5, power=0.8, event_probability=0.4, sd=1.0, r_squared=0.3).n)
+    smallest = cox_design(power=0.8, n=200, event_probability=0.4, sd=1.0,
+                   r_squared=0.3)
+    print(smallest.solved_for, round(smallest.value, 2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert alone.events == 48
+    assert adjusted.events == 69
+
+**Showing that a change is no worse, or as good.** A cheaper part, a
+shorter procedure: the aim is to show the new group's hazard is at most a
+margin above the old's (non-inferiority), or within margins on both sides
+(equivalence), not that it differs. The null hypothesis is then the
+margin, not a ratio of 1: non-inferiority is shown when the upper limit of
+the ``1 - alpha_ci`` confidence interval of the hazard ratio is below the
+margin, and equivalence when the whole interval is inside the margins
+(two one-sided tests; the classical 5% tests compare a 90% interval,
+``alpha_ci=0.1``). Showing a raise of at most 30% when the two are in fact
+equally good takes 457 events, which is Schoenfeld's count for a hazard
+ratio of 1.3 at one side of a 95% interval.
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import equivalence_design, noninferiority_design
+
+    print(noninferiority_design(1.3, power=0.8).events)
+    print(noninferiority_design(1.3, power=0.8, event_probability=0.4).n)
+    print(equivalence_design(1.25, power=0.8, alpha_ci=0.1).events)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert noninferiority_design(1.3, power=0.8).events == 457
+    assert equivalence_design(1.25, power=0.8, alpha_ci=0.1).events == 688
+
+**A difference in restricted mean survival time.** When the hazards are
+not expected to be proportional (an effect that starts late, curves that
+cross), the hazard ratio is not one number, and a log-rank plan can be far
+off. The restricted mean survival time (RMST) to a horizon :math:`\tau`,
+the area under the survival curve up to :math:`\tau`, needs no such
+assumption, and its difference reads in time: "over five years, the new
+units run on average 0.8 years longer before failing".
+:func:`~surpyval.test_planning.rmst_design` takes the survival curve
+expected in each group (any SurPyval distribution, fitted or with given
+parameters, or a function of time, such as a piecewise exponential), the
+time over which units enter, the follow-up after the last enters and the
+dropout rate, and computes the variance of each group's Kaplan-Meier RMST
+from them (not by simulation):
+
+.. math::
+    \sigma_j^2 = \int_0^\tau
+        \frac{\left(\int_t^\tau S_j(u)\,du\right)^2}
+             {S_j(t)^2\, G(t)}\, dF_j(t),
+
+with :math:`G` the chance of still being observed at :math:`t`. The test
+planned is :func:`surpyval.rmst_diff`'s.
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval.test_planning import rmst_design
+
+    def piecewise(t):
+        # hazard 0.15 for two years, 0.25 after
+        t = np.asarray(t, dtype=float)
+        return np.exp(-np.where(t < 2, 0.15 * t, 0.3 + 0.25 * (t - 2)))
+
+    curves = (surpyval.Weibull.from_params([8.0, 1.3]), piecewise)
+    study = dict(accrual_time=2.0, follow_up=4.0, dropout_rate=0.05)
+    n = rmst_design(curves, 5.0, power=0.8, **study).n
+    print(n, round(rmst_design(curves, 5.0, n=n, **study).power, 3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert n == (84, 84)
+
+**Some units never fail.** When a fraction of the units is cured, immune
+or free of the defect, each group's survival levels off at its cured
+fraction, :math:`S(t) = \pi + (1 - \pi) S_u(t)`, and the hazard ratio
+drifts towards 1 as the uncured fail. Schoenfeld's count for one hazard
+ratio is then wrong, by an amount that depends on the follow-up.
+:func:`~surpyval.test_planning.cure_logrank_design` uses the mean and
+variance of the log-rank statistic under the two mixture-cure curves
+(Schoenfeld 1981), over the study's entry, follow-up and dropout. A
+difference in the cured fraction, in the latency (``latency_hazard_ratio``
+or a pair of latency distributions), or both, may be given:
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import cure_logrank_design
+
+    latency = surpyval.Weibull.from_params([2.0, 1.2])
+    study = dict(accrual_time=1.0, follow_up=3.0)
+    plan = cure_logrank_design((0.45, 0.30), latency, power=0.8, **study)
+    print(plan.n, plan.events)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert plan.n == (247, 247)
+
+A difference only in the cured fraction shows late, when the uncured have
+failed: with half a year of follow-up instead of three, the same plan
+needs several times the units.
+
+Group-sequential designs
+------------------------
+
+A comparison that runs for years is usually looked at along the way: if
+the difference is already clear it can stop early, and if it is clearly not
+coming it can stop for futility. Each extra look is another chance of a
+false finding, so a group-sequential design holds each look to a stricter
+level, chosen so that the chance of a false finding over all the looks is
+still the level asked for. The price is a few more events at most (the
+*inflation factor*); the gain is fewer on average, because the study often
+stops early.
+
+To detect a 30% lower hazard with 90% power at the one-sided 2.5% level,
+one analysis needs 331 events. Looking after a third, two thirds and all of
+the events, with O'Brien-Fleming-type boundaries (very strict early, close
+to the single analysis's level at the end) and a non-binding futility
+boundary, needs at most 353, but about 272 on average if the difference is there
+and 207 if there is none:
+
+.. jupyter-execute::
+
+    from surpyval.test_planning import logrank_group_sequential
+
+    design = logrank_group_sequential(
+        0.7, 3, 0.9, alternative="one-sided", alpha_ci=0.025,
+        futility="hwang-shih-decani", futility_parameter=-2,
+    )
+    design
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert design.max_events == 353
+    assert round(design.expected_events["alternative"]) == 272
+    assert round(design.expected_events["null"]) == 207
+
+At each look the log-rank statistic (signed so that large values favour the
+new design) is compared with the boundaries: at or above the efficacy
+boundary the study stops with the difference shown; at or below the
+futility boundary it may stop without it. The "HR at bound" column is the
+observed hazard ratio that is on the efficacy boundary.
+
+The events rarely arrive exactly as planned. With a spending function (the
+default) the boundaries are re-computed for the events the looks actually
+came at, and the level is still kept. Here the second look came at 230
+events with a log-rank statistic of 2.6, past its boundary, so the study
+stops; the estimate of the hazard ratio allows for having stopped early
+(stopping when the difference looks large makes the plain estimate too
+optimistic):
+
+.. jupyter-execute::
+
+    actual = design.update([120, 230, 349])
+    print(actual.decide(2, 2.6))
+    print(round(actual.p_value(2, 2.6), 4))
+    estimate = actual.hazard_ratio_estimate(2, 2.6)
+    print({k: round(v, 3) for k, v in estimate.items() if k != "repeated"})
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert actual.decide(2, 2.6) == "efficacy"
+    assert round(estimate["estimate"], 2) == 0.71
+
+The p-value and the median-unbiased estimate with its confidence interval
+use the stage-wise ordering (an earlier stop is a stronger result); the
+repeated confidence interval (``estimate["repeated"]``) holds at any look,
+whether or not the study stops there.
+
+The boundaries can be O'Brien-Fleming's, Pocock's, Wang and Tsiatis' or
+Haybittle and Peto's classical shapes, or the Lan-DeMets spending functions
+(O'Brien-Fleming-type, Pocock-type, Hwang-Shih-DeCani, Kim-DeMets); the
+futility boundary spends the type II error with one of the spending
+functions, binding or not. :func:`~surpyval.test_planning.group_sequential_design`
+gives the same designs for any normal test statistic (a difference of means
+or proportions, a Cox coefficient), on the scale of the information, and
+:func:`~surpyval.test_planning.boundary_crossing` the chances of crossing
+any boundaries. They are computed by recursive numerical integration
+(Jennison and Turnbull 2000, chapter 19), not simulated, and agree with R's
+``gsDesign`` and ``rpact`` to about 1e-6.
+
+*Which sequential test?* Wald's sequential tests above
+(:func:`~surpyval.test_planning.sequential_mtbf_test`,
+:func:`~surpyval.test_planning.sequential_demonstration_test`) look after
+every failure or unit and decide between a target and a good value of one
+MTBF or reliability: they suit a demonstration test watched continuously. A
+group-sequential design looks a few planned times at a normal test
+statistic: it suits a comparison of groups analysed in batches, such as a
+log-rank test at interim analyses.
+
+References
+----------
+
+- Meeker, W. Q. and Escobar, L. A. (1998). *Statistical Methods for
+  Reliability Data*, chapters 10 and 20. Wiley.
+- Nelson, W. (1990). *Accelerated Testing*, chapter 6. Wiley.
+- Meeker, W. Q. and Hahn, G. J. (1985). *How to Plan an Accelerated Life
+  Test*. ASQC.
+- MIL-HDBK-781A (1996). *Reliability Test Methods, Plans, and Environments
+  for Engineering, Development, Qualification, and Production*.
+- Wald, A. (1947). *Sequential Analysis*. Wiley.
+- Schoenfeld, D. (1983). Sample-size formula for the proportional-hazards
+  regression model. *Biometrics* 39, 499-503.
+- Freedman, L. S. (1982). Tables of the number of patients required in
+  clinical trials using the logrank test. *Statistics in Medicine* 1,
+  121-129.
+- Hsieh, F. Y. and Lavori, P. W. (2000). Sample-size calculations for the
+  Cox proportional hazards regression model with nonbinary covariates.
+  *Controlled Clinical Trials* 21, 552-560.
+- Chow, S.-C., Shao, J. and Wang, H. (2008). *Sample Size Calculations in
+  Clinical Research*, 2nd edition, chapter 7. Chapman and Hall.
+- Royston, P. and Parmar, M. K. B. (2013). Restricted mean survival time:
+  an alternative to the hazard ratio for the design and analysis of
+  randomized trials with a time-to-event outcome. *BMC Medical Research
+  Methodology* 13, 152.
+- Schoenfeld, D. (1981). The asymptotic properties of nonparametric tests
+  for comparing survival distributions. *Biometrika* 68, 316-319.
+- Jennison, C. and Turnbull, B. W. (2000). *Group Sequential Methods with
+  Applications to Clinical Trials*. Chapman & Hall/CRC.
+- Lan, K. K. G. and DeMets, D. L. (1983). Discrete sequential boundaries
+  for clinical trials. *Biometrika* 70, 659-663.

@@ -1,0 +1,1259 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Joint Frailty Model (Recurrent and Terminal Events) &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Shared Frailty (Poisson Processes Whose Units Differ)" href="shared_frailty.html" />
+    <link rel="prev" title="Semi-Parametric Recurrent-Event Regression" href="recurrent_cox.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#software-reliability-growth-models">Software Reliability Growth Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#models-of-the-times-between-failures">Models of the Times Between Failures</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#panel-counts">Panel Counts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="proportional_intensity_models.html">Proportional Intensity Regression Model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hpp_pi.html">HPP Regression</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nhpp_pi.html">NHPP Regression</a></li>
+<li class="toctree-l4"><a class="reference internal" href="recurrent_cox.html">Semi-Parametric Recurrent-Event Regression</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Joint Frailty Model (Recurrent and Terminal Events)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="shared_frailty.html">Shared Frailty (Poisson Processes Whose Units Differ)</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#trend-tests-and-diagnostics">Trend Tests and Diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#interventions">Interventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">Joint Frailty Model (Recurrent and Terminal Events)</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/joint_frailty.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="joint-frailty-model-recurrent-and-terminal-events">
+<h1>Joint Frailty Model (Recurrent and Terminal Events)<a class="headerlink" href="#joint-frailty-model-recurrent-and-terminal-events" title="Link to this heading"></a></h1>
+<p>Recurrent events that stop at a terminal event which depends on them: a
+machine repaired again and again until it is scrapped, a patient
+readmitted until death. Each unit has an unobserved frailty that raises
+both its rate of recurrent events and its hazard of the terminal event,
+so a unit with many recurrences tends to reach the terminal event sooner.
+Both baselines are Weibull (the recurrent one is the power-law
+intensity), on the unit’s age or, for the recurrences, the time since
+the last event. The theory is on <a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html"><span class="doc">Recurrent Event Regression Analysis</span></a>, with worked examples on <a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Regression Modelling with SurPyval</span></a>.</p>
+<section id="the-fitter">
+<h2>The fitter<a class="headerlink" href="#the-fitter" title="Link to this heading"></a></h2>
+<dl class="py data">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailty">
+<span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.joint_frailty.</span></span><span class="sig-name descname"><span class="pre">JointFrailty</span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailty" title="Link to this definition"></a></dt>
+<dd><p>The joint frailty model of recurrent events and a terminal event
+(Liu, Wolfe and Huang 2004; Rondeau et al. 2007), with Weibull
+baselines for both. <code class="docutils literal notranslate"><span class="pre">JointFrailty</span></code> is an instance of this class;
+its <code class="docutils literal notranslate"><span class="pre">fit</span></code> returns a <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel" title="surpyval.recurrent.joint_frailty.JointFrailtyModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">JointFrailtyModel</span></code></a>.</p>
+<p>In plain words: each unit (a machine, a patient) has repeated events
+until its history is ended by a terminal event (scrapping, death) or
+by the end of follow-up. Every unit carries an unobserved frailty
+<code class="docutils literal notranslate"><span class="pre">u</span></code> that raises its rate of recurrent events by the factor <code class="docutils literal notranslate"><span class="pre">u</span></code> and
+its hazard of the terminal event by <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">**</span> <span class="pre">alpha</span></code>. <code class="docutils literal notranslate"><span class="pre">theta</span></code>, the
+frailty’s variance, measures how much units differ beyond their
+covariates; <code class="docutils literal notranslate"><span class="pre">alpha</span></code> measures how the terminal event depends on that
+difference: positive when the units with many recurrences reach the
+terminal event sooner. With the terminal event treated as ordinary
+censoring that dependence biases the recurrent-event rate, which this
+model corrects.</p>
+<div class="math notranslate nohighlight">
+\[r_i(t \mid u) = u \, r_0(t) \, e^{\beta' Z_i}, \qquad
+\lambda_i(t \mid u) = u^{\alpha} \lambda_0(t) \,
+e^{\gamma' Z_i},\]</div>
+<p>with <span class="math notranslate nohighlight">\(R_0(t) = (t / \eta_r)^{k_r}\)</span> (the power-law intensity)
+and <span class="math notranslate nohighlight">\(\Lambda_0(t) = (t / \eta_t)^{k_t}\)</span>.</p>
+<p><strong>How the data are given.</strong> The rows of each unit (named by <code class="docutils literal notranslate"><span class="pre">i</span></code>) are
+its recurrent events (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>, at the age they happened) and one row
+that closes its observation (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>, at the age it ended). The
+<code class="docutils literal notranslate"><span class="pre">terminal</span></code> flag is 1 on that closing row when the terminal event
+closed it, and 0 when observation simply stopped (the end of the
+study, a unit lost to follow-up). Covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code> describe the unit
+and are the same on all its rows; they enter both parts, with their
+own coefficients. <code class="docutils literal notranslate"><span class="pre">tl</span></code> is a unit’s age when its observation began
+(delayed entry), on the calendar time scale.</p>
+<p><strong>From a SurpyvalData.</strong> <code class="docutils literal notranslate"><span class="pre">fit(data)</span></code> takes a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> with
+units <code class="docutils literal notranslate"><span class="pre">i</span></code>, in which the terminal event is an event row with the
+terminal flag <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">=</span> <span class="pre">1</span></code>: a unit’s rows are its recurrent events
+(<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>, <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">=</span> <span class="pre">0</span></code>), then its terminal event (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>, <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">=</span> <span class="pre">1</span></code>)
+or a row <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code> at the end of its record without one. They are
+read as the arrays above (the terminal event becomes the closing row
+with <code class="docutils literal notranslate"><span class="pre">terminal</span> <span class="pre">=</span> <span class="pre">1</span></code>), so the fit is the same. An event on a unit’s
+last row with no <code class="docutils literal notranslate"><span class="pre">a</span></code> is read as its terminal event, and the
+model’s <code class="docutils literal notranslate"><span class="pre">notes</span></code> say so: give <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">=</span> <span class="pre">0</span></code> on a last event that was an
+ordinary one. <code class="docutils literal notranslate"><span class="pre">fit_from_df(...,</span> <span class="pre">a_col=...)</span></code> reads such a table.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Draw 150 units from a joint frailty model and fit it back.</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">truth</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">recurrent</span><span class="o">=</span><span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="n">terminal</span><span class="o">=</span><span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span>
+<span class="gp">... </span>    <span class="n">theta</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="p">[</span><span class="mf">0.5</span><span class="p">],</span> <span class="n">gamma</span><span class="o">=</span><span class="p">[</span><span class="mf">0.3</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rows</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">150</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">([[</span><span class="mf">0.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]],</span> <span class="p">(</span><span class="mi">75</span><span class="p">,</span> <span class="mi">1</span><span class="p">)),</span>
+<span class="gp">... </span>                    <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">rows</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">parameter_names</span><span class="p">[</span><span class="mi">4</span><span class="p">:</span><span class="mi">6</span><span class="p">]</span>
+<span class="go">['theta', 'alpha']</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">theta</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">alpha</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="go">(0.54, 1.68)</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailty.fit">
+<span class="sig-prename descclassname"><span class="pre">JointFrailty.</span></span><span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">terminal</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_scale</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'calendar'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">family</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'gamma'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel" title="surpyval.recurrent.joint_frailty.JointFrailtyModel"><span class="pre">JointFrailtyModel</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailty.fit" title="Link to this definition"></a></dt>
+<dd><p>Fit the joint frailty model by maximising the marginal likelihood
+(the frailty integrated out by adaptive Gauss-Hermite quadrature).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em><em> or </em><a class="reference internal" href="../surpyval.utilities.html#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData"><em>SurpyvalData</em></a>) – The ages of the recurrent events and of the end of each unit’s
+observation, pooled over the units. Or a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> with
+units <code class="docutils literal notranslate"><span class="pre">i</span></code> holding the whole of the data, the terminal event
+marked by <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">=</span> <span class="pre">1</span></code> on its event row (see the class
+description); the other data arguments are then left out.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Covariates: one row per row of <code class="docutils literal notranslate"><span class="pre">x</span></code> (a 1-D array is one
+covariate), the same on every row of a unit, or a DataFrame
+whose column names name the coefficients. They enter both the
+recurrent intensity (<code class="docutils literal notranslate"><span class="pre">beta</span></code>) and the terminal hazard
+(<code class="docutils literal notranslate"><span class="pre">gamma</span></code>). Default: none.</p></li>
+<li><p><strong>i</strong> (<em>array_like</em>) – The unit each row belongs to.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em>) – 0 on a recurrent event, 1 on the one row per unit that closes
+its observation.</p></li>
+<li><p><strong>terminal</strong> (<em>array_like</em><em> or </em><em>dict</em>) – 1 on a unit’s closing row (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>) where the terminal event
+closed its observation, 0 where observation simply stopped;
+0 on every event row. Or a dict <code class="docutils literal notranslate"><span class="pre">{unit:</span> <span class="pre">0</span> <span class="pre">or</span> <span class="pre">1}</span></code>.</p></li>
+<li><p><strong>tl</strong> (<em>array_like</em><em> or </em><em>float</em><em>, </em><em>optional</em>) – Each unit’s age when its observation began (delayed entry):
+a scalar, one value per row (the same on a unit’s rows) or one
+per unit in the sorted order of the ids. A unit is seen only
+if it had not reached the terminal event by then, which the
+likelihood takes into account. Calendar time scale only.</p></li>
+<li><p><strong>time_scale</strong> (<em>{'calendar'</em><em>, </em><em>'gap'}</em><em>, </em><em>optional</em>) – The clock of the recurrent intensity: <code class="docutils literal notranslate"><span class="pre">'calendar'</span></code> (the
+default), the unit’s age (the Andersen-Gill counting-process
+form, R <code class="docutils literal notranslate"><span class="pre">frailtypack</span></code>’s <code class="docutils literal notranslate"><span class="pre">recurrentAG=TRUE</span></code>), or <code class="docutils literal notranslate"><span class="pre">'gap'</span></code>,
+the time since the unit’s last event (each event renews the
+baseline, <code class="docutils literal notranslate"><span class="pre">recurrentAG=FALSE</span></code>). The terminal hazard is
+always on the unit’s age.</p></li>
+<li><p><strong>family</strong> (<em>{'gamma'</em><em>, </em><em>'lognormal'}</em><em>, </em><em>optional</em>) – The frailty distribution: gamma with mean 1 and variance
+<code class="docutils literal notranslate"><span class="pre">theta</span></code> (the default), or log-normal with <code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">u</span> <span class="pre">~</span> <span class="pre">N(0,</span>
+<span class="pre">theta)</span></code>.</p></li>
+<li><p><strong>init</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Starting values of the natural parameters, in the order of
+<code class="docutils literal notranslate"><span class="pre">parameter_names</span></code>. The default start (the fits without a
+frailty) is tried as well, and the better answer kept.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fitted model.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel" title="surpyval.recurrent.joint_frailty.JointFrailtyModel">JointFrailtyModel</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailty.fit_from_df">
+<span class="sig-prename descclassname"><span class="pre">JointFrailty.</span></span><span class="sig-name descname"><span class="pre">fit_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">terminal_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z_cols</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">fit_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel" title="surpyval.recurrent.joint_frailty.JointFrailtyModel"><span class="pre">JointFrailtyModel</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailty.fit_from_df" title="Link to this definition"></a></dt>
+<dd><p>Fit to an event log held in the columns of a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">pandas.DataFrame</span></code>: the column names in place of the arrays
+of <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailty.fit" title="surpyval.recurrent.joint_frailty.JointFrailty.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>, every other option passed to it unchanged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pandas.DataFrame</em>) – The event log: one row per recurrent event and one per unit
+closing its observation.</p></li>
+<li><p><strong>x_col</strong> (<em>str</em>) – The columns of <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code> and <code class="docutils literal notranslate"><span class="pre">terminal</span></code>. Give
+<code class="docutils literal notranslate"><span class="pre">terminal_col</span></code> or <code class="docutils literal notranslate"><span class="pre">a_col</span></code>, not both.</p></li>
+<li><p><strong>i_col</strong> (<em>str</em>) – The columns of <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code> and <code class="docutils literal notranslate"><span class="pre">terminal</span></code>. Give
+<code class="docutils literal notranslate"><span class="pre">terminal_col</span></code> or <code class="docutils literal notranslate"><span class="pre">a_col</span></code>, not both.</p></li>
+<li><p><strong>c_col</strong> (<em>str</em>) – The columns of <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code> and <code class="docutils literal notranslate"><span class="pre">terminal</span></code>. Give
+<code class="docutils literal notranslate"><span class="pre">terminal_col</span></code> or <code class="docutils literal notranslate"><span class="pre">a_col</span></code>, not both.</p></li>
+<li><p><strong>terminal_col</strong> (<em>str</em>) – The columns of <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code> and <code class="docutils literal notranslate"><span class="pre">terminal</span></code>. Give
+<code class="docutils literal notranslate"><span class="pre">terminal_col</span></code> or <code class="docutils literal notranslate"><span class="pre">a_col</span></code>, not both.</p></li>
+<li><p><strong>Z_cols</strong> (<em>str</em><em> or </em><em>list</em><em> of </em><em>str</em><em>, </em><em>optional</em>) – The covariate columns, which name the coefficients.</p></li>
+<li><p><strong>tl_col</strong> (<em>str</em><em>, </em><em>optional</em>) – The column of each unit’s entry age.</p></li>
+<li><p><strong>a_col</strong> (<em>str</em><em>, </em><em>optional</em>) – In place of <code class="docutils literal notranslate"><span class="pre">terminal_col</span></code>: the column of terminal flags of
+the data model, 1 on the event row (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>) of a unit’s
+terminal event, 0 on its recurrent events, with a row
+<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code> at the end of the record of a unit that had none.
+A blank on a unit’s last event reads as 1 (its terminal
+event, which the model’s <code class="docutils literal notranslate"><span class="pre">notes</span></code> say) and as 0 before.
+The table is read by <code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_dataframe</span></code> (each
+unit’s rows put in time order) and fitted as <code class="docutils literal notranslate"><span class="pre">fit(data)</span></code>.</p></li>
+<li><p><strong>**fit_options</strong> – <code class="docutils literal notranslate"><span class="pre">time_scale</span></code>, <code class="docutils literal notranslate"><span class="pre">family</span></code>, <code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">unit</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The model <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailty.fit" title="surpyval.recurrent.joint_frailty.JointFrailty.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> returns.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel" title="surpyval.recurrent.joint_frailty.JointFrailtyModel">JointFrailtyModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">truth</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">recurrent</span><span class="o">=</span><span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="n">terminal</span><span class="o">=</span><span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="n">theta</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">alpha</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">log</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">2</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">,</span> <span class="s2">"i"</span><span class="p">,</span> <span class="s2">"c"</span><span class="p">,</span> <span class="s2">"terminal"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">n_covariates</span>
+<span class="go">0</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailty.from_params">
+<span class="sig-prename descclassname"><span class="pre">JointFrailty.</span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">recurrent</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">terminal</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">theta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">beta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gamma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">family</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'gamma'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">time_scale</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'calendar'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel" title="surpyval.recurrent.joint_frailty.JointFrailtyModel"><span class="pre">JointFrailtyModel</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailty.from_params" title="Link to this definition"></a></dt>
+<dd><p>A joint frailty model with the given parameters, to predict from
+or to simulate units with (<a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.random" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.random"><code class="xref py py-meth docutils literal notranslate"><span class="pre">JointFrailtyModel.random()</span></code></a>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>recurrent</strong> (<em>(</em><em>scale</em><em>, </em><em>shape</em><em>)</em>) – The Weibull baselines: <code class="docutils literal notranslate"><span class="pre">R_0(t)</span> <span class="pre">=</span> <span class="pre">(t</span> <span class="pre">/</span> <span class="pre">scale)</span> <span class="pre">**</span> <span class="pre">shape</span></code> and
+<code class="docutils literal notranslate"><span class="pre">Lambda_0(t)</span> <span class="pre">=</span> <span class="pre">(t</span> <span class="pre">/</span> <span class="pre">scale)</span> <span class="pre">**</span> <span class="pre">shape</span></code>.</p></li>
+<li><p><strong>terminal</strong> (<em>(</em><em>scale</em><em>, </em><em>shape</em><em>)</em>) – The Weibull baselines: <code class="docutils literal notranslate"><span class="pre">R_0(t)</span> <span class="pre">=</span> <span class="pre">(t</span> <span class="pre">/</span> <span class="pre">scale)</span> <span class="pre">**</span> <span class="pre">shape</span></code> and
+<code class="docutils literal notranslate"><span class="pre">Lambda_0(t)</span> <span class="pre">=</span> <span class="pre">(t</span> <span class="pre">/</span> <span class="pre">scale)</span> <span class="pre">**</span> <span class="pre">shape</span></code>.</p></li>
+<li><p><strong>theta</strong> (<em>float</em>) – The frailty’s variance (of its log for the log-normal), at
+least 0.</p></li>
+<li><p><strong>alpha</strong> (<em>float</em>) – The power of the frailty in the terminal hazard.</p></li>
+<li><p><strong>beta</strong> (<em>array_like</em><em>, </em><em>optional</em>) – The coefficients of the recurrent and the terminal parts, of
+one length. Default: no covariates.</p></li>
+<li><p><strong>gamma</strong> (<em>array_like</em><em>, </em><em>optional</em>) – The coefficients of the recurrent and the terminal parts, of
+one length. Default: no covariates.</p></li>
+<li><p><strong>family</strong> (<em>{'gamma'</em><em>, </em><em>'lognormal'}</em><em>, </em><em>optional</em>) – Default <code class="docutils literal notranslate"><span class="pre">'gamma'</span></code>.</p></li>
+<li><p><strong>time_scale</strong> (<em>{'calendar'</em><em>, </em><em>'gap'}</em><em>, </em><em>optional</em>) – Default <code class="docutils literal notranslate"><span class="pre">'calendar'</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A model with no data, so no likelihood.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel" title="surpyval.recurrent.joint_frailty.JointFrailtyModel">JointFrailtyModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+<span class="go">1.0</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="the-fitted-model">
+<h2>The fitted model<a class="headerlink" href="#the-fitted-model" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.joint_frailty.</span></span><span class="sig-name descname"><span class="pre">JointFrailtyModel</span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ParameterBoundsMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">SerialisableMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">LikelihoodInferenceMixin</span></code></p>
+<p>A fitted joint frailty model of recurrent events and a terminal event
+(see <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailty" title="surpyval.recurrent.joint_frailty.JointFrailty"><code class="xref py py-data docutils literal notranslate"><span class="pre">JointFrailty</span></code></a>).</p>
+<p>Its predictions are for a unit with covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code>: either for the
+population of such units (<code class="docutils literal notranslate"><span class="pre">frailty=None</span></code>, the frailty averaged
+over its distribution) or for one unit of known frailty
+(<code class="docutils literal notranslate"><span class="pre">frailty=u</span></code>; <code class="docutils literal notranslate"><span class="pre">model.frailties</span></code> holds each fitted unit’s
+estimate). Recurrent events: <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.cif" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.cif"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cif()</span></code></a> and <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.iif" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.iif"><code class="xref py py-meth docutils literal notranslate"><span class="pre">iif()</span></code></a>, the
+cumulative intensity and the intensity with no terminal event to
+stop them, and <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.mcf" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.mcf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mcf()</span></code></a>, the expected number of recurrent events
+by each age with the terminal event stopping them (the calendar time
+scale). The terminal event: <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.sf" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.sf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sf()</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.ff" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.ff"><code class="xref py py-meth docutils literal notranslate"><span class="pre">ff()</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.hf" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.hf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">hf()</span></code></a>,
+<a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.Hf" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.Hf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Hf()</span></code></a> and <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.df" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.df"><code class="xref py py-meth docutils literal notranslate"><span class="pre">df()</span></code></a>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.params">
+<span class="sig-name descname"><span class="pre">params</span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.params" title="Link to this definition"></a></dt>
+<dd><p>The parameters, named by <code class="docutils literal notranslate"><span class="pre">parameter_names</span></code>: the recurrent and
+terminal Weibull scales and shapes, <code class="docutils literal notranslate"><span class="pre">theta</span></code>, <code class="docutils literal notranslate"><span class="pre">alpha</span></code>, then the
+recurrent coefficients <code class="docutils literal notranslate"><span class="pre">beta</span></code> and the terminal ones <code class="docutils literal notranslate"><span class="pre">gamma</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.frailties">
+<span class="sig-name descname"><span class="pre">frailties</span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.frailties" title="Link to this definition"></a></dt>
+<dd><p>Each fitted unit’s predicted frailty, its posterior mean given its
+history (empirical Bayes).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">family,</span> <span class="pre">time_scale</span></span></dt>
+<dd><p>As fitted.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.maximum">
+<span class="sig-name descname"><span class="pre">maximum</span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.maximum" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">&quot;verified&quot;</span></code> where the fit reached a verified maximum.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># The population's terminal survival, and that of a frail unit</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">s_all</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mf">10.0</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">s_frail</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">frailty</span><span class="o">=</span><span class="mf">2.0</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">s_all</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">s_frail</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">(0.7221, 0.4931)</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.Hf">
+<span class="sig-name descname"><span class="pre">Hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.Hf" title="Link to this definition"></a></dt>
+<dd><p>The cumulative hazard of the terminal event, <code class="docutils literal notranslate"><span class="pre">-log</span> <span class="pre">sf</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="mf">20.0</span><span class="p">)),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">0.81093</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.aic">
+<span class="sig-name descname"><span class="pre">aic</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.aic" title="Link to this definition"></a></dt>
+<dd><p>Akaike’s information criterion, <span class="math notranslate nohighlight">\(2k - 2\ln L\)</span>, with <code class="docutils literal notranslate"><span class="pre">k</span></code> the
+number of fitted parameters. Lower is better. Call it,
+<code class="docutils literal notranslate"><span class="pre">model.aic()</span></code>, as on every other fitted model.</p>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.23: </span><code class="docutils literal notranslate"><span class="pre">aic</span></code> is a method, as on every other model (#572); it was a
+property.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.aic_c">
+<span class="sig-name descname"><span class="pre">aic_c</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.aic_c" title="Link to this definition"></a></dt>
+<dd><p>The small-sample corrected AIC, <code class="docutils literal notranslate"><span class="pre">aic()</span> <span class="pre">+</span> <span class="pre">(2k^2</span> <span class="pre">+</span> <span class="pre">2k)</span> <span class="pre">/</span> <span class="pre">(n</span> <span class="pre">-</span> <span class="pre">k</span> <span class="pre">-</span>
+<span class="pre">1)</span></code>, with the <code class="docutils literal notranslate"><span class="pre">k</span></code> of <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.aic" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.aic"><code class="xref py py-meth docutils literal notranslate"><span class="pre">aic()</span></code></a> and the <code class="docutils literal notranslate"><span class="pre">n</span></code> of <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.bic" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.bic"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bic()</span></code></a>;
+<code class="docutils literal notranslate"><span class="pre">nan</span></code> where <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">&lt;=</span> <span class="pre">k</span> <span class="pre">+</span> <span class="pre">1</span></code> (<code class="docutils literal notranslate"><span class="pre">corrected_aic</span></code>), as on every
+other model (#605).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.aliased">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">aliased</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.aliased" title="Link to this definition"></a></dt>
+<dd><p>The columns of <code class="docutils literal notranslate"><span class="pre">Z</span></code> whose coefficients the data cannot
+determine (a constant column, the baselines’ scales being the
+intercepts, or a combination of the others): <code class="docutils literal notranslate"><span class="pre">nan</span></code> in <code class="docutils literal notranslate"><span class="pre">beta</span></code>
+and <code class="docutils literal notranslate"><span class="pre">gamma</span></code>, taken as 0 in predictions.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.alpha">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">alpha</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.alpha" title="Link to this definition"></a></dt>
+<dd><p>0 where the
+terminal event is independent of the recurrences given the
+covariates, positive where the units with many recurrences reach
+it sooner. <code class="docutils literal notranslate"><span class="pre">nan</span></code> where <code class="docutils literal notranslate"><span class="pre">theta</span></code> is 0.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The power of the frailty in the terminal hazard</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.beta">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">beta</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.beta" title="Link to this definition"></a></dt>
+<dd><p>The recurrent intensity’s coefficients (<code class="docutils literal notranslate"><span class="pre">nan</span></code> where
+aliased).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.bic">
+<span class="sig-name descname"><span class="pre">bic</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.bic" title="Link to this definition"></a></dt>
+<dd><p>The Bayesian information criterion, <span class="math notranslate nohighlight">\(k \ln n - 2\ln L\)</span>,
+with <code class="docutils literal notranslate"><span class="pre">n</span></code> the number of observed events the model was fitted to:
+exact, left- and interval-censored, the last two adding the
+number of events they hold. End-of-observation rows do not add to
+it, and with no observed event it is the number of rows – the
+rule of BIC everywhere in SurPyval (see <code class="xref py py-func docutils literal notranslate"><span class="pre">bic_sample_size()</span></code>).
+Lower is better. Call it, <code class="docutils literal notranslate"><span class="pre">model.bic()</span></code>, as on every other
+fitted model.</p>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.23: </span><code class="docutils literal notranslate"><span class="pre">bic</span></code> is a method, as on every other model (#572); it was a
+property.</p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.cif">
+<span class="sig-name descname"><span class="pre">cif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.cif" title="Link to this definition"></a></dt>
+<dd><p>The cumulative intensity of recurrent events at age <code class="docutils literal notranslate"><span class="pre">x</span></code> (the
+time since the last event with <code class="docutils literal notranslate"><span class="pre">time_scale='gap'</span></code>): the
+expected number of recurrent events by <code class="docutils literal notranslate"><span class="pre">x</span></code> were there no
+terminal event to stop them. <code class="docutils literal notranslate"><span class="pre">frailty=None</span></code> averages over the
+frailty (<code class="docutils literal notranslate"><span class="pre">E[u]</span> <span class="pre">R_0(x)</span> <span class="pre">e^{beta'</span> <span class="pre">Z}</span></code>, <code class="docutils literal notranslate"><span class="pre">E[u]</span></code> 1 for the gamma
+frailty and <code class="docutils literal notranslate"><span class="pre">e^{theta</span> <span class="pre">/</span> <span class="pre">2}</span></code> for the log-normal); <code class="docutils literal notranslate"><span class="pre">frailty=u</span></code>
+is that of a unit of frailty <code class="docutils literal notranslate"><span class="pre">u</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – Ages.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Covariates: one row for every age, or one per age.</p></li>
+<li><p><strong>frailty</strong> (<em>float</em><em> or </em><em>array_like</em><em>, </em><em>optional</em>) – A unit’s frailty; default the population average.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The cumulative intensity, of the shape of <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="mf">20.0</span><span class="p">))</span>
+<span class="go">4.0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">frailty</span><span class="o">=</span><span class="mf">2.0</span><span class="p">))</span>
+<span class="go">8.0</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.cif_cb">
+<span class="sig-name descname"><span class="pre">cif_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.cif_cb" title="Link to this definition"></a></dt>
+<dd><p>Confidence bounds on <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.cif" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.cif"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cif()</span></code></a> by the delta method on its log,
+from the parameters’ covariance.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – Ages.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Covariates, as for <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.cif" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.cif"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cif()</span></code></a>.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The total tail probability. Default 0.05.</p></li>
+<li><p><strong>bound</strong> (<em>{'two-sided'</em><em>, </em><em>'lower'</em><em>, </em><em>'upper'}</em><em>, </em><em>optional</em>) – Two-sided bounds add a last <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code> axis.</p></li>
+<li><p><strong>frailty</strong> (<em>float</em><em>, </em><em>optional</em>) – As for <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.cif" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.cif"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cif()</span></code></a>.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">truth</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rows</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">150</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">rows</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">cif_cb</span><span class="p">(</span><span class="mf">10.0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">lo</span> <span class="o">&lt;</span> <span class="n">model</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="mf">10.0</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">hi</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.covariance">
+<span class="sig-name descname"><span class="pre">covariance</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.covariance" title="Link to this definition"></a></dt>
+<dd><p>Approximate parameter covariance matrix, ordered to match
+<a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_names" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_names"><code class="xref py py-attr docutils literal notranslate"><span class="pre">parameter_names</span></code></a>. Computed as the inverse of the numerical
+Hessian of the negative log-likelihood at the MLE. A parameter
+that was not estimated (an aliased coefficient, #502) has a <code class="docutils literal notranslate"><span class="pre">nan</span></code>
+row and column.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.df">
+<span class="sig-name descname"><span class="pre">df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.df" title="Link to this definition"></a></dt>
+<dd><p>The density of the age at the terminal event, <code class="docutils literal notranslate"><span class="pre">hf</span> <span class="pre">*</span> <span class="pre">sf</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">df</span><span class="p">(</span><span class="mf">20.0</span><span class="p">)),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">0.014815</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.ff">
+<span class="sig-name descname"><span class="pre">ff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.ff" title="Link to this definition"></a></dt>
+<dd><p>The probability of the terminal event by age <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span>
+<span class="pre">sf</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="mf">20.0</span><span class="p">)),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">0.555556</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.frailty_tests">
+<span class="sig-name descname"><span class="pre">frailty_tests</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.frailty_tests" title="Link to this definition"></a></dt>
+<dd><p>Two likelihood-ratio tests of the dependence between the
+recurrent and the terminal events.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">theta</span> <span class="pre">=</span> <span class="pre">0</span></code>: no frailty, so the units differ only through
+their covariates and the two parts are independent. The model
+without frailty is the two parts fitted separately. Near the
+null the frailty acts through two variances on the edge of their
+space, <code class="docutils literal notranslate"><span class="pre">theta</span></code> in the recurrent part and <code class="docutils literal notranslate"><span class="pre">alpha^2</span> <span class="pre">theta</span></code> in
+the terminal part (<code class="docutils literal notranslate"><span class="pre">alpha</span></code> is not identified under the null),
+so the p-value is that of a 50:50 mixture of
+<span class="math notranslate nohighlight">\(\chi^2_1\)</span> and <span class="math notranslate nohighlight">\(\chi^2_2\)</span> (Self and Liang 1987;
+Stram and Lee 1994), an approximation whose size is checked in
+the calibration study. (The single-variance reference, half a
+<span class="math notranslate nohighlight">\(\chi^2_1\)</span>, rejected a true null 18% of the time at 5%;
+this mixture held 5.0% in that study and 4.6% in a second one.)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">alpha</span> <span class="pre">=</span> <span class="pre">0</span></code>: the frailty acts on the recurrent events only, so
+the terminal event does not depend on how often a unit has
+recurrences. The model is refitted with <code class="docutils literal notranslate"><span class="pre">alpha</span></code> held at 0
+(<code class="docutils literal notranslate"><span class="pre">theta</span></code> free); the statistic is compared with
+<span class="math notranslate nohighlight">\(\chi^2_1\)</span>.</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>One row per test: <code class="docutils literal notranslate"><span class="pre">statistic</span></code> (twice the difference of the
+log-likelihoods), <code class="docutils literal notranslate"><span class="pre">df</span></code>, <code class="docutils literal notranslate"><span class="pre">p</span></code> and <code class="docutils literal notranslate"><span class="pre">reference</span></code> (the null
+distribution).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">truth</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rows</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">150</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">rows</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">frailty_tests</span><span class="p">()[</span><span class="s2">"p"</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+<span class="go">[0.00012, 0.03289]</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.from_dict">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel" title="surpyval.recurrent.joint_frailty.JointFrailtyModel"><span class="pre">JointFrailtyModel</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.from_dict" title="Link to this definition"></a></dt>
+<dd><p>Rebuild a model from <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.to_dict" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a>’s dict.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span><span class="p">,</span> <span class="n">JointFrailtyModel</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">JointFrailtyModel</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span><span class="o">.</span><span class="n">theta</span>
+<span class="go">0.5</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.from_json">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">PathLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.from_json" title="Link to this definition"></a></dt>
+<dd><p>Load a model from a JSON file written by <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.to_json" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.to_json"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_json()</span></code></a>, or
+from the JSON text it returned (a string starting with <code class="docutils literal notranslate"><span class="pre">{</span></code>).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.gamma">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">gamma</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.gamma" title="Link to this definition"></a></dt>
+<dd><p>The terminal hazard’s coefficients (<code class="docutils literal notranslate"><span class="pre">nan</span></code> where aliased).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.hf">
+<span class="sig-name descname"><span class="pre">hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.hf" title="Link to this definition"></a></dt>
+<dd><p>The hazard of the terminal event: for the population of units
+alive at <code class="docutils literal notranslate"><span class="pre">x</span></code> (<code class="docutils literal notranslate"><span class="pre">frailty=None</span></code>), which falls behind the
+conditional hazard as the frail units leave, or for one unit.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># gamma, alpha = 1: h0 / (1 + theta H) = 0.05 / 1.5</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">hf</span><span class="p">(</span><span class="mf">20.0</span><span class="p">)),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">0.033333</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.iif">
+<span class="sig-name descname"><span class="pre">iif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.iif" title="Link to this definition"></a></dt>
+<dd><p>The intensity of recurrent events at age <code class="docutils literal notranslate"><span class="pre">x</span></code> (or time since the
+last event, <code class="docutils literal notranslate"><span class="pre">time_scale='gap'</span></code>), averaged over the frailty
+(<code class="docutils literal notranslate"><span class="pre">frailty=None</span></code>) or for a unit of frailty <code class="docutils literal notranslate"><span class="pre">u</span></code>: the derivative
+of <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.cif" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.cif"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cif()</span></code></a>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">iif</span><span class="p">(</span><span class="mf">10.0</span><span class="p">))</span>
+<span class="go">0.2</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.iif_cb">
+<span class="sig-name descname"><span class="pre">iif_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.iif_cb" title="Link to this definition"></a></dt>
+<dd><p>Confidence bounds on <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.iif" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.iif"><code class="xref py py-meth docutils literal notranslate"><span class="pre">iif()</span></code></a>, as <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.cif_cb" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.cif_cb"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cif_cb()</span></code></a>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">truth</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rows</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">150</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">rows</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">iif_cb</span><span class="p">([</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">])</span><span class="o">.</span><span class="n">shape</span>
+<span class="go">(2, 2)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.log_likelihood">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">log_likelihood</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.log_likelihood" title="Link to this definition"></a></dt>
+<dd><p>The maximised log-likelihood of the fit. Raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> for a
+model with no likelihood (built from parameters, or fitted by MSE).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.mcf">
+<span class="sig-name descname"><span class="pre">mcf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.mcf" title="Link to this definition"></a></dt>
+<dd><p>The mean cumulative function: the expected number of recurrent
+events by age <code class="docutils literal notranslate"><span class="pre">x</span></code>, the terminal event stopping them,</p>
+<div class="math notranslate nohighlight">
+\[E[N(x)] = e^{\beta' Z} \int_0^x r_0(s)\,
+E\big[u\, e^{-u^\alpha e^{\gamma' Z} \Lambda_0(s)}\big]\,ds\]</div>
+<p>(for one unit of frailty <code class="docutils literal notranslate"><span class="pre">u</span></code>, <code class="docutils literal notranslate"><span class="pre">u</span></code> in place of the
+expectation). Below <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.cif" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.cif"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cif()</span></code></a> wherever units reach the terminal
+event. Calendar time scale only.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># no frailty, constant rates 0.1 and 0.05: 2 (1 - e^{-0.05 x})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">mcf</span><span class="p">(</span><span class="mf">20.0</span><span class="p">)),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">1.264241</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.mcf_cb">
+<span class="sig-name descname"><span class="pre">mcf_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.mcf_cb" title="Link to this definition"></a></dt>
+<dd><p>Confidence bounds on <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.mcf" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.mcf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mcf()</span></code></a>, as <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.cif_cb" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.cif_cb"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cif_cb()</span></code></a>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">truth</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rows</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">150</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">rows</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">mcf_cb</span><span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="n">bound</span><span class="o">=</span><span class="s2">"upper"</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">model</span><span class="o">.</span><span class="n">mcf</span><span class="p">(</span><span class="mf">10.0</span><span class="p">)</span>
+<span class="go">np.True_</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.neg_ll">
+<span class="sig-name descname"><span class="pre">neg_ll</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.neg_ll" title="Link to this definition"></a></dt>
+<dd><p>The negative of the maximised log-likelihood, <code class="docutils literal notranslate"><span class="pre">-log_likelihood</span></code>,
+as on every other fitted model (#572).</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.notes">
+<span class="sig-name descname"><span class="pre">notes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">tuple</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">()</span></em><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.notes" title="Link to this definition"></a></dt>
+<dd><p>What <code class="docutils literal notranslate"><span class="pre">fit(data)</span></code> made of the data’s terminal flags <code class="docutils literal notranslate"><span class="pre">a</span></code> (empty
+from arrays); not serialised.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.param_cb">
+<span class="sig-name descname"><span class="pre">param_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'wald'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.param_cb" title="Link to this definition"></a></dt>
+<dd><p>Confidence bound(s) on a named parameter.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;wald&quot;</span></code> (the default) – from the covariance, on the log
+scale for the positive parameters (the baselines’ and
+<code class="docutils literal notranslate"><span class="pre">theta</span></code>) and the natural scale for <code class="docutils literal notranslate"><span class="pre">alpha</span></code> and the
+coefficients.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;lr&quot;</span></code> – the profile-likelihood interval: the values whose
+deviance, every other parameter re-fitted, stays below the
+<span class="math notranslate nohighlight">\(\chi^2_1\)</span> critical value. Where it stays below it down
+to <code class="docutils literal notranslate"><span class="pre">theta</span> <span class="pre">=</span> <span class="pre">0</span></code> the lower bound on <code class="docutils literal notranslate"><span class="pre">theta</span></code> is 0; where it
+stays below it however far <code class="docutils literal notranslate"><span class="pre">alpha</span></code> or a coefficient goes (the
+profile levels off), that end is <code class="docutils literal notranslate"><span class="pre">-inf</span></code> or <code class="docutils literal notranslate"><span class="pre">inf</span></code>, with a
+warning. It needs the data, which a model restored from a dict
+does not keep.</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>str</em>) – One of <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_names" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_names"><code class="xref py py-attr docutils literal notranslate"><span class="pre">parameter_names</span></code></a>.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – Total tail probability. Default 0.05.</p></li>
+<li><p><strong>bound</strong> (<em>{'two-sided'</em><em>, </em><em>'lower'</em><em>, </em><em>'upper'}</em><em>, </em><em>optional</em>) – Two-sided bounds are <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>.</p></li>
+<li><p><strong>method</strong> (<em>{'wald'</em><em>, </em><em>'lr'}</em><em>, </em><em>optional</em>) – As above.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">truth</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rows</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">150</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">rows</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"alpha"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([-0.15,  1.82])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"alpha"</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"lr"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([0.06, 2.57])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_bounds">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">parameter_bounds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_bounds" title="Link to this definition"></a></dt>
+<dd><p>one <code class="docutils literal notranslate"><span class="pre">(low,</span> <span class="pre">high)</span></code> pair per entry of
+the vector <code class="xref py py-meth docutils literal notranslate"><span class="pre">with_params()</span></code> takes, in the order of
+<code class="docutils literal notranslate"><span class="pre">covariance_names</span></code> (<code class="docutils literal notranslate"><span class="pre">None</span></code> for an end with no bound).</p>
+<p>A parameter set drawn inside these ranges is one <code class="docutils literal notranslate"><span class="pre">with_params</span></code>
+does not refuse for being out of range, and one just outside a
+finite end is refused. Draw a parameter bounded on one side on the
+log scale of its distance from that end, and one bounded on both
+on the logit scale between them. Whether an end itself is allowed
+depends on the parameter (a probability may be 0 where a scale may
+not), so keep draws strictly inside.</p>
+<p>A few models also constrain their parameters jointly, which no
+per-parameter range can say, and <code class="docutils literal notranslate"><span class="pre">with_params</span></code> refuses a set
+that breaks the joint constraint, saying so: a mixture’s weights
+sum to 1; a Uniform’s <code class="docutils literal notranslate"><span class="pre">a</span></code> is below its <code class="docutils literal notranslate"><span class="pre">b</span></code> (as a Beta4’s
+are); a Royston-Parmar spline does not fall; a Binomial’s <code class="docutils literal notranslate"><span class="pre">n</span></code> is
+a whole number. The entry of a parameter <code class="docutils literal notranslate"><span class="pre">with_params</span></code> ignores
+(held fixed in the fit, or an accelerated life model’s life
+parameter) gives the parameter’s range all the same. An
+accelerated life model’s life-model parameters can have ranges
+that depend on the stresses fitted to; a model loaded from a dict
+saved without its data gives them as unbounded.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span><span class="p">,</span> <span class="n">WeibullPH</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">])</span><span class="o">.</span><span class="n">parameter_bounds</span>
+<span class="go">[(0.0, None), (0.0, None)]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="n">Z</span><span class="o">=</span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">covariance_names</span>
+<span class="go">['alpha', 'beta', 'coef_0']</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">parameter_bounds</span>
+<span class="go">[(0.0, None), (0.0, None), (None, None)]</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The range of each parameter</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_names">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">parameter_names</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span></em><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_names" title="Link to this definition"></a></dt>
+<dd><p>The names of the model’s parameters, in the order used by
+<a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.covariance" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.covariance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">covariance()</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.standard_errors" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.standard_errors"><code class="xref py py-meth docutils literal notranslate"><span class="pre">standard_errors()</span></code></a> and <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.param_cb" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.param_cb"><code class="xref py py-meth docutils literal notranslate"><span class="pre">param_cb()</span></code></a>.
+A model built from parameters has them too.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.random">
+<span class="sig-name descname"><span class="pre">random</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">end</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.random" title="Link to this definition"></a></dt>
+<dd><p>Simulate <code class="docutils literal notranslate"><span class="pre">size</span></code> units from the model, each followed from age 0
+until its terminal event or the end of its observation <code class="docutils literal notranslate"><span class="pre">end</span></code>,
+whichever comes first.</p>
+<p>Each unit draws its frailty <code class="docutils literal notranslate"><span class="pre">u</span></code>; its terminal age from the
+Weibull hazard <code class="docutils literal notranslate"><span class="pre">u^alpha</span> <span class="pre">lambda_0(t)</span> <span class="pre">e^{gamma'</span> <span class="pre">Z}</span></code>; and its
+recurrent events from the intensity <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">r_0</span> <span class="pre">e^{beta'</span> <span class="pre">Z}</span></code> (on its
+age, or renewed at each event with <code class="docutils literal notranslate"><span class="pre">time_scale='gap'</span></code>) until the
+earlier of the two.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>size</strong> (<em>int</em>) – The number of units.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em><em>, </em><em>optional</em>) – The units’ covariates: one row for all, or one per unit.</p></li>
+<li><p><strong>end</strong> (<em>float</em><em> or </em><em>array_like</em>) – The age at which each unit’s observation ends (one value, or
+one per unit); keyword only.</p></li>
+<li><p><strong>random_state</strong> (<em>optional</em>) – A seed or <code class="docutils literal notranslate"><span class="pre">numpy.random.Generator</span></code>; <code class="docutils literal notranslate"><span class="pre">None</span></code> draws from
+numpy’s global generator.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">terminal</span></code> (and <code class="docutils literal notranslate"><span class="pre">Z</span></code> with covariates),
+ready for <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailty.fit" title="surpyval.recurrent.joint_frailty.JointFrailty.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">JointFrailty.fit()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">JointFrailty.fit(**rows)</span></code>).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rows</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">sorted</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+<span class="go">['c', 'i', 'terminal', 'x']</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.sf">
+<span class="sig-name descname"><span class="pre">sf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.sf" title="Link to this definition"></a></dt>
+<dd><p>The survival function of the terminal event: the probability that
+a unit has not reached it by age <code class="docutils literal notranslate"><span class="pre">x</span></code>, averaged over the frailty
+(<code class="docutils literal notranslate"><span class="pre">frailty=None</span></code>, <span class="math notranslate nohighlight">\(E[e^{-u^\alpha e^{\gamma' Z}
+\Lambda_0(x)}]\)</span>) or for a unit of frailty <code class="docutils literal notranslate"><span class="pre">u</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># gamma frailty, alpha = 1: (1 + theta H)^(-1 / theta)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mf">20.0</span><span class="p">)),</span> <span class="mi">6</span><span class="p">),</span> <span class="nb">round</span><span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">**</span> <span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">(0.444444, 0.444444)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.sf_cb">
+<span class="sig-name descname"><span class="pre">sf_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.sf_cb" title="Link to this definition"></a></dt>
+<dd><p>Confidence bounds on the terminal event’s <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.sf" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.sf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sf()</span></code></a>, by the
+delta method on the log of its cumulative hazard, so that they
+stay in [0, 1].</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">truth</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rows</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">150</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">rows</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">sf_cb</span><span class="p">(</span><span class="mf">10.0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">lo</span> <span class="o">&lt;</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mf">10.0</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">hi</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.standard_errors">
+<span class="sig-name descname"><span class="pre">standard_errors</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.standard_errors" title="Link to this definition"></a></dt>
+<dd><p>Standard errors of the fitted parameters (the square roots of the
+diagonal of <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.covariance" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.covariance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">covariance()</span></code></a>), ordered to match
+<a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_names" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_names"><code class="xref py py-attr docutils literal notranslate"><span class="pre">parameter_names</span></code></a>. Entries are NaN where the variance is
+non-positive, which typically indicates a boundary optimum, and for
+a parameter that was not estimated (an aliased coefficient).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.summary">
+<span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.summary" title="Link to this definition"></a></dt>
+<dd><p>The parameters with their standard errors and Wald intervals, one
+row per entry of <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_names" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.parameter_names"><code class="xref py py-attr docutils literal notranslate"><span class="pre">parameter_names</span></code></a> (<code class="docutils literal notranslate"><span class="pre">nan</span></code> where not
+estimated).</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">truth</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rows</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">150</span><span class="p">,</span> <span class="n">end</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="o">**</span><span class="n">rows</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span>
+<span class="go">['estimate', 'se', 'lower 95%', 'upper 95%']</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.theta">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">theta</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.theta" title="Link to this definition"></a></dt>
+<dd><p>The frailty variance (of <code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">u</span></code> for the log-normal).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.to_dict" title="Link to this definition"></a></dt>
+<dd><p>A plain, JSON-safe dict of the model: its family, time scale,
+parameters and their names, the covariance (so that the Wald
+bounds survive), and each fitted unit’s predicted frailty. The data
+are not stored: the likelihood, the likelihood-ratio bounds and
+the tests need a refit.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JointFrailty</span><span class="p">,</span> <span class="n">JointFrailtyModel</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JointFrailty</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">(</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">),</span> <span class="p">(</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">again</span> <span class="o">=</span> <span class="n">JointFrailtyModel</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">float</span><span class="p">(</span><span class="n">again</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mf">10.0</span><span class="p">))</span> <span class="o">==</span> <span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mf">10.0</span><span class="p">))</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">PathLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">with_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.to_json" title="Link to this definition"></a></dt>
+<dd><p>Write <a class="reference internal" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.to_dict" title="surpyval.recurrent.joint_frailty.JointFrailtyModel.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> to <code class="docutils literal notranslate"><span class="pre">fp</span></code> as strict JSON, or return it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fp</strong> (<em>str</em><em> or </em><em>os.PathLike</em><em>, </em><em>optional</em>) – The file to write. Without it the JSON is returned as a
+string (as <code class="docutils literal notranslate"><span class="pre">pandas.DataFrame.to_json</span></code> does), which
+<code class="docutils literal notranslate"><span class="pre">from_json</span></code> also reads.</p></li>
+<li><p><strong>with_data</strong> (<em>bool</em><em>, </em><em>optional</em>) – Write <code class="docutils literal notranslate"><span class="pre">to_dict(with_data=True)</span></code>, which also stores the fitted
+data, for the models whose <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> takes <code class="docutils literal notranslate"><span class="pre">with_data</span></code>
+(the univariate <code class="docutils literal notranslate"><span class="pre">Parametric</span></code> and <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code>); a
+<code class="docutils literal notranslate"><span class="pre">TypeError</span></code> for any other model. Defaults to <code class="code docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.JointFrailtyModel.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#surpyval.recurrent.joint_frailty.JointFrailtyModel.unit" title="Link to this definition"></a></dt>
+<dd><p>a label, set by
+<code class="docutils literal notranslate"><span class="pre">unit=</span></code> on <code class="docutils literal notranslate"><span class="pre">fit</span></code>, <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> and <code class="docutils literal notranslate"><span class="pre">from_params</span></code>, shown
+in the <code class="docutils literal notranslate"><span class="pre">repr</span></code> and on plots and saved by <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>. None is
+unknown. See <code class="xref py py-mod docutils literal notranslate"><span class="pre">surpyval.utils.units</span></code>. (Not <code class="docutils literal notranslate"><span class="pre">units</span></code>, which
+names the items measured: a degradation model’s unit ids.)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The unit of the data the model describes (#845)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="the-frailty-integral">
+<h2>The frailty integral<a class="headerlink" href="#the-frailty-integral" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.recurrent.joint_frailty.log_frailty_integral">
+<span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.joint_frailty.</span></span><span class="sig-name descname"><span class="pre">log_frailty_integral</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">D</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">A</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">B</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">theta</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">family</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'gamma'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_nodes</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">64</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.joint_frailty.log_frailty_integral" title="Link to this definition"></a></dt>
+<dd><p>The frailty integral of the joint frailty model, elementwise,</p>
+<div class="math notranslate nohighlight">
+\[\log \int_0^\infty u^D e^{-A u - B u^\alpha} \, dG_\theta(u),\]</div>
+<p>with <code class="docutils literal notranslate"><span class="pre">G</span></code> the gamma (mean 1, variance <code class="docutils literal notranslate"><span class="pre">theta</span></code>) or log-normal
+(<code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">u</span> <span class="pre">~</span> <span class="pre">N(0,</span> <span class="pre">theta)</span></code>) frailty distribution, by an <code class="docutils literal notranslate"><span class="pre">n_nodes</span></code>-point
+trapezoid rule in <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">log</span> <span class="pre">u</span></code> over the range where the integrand
+matters: from its mode (found by Newton’s method; the log-integrand is
+concave) out to where it has fallen by <code class="docutils literal notranslate"><span class="pre">e^-36</span></code> on either side. The
+mode and the range only place the nodes, so they are not
+differentiated: autograd’s derivatives are those of the rule with the
+nodes held, which is a valid quadrature wherever they are.
+<code class="docutils literal notranslate"><span class="pre">theta</span> <span class="pre">&lt;=</span> <span class="pre">0</span></code> is the model without frailty, <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">1</span></code>:
+<code class="docutils literal notranslate"><span class="pre">-A</span> <span class="pre">-</span> <span class="pre">B</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>D</strong> (<em>array_like</em>) – Broadcast together: a unit’s count of events (<code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">+</span> <span class="pre">alpha</span> <span class="pre">delta</span></code>,
+its recurrent events and <code class="docutils literal notranslate"><span class="pre">alpha</span></code> times its terminal flag), its
+cumulative recurrent intensity at <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">1</span></code> and its cumulative
+terminal hazard at <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">1</span></code>.</p></li>
+<li><p><strong>A</strong> (<em>array_like</em>) – Broadcast together: a unit’s count of events (<code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">+</span> <span class="pre">alpha</span> <span class="pre">delta</span></code>,
+its recurrent events and <code class="docutils literal notranslate"><span class="pre">alpha</span></code> times its terminal flag), its
+cumulative recurrent intensity at <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">1</span></code> and its cumulative
+terminal hazard at <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">1</span></code>.</p></li>
+<li><p><strong>B</strong> (<em>array_like</em>) – Broadcast together: a unit’s count of events (<code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">+</span> <span class="pre">alpha</span> <span class="pre">delta</span></code>,
+its recurrent events and <code class="docutils literal notranslate"><span class="pre">alpha</span></code> times its terminal flag), its
+cumulative recurrent intensity at <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">1</span></code> and its cumulative
+terminal hazard at <code class="docutils literal notranslate"><span class="pre">u</span> <span class="pre">=</span> <span class="pre">1</span></code>.</p></li>
+<li><p><strong>alpha</strong> (<em>float</em>) – The power of the frailty in the terminal hazard.</p></li>
+<li><p><strong>theta</strong> (<em>float</em>) – The variance of the frailty (gamma) or of its logarithm
+(log-normal).</p></li>
+<li><p><strong>family</strong> (<em>{'gamma'</em><em>, </em><em>'lognormal'}</em><em>, </em><em>optional</em>) – The frailty distribution. Default <code class="docutils literal notranslate"><span class="pre">'gamma'</span></code>.</p></li>
+<li><p><strong>n_nodes</strong> (<em>int</em><em>, </em><em>optional</em>) – The least number of nodes. Default 64; more are taken where a
+unit’s integrand is wide, for steps of at most 0.3 in <code class="docutils literal notranslate"><span class="pre">w</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The log-integral, of the broadcast shape.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent.joint_frailty</span><span class="w"> </span><span class="kn">import</span> <span class="n">log_frailty_integral</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># A gamma frailty with alpha = 1 has a closed form:</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># log E[u^D e^{-(A + B) u}] for theta = 0.5, D = 2, A + B = 1.5</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">value</span> <span class="o">=</span> <span class="n">log_frailty_integral</span><span class="p">(</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">scipy.special</span><span class="w"> </span><span class="kn">import</span> <span class="n">gammaln</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">k</span> <span class="o">=</span> <span class="mf">2.0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">exact</span> <span class="o">=</span> <span class="p">(</span><span class="n">gammaln</span><span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span> <span class="o">-</span> <span class="n">gammaln</span><span class="p">(</span><span class="n">k</span><span class="p">)</span> <span class="o">+</span> <span class="n">k</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+<span class="gp">... </span>         <span class="o">-</span> <span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">k</span> <span class="o">+</span> <span class="mf">1.5</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">value</span> <span class="o">-</span> <span class="n">exact</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-12</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="recurrent_cox.html" class="btn btn-neutral float-left" title="Semi-Parametric Recurrent-Event Regression" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="shared_frailty.html" class="btn btn-neutral float-right" title="Shared Frailty (Poisson Processes Whose Units Differ)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

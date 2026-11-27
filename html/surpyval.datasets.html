@@ -1,0 +1,779 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Datasets &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="v0.28 (14 November 2026)" href="changelog.html" />
+    <link rel="prev" title="Utilities" href="surpyval.utilities.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Datasets</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_bearing_failures"><code class="docutils literal notranslate"><span class="pre">load_bearing_failures()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_bofors_steel"><code class="docutils literal notranslate"><span class="pre">load_bofors_steel()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_boston_housing"><code class="docutils literal notranslate"><span class="pre">load_boston_housing()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_framingham"><code class="docutils literal notranslate"><span class="pre">load_framingham()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_g1_kaminskiy_krivtsov"><code class="docutils literal notranslate"><span class="pre">load_g1_kaminskiy_krivtsov()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_heart_transplants"><code class="docutils literal notranslate"><span class="pre">load_heart_transplants()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_kidney"><code class="docutils literal notranslate"><span class="pre">load_kidney()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_lung"><code class="docutils literal notranslate"><span class="pre">load_lung()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_meeker_lfp"><code class="docutils literal notranslate"><span class="pre">load_meeker_lfp()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_mettas_and_zhao"><code class="docutils literal notranslate"><span class="pre">load_mettas_and_zhao()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_mgus2"><code class="docutils literal notranslate"><span class="pre">load_mgus2()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_pbc2"><code class="docutils literal notranslate"><span class="pre">load_pbc2()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_rossi_static"><code class="docutils literal notranslate"><span class="pre">load_rossi_static()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_rossi_time_varying"><code class="docutils literal notranslate"><span class="pre">load_rossi_time_varying()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_sae"><code class="docutils literal notranslate"><span class="pre">load_sae()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_support2"><code class="docutils literal notranslate"><span class="pre">load_support2()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.datasets.load_tires_data"><code class="docutils literal notranslate"><span class="pre">load_tires_data()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="surpyval.html">API</a></li>
+      <li class="breadcrumb-item active">Datasets</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/surpyval.datasets.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="datasets">
+<h1>Datasets<a class="headerlink" href="#datasets" title="Link to this heading"></a></h1>
+<p>Example data sets used throughout the documentation and the docstrings,
+each returned as a <code class="xref py py-class docutils literal notranslate"><span class="pre">pandas.DataFrame</span></code> by a <code class="docutils literal notranslate"><span class="pre">load_*</span></code> function in
+<code class="docutils literal notranslate"><span class="pre">surpyval.datasets</span></code>. Check each loader’s description for how its
+censoring column is coded: several are already coded as SurPyval’s
+censoring flag <code class="docutils literal notranslate"><span class="pre">c</span></code> (0 observed, 1 right-censored) rather than as an
+event indicator.</p>
+<dl class="py function" id="module-surpyval.datasets">
+<dt class="sig sig-object py" id="surpyval.datasets.load_bearing_failures">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_bearing_failures</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_bearing_failures" title="Link to this definition"></a></dt>
+<dd><p>Data on the failure of bearings, from <a class="footnote-reference brackets" href="#id2" id="id1" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a>. “Cycles to Failure (millions)”
+is the number of cycles to failure in millions of cycles.</p>
+<p>The 23 values are all exact failure times: there is no censoring
+column, so pass the column as <code class="docutils literal notranslate"><span class="pre">x</span></code> alone.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_bearing_failures</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">load_bearing_failures</span><span class="p">()[</span><span class="s2">"Cycles to Failure (millions)"</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([81.875,  2.102])</span>
+</pre></div>
+</div>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id2" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">1</a><span class="fn-bracket">]</span></span>
+<p>Lieblein, J. and Zelen, M. (1956) Statistical Investigation
+of the Fatigue Life of Deep-Groove Ball Bearings. Journal of
+Research of the National Bureau of Standards, 57, 273-315.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_bofors_steel">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_bofors_steel</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_bofors_steel" title="Link to this definition"></a></dt>
+<dd><p>Returns a Pandas DataFrame containing the data of
+the tensile strength of Bofors Steel from <a class="footnote-reference brackets" href="#id4" id="id3" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a>.</p>
+<p>Grouped data in ten rows: <code class="docutils literal notranslate"><span class="pre">x</span></code> is the strength and <code class="docutils literal notranslate"><span class="pre">n</span></code> the number
+of specimens with that strength, so pass the columns as <code class="docutils literal notranslate"><span class="pre">x</span></code> and
+<code class="docutils literal notranslate"><span class="pre">n</span></code>. Every value is an exact observation.</p>
+<p>First 5 rows of the dataset:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"></th>
+<th class="head"><p>x</p></th>
+<th class="head"><p>n</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>40.800</p></td>
+<td><p>10</p></td>
+</tr>
+<tr class="row-odd"><td><p>1</p></td>
+<td><p>42.075</p></td>
+<td><p>23</p></td>
+</tr>
+<tr class="row-even"><td><p>2</p></td>
+<td><p>43.350</p></td>
+<td><p>48</p></td>
+</tr>
+<tr class="row-odd"><td><p>3</p></td>
+<td><p>44.625</p></td>
+<td><p>80</p></td>
+</tr>
+<tr class="row-even"><td><p>4</p></td>
+<td><p>45.900</p></td>
+<td><p>63</p></td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id4" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">2</a><span class="fn-bracket">]</span></span>
+<p>Weibull, W., A statistical distribution function
+of wide applicability, Journal of applied mechanics,
+Vol. 18, No. 3, pp 293-297 (1951).</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_boston_housing">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_boston_housing</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_boston_housing" title="Link to this definition"></a></dt>
+<dd><p>The Boston house-price data of <a class="footnote-reference brackets" href="#id6" id="id5" role="doc-noteref"><span class="fn-bracket">[</span>3<span class="fn-bracket">]</span></a>.</p>
+<p>This is a well-known data set used in machine learning. It can be
+analysed with survival analysis methods by considering the
+fact that the highest prices appear to be right censored.</p>
+<p>One row per census tract (506), with the thirteen covariates of the
+original data and <code class="docutils literal notranslate"><span class="pre">medv</span></code>, the median house value in thousands of
+dollars. <code class="docutils literal notranslate"><span class="pre">medv</span></code> is capped at 50: the 16 tracts at 50.0 are right
+censored there. There is no censoring column; build one from the cap.</p>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id6" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id5">3</a><span class="fn-bracket">]</span></span>
+<p>Harrison, D. and Rubinfeld, D.L. (1978) Hedonic
+prices and the demand for clean air. J. Environ.
+Economics and Management 5, 81-102.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_framingham">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_framingham</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_framingham" title="Link to this definition"></a></dt>
+<dd><p>The Framingham Heart Study teaching dataset, from <a class="footnote-reference brackets" href="#id8" id="id7" role="doc-noteref"><span class="fn-bracket">[</span>13<span class="fn-bracket">]</span></a>.</p>
+<p>A longitudinal extract: 4434 participants (<code class="docutils literal notranslate"><span class="pre">RANDID</span></code>) examined at up
+to three visits (<code class="docutils literal notranslate"><span class="pre">PERIOD</span></code> 1-3, 11627 rows), with the risk factors
+measured at each visit (<code class="docutils literal notranslate"><span class="pre">SEX</span></code> 1 male / 2 female, <code class="docutils literal notranslate"><span class="pre">AGE</span></code>,
+<code class="docutils literal notranslate"><span class="pre">TOTCHOL</span></code>, <code class="docutils literal notranslate"><span class="pre">SYSBP</span></code>, <code class="docutils literal notranslate"><span class="pre">DIABP</span></code>, <code class="docutils literal notranslate"><span class="pre">CURSMOKE</span></code>, <code class="docutils literal notranslate"><span class="pre">CIGPDAY</span></code>, <code class="docutils literal notranslate"><span class="pre">BMI</span></code>,
+<code class="docutils literal notranslate"><span class="pre">DIABETES</span></code>, <code class="docutils literal notranslate"><span class="pre">BPMEDS</span></code>, <code class="docutils literal notranslate"><span class="pre">HEARTRTE</span></code>, <code class="docutils literal notranslate"><span class="pre">GLUCOSE</span></code>, <code class="docutils literal notranslate"><span class="pre">educ</span></code>,
+<code class="docutils literal notranslate"><span class="pre">HDLC</span></code>, <code class="docutils literal notranslate"><span class="pre">LDLC</span></code>; <code class="docutils literal notranslate"><span class="pre">TIME</span></code> is the visit’s day since baseline) and
+<code class="docutils literal notranslate"><span class="pre">PREV*</span></code> flags for conditions present at the visit.</p>
+<p>Follow-up is 24 years (8766 days). Each outcome has an event flag and
+a time in days: <code class="docutils literal notranslate"><span class="pre">DEATH</span></code>/<code class="docutils literal notranslate"><span class="pre">TIMEDTH</span></code>, <code class="docutils literal notranslate"><span class="pre">ANGINA</span></code>/<code class="docutils literal notranslate"><span class="pre">TIMEAP</span></code>,
+<code class="docutils literal notranslate"><span class="pre">HOSPMI</span></code>/<code class="docutils literal notranslate"><span class="pre">TIMEMI</span></code>, <code class="docutils literal notranslate"><span class="pre">MI_FCHD</span></code>/<code class="docutils literal notranslate"><span class="pre">TIMEMIFC</span></code>, <code class="docutils literal notranslate"><span class="pre">ANYCHD</span></code>/<code class="docutils literal notranslate"><span class="pre">TIMECHD</span></code>,
+<code class="docutils literal notranslate"><span class="pre">STROKE</span></code>/<code class="docutils literal notranslate"><span class="pre">TIMESTRK</span></code>, <code class="docutils literal notranslate"><span class="pre">CVD</span></code>/<code class="docutils literal notranslate"><span class="pre">TIMECVD</span></code> and
+<code class="docutils literal notranslate"><span class="pre">HYPERTEN</span></code>/<code class="docutils literal notranslate"><span class="pre">TIMEHYP</span></code>. A flag of 1 means the event happened at that
+time, so <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">flag</span></code>; outcome columns repeat on every visit row,
+so take one row per participant (e.g. <code class="docutils literal notranslate"><span class="pre">PERIOD</span> <span class="pre">==</span> <span class="pre">1</span></code>) for a
+time-to-event fit. 1550 participants died during follow-up.</p>
+<p>The teaching data are anonymised and perturbed by the NHLBI; they are
+meant for learning methods, not for publishing epidemiological
+results.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_framingham</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_framingham</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">baseline</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"PERIOD"</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">baseline</span><span class="p">[</span><span class="s2">"TIMEDTH"</span><span class="p">]</span> <span class="o">/</span> <span class="mf">365.25</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="mi">1</span> <span class="o">-</span> <span class="n">baseline</span><span class="p">[</span><span class="s2">"DEATH"</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([0.903, 0.732])</span>
+</pre></div>
+</div>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id8" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id7">13</a><span class="fn-bracket">]</span></span>
+<p>National Heart, Lung, and Blood Institute, Biologic Specimen
+and Data Repository Information Coordinating Center (BioLINCC).
+Framingham Heart Study Longitudinal Data Documentation
+(teaching dataset).</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_g1_kaminskiy_krivtsov">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_g1_kaminskiy_krivtsov</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_g1_kaminskiy_krivtsov" title="Link to this definition"></a></dt>
+<dd><p>Data on the survival of a repairable system from <a class="footnote-reference brackets" href="#id10" id="id9" role="doc-noteref"><span class="fn-bracket">[</span>4<span class="fn-bracket">]</span></a>.</p>
+<p>One system with twelve failures. <code class="docutils literal notranslate"><span class="pre">x</span></code> is the <em>cumulative</em> time of
+each failure (the times between failures are 3, 6, 11, 5, 16, 9, 19,
+22, 37, 23, 31 and 45); every row is an observed failure and there is
+no item or censoring column.</p>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id10" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id9">4</a><span class="fn-bracket">]</span></span>
+<p>Kaminskiy, M.P. and Krivtsov, V.V. (2010).
+G1-renewal process as repairable system model.
+Reliability: Theory &amp; Applications, 1(3) (issue 18).
+arXiv:1006.3718.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_heart_transplants">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_heart_transplants</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_heart_transplants" title="Link to this definition"></a></dt>
+<dd><p>Data on the survival of patients who may or may not have received a
+heart transplant, from <a class="footnote-reference brackets" href="#id12" id="id11" role="doc-noteref"><span class="fn-bracket">[</span>5<span class="fn-bracket">]</span></a>.</p>
+<p>Start-stop form: each patient (<code class="docutils literal notranslate"><span class="pre">id</span></code>) has one row before a
+transplant and, if transplanted, one after (<code class="docutils literal notranslate"><span class="pre">transplant</span></code> 1), over
+<code class="docutils literal notranslate"><span class="pre">(start,</span> <span class="pre">stop]</span></code>; <code class="docutils literal notranslate"><span class="pre">event</span></code> is 1 for a death at <code class="docutils literal notranslate"><span class="pre">stop</span></code> (so
+<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">event</span></code>). There are 172 rows for 103 patients, 75 of whom
+died. <code class="docutils literal notranslate"><span class="pre">age</span></code> is the age at acceptance minus 48 years, <code class="docutils literal notranslate"><span class="pre">year</span></code> the
+date of acceptance in years after 1 November 1967 and <code class="docutils literal notranslate"><span class="pre">surgery</span></code> 1
+for prior bypass surgery.</p>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id12" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id11">5</a><span class="fn-bracket">]</span></span>
+<p>Crowley, J. and Hu, M. (1977) Covariance analysis of heart
+transplant survival data. Journal of the American Statistical
+Association, 72, 27-36.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_kidney">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_kidney</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_kidney" title="Link to this definition"></a></dt>
+<dd><p>Times to infection at the catheter insertion point of 38 kidney
+patients on portable dialysis, from McGilchrist and Aisbett <a class="footnote-reference brackets" href="#id14" id="id13" role="doc-noteref"><span class="fn-bracket">[</span>16<span class="fn-bracket">]</span></a>, as
+R’s <code class="docutils literal notranslate"><span class="pre">survival::kidney</span></code>: two times per patient, the classic example
+of a shared frailty (the patient).</p>
+<p><code class="docutils literal notranslate"><span class="pre">id</span></code> is the patient (the frailty group), <code class="docutils literal notranslate"><span class="pre">time</span></code> the time to
+infection or censoring in days and <code class="docutils literal notranslate"><span class="pre">status</span></code> 1 for an infection and 0
+for a censored time, so pass <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">status</span></code>. The covariates are
+<code class="docutils literal notranslate"><span class="pre">age</span></code>, <code class="docutils literal notranslate"><span class="pre">sex</span></code> (1 male, 2 female) and <code class="docutils literal notranslate"><span class="pre">disease</span></code> (<code class="docutils literal notranslate"><span class="pre">Other</span></code>,
+<code class="docutils literal notranslate"><span class="pre">GN</span></code>, <code class="docutils literal notranslate"><span class="pre">AN</span></code> or <code class="docutils literal notranslate"><span class="pre">PKD</span></code>); <code class="docutils literal notranslate"><span class="pre">frail</span></code> is the frailty estimate of the
+original paper. 76 rows, 58 infections.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoxPH</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_kidney</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_kidney</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">female</span> <span class="o">=</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"sex"</span><span class="p">]</span> <span class="o">==</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">CoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"time"</span><span class="p">],</span> <span class="n">female</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"status"</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([-0.8377])</span>
+</pre></div>
+</div>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id14" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id13">16</a><span class="fn-bracket">]</span></span>
+<p>McGilchrist, C. A. and Aisbett, C. W. (1991). Regression with
+frailty in survival analysis. Biometrics, 47(2), 461-466.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_lung">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_lung</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_lung" title="Link to this definition"></a></dt>
+<dd><p>Data on the survival of patients with advanced lung cancer from <a class="footnote-reference brackets" href="#id16" id="id15" role="doc-noteref"><span class="fn-bracket">[</span>6<span class="fn-bracket">]</span></a>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">time</span></code> is the survival time in days. <code class="docutils literal notranslate"><span class="pre">status</span></code> is 1 for a death
+at <code class="docutils literal notranslate"><span class="pre">time</span></code> and 0 for a patient censored (alive at last follow-up),
+as in lifelines’ <code class="docutils literal notranslate"><span class="pre">load_lung</span></code> (R’s <code class="docutils literal notranslate"><span class="pre">survival::lung</span></code> codes it 2 and
+1). SurPyval’s censoring flag is its complement, so pass
+<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">status</span></code>. (Before v0.22 this copy stored <code class="docutils literal notranslate"><span class="pre">status</span></code> already
+inverted to the censoring flag.) There are 228 patients, 165 of whom
+died. The other columns are the covariates
+of the original data (<code class="docutils literal notranslate"><span class="pre">inst</span></code>, <code class="docutils literal notranslate"><span class="pre">age</span></code>, <code class="docutils literal notranslate"><span class="pre">sex</span></code> with 1 male and 2
+female, <code class="docutils literal notranslate"><span class="pre">ph.ecog</span></code>, <code class="docutils literal notranslate"><span class="pre">ph.karno</span></code>, <code class="docutils literal notranslate"><span class="pre">pat.karno</span></code>, <code class="docutils literal notranslate"><span class="pre">meal.cal</span></code> and
+<code class="docutils literal notranslate"><span class="pre">wt.loss</span></code>, several with missing values).</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_lung</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_lung</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"time"</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"status"</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">365</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([0.409])</span>
+</pre></div>
+</div>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id16" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id15">6</a><span class="fn-bracket">]</span></span>
+<p>Loprinzi CL. Laurie JA. Wieand HS. Krook JE. Novotny PJ.
+Kugler JW. Bartel J. Law M. Bateman M. Klatt NE. et al.
+Prospective evaluation of prognostic variables from
+patient-completed questionnaires. North Central Cancer
+Treatment Group. Journal of Clinical Oncology. 12(3):601-7, 1994.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_meeker_lfp">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_meeker_lfp</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_meeker_lfp" title="Link to this definition"></a></dt>
+<dd><p>Data on failures of integrated circuits from <a class="footnote-reference brackets" href="#id18" id="id17" role="doc-noteref"><span class="fn-bracket">[</span>12<span class="fn-bracket">]</span></a>.</p>
+<p>Very difficult for LFP calculations since the data is heavily
+right censored: 4,156 circuits were tested for 1,370 hours and 28
+failed. The data is in <code class="docutils literal notranslate"><span class="pre">xcnt</span></code> form: <code class="docutils literal notranslate"><span class="pre">x</span></code> the time in hours, <code class="docutils literal notranslate"><span class="pre">c</span></code>
+the censoring flag and <code class="docutils literal notranslate"><span class="pre">n</span></code> the count, with the 4,128 survivors in
+one row right censored at 1,370.</p>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id18" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id17">12</a><span class="fn-bracket">]</span></span>
+<p>Meeker, W.Q. (1987) Limited Failure Population Life Tests:
+Application to Integrated Circuit Reliability. Technometrics,
+29(1), 51-65.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_mettas_and_zhao">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_mettas_and_zhao</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_mettas_and_zhao" title="Link to this definition"></a></dt>
+<dd><p>Data on the survival of a repairable system from <a class="footnote-reference brackets" href="#id20" id="id19" role="doc-noteref"><span class="fn-bracket">[</span>7<span class="fn-bracket">]</span></a>.</p>
+<p>Recurrent event data for six systems: <code class="docutils literal notranslate"><span class="pre">x</span></code> is the cumulative time of
+each event on system <code class="docutils literal notranslate"><span class="pre">i</span></code>, and <code class="docutils literal notranslate"><span class="pre">c</span></code> is 1 on each system’s last
+row, the end of its observation (0 for a failure).</p>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id20" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id19">7</a><span class="fn-bracket">]</span></span>
+<p>Mettas, A. and Zhao, Y.Q. (2005).
+Modeling and analysis of repairable systems with general repair.
+IEEE Transactions on Reliability, 54(1), 1-10.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_mgus2">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_mgus2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spells</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_mgus2" title="Link to this definition"></a></dt>
+<dd><p>The natural history of 1,384 patients with monoclonal gammopathy of
+undetermined significance (MGUS), from Kyle et al. <a class="footnote-reference brackets" href="#id22" id="id21" role="doc-noteref"><span class="fn-bracket">[</span>17<span class="fn-bracket">]</span></a>, as R’s
+<code class="docutils literal notranslate"><span class="pre">survival::mgus2</span></code>: some progress to a plasma-cell malignancy (PCM),
+and patients die with or without it. The classic illness-death data.</p>
+<p>One row per patient: <code class="docutils literal notranslate"><span class="pre">id</span></code>, <code class="docutils literal notranslate"><span class="pre">age</span></code> at diagnosis (years), <code class="docutils literal notranslate"><span class="pre">sex</span></code>
+(<code class="docutils literal notranslate"><span class="pre">&quot;F&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;M&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">dxyr</span></code> (year of diagnosis), the laboratory
+values <code class="docutils literal notranslate"><span class="pre">hgb</span></code>, <code class="docutils literal notranslate"><span class="pre">creat</span></code> and <code class="docutils literal notranslate"><span class="pre">mspike</span></code> (some missing), <code class="docutils literal notranslate"><span class="pre">ptime</span></code> and
+<code class="docutils literal notranslate"><span class="pre">pstat</span></code> (months to progression or last check, and 1 for a
+progression), <code class="docutils literal notranslate"><span class="pre">futime</span></code> and <code class="docutils literal notranslate"><span class="pre">death</span></code> (months to death or last
+contact, and 1 for a death).</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">spells=True</span></code> the same data as spells in the states <code class="docutils literal notranslate"><span class="pre">&quot;mgus&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;pcm&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;death&quot;</span></code>, the long form the multi-state models take
+(<a class="reference internal" href="Multi-State%20Models.html#surpyval.multistate.MultiState" title="surpyval.multistate.MultiState"><code class="xref py py-class docutils literal notranslate"><span class="pre">MultiState</span></code></a>): one row for each spell a
+patient spent in a state, with <code class="docutils literal notranslate"><span class="pre">id</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code> (its start), <code class="docutils literal notranslate"><span class="pre">x</span></code> (its
+end), <code class="docutils literal notranslate"><span class="pre">state</span></code>, <code class="docutils literal notranslate"><span class="pre">e</span></code> (the state entered at <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">None</span></code> where the
+spell was censored), <code class="docutils literal notranslate"><span class="pre">age</span></code> and <code class="docutils literal notranslate"><span class="pre">male</span></code> (1 for a man). As in the
+survival package’s vignette on multi-state models, a progression in
+the month of death is put 0.1 months earlier, so the spell in PCM has
+a length.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_mgus2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_mgus2</span><span class="p">(</span><span class="n">spells</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span><span class="p">[</span><span class="s2">"state"</span><span class="p">]</span><span class="o">.</span><span class="n">value_counts</span><span class="p">()</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+<span class="go">{'mgus': 1384, 'pcm': 115}</span>
+</pre></div>
+</div>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id22" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id21">17</a><span class="fn-bracket">]</span></span>
+<p>Kyle, R. A., Therneau, T. M., Rajkumar, S. V., Offord, J. R.,
+Larson, D. R., Plevak, M. F. and Melton, L. J. (2002). A
+long-term study of prognosis in monoclonal gammopathy of
+undetermined significance. New England Journal of Medicine,
+346(8), 564-569.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_pbc2">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_pbc2</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_pbc2" title="Link to this definition"></a></dt>
+<dd><p>The Mayo Clinic primary biliary cirrhosis (PBC) trial, longitudinal
+version, from <a class="footnote-reference brackets" href="#id24" id="id23" role="doc-noteref"><span class="fn-bracket">[</span>14<span class="fn-bracket">]</span></a>.</p>
+<p>312 patients (<code class="docutils literal notranslate"><span class="pre">id</span></code>) randomised to D-penicillamine or placebo
+(<code class="docutils literal notranslate"><span class="pre">drug</span></code>), with repeated laboratory measurements: one row per visit
+(1945 rows), <code class="docutils literal notranslate"><span class="pre">year</span></code> being the visit time in years since
+enrolment. Per-patient columns (repeated on every row) are <code class="docutils literal notranslate"><span class="pre">years</span></code>,
+the follow-up time in years, and <code class="docutils literal notranslate"><span class="pre">status</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;alive&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;transplanted&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;dead&quot;</span></code>) at that time; <code class="docutils literal notranslate"><span class="pre">status2</span></code> is 1 for
+death and 0 otherwise (alive or transplanted), so for survival with
+transplantation treated as censoring <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">status2</span></code>. 140
+patients died and 29 were transplanted. The per-visit covariates are
+<code class="docutils literal notranslate"><span class="pre">ascites</span></code>, <code class="docutils literal notranslate"><span class="pre">hepatomegaly</span></code>, <code class="docutils literal notranslate"><span class="pre">spiders</span></code>, <code class="docutils literal notranslate"><span class="pre">edema</span></code>, <code class="docutils literal notranslate"><span class="pre">serBilir</span></code>,
+<code class="docutils literal notranslate"><span class="pre">serChol</span></code>, <code class="docutils literal notranslate"><span class="pre">albumin</span></code>, <code class="docutils literal notranslate"><span class="pre">alkaline</span></code>, <code class="docutils literal notranslate"><span class="pre">SGOT</span></code>, <code class="docutils literal notranslate"><span class="pre">platelets</span></code>,
+<code class="docutils literal notranslate"><span class="pre">prothrombin</span></code> and <code class="docutils literal notranslate"><span class="pre">histologic</span></code>; <code class="docutils literal notranslate"><span class="pre">age</span></code> and <code class="docutils literal notranslate"><span class="pre">sex</span></code> are at
+baseline and <code class="docutils literal notranslate"><span class="pre">sno.</span></code> is a row index.</p>
+<p>Transplantation is a competing event for death, so the data also
+suit <a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html"><span class="doc">competing risks</span></a>
+(causes from <code class="docutils literal notranslate"><span class="pre">status</span></code>).</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_pbc2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_pbc2</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">patients</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"id"</span><span class="p">)</span><span class="o">.</span><span class="n">first</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">patients</span><span class="p">[</span><span class="s2">"years"</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="mi">1</span> <span class="o">-</span> <span class="n">patients</span><span class="p">[</span><span class="s2">"status2"</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([0.712, 0.479])</span>
+</pre></div>
+</div>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id24" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id23">14</a><span class="fn-bracket">]</span></span>
+<p>Murtaugh, P.A., Dickson, E.R., Van Dam, G.M., Malinchoc, M.,
+Grambsch, P.M., Langworthy, A.L. and Gips, C.H. (1994) Primary
+biliary cirrhosis: prediction of short-term survival based on
+repeated patient visits. Hepatology, 20(1), 126-134. (Data as
+distributed in the R package JM, Rizopoulos, D.)</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_rossi_static">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_rossi_static</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_rossi_static" title="Link to this definition"></a></dt>
+<dd><p>Data on the recidivism of released prisoners from <a class="footnote-reference brackets" href="#id26" id="id25" role="doc-noteref"><span class="fn-bracket">[</span>8<span class="fn-bracket">]</span></a>. Uses only
+static covariates.</p>
+<p>One row per prisoner (432): <code class="docutils literal notranslate"><span class="pre">week</span></code> is the week of first arrest after
+release, or 52 for those not arrested in the year of follow-up, and
+the covariates are <code class="docutils literal notranslate"><span class="pre">fin</span></code> (financial aid), <code class="docutils literal notranslate"><span class="pre">age</span></code>, <code class="docutils literal notranslate"><span class="pre">race</span></code>,
+<code class="docutils literal notranslate"><span class="pre">wexp</span></code> (work experience), <code class="docutils literal notranslate"><span class="pre">mar</span></code> (married), <code class="docutils literal notranslate"><span class="pre">paro</span></code> (released on
+parole) and <code class="docutils literal notranslate"><span class="pre">prio</span></code> (number of prior convictions).</p>
+<p><code class="docutils literal notranslate"><span class="pre">arrest</span></code> has the original coding, as in R’s <code class="docutils literal notranslate"><span class="pre">carData::Rossi</span></code> and
+lifelines’ <code class="docutils literal notranslate"><span class="pre">load_rossi</span></code>: 1 for a prisoner arrested during follow-up
+(an observed event at <code class="docutils literal notranslate"><span class="pre">week</span></code>), 0 for one not arrested (right
+censored at week 52). SurPyval’s censoring flag is its complement, so
+pass <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">arrest</span></code>. (Before v0.22 this copy stored <code class="docutils literal notranslate"><span class="pre">arrest</span></code>
+already inverted to the censoring flag.) There are 114 arrests.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_rossi_static</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_rossi_static</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Z_cols</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"fin"</span><span class="p">,</span> <span class="s2">"age"</span><span class="p">,</span> <span class="s2">"race"</span><span class="p">,</span> <span class="s2">"wexp"</span><span class="p">,</span> <span class="s2">"mar"</span><span class="p">,</span> <span class="s2">"paro"</span><span class="p">,</span> <span class="s2">"prio"</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">CoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">df</span><span class="p">[</span><span class="s2">"week"</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="n">Z_cols</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"arrest"</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">beta</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([-0.379, -0.057,  0.314, -0.15 , -0.434, -0.085,  0.091])</span>
+</pre></div>
+</div>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id26" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id25">8</a><span class="fn-bracket">]</span></span>
+<p>Rossi, P.H., R.A. Berk, and K.J. Lenihan (1980).
+Money, Work, and Crime: Some Experimental Results. New York:
+Academic Press. John Fox, Marilia Sa Carvalho (2012).
+The RcmdrPlugin.survival Package: Extending the R Commander
+Interface to Survival Analysis. Journal of Statistical Software,
+49(7), 1-32.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_rossi_time_varying">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_rossi_time_varying</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_rossi_time_varying" title="Link to this definition"></a></dt>
+<dd><p>Data on the recidivism of released prisoners from <a class="footnote-reference brackets" href="#id28" id="id27" role="doc-noteref"><span class="fn-bracket">[</span>9<span class="fn-bracket">]</span></a>. Includes time
+varying covariates.</p>
+<p>Start-stop (counting-process) form: one row per prisoner-week, with
+<code class="docutils literal notranslate"><span class="pre">id</span></code> the prisoner, <code class="docutils literal notranslate"><span class="pre">start</span></code> and <code class="docutils literal notranslate"><span class="pre">stop</span></code> the week’s interval,
+<code class="docutils literal notranslate"><span class="pre">event</span></code> 1 if the prisoner was arrested at the end of that week (so
+<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">event</span></code>), and <code class="docutils literal notranslate"><span class="pre">employed</span></code> the time-varying covariate. Here
+<code class="docutils literal notranslate"><span class="pre">arrest</span></code> has the original coding (1 = arrested during follow-up), as
+in <a class="reference internal" href="#surpyval.datasets.load_rossi_static" title="surpyval.datasets.load_rossi_static"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_rossi_static()</span></code></a>. <code class="docutils literal notranslate"><span class="pre">fin</span></code>, <code class="docutils literal notranslate"><span class="pre">race</span></code>, <code class="docutils literal notranslate"><span class="pre">wexp</span></code>, <code class="docutils literal notranslate"><span class="pre">mar</span></code>,
+<code class="docutils literal notranslate"><span class="pre">paro</span></code> and <code class="docutils literal notranslate"><span class="pre">employed</span></code> are stored as strings (<code class="docutils literal notranslate"><span class="pre">&quot;yes&quot;</span></code> / <code class="docutils literal notranslate"><span class="pre">&quot;no&quot;</span></code>
+and so on), as in R; encode them as numbers, or use a formula, before
+fitting.</p>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id28" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id27">9</a><span class="fn-bracket">]</span></span>
+<p>Rossi, P.H., R.A. Berk, and K.J. Lenihan (1980).
+Money, Work, and Crime: Some Experimental Results. New York:
+Academic Press. John Fox, Marilia Sa Carvalho (2012).
+The RcmdrPlugin.survival Package: Extending the R Commander
+Interface to Survival Analysis. Journal of Statistical Software,
+49(7), 1-32.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_sae">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_sae</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_sae" title="Link to this definition"></a></dt>
+<dd><p>Data on failures in automotive industry from <a class="footnote-reference brackets" href="#id30" id="id29" role="doc-noteref"><span class="fn-bracket">[</span>11<span class="fn-bracket">]</span></a>.</p>
+<p>Features heavily (right) censored data: <code class="docutils literal notranslate"><span class="pre">x</span></code> is the time and <code class="docutils literal notranslate"><span class="pre">c</span></code>
+SurPyval’s censoring flag, with 10 failures (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>) and 21 right
+censored values (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>).</p>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id30" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id29">11</a><span class="fn-bracket">]</span></span>
+<p>V.V. Krivtsov and J. W. Case (1999),
+Peculiarities of Censored Data Analysis in Automotive Industry
+Applications, SAE Technical Paper Series, # 1999-01-3220</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_support2">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_support2</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_support2" title="Link to this definition"></a></dt>
+<dd><p>The SUPPORT study of seriously ill hospitalised adults, from <a class="footnote-reference brackets" href="#id32" id="id31" role="doc-noteref"><span class="fn-bracket">[</span>15<span class="fn-bracket">]</span></a>.</p>
+<p>9105 patients, one row each (<code class="docutils literal notranslate"><span class="pre">sno</span></code> is a row index). <code class="docutils literal notranslate"><span class="pre">d.time</span></code> is
+the follow-up time in days and <code class="docutils literal notranslate"><span class="pre">death</span></code> 1 for a death during
+follow-up (6201 patients), so <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">death</span></code>; <code class="docutils literal notranslate"><span class="pre">hospdead</span></code> flags a
+death in hospital and <code class="docutils literal notranslate"><span class="pre">slos</span></code> is the days from study entry to
+discharge. <code class="docutils literal notranslate"><span class="pre">dzgroup</span></code>/<code class="docutils literal notranslate"><span class="pre">dzclass</span></code> give the disease group (acute
+respiratory failure or multiple organ system failure, CHF, COPD,
+cirrhosis, colon or lung cancer, coma). The remaining columns are
+demographics (<code class="docutils literal notranslate"><span class="pre">age</span></code>, <code class="docutils literal notranslate"><span class="pre">sex</span></code>, <code class="docutils literal notranslate"><span class="pre">race</span></code>, <code class="docutils literal notranslate"><span class="pre">edu</span></code>, <code class="docutils literal notranslate"><span class="pre">income</span></code>),
+comorbidity and severity scores (<code class="docutils literal notranslate"><span class="pre">num.co</span></code>, <code class="docutils literal notranslate"><span class="pre">scoma</span></code>, <code class="docutils literal notranslate"><span class="pre">sps</span></code>,
+<code class="docutils literal notranslate"><span class="pre">aps</span></code>, <code class="docutils literal notranslate"><span class="pre">avtisst</span></code>), physiology on day 3 (<code class="docutils literal notranslate"><span class="pre">meanbp</span></code>, <code class="docutils literal notranslate"><span class="pre">wblc</span></code>,
+<code class="docutils literal notranslate"><span class="pre">hrt</span></code>, <code class="docutils literal notranslate"><span class="pre">resp</span></code>, <code class="docutils literal notranslate"><span class="pre">temp</span></code>, <code class="docutils literal notranslate"><span class="pre">pafi</span></code>, <code class="docutils literal notranslate"><span class="pre">alb</span></code>, <code class="docutils literal notranslate"><span class="pre">bili</span></code>, <code class="docutils literal notranslate"><span class="pre">crea</span></code>,
+<code class="docutils literal notranslate"><span class="pre">sod</span></code>, <code class="docutils literal notranslate"><span class="pre">ph</span></code>, <code class="docutils literal notranslate"><span class="pre">glucose</span></code>, <code class="docutils literal notranslate"><span class="pre">bun</span></code>, <code class="docutils literal notranslate"><span class="pre">urine</span></code>), costs, activities
+of daily living and the study’s own model and physician survival
+estimates (<code class="docutils literal notranslate"><span class="pre">surv2m</span></code>, <code class="docutils literal notranslate"><span class="pre">surv6m</span></code>, <code class="docutils literal notranslate"><span class="pre">prg2m</span></code>, <code class="docutils literal notranslate"><span class="pre">prg6m</span></code>). Many
+physiology columns have missing values.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_support2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_support2</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"d.time"</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"death"</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">30</span><span class="p">,</span> <span class="mi">365</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([0.729, 0.446])</span>
+</pre></div>
+</div>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id32" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id31">15</a><span class="fn-bracket">]</span></span>
+<p>Knaus, W.A., Harrell, F.E., Lynn, J., et al. (1995) The
+SUPPORT prognostic model: objective estimates of survival for
+seriously ill hospitalized adults. Annals of Internal Medicine,
+122(3), 191-203.</p>
+</aside>
+</aside>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.datasets.load_tires_data">
+<span class="sig-prename descclassname"><span class="pre">surpyval.datasets.</span></span><span class="sig-name descname"><span class="pre">load_tires_data</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DataFrame</span></span></span><a class="headerlink" href="#surpyval.datasets.load_tires_data" title="Link to this definition"></a></dt>
+<dd><p>Data on the survival of tires from <a class="footnote-reference brackets" href="#id34" id="id33" role="doc-noteref"><span class="fn-bracket">[</span>10<span class="fn-bracket">]</span></a>.</p>
+<p>One row per tire (34). <code class="docutils literal notranslate"><span class="pre">Survival</span></code> is the (normalised) time and
+<code class="docutils literal notranslate"><span class="pre">Censoring</span></code> is coded as SurPyval’s censoring flag – 1 for a tire
+that had not failed, 0 for a failure (11 of them) – so use it
+directly as <code class="docutils literal notranslate"><span class="pre">c</span></code>. The other seven columns are the covariates.</p>
+<p class="rubric">References</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id34" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id33">10</a><span class="fn-bracket">]</span></span>
+<p>Krivtsov, V.V., Tananko, D.E., Davis, T.P. (2002).
+Regression approach to tire reliability analysis.
+Reliability Engineering and System Safety, 78(3), 267-273.</p>
+</aside>
+</aside>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="surpyval.utilities.html" class="btn btn-neutral float-left" title="Utilities" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="changelog.html" class="btn btn-neutral float-right" title="v0.28 (14 November 2026)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

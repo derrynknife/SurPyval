@@ -1,0 +1,1222 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Semi-Parametric Additive Hazards &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Non-Parametric Additive Hazards (Aalen)" href="aalen_additive.html" />
+    <link rel="prev" title="Interval-Censored Cox (Semi-Parametric PH)" href="interval_cox.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.regression.html#semi-parametric-models">Semi-Parametric Models</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="cox_ph.html">Cox Proportional Hazards</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_cox.html">Interval-Censored Cox (Semi-Parametric PH)</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Semi-Parametric Additive Hazards</a></li>
+<li class="toctree-l4"><a class="reference internal" href="aalen_additive.html">Non-Parametric Additive Hazards (Aalen)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="proportional_odds.html">Semi-Parametric Proportional Odds</a></li>
+<li class="toctree-l4"><a class="reference internal" href="buckley_james.html">Buckley-James</a></li>
+<li class="toctree-l4"><a class="reference internal" href="quantile_regression.html">Censored Quantile Regression</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#parametric-models">Parametric Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#which-family-a-model-is">Which Family a Model Is</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#covariates-on-every-parameter">Covariates on Every Parameter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#correlated-observations">Correlated Observations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#regression-on-a-probability-or-a-mean">Regression on a Probability or a Mean</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#plotting">Plotting</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.regression.html">Regression Modelling</a></li>
+      <li class="breadcrumb-item active">Semi-Parametric Additive Hazards</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/regression/additive_hazards.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="semi-parametric-additive-hazards">
+<h1>Semi-Parametric Additive Hazards<a class="headerlink" href="#semi-parametric-additive-hazards" title="Link to this heading"></a></h1>
+<p>The Lin &amp; Ying additive hazards model: covariates <em>add</em> a constant
+amount to the baseline hazard rather than multiplying it,
+<span class="math notranslate nohighlight">\(h(x \mid Z) = h_0(x) + \beta' Z\)</span>, with the baseline left to the
+data. <code class="docutils literal notranslate"><span class="pre">AdditiveHazards</span></code> is an instance of the fitter class below. The
+fully parametric version, with a Weibull (or other) baseline, is the
+<code class="docutils literal notranslate"><span class="pre">AH</span></code> family in <a class="reference internal" href="parametric.html"><span class="doc">Parametric Regression Models</span></a>. Supports observed and right-censored
+data.</p>
+<p>Nothing keeps the estimated hazard <span class="math notranslate nohighlight">\(h_0(x) + \beta' Z\)</span> positive: the
+Lin-Ying cumulative hazard falls between the event times, where its
+baseline drifts down by <span class="math notranslate nohighlight">\(\beta' \bar{Z}(x)\)</span>, and for a covariate row
+the model takes below zero. The model therefore predicts with the running
+maximum of the estimate from time 0, the smallest non-decreasing cumulative
+hazard at or above it and 0 (#376): <code class="docutils literal notranslate"><span class="pre">sf</span></code> stays in <span class="math notranslate nohighlight">\([0, 1]\)</span> and never
+increases, and <code class="docutils literal notranslate"><span class="pre">hf</span></code> is 0 wherever <code class="docutils literal notranslate"><span class="pre">Hf</span></code> is held. Where the estimate is at
+its running maximum (most of the time for a covariate row inside the data)
+the prediction is the estimate itself; the fitted baseline <code class="docutils literal notranslate"><span class="pre">H0</span></code> is the raw
+estimate at <span class="math notranslate nohighlight">\(Z = 0\)</span>, as R’s <code class="docutils literal notranslate"><span class="pre">timereg</span></code> reports it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">AdditiveHazards.fit_penalised</span></code> adds a ridge, lasso or elastic-net
+penalty: Lin and Ying’s estimating equation is the gradient of a quadratic
+loss, which takes the place of the negative log-likelihood of the other
+penalised fits (see the penalised regression section of
+<a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Regression Modelling with SurPyval</span></a>). The coefficients are rates,
+so the penalty is put on them in the unit of the mean follow-up
+(<code class="docutils literal notranslate"><span class="pre">model.time_scale</span></code>), and the fit does not depend on the unit of time.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.univariate.regression.additive_hazards.additive_hazards.</span></span><span class="sig-name descname"><span class="pre">AdditiveHazards_</span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FitterRepr</span></code></p>
+<p>The Lin &amp; Ying semi-parametric additive hazards model: the covariates
+<em>add</em> a constant risk difference to a baseline hazard that is left to
+the data,</p>
+<div class="math notranslate nohighlight">
+\[h(x \mid Z) = h_0(x) + \beta' Z.\]</div>
+<p>The coefficients have a closed-form estimate (no iteration) with a
+sandwich variance. <code class="docutils literal notranslate"><span class="pre">AdditiveHazards</span></code> is an instance of this class;
+its <code class="docutils literal notranslate"><span class="pre">fit</span></code> returns an
+<a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">AdditiveHazardsModel</span></code></a>.
+For a parametric baseline see the <code class="docutils literal notranslate"><span class="pre">AH</span></code> family.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit">
+<span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel"><span class="pre">AdditiveHazardsModel</span></a></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit" title="Link to this definition"></a></dt>
+<dd><p>Fit the Lin &amp; Ying additive hazards model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array-like</em>) – The observed event/censoring times.</p></li>
+<li><p><strong>Z</strong> (<em>array-like</em>) – The covariate matrix (one row per observation). Rows with a
+missing or infinite covariate are dropped, with a warning. A
+column that does not vary within the risk sets beyond a
+combination of the others (a constant column, a single
+observation, or a linear combination of the other columns) is
+aliased, as in <code class="xref py py-class docutils literal notranslate"><span class="pre">CoxPH</span></code>: its coefficient is
+<code class="docutils literal notranslate"><span class="pre">nan</span></code> (<code class="docutils literal notranslate"><span class="pre">model.aliased</span></code> lists it), the others are those of
+the fit without it, predictions take it as 0, and one warning
+names it. Data with no event and negative times raise a
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p></li>
+<li><p><strong>c</strong> (<em>array-like</em><em>, </em><em>optional</em>) – Censoring flags: 0 observed (event), 1 right-censored. Defaults
+to all observed.</p></li>
+<li><p><strong>n</strong> (<em>array-like</em><em>, </em><em>optional</em>) – Multiplicity (counts) for each row. Defaults to 1 each.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fitted model, carrying <code class="docutils literal notranslate"><span class="pre">beta</span></code>, standard errors, the
+coefficient covariance, p-values, and the baseline hazard.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel">AdditiveHazardsModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdditiveHazards</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="p">(</span><span class="mi">300</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mf">0.1</span> <span class="o">+</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="n">Z</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">&gt;</span> <span class="mi">15</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>  <span class="c1"># follow-up ends at 15</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">15</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">AdditiveHazards</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">beta</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">),</span> <span class="n">model</span><span class="o">.</span><span class="n">standard_errors</span><span class="p">()</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">(array([0.0291]), array([0.0162]))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="p">[[</span><span class="mi">1</span><span class="p">]])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.4465, 0.2387])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit_from_df">
+<span class="sig-name descname"><span class="pre">fit_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pd.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z_cols</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">formula</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel"><span class="pre">AdditiveHazardsModel</span></a></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit_from_df" title="Link to this definition"></a></dt>
+<dd><p>Fit the additive hazards model from a pandas DataFrame, retaining the
+covariate names for prediction (see <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> for the model).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit_penalised">
+<span class="sig-name descname"><span class="pre">fit_penalised</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">penalizer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayLike</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">l1_ratio</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">standardise</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel"><span class="pre">AdditiveHazardsModel</span></a></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit_penalised" title="Link to this definition"></a></dt>
+<dd><p>Fit the Lin and Ying model with a ridge, lasso or elastic-net
+penalty on the coefficients: for many covariates, or correlated
+ones.</p>
+<p>Lin and Ying’s estimating equation, <code class="docutils literal notranslate"><span class="pre">A</span> <span class="pre">beta</span> <span class="pre">=</span> <span class="pre">b</span></code>, is the
+gradient of the quadratic loss
+<span class="math notranslate nohighlight">\(L(\beta) = \tfrac12 \beta' A \beta - b' \beta\)</span>, so
+the penalised fit minimises</p>
+<div class="math notranslate nohighlight">
+\[\frac{1}{N} L(\beta) + \sum_j \lambda_j \left(
+\frac{1 - a}{2} \tau s_j^2 \beta_j^2 + a s_j |\beta_j|
+\right),\]</div>
+<p>with <span class="math notranslate nohighlight">\(N\)</span> the number of units (the sum of <code class="docutils literal notranslate"><span class="pre">n</span></code>), <span class="math notranslate nohighlight">\(s_j\)</span>
+the standard deviation of covariate <code class="docutils literal notranslate"><span class="pre">j</span></code> (1 with
+<code class="docutils literal notranslate"><span class="pre">standardise=False</span></code>), <span class="math notranslate nohighlight">\(\lambda_j\)</span> the <code class="docutils literal notranslate"><span class="pre">penalizer</span></code> and
+<span class="math notranslate nohighlight">\(a\)</span> the <code class="docutils literal notranslate"><span class="pre">l1_ratio</span></code>. This is the penalised fit of
+Gorst-Rasmussen and Scheike (2012), which R’s <code class="docutils literal notranslate"><span class="pre">ahaz::ahazpen</span></code>
+computes for the lasso: the same as the penalised fits of the
+other models, with the loss in place of the negative
+log-likelihood. With no penalty it is the fit of <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p>
+<p>A coefficient here is a rate (an excess hazard per unit of time),
+so a penalty on its size depends on the unit of time. The lasso
+part does not: the loss and the L1 penalty both scale with the
+unit, so a fit in days is the fit in years, its coefficients
+divided by 365.25. The ridge part would, so it is put on the
+coefficients in the unit <span class="math notranslate nohighlight">\(\tau\)</span> (<code class="docutils literal notranslate"><span class="pre">model.time_scale</span></code>), the
+count-weighted mean of <code class="docutils literal notranslate"><span class="pre">x</span></code>: a fit in days is then the fit in
+years for every <code class="docutils literal notranslate"><span class="pre">l1_ratio</span></code>.</p>
+<p>The model predicts as the fit’s does, but has no covariance,
+standard errors or p-values: penalised estimates are biased
+towards 0 by design, and intervals from them would not have their
+stated coverage; those calls raise an error that says so
+(<code class="docutils literal notranslate"><span class="pre">summary()</span></code> shows them as <code class="docutils literal notranslate"><span class="pre">nan</span></code>). There is no likelihood, so
+no <code class="docutils literal notranslate"><span class="pre">aic</span></code> or <code class="docutils literal notranslate"><span class="pre">bic</span></code> either, as for <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – As for <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em>) – As for <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em>) – As for <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p></li>
+<li><p><strong>n</strong> (<em>array_like</em>) – As for <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p></li>
+<li><p><strong>penalizer</strong> (<em>float</em><em> or </em><em>array_like</em><em>, </em><em>optional</em>) – <span class="math notranslate nohighlight">\(\lambda\)</span>: one value, or one per column of <code class="docutils literal notranslate"><span class="pre">Z</span></code> (0
+leaves a coefficient unpenalised). Default 0.1.</p></li>
+<li><p><strong>l1_ratio</strong> (<em>float</em><em>, </em><em>optional</em>) – <span class="math notranslate nohighlight">\(a\)</span>, from 0 (ridge, the default) to 1 (lasso).</p></li>
+<li><p><strong>standardise</strong> (<em>bool</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">True</span></code> (the default) penalises the coefficients of the
+covariates divided by their standard deviations (count-
+weighted, divisor <code class="docutils literal notranslate"><span class="pre">N</span></code>), so the penalty does not depend on
+their units; the coefficients are reported on the covariates’
+own scale either way.</p></li>
+<li><p><strong>tol</strong> (<em>float</em><em>, </em><em>optional</em>) – The optimality tolerance on the gradient of the objective.</p></li>
+<li><p><strong>w</strong> (<em>None</em>) – Weights are refused: <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> takes none either.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fitted model, with <code class="docutils literal notranslate"><span class="pre">penalty</span></code> (the <code class="docutils literal notranslate"><span class="pre">penalizer</span></code> per
+column, <code class="docutils literal notranslate"><span class="pre">l1_ratio</span></code>, <code class="docutils literal notranslate"><span class="pre">standardise</span></code>, the columns’ <code class="docutils literal notranslate"><span class="pre">scale</span></code>
+and the effective degrees of freedom) and <code class="docutils literal notranslate"><span class="pre">time_scale</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel">AdditiveHazardsModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdditiveHazards</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">300</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mf">0.2</span> <span class="o">+</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="n">Z</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mf">0.05</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">AdditiveHazards</span><span class="o">.</span><span class="n">fit_penalised</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">penalizer</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">l1_ratio</span><span class="o">=</span><span class="mi">1</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">beta</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.0167, 0.    , 0.    , 0.    ])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fitter_kind">
+<span class="sig-name descname"><span class="pre">fitter_kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'semi-parametric</span> <span class="pre">additive</span> <span class="pre">hazards</span> <span class="pre">fitter'</span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazards_.fitter_kind" title="Link to this definition"></a></dt>
+<dd><p>The <code class="docutils literal notranslate"><span class="pre">repr</span></code> (#614)</p>
+</dd></dl>
+
+</dd></dl>
+
+<p>The fitted model:</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.univariate.regression.additive_hazards.additive_hazards.</span></span><span class="sig-name descname"><span class="pre">AdditiveHazardsModel</span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ParameterBoundsMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">PenalisedModelMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">AtCovariatesMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">ConditionalSurvivalMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">LinearPredictorMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">ConcordanceMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">DiagnoseMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">SerialisableMixin</span></code></p>
+<p>A fitted Lin &amp; Ying additive hazards model, returned by
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">AdditiveHazards.fit()</span></code>.</p>
+<p>The covariate effect is additive on the hazard, so the prediction
+methods use <code class="docutils literal notranslate"><span class="pre">h(t</span> <span class="pre">|</span> <span class="pre">Z)</span> <span class="pre">=</span> <span class="pre">h0(t)</span> <span class="pre">+</span> <span class="pre">beta'Z</span></code> and the cumulative
+<code class="docutils literal notranslate"><span class="pre">H(t</span> <span class="pre">|</span> <span class="pre">Z)</span> <span class="pre">=</span> <span class="pre">H0(t)</span> <span class="pre">+</span> <span class="pre">t</span> <span class="pre">*</span> <span class="pre">beta'Z</span></code>.</p>
+<p class="rubric">Examples</p>
+<p>On the Rossi recidivism data each coefficient is an excess hazard of
+arrest per week, per unit of the covariate:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdditiveHazards</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_rossi_static</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_rossi_static</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"week"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"arrest"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Z</span> <span class="o">=</span> <span class="n">df</span><span class="p">[[</span><span class="s2">"fin"</span><span class="p">,</span> <span class="s2">"age"</span><span class="p">,</span> <span class="s2">"prio"</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">AdditiveHazards</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">beta</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([-0.002 , -0.0003,  0.0007])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">p_values</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.0725, 0.0004, 0.0083])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">20</span><span class="p">,</span> <span class="mi">52</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.9269, 0.7725])</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf">
+<span class="sig-name descname"><span class="pre">Hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">npt.NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf" title="Link to this definition"></a></dt>
+<dd><p>Cumulative hazard at <code class="docutils literal notranslate"><span class="pre">x</span></code> for covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code> (one row, or one
+row per <code class="docutils literal notranslate"><span class="pre">x</span></code>): the Lin-Ying estimate <code class="docutils literal notranslate"><span class="pre">H(x</span> <span class="pre">|</span> <span class="pre">Z)</span> <span class="pre">=</span> <span class="pre">H0(x)</span> <span class="pre">+</span> <span class="pre">x</span> <span class="pre">*</span>
+<span class="pre">beta'Z</span></code>, held at its running maximum from time 0. The baseline
+<code class="docutils literal notranslate"><span class="pre">H0</span></code> jumps by <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">/</span> <span class="pre">S0</span></code> at each event time and, between the
+grid times, falls continuously by the covariate-mean drift
+<code class="docutils literal notranslate"><span class="pre">beta'</span> <span class="pre">Zbar(t)</span></code> (so <code class="docutils literal notranslate"><span class="pre">H0</span></code> is not 0 before the first event
+unless the covariates are centred there). The prediction
+<code class="docutils literal notranslate"><span class="pre">H(x</span> <span class="pre">|</span> <span class="pre">Z)</span></code> is the same however the covariates are centred.</p>
+<p>Nothing constrains the additive hazard <code class="docutils literal notranslate"><span class="pre">h0(t)</span> <span class="pre">+</span> <span class="pre">beta'Z</span></code> to be
+positive, so the estimate can fall – between the event times, or
+for a covariate row whose hazard the model takes below 0 – and
+<code class="docutils literal notranslate"><span class="pre">exp(-H)</span></code> would be a survival that rises, and exceeds 1. The
+prediction is therefore the smallest non-decreasing cumulative
+hazard at or above the estimate and 0:
+<code class="docutils literal notranslate"><span class="pre">max(0,</span> <span class="pre">max_{0</span> <span class="pre">&lt;=</span> <span class="pre">s</span> <span class="pre">&lt;=</span> <span class="pre">x}</span> <span class="pre">H(s</span> <span class="pre">|</span> <span class="pre">Z))</span></code>. It is the estimate
+wherever the estimate is at its running maximum, and flat (a
+hazard of 0) where it is not; <code class="docutils literal notranslate"><span class="pre">sf</span></code> stays in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code> and never
+increases (#376). The estimate is consistent for a
+non-decreasing truth, and so is its running maximum.</p>
+<p>Before time 0, where the covariate effect starts, <code class="docutils literal notranslate"><span class="pre">Hf</span></code> is 0;
+past the last observed time there is no risk set to estimate
+anything from, so <code class="docutils literal notranslate"><span class="pre">Hf</span></code> holds its value there, as the other
+semi-parametric estimates do (#400).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.aic">
+<span class="sig-name descname"><span class="pre">aic</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.aic" title="Link to this definition"></a></dt>
+<dd><p>Raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodError</span></code>: there is no likelihood to
+penalise.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.aic_c">
+<span class="sig-name descname"><span class="pre">aic_c</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.aic_c" title="Link to this definition"></a></dt>
+<dd><p>Raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodError</span></code>: there is no likelihood to
+penalise.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.aliased">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">aliased</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.aliased" title="Link to this definition"></a></dt>
+<dd><p>The columns of <code class="docutils literal notranslate"><span class="pre">Z</span></code> whose coefficients the data cannot
+determine: a constant column, which the baseline hazard absorbs, or a linear combination of the others. Their <code class="docutils literal notranslate"><span class="pre">beta</span></code> is <code class="docutils literal notranslate"><span class="pre">nan</span></code> (R’s <code class="docutils literal notranslate"><span class="pre">NA</span></code>), as are their standard errors and p-values, and
+predictions take it as 0.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.at">
+<span class="sig-name descname"><span class="pre">at</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">LifeAtCovariates</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.at" title="Link to this definition"></a></dt>
+<dd><p>The life of a unit with the covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code>, as a plain life
+model: an object whose <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>,
+<code class="docutils literal notranslate"><span class="pre">qf</span></code>, <code class="docutils literal notranslate"><span class="pre">random</span></code> and <code class="docutils literal notranslate"><span class="pre">mean</span></code> take times (or probabilities)
+only, each the model’s own at <code class="docutils literal notranslate"><span class="pre">Z</span></code> (<code class="docutils literal notranslate"><span class="pre">at(Z).sf(x)</span></code> is
+<code class="docutils literal notranslate"><span class="pre">sf(x,</span> <span class="pre">Z)</span></code>). Hand it to code that expects a univariate model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>Z</strong> (<em>array like</em><em> or </em><em>DataFrame</em>) – One covariate row (a scalar for a one-covariate model; a
+one-row DataFrame for a model fitted with <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code>).
+Several rows are refused: call it once per row.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A view on this model at <code class="docutils literal notranslate"><span class="pre">Z</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>LifeAtCovariates</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span><span class="p">,</span> <span class="n">WeibullPH</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">Z</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">at</span><span class="p">([</span><span class="mi">0</span><span class="p">])</span><span class="o">.</span><span class="n">mean</span><span class="p">()),</span> <span class="mi">3</span><span class="p">)</span>
+<span class="go">8.575</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.bic">
+<span class="sig-name descname"><span class="pre">bic</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.bic" title="Link to this definition"></a></dt>
+<dd><p>Raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodError</span></code>: there is no likelihood to
+penalise.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.concordance">
+<span class="sig-name descname"><span class="pre">concordance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tie_tol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-08</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ties</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'therneau'</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">weighting</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'harrell'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tau</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ci_method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'normal'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../comparison_and_validation.html#surpyval.metrics.concordance.ConcordanceResult" title="surpyval.metrics.concordance.ConcordanceResult"><span class="pre">ConcordanceResult</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.concordance" title="Link to this definition"></a></dt>
+<dd><p>Harrell’s (or Uno’s) concordance index (C) of the model’s risk
+scores, with its standard error and confidence interval.</p>
+<p>The proportion of usable pairs of subjects – the one with the
+earlier time had the event – in which the model gives that
+subject the higher risk: 1 ranks every pair correctly, 0.5 is
+chance. With no arguments it scores the data the model was fitted
+to (each row counted <code class="docutils literal notranslate"><span class="pre">n</span></code> times); pass <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code> and <code class="docutils literal notranslate"><span class="pre">Z</span></code>
+together to score other data, such as a test set. Two events
+at the same time are not a pair (<code class="docutils literal notranslate"><span class="pre">ties=&quot;therneau&quot;</span></code>, as R’s
+<code class="docutils literal notranslate"><span class="pre">concordance</span></code> and lifelines) unless <code class="docutils literal notranslate"><span class="pre">ties=&quot;harrell&quot;</span></code>; see
+<code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.metrics.concordance_index()</span></code> for the treatment of
+tied times and scores.</p>
+<p>The risk score, higher meaning an earlier event, is for each
+family:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>, the frailty models and <code class="docutils literal notranslate"><span class="pre">AdditiveHazards</span></code> (Lin-Ying):
+the linear predictor <span class="math notranslate nohighlight">\(\beta'Z\)</span> (the log hazard ratio, or
+the covariates’ additive hazard), as R’s <code class="docutils literal notranslate"><span class="pre">concordance</span></code> and
+lifelines use;</p></li>
+<li><p>the parametric families (PH, AFT, PO, AH and the accelerated
+life models): the cumulative hazard <span class="math notranslate nohighlight">\(H(t^* \mid Z)\)</span> at
+<span class="math notranslate nohighlight">\(t^*\)</span>, the median of the times scored. For every family
+whose covariates act through a linear predictor this ranks the
+rows exactly as the linear predictor does, with the sign that
+means a higher risk (<span class="math notranslate nohighlight">\(\beta'Z\)</span> for PH, AFT and AH,
+<span class="math notranslate nohighlight">\(-\beta'Z\)</span> for PO), and <span class="math notranslate nohighlight">\(t^*\)</span> does not matter; it
+can only matter for an accelerated life model whose life model
+sets a shape parameter;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">BuckleyJames</span></code>: <span class="math notranslate nohighlight">\(-\beta'Z\)</span>, since the model is linear in
+the log time;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ProportionalOdds</span></code>: <span class="math notranslate nohighlight">\(-\beta'Z\)</span>, the log of the odds of
+failure relative to the baseline’s.</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Observed times.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Censoring flags, 0 an event and 1 right censored.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em><em> or </em><em>DataFrame</em><em>, </em><em>optional</em>) – Covariates, one row per time (a DataFrame for a model fitted
+with <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code>).</p></li>
+<li><p><strong>tie_tol</strong> (<em>float</em><em>, </em><em>optional</em>) – Scores within this of each other are tied. Default <code class="docutils literal notranslate"><span class="pre">1e-8</span></code>.</p></li>
+<li><p><strong>ties</strong> (<em>{&quot;therneau&quot;</em><em>, </em><em>&quot;harrell&quot;}</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;therneau&quot;</span></code> (the default, as R’s <code class="docutils literal notranslate"><span class="pre">survival::concordance</span></code>
+and lifelines): two events at the same time are not a usable
+pair. <code class="docutils literal notranslate"><span class="pre">&quot;harrell&quot;</span></code> (Harrell’s original definition): they are,
+counting 1 if their scores are tied, else 0.5.</p></li>
+<li><p><strong>weighting</strong> (<em>{&quot;harrell&quot;</em><em>, </em><em>&quot;uno&quot;}</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;harrell&quot;</span></code> (default): every usable pair weighs 1. <code class="docutils literal notranslate"><span class="pre">&quot;uno&quot;</span></code>:
+Uno’s inverse-probability-of-censoring weighted C, each pair
+weighted by <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">G(t-)^2</span></code> (see
+<code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.metrics.concordance_index()</span></code>).</p></li>
+<li><p><strong>tau</strong> (<em>float</em><em>, </em><em>optional</em>) – Count only the pairs whose earlier time is at most <code class="docutils literal notranslate"><span class="pre">tau</span></code>.
+Default <code class="docutils literal notranslate"><span class="pre">None</span></code>, every pair.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – Keyword only: the significance level of the interval. Default
+<code class="docutils literal notranslate"><span class="pre">0.05</span></code>.</p></li>
+<li><p><strong>ci_method</strong> (<em>{&quot;normal&quot;</em><em>, </em><em>&quot;logit&quot;}</em><em>, </em><em>optional</em>) – Keyword only: the scale of the interval. Default <code class="docutils literal notranslate"><span class="pre">&quot;normal&quot;</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The concordance index, a <code class="docutils literal notranslate"><span class="pre">float</span></code> that carries its
+infinitesimal-jackknife standard error <code class="docutils literal notranslate"><span class="pre">se</span></code> and interval
+<code class="docutils literal notranslate"><span class="pre">ci</span></code> (<code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.metrics.concordance_index()</span></code>). With no
+data it scores the data the model was fitted to, each row
+repeated <code class="docutils literal notranslate"><span class="pre">n</span></code> times as its own subject (as R does with the
+rows repeated); the standard error treats the scores as fixed,
+as R’s does. A plain <code class="docutils literal notranslate"><span class="pre">nan</span></code> where a covariate is missing.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../comparison_and_validation.html#surpyval.metrics.concordance.ConcordanceResult" title="surpyval.metrics.concordance.ConcordanceResult">ConcordanceResult</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If only some of <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code> and <code class="docutils literal notranslate"><span class="pre">Z</span></code> are given, or none are
+    and the model does not keep its training data (a model
+    restored with <code class="docutils literal notranslate"><span class="pre">from_dict</span></code>, or one fitted with time-varying
+    covariates, whose rows are intervals of a subject’s history).</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_lung</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lung</span> <span class="o">=</span> <span class="n">load_lung</span><span class="p">()</span><span class="o">.</span><span class="n">dropna</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="p">[</span><span class="s2">"ph.ecog"</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lung</span><span class="p">[</span><span class="s2">"censored"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">lung</span><span class="p">[</span><span class="s2">"status"</span><span class="p">]</span>  <span class="c1"># status 1 is a death</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">CoxPH</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">lung</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"time"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"age"</span><span class="p">,</span> <span class="s2">"sex"</span><span class="p">,</span> <span class="s2">"ph.ecog"</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">concordance</span><span class="p">(),</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">0.6371</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">concordance</span><span class="p">(</span><span class="n">ties</span><span class="o">=</span><span class="s2">"harrell"</span><span class="p">),</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">0.6369</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.concordance_estimate">
+<span class="sig-name descname"><span class="pre">concordance_estimate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">weighting</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'harrell'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tau</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tie_tol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-08</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ties</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'therneau'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ci_method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'normal'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../comparison_and_validation.html#surpyval.metrics.concordance.ConcordanceResult" title="surpyval.metrics.concordance.ConcordanceResult"><span class="pre">ConcordanceResult</span></a></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.concordance_estimate" title="Link to this definition"></a></dt>
+<dd><p>Deprecated: <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.concordance" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.concordance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">concordance()</span></code></a> gives the standard error and
+interval (<code class="docutils literal notranslate"><span class="pre">alpha_ci=</span></code> for <code class="docutils literal notranslate"><span class="pre">alpha</span></code>); this name is removed in
+v0.30.</p>
+<p>The model’s concordance index with its standard error and
+confidence interval (R’s <code class="docutils literal notranslate"><span class="pre">concordance(fit)</span></code>).</p>
+<p>The index and the scores are <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.concordance" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.concordance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">concordance()</span></code></a>’s; the standard
+error is the infinitesimal jackknife of
+<code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.metrics.concordance_index()</span></code>. With no data it
+scores the data the model was fitted to, each row repeated <code class="docutils literal notranslate"><span class="pre">n</span></code>
+times as its own subject, and so as R does with the rows
+repeated, not with <code class="docutils literal notranslate"><span class="pre">n</span></code> as case weights. The standard error
+treats the scores as fixed: it does not include the uncertainty of
+the fitted coefficients, as R’s does not.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Observed times.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Censoring flags, 0 an event and 1 right censored.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em><em> or </em><em>DataFrame</em><em>, </em><em>optional</em>) – Covariates, one row per time.</p></li>
+<li><p><strong>weighting</strong> (<em>{&quot;harrell&quot;</em><em>, </em><em>&quot;uno&quot;}</em><em>, </em><em>optional</em>) – Harrell’s C (default) or Uno’s IPCW C.</p></li>
+<li><p><strong>tau</strong> (<em>float</em><em>, </em><em>optional</em>) – Count only the pairs whose earlier time is at most <code class="docutils literal notranslate"><span class="pre">tau</span></code>.</p></li>
+<li><p><strong>alpha</strong> (<em>float</em><em>, </em><em>optional</em>) – Significance level of the interval. Default <code class="docutils literal notranslate"><span class="pre">0.05</span></code>.</p></li>
+<li><p><strong>tie_tol</strong> (<em>float</em><em>, </em><em>optional</em>) – Scores within this of each other are tied. Default <code class="docutils literal notranslate"><span class="pre">1e-8</span></code>.</p></li>
+<li><p><strong>ties</strong> (<em>{&quot;therneau&quot;</em><em>, </em><em>&quot;harrell&quot;}</em><em>, </em><em>optional</em>) – How two events at the same time count. Default
+<code class="docutils literal notranslate"><span class="pre">&quot;therneau&quot;</span></code>.</p></li>
+<li><p><strong>ci_method</strong> (<em>{&quot;normal&quot;</em><em>, </em><em>&quot;logit&quot;}</em><em>, </em><em>optional</em>) – The scale of the interval. Default <code class="docutils literal notranslate"><span class="pre">&quot;normal&quot;</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The estimate, <code class="docutils literal notranslate"><span class="pre">se</span></code>, <code class="docutils literal notranslate"><span class="pre">ci</span></code> and the weighted pair counts.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../comparison_and_validation.html#surpyval.metrics.concordance.ConcordanceResult" title="surpyval.metrics.concordance.ConcordanceResult">ConcordanceResult</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – As <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.concordance" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.concordance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">concordance()</span></code></a>; or if a covariate is missing, which
+    leaves a subject’s score undefined.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_lung</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lung</span> <span class="o">=</span> <span class="n">load_lung</span><span class="p">()</span><span class="o">.</span><span class="n">dropna</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="p">[</span><span class="s2">"ph.ecog"</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lung</span><span class="p">[</span><span class="s2">"censored"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">lung</span><span class="p">[</span><span class="s2">"status"</span><span class="p">]</span>  <span class="c1"># status 1 is a death</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">CoxPH</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">lung</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"time"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"age"</span><span class="p">,</span> <span class="s2">"sex"</span><span class="p">,</span> <span class="s2">"ph.ecog"</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">res</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">concordance</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">estimate</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">res</span><span class="o">.</span><span class="n">se</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">(0.6371, 0.0251)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance">
+<span class="sig-name descname"><span class="pre">covariance</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance" title="Link to this definition"></a></dt>
+<dd><p>Covariance matrix of the coefficients (Lin-Ying sandwich).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance_names">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">covariance_names</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance_names" title="Link to this definition"></a></dt>
+<dd><p>the
+coefficients, <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.parameter_names" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.parameter_names"><code class="xref py py-attr docutils literal notranslate"><span class="pre">parameter_names</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The names of the rows (and columns) of <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">covariance()</span></code></a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.cs">
+<span class="sig-name descname"><span class="pre">cs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">given</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.cs" title="Link to this definition"></a></dt>
+<dd><p>Conditional survival: the probability that a unit with covariates
+<code class="docutils literal notranslate"><span class="pre">Z</span></code> that has survived to <code class="docutils literal notranslate"><span class="pre">given</span></code> survives a further <code class="docutils literal notranslate"><span class="pre">x</span></code>,</p>
+<div class="math notranslate nohighlight">
+\[R(x \mid given, Z) = \frac{R(given + x \mid Z)}{R(given \mid Z)}
+= e^{-(H(given + x \mid Z) - H(given \mid Z))},\]</div>
+<p>the univariate models’ <code class="docutils literal notranslate"><span class="pre">cs(x,</span> <span class="pre">given)</span></code> with the covariates of
+<a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.sf" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.sf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sf()</span></code></a> (#581).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The further durations.</p></li>
+<li><p><strong>given</strong> (<em>array like</em><em> or </em><em>scalar</em>) – The ages already survived, broadcast against <code class="docutils literal notranslate"><span class="pre">x</span></code> (one age
+per unit and one <code class="docutils literal notranslate"><span class="pre">x</span></code> for all, say).</p></li>
+<li><p><strong>Z</strong> (<em>array like</em><em> or </em><em>DataFrame</em>) – The covariates, paired with the times as <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.sf" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.sf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sf()</span></code></a> pairs them:
+one row per element of <code class="docutils literal notranslate"><span class="pre">x</span></code> / <code class="docutils literal notranslate"><span class="pre">given</span></code>, or a single row for
+all of them.</p></li>
+<li><p><strong>*args</strong> – Any further arguments of this model’s <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Hf()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">grid=True</span></code>
+for every time for every row; a Cox model’s <code class="docutils literal notranslate"><span class="pre">stratum</span></code>; a
+frailty model’s <code class="docutils literal notranslate"><span class="pre">group</span></code> or <code class="docutils literal notranslate"><span class="pre">frailty</span></code>).</p></li>
+<li><p><strong>**kwargs</strong> – Any further arguments of this model’s <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Hf()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">grid=True</span></code>
+for every time for every row; a Cox model’s <code class="docutils literal notranslate"><span class="pre">stratum</span></code>; a
+frailty model’s <code class="docutils literal notranslate"><span class="pre">group</span></code> or <code class="docutils literal notranslate"><span class="pre">frailty</span></code>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>cs</strong> – The conditional survival probabilities.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>The ratio is taken from the model’s cumulative hazard, which keeps
+it exact where <span class="math notranslate nohighlight">\(R(given)\)</span> underflows (a unit far into the
+tail). Where <span class="math notranslate nohighlight">\(R(given \mid Z) = 0\)</span> the conditional survival
+is undefined and <code class="docutils literal notranslate"><span class="pre">nan</span></code> is returned, as for the univariate
+models. A fleet’s expected failures over a horizon, built on this,
+are <code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.forecast()</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span><span class="p">,</span> <span class="n">WeibullPH</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">Z</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Two units, aged 2 and 8, surviving one more unit of time:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">cs</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="p">[</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">],</span> <span class="p">[[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">]])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.9362, 0.6843])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">s</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">9.0</span><span class="p">],</span> <span class="p">[[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">(</span><span class="n">s</span> <span class="o">/</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">],</span> <span class="p">[[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">]]))</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.9362, 0.6843])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.df">
+<span class="sig-name descname"><span class="pre">df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">npt.NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.df" title="Link to this definition"></a></dt>
+<dd><p>Density <code class="docutils literal notranslate"><span class="pre">hf(x,</span> <span class="pre">Z)</span> <span class="pre">*</span> <span class="pre">sf(x,</span> <span class="pre">Z)</span></code>, with the smoothed hazard.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.diagnose">
+<span class="sig-name descname"><span class="pre">diagnose</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alpha</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">columns</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_boot</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="../Model%20Diagnostics.html#surpyval.diagnostics.report.Diagnosis" title="surpyval.diagnostics.report.Diagnosis"><span class="pre">Diagnosis</span></a></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.diagnose" title="Link to this definition"></a></dt>
+<dd><p>Check the model’s assumptions, fit and influential points, and
+say what to do about any that fail.</p>
+<p>Runs the checks this kind of model calls for (for a Cox model:
+proportional hazards, the functional form of each continuous
+covariate, influence and outliers; see
+<a class="reference internal" href="../Model%20Diagnostics.html"><span class="doc">Model Diagnostics</span></a>) and returns a report: <code class="docutils literal notranslate"><span class="pre">d.table</span></code>,
+one row per check with its test, statistic, p-value, verdict
+(<code class="docutils literal notranslate"><span class="pre">&quot;ok&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;warn&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;fail&quot;</span></code>) and covariates; <code class="docutils literal notranslate"><span class="pre">d.advice</span></code>,
+plain-English remedies that each name the SurPyval feature that
+applies them; <code class="docutils literal notranslate"><span class="pre">d.plot()</span></code>, the visual checks (matplotlib is only
+imported then); <code class="docutils literal notranslate"><span class="pre">d.ok</span></code>, True if nothing failed;
+<code class="docutils literal notranslate"><span class="pre">d.raise_if_failed()</span></code> for pipelines; and <code class="docutils literal notranslate"><span class="pre">d.to_dict()</span></code>.</p>
+<p>A test fails when its p-value is below <code class="docutils literal notranslate"><span class="pre">alpha</span></code>, and warns when
+it is below <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">alpha</span></code> (borderline) or could not be computed.
+Each row is judged at <code class="docutils literal notranslate"><span class="pre">alpha</span></code> on its own, so with many rows
+some fail by chance even when every assumption holds.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>alpha</strong> (<em>float</em><em>, </em><em>optional</em>) – The level each test is judged at. Default 0.05.</p></li>
+<li><p><strong>columns</strong> (<em>str</em><em> or </em><em>list</em><em> of </em><em>str</em><em>, </em><em>optional</em>) – The covariates to check, named as <code class="docutils literal notranslate"><span class="pre">summary()</span></code> names them
+(the DataFrame or formula columns, else <code class="docutils literal notranslate"><span class="pre">coef_0</span></code>, …); all
+of them by default. A joint (<code class="docutils literal notranslate"><span class="pre">GLOBAL</span></code>) test still covers
+every covariate.</p></li>
+<li><p><strong>n_boot</strong> (<em>int</em><em>, </em><em>optional</em>) – For the families whose tests resample (a univariate
+distribution’s bootstrap goodness-of-fit tests): the number of
+bootstrap refits; <code class="docutils literal notranslate"><span class="pre">None</span></code> is the family’s default. Other
+families ignore it.</p></li>
+<li><p><strong>random_state</strong> (<em>optional</em>) – The seed of those resamples (SurPyval’s one seed rule:
+<code class="docutils literal notranslate"><span class="pre">None</span></code> draws from numpy’s global generator).</p></li>
+<li><p><strong>**options</strong> – Options of the model’s family, named in
+<a class="reference internal" href="../Model%20Diagnostics.html"><span class="doc">Model Diagnostics</span></a>: for an accelerated life model,
+<code class="docutils literal notranslate"><span class="pre">use_stress</span></code>, the stress the model is to predict at (a
+number, or one per stress column), whose distance from the
+tested stresses the report screens. A family refuses an
+option it does not take.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>See <code class="xref py py-class docutils literal notranslate"><span class="pre">surpyval.diagnostics.Diagnosis</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="../Model%20Diagnostics.html#surpyval.diagnostics.report.Diagnosis" title="surpyval.diagnostics.report.Diagnosis">Diagnosis</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>NotImplementedError</strong> – For a model whose family’s diagnostics are not built yet,
+    saying what to check it with meanwhile; for an option of the
+    model the checks do not support yet; and for a kind of model
+    the checks do not cover by design (a discrete distribution, a
+    parametric regression with a custom link, …), saying what to
+    use instead.</p></li>
+<li><p><strong>ValueError</strong> – For a model the checks cannot be run on (one restored with
+    <code class="docutils literal notranslate"><span class="pre">from_dict</span></code>, which has no data), saying what to do.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoxPH</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_rossi_static</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_rossi_static</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span><span class="p">[</span><span class="s2">"censored"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"arrest"</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">CoxPH</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"week"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"fin"</span><span class="p">,</span> <span class="s2">"age"</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">diagnose</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span><span class="o">.</span><span class="n">ok</span>
+<span class="go">False</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span><span class="o">.</span><span class="n">table</span><span class="p">[[</span><span class="s2">"check"</span><span class="p">,</span> <span class="s2">"transform"</span><span class="p">,</span> <span class="s2">"covariates"</span><span class="p">,</span> <span class="s2">"verdict"</span><span class="p">]]</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">                  check transform covariates verdict</span>
+<span class="go">0  proportional_hazards        km     (fin,)      ok</span>
+<span class="go">1  proportional_hazards        km     (age,)    fail</span>
+<span class="go">2  proportional_hazards        km (fin, age)    fail</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.drift">
+<span class="sig-name descname"><span class="pre">drift</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">npt.NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.drift" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">beta'Zbar(t)</span></code> on each interval <code class="docutils literal notranslate"><span class="pre">(x[j-1],</span> <span class="pre">x[j]]</span></code> of the grid (the
+last value is held beyond it). <code class="docutils literal notranslate"><span class="pre">None</span></code> on a model restored from a
+dict written before it was stored; <code class="docutils literal notranslate"><span class="pre">Hf</span></code> then reads <code class="docutils literal notranslate"><span class="pre">H0</span></code> as a step.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.ff">
+<span class="sig-name descname"><span class="pre">ff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">npt.NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.ff" title="Link to this definition"></a></dt>
+<dd><p>Failure probability <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">sf(x,</span> <span class="pre">Z)</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.from_dict">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel"><span class="pre">AdditiveHazardsModel</span></a></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.from_dict" title="Link to this definition"></a></dt>
+<dd><p>Rebuild a Lin-Ying additive-hazards model from a <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_dict" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a>
+dictionary.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_dict" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_dict</span></code></a>, <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_json" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_json</span></code></a>, <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.from_json" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.from_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_json</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.from_json">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">PathLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.from_json" title="Link to this definition"></a></dt>
+<dd><p>Load a model from a JSON file written by <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_json" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_json"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_json()</span></code></a>, or
+from the JSON text it returned (a string starting with <code class="docutils literal notranslate"><span class="pre">{</span></code>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.hf">
+<span class="sig-name descname"><span class="pre">hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bandwidth</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">npt.NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.hf" title="Link to this definition"></a></dt>
+<dd><p>Hazard rate <code class="docutils literal notranslate"><span class="pre">h0(t)</span> <span class="pre">+</span> <span class="pre">beta'Z</span></code> with a kernel-smoothed baseline,
+floored at 0, and 0 where the cumulative hazard <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Hf()</span></code></a> is
+held (see there).</p>
+<p>The semiparametric baseline is a step cumulative hazard, so the
+rate requires smoothing (Epanechnikov kernel over the increments;
+<code class="docutils literal notranslate"><span class="pre">bandwidth</span></code> defaults to a normal-reference rule on the event
+times). Estimates near the boundaries of the observed time range
+are attenuated by kernel truncation. Past the last observed time
+the estimate holds (see <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Hf()</span></code></a>), so the hazard there is 0, as
+it is at and before time 0.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.kind">
+<span class="sig-name descname"><span class="pre">kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.kind" title="Link to this definition"></a></dt>
+<dd><p>The family (<code class="docutils literal notranslate"><span class="pre">&quot;Additive</span> <span class="pre">Hazards&quot;</span></code>) and <code class="docutils literal notranslate"><span class="pre">&quot;Semi-Parametric&quot;</span></code>, which the
+printout shows and <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> stores.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.log_likelihood">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">log_likelihood</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.log_likelihood" title="Link to this definition"></a></dt>
+<dd><p>Raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodError</span></code> (an <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code>, so
+<code class="docutils literal notranslate"><span class="pre">hasattr</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code>): the model has no likelihood.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.maximum">
+<span class="sig-name descname"><span class="pre">maximum</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'not</span> <span class="pre">applicable'</span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.maximum" title="Link to this definition"></a></dt>
+<dd><p>Lin and Ying’s estimator solves its estimating equations, a linear
+system, rather than maximising a likelihood: <code class="docutils literal notranslate"><span class="pre">&quot;not</span> <span class="pre">applicable&quot;</span></code>
+(one of <code class="docutils literal notranslate"><span class="pre">MAXIMUM_STATES</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval.utils.no_maximum</span></code>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.neg_ll">
+<span class="sig-name descname"><span class="pre">neg_ll</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.neg_ll" title="Link to this definition"></a></dt>
+<dd><p>Raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodError</span></code>: the model has no
+likelihood.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.parameter_bounds">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">parameter_bounds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.parameter_bounds" title="Link to this definition"></a></dt>
+<dd><p>one <code class="docutils literal notranslate"><span class="pre">(low,</span> <span class="pre">high)</span></code> pair per entry of
+the vector <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.with_params" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.with_params"><code class="xref py py-meth docutils literal notranslate"><span class="pre">with_params()</span></code></a> takes, in the order of
+<code class="docutils literal notranslate"><span class="pre">covariance_names</span></code> (<code class="docutils literal notranslate"><span class="pre">None</span></code> for an end with no bound).</p>
+<p>A parameter set drawn inside these ranges is one <code class="docutils literal notranslate"><span class="pre">with_params</span></code>
+does not refuse for being out of range, and one just outside a
+finite end is refused. Draw a parameter bounded on one side on the
+log scale of its distance from that end, and one bounded on both
+on the logit scale between them. Whether an end itself is allowed
+depends on the parameter (a probability may be 0 where a scale may
+not), so keep draws strictly inside.</p>
+<p>A few models also constrain their parameters jointly, which no
+per-parameter range can say, and <code class="docutils literal notranslate"><span class="pre">with_params</span></code> refuses a set
+that breaks the joint constraint, saying so: a mixture’s weights
+sum to 1; a Uniform’s <code class="docutils literal notranslate"><span class="pre">a</span></code> is below its <code class="docutils literal notranslate"><span class="pre">b</span></code> (as a Beta4’s
+are); a Royston-Parmar spline does not fall; a Binomial’s <code class="docutils literal notranslate"><span class="pre">n</span></code> is
+a whole number. The entry of a parameter <code class="docutils literal notranslate"><span class="pre">with_params</span></code> ignores
+(held fixed in the fit, or an accelerated life model’s life
+parameter) gives the parameter’s range all the same. An
+accelerated life model’s life-model parameters can have ranges
+that depend on the stresses fitted to; a model loaded from a dict
+saved without its data gives them as unbounded.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span><span class="p">,</span> <span class="n">WeibullPH</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">])</span><span class="o">.</span><span class="n">parameter_bounds</span>
+<span class="go">[(0.0, None), (0.0, None)]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="n">Z</span><span class="o">=</span><span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">covariance_names</span>
+<span class="go">['alpha', 'beta', 'coef_0']</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">parameter_bounds</span>
+<span class="go">[(0.0, None), (0.0, None), (None, None)]</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The range of each parameter</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.parameter_names">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">parameter_names</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.parameter_names" title="Link to this definition"></a></dt>
+<dd><p>each covariate’s
+column (a formula, <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> or a DataFrame <code class="docutils literal notranslate"><span class="pre">Z</span></code>), else
+<code class="docutils literal notranslate"><span class="pre">coef_0</span></code>, <code class="docutils literal notranslate"><span class="pre">coef_1</span></code>, … (#614), as in the parametric
+regression models.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The names of <code class="docutils literal notranslate"><span class="pre">params</span></code>, entry by entry</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.penalty">
+<span class="sig-name descname"><span class="pre">penalty</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Penalty</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.penalty" title="Link to this definition"></a></dt>
+<dd><p>What a penalised fit penalised; <code class="docutils literal notranslate"><span class="pre">None</span></code> for a maximum likelihood
+fit. A penalised model has no covariance, standard errors,
+confidence bounds or tests.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.qf">
+<span class="sig-name descname"><span class="pre">qf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">npt.NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.qf" title="Link to this definition"></a></dt>
+<dd><p>The quantile function: the first time at which the predicted
+failure probability <code class="docutils literal notranslate"><span class="pre">ff(x,</span> <span class="pre">Z)</span></code> reaches <code class="docutils literal notranslate"><span class="pre">p</span></code> (#662), <code class="docutils literal notranslate"><span class="pre">nan</span></code>
+where it never does – the curve is held after the last observed
+time, above <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">p</span></code> where the data end censored. The median life
+of a unit with covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code> is <code class="docutils literal notranslate"><span class="pre">qf(0.5,</span> <span class="pre">Z)</span></code>.</p>
+<p>The cumulative hazard <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Hf()</span></code></a> never decreases, rising both
+between the event times and in jumps at them, so the quantile is
+found by bisection to a relative <code class="docutils literal notranslate"><span class="pre">1e-12</span></code>, and is an event time
+where the curve jumps past <code class="docutils literal notranslate"><span class="pre">p</span></code> there. <code class="docutils literal notranslate"><span class="pre">Z</span></code> is paired with
+<code class="docutils literal notranslate"><span class="pre">p</span></code> as <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.sf" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.sf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sf()</span></code></a> pairs it with <code class="docutils literal notranslate"><span class="pre">x</span></code>: one row for every <code class="docutils literal notranslate"><span class="pre">p</span></code>,
+or one <code class="docutils literal notranslate"><span class="pre">p</span></code> for every row. A probability outside [0, 1] gives
+<code class="docutils literal notranslate"><span class="pre">nan</span></code>, with a warning.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdditiveHazards</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_rossi_static</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_rossi_static</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"week"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"arrest"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">AdditiveHazards</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">df</span><span class="p">[[</span><span class="s2">"fin"</span><span class="p">,</span> <span class="s2">"prio"</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b10</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b10</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([27.  , 46.  , 10.79])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">b10</span><span class="p">,</span> <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">]])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([0.103, 0.103, 0.1  ])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.random">
+<span class="sig-name descname"><span class="pre">random</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">npt.NDArray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">npt.NDArray</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.random" title="Link to this definition"></a></dt>
+<dd><p>Draw <code class="docutils literal notranslate"><span class="pre">size</span></code> lifetimes for each covariate row of <code class="docutils literal notranslate"><span class="pre">Z</span></code>, by
+inverting <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.qf" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.qf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">qf()</span></code></a>: a uniform <code class="docutils literal notranslate"><span class="pre">U</span></code>, the survival the draw is to
+have, gives <code class="docutils literal notranslate"><span class="pre">qf(1</span> <span class="pre">-</span> <span class="pre">U,</span> <span class="pre">Z)</span></code>, as every regression’s <code class="docutils literal notranslate"><span class="pre">random</span></code>
+draws. The curve is held after the last observed time; a draw it
+never reaches is <code class="docutils literal notranslate"><span class="pre">inf</span></code> (the unit outlives the data), as often as
+<code class="docutils literal notranslate"><span class="pre">sf</span></code> at the last time says. <code class="docutils literal notranslate"><span class="pre">random_state</span></code> seeds the draw:
+<code class="docutils literal notranslate"><span class="pre">None</span></code> (the default) draws from numpy’s global generator; an int
+or a <code class="docutils literal notranslate"><span class="pre">numpy.random.Generator</span></code> gives a stream of its own.</p>
+<p>Returns the draws and a 2-D array of the covariate row each was
+drawn at, row by row.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdditiveHazards</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_rossi_static</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_rossi_static</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"week"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"arrest"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">AdditiveHazards</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">df</span><span class="p">[[</span><span class="s2">"fin"</span><span class="p">,</span> <span class="s2">"prio"</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">draws</span><span class="p">,</span> <span class="n">rows</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">]],</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">draws</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([inf,  6., inf,  6.])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.sf">
+<span class="sig-name descname"><span class="pre">sf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">pd.DataFrame</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">npt.NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.sf" title="Link to this definition"></a></dt>
+<dd><p>Survival <code class="docutils literal notranslate"><span class="pre">exp(-Hf(x,</span> <span class="pre">Z))</span></code>, in <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">1]</span></code> and non-increasing
+(see <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.Hf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Hf()</span></code></a>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.standard_errors">
+<span class="sig-name descname"><span class="pre">standard_errors</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.standard_errors" title="Link to this definition"></a></dt>
+<dd><p>Standard errors of the coefficients (Lin-Ying sandwich), the
+square roots of the diagonal of <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">covariance()</span></code></a>. They were the
+attribute <code class="docutils literal notranslate"><span class="pre">se</span></code> before v0.23.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.summary">
+<span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pd.DataFrame</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.summary" title="Link to this definition"></a></dt>
+<dd><p>The coefficient table (#662), in the layout of <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>’s
+<a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.summary" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.summary"><code class="xref py py-meth docutils literal notranslate"><span class="pre">summary()</span></code></a>: each coefficient (an excess hazard per unit of
+its covariate) with its Lin-Ying sandwich standard error, a
+two-sided <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code> Wald interval, the Wald statistic <code class="docutils literal notranslate"><span class="pre">z</span></code>
+and its p-value (<code class="xref py py-attr docutils literal notranslate"><span class="pre">p_values</span></code>). <code class="docutils literal notranslate"><span class="pre">exp(coef)</span></code> and its bounds
+are <code class="docutils literal notranslate"><span class="pre">nan</span></code>: an additive effect is not a ratio, as for the
+parametric additive hazards models. An aliased coefficient is
+<code class="docutils literal notranslate"><span class="pre">nan</span></code> throughout.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The intervals’ total tail probability. Default 0.05.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>One row per covariate, with the columns of <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>’s
+<a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.summary" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.summary"><code class="xref py py-meth docutils literal notranslate"><span class="pre">summary()</span></code></a>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdditiveHazards</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_rossi_static</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_rossi_static</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span><span class="p">[</span><span class="s2">"censored"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"arrest"</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">AdditiveHazards</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"week"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"fin"</span><span class="p">,</span> <span class="s2">"age"</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">summary</span><span class="p">()[[</span><span class="s2">"coef"</span><span class="p">,</span> <span class="s2">"se(coef)"</span><span class="p">,</span> <span class="s2">"p"</span><span class="p">]]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">             coef  se(coef)       p</span>
+<span class="go">covariate</span>
+<span class="go">fin       -0.0018    0.0011  0.0918</span>
+<span class="go">age       -0.0003    0.0001  0.0002</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.time_scale">
+<span class="sig-name descname"><span class="pre">time_scale</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.time_scale" title="Link to this definition"></a></dt>
+<dd><p>The unit of time a penalised fit (<code class="docutils literal notranslate"><span class="pre">fit_penalised</span></code>) penalised the
+coefficients in: the count-weighted mean follow-up. <code class="docutils literal notranslate"><span class="pre">None</span></code> for the
+unpenalised fit.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_dict" title="Link to this definition"></a></dt>
+<dd><p>Serialise this fitted Lin-Ying additive-hazards model to a plain,
+JSON-serialisable dict.</p>
+<p>The baseline is nonparametric, so what is stored is the coefficients
+<code class="docutils literal notranslate"><span class="pre">beta</span></code> and the fitted baseline step arrays (event times <code class="docutils literal notranslate"><span class="pre">x</span></code> and the
+baseline hazard <code class="docutils literal notranslate"><span class="pre">h0</span></code> / cumulative hazard <code class="docutils literal notranslate"><span class="pre">H0</span></code>), along with the
+parameter covariance so the restored model can still report standard
+errors. Everything needed for <code class="docutils literal notranslate"><span class="pre">hf</span></code>/<code class="docutils literal notranslate"><span class="pre">Hf</span></code>/<code class="docutils literal notranslate"><span class="pre">sf</span></code>/<code class="docutils literal notranslate"><span class="pre">ff</span></code>/<code class="docutils literal notranslate"><span class="pre">df</span></code> (and
+<code class="docutils literal notranslate"><span class="pre">se</span></code>/<code class="docutils literal notranslate"><span class="pre">cov</span></code>) round-trips exactly. The internal estimating-equation
+matrices (<code class="docutils literal notranslate"><span class="pre">_A</span></code>, <code class="docutils literal notranslate"><span class="pre">_b</span></code>) are not stored.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.from_dict" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.from_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_dict</span></code></a>, <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_json" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_json</span></code></a>, <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.from_json" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.from_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_json</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">PathLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">with_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_json" title="Link to this definition"></a></dt>
+<dd><p>Write <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_dict" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> to <code class="docutils literal notranslate"><span class="pre">fp</span></code> as strict JSON, or return it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fp</strong> (<em>str</em><em> or </em><em>os.PathLike</em><em>, </em><em>optional</em>) – The file to write. Without it the JSON is returned as a
+string (as <code class="docutils literal notranslate"><span class="pre">pandas.DataFrame.to_json</span></code> does), which
+<code class="docutils literal notranslate"><span class="pre">from_json</span></code> also reads.</p></li>
+<li><p><strong>with_data</strong> (<em>bool</em><em>, </em><em>optional</em>) – Write <code class="docutils literal notranslate"><span class="pre">to_dict(with_data=True)</span></code>, which also stores the fitted
+data, for the models whose <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> takes <code class="docutils literal notranslate"><span class="pre">with_data</span></code>
+(the univariate <code class="docutils literal notranslate"><span class="pre">Parametric</span></code> and <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code>); a
+<code class="docutils literal notranslate"><span class="pre">TypeError</span></code> for any other model. Defaults to <code class="code docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.unit" title="Link to this definition"></a></dt>
+<dd><p>a label, set by
+<code class="docutils literal notranslate"><span class="pre">unit=</span></code> on <code class="docutils literal notranslate"><span class="pre">fit</span></code>, <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> and <code class="docutils literal notranslate"><span class="pre">from_params</span></code>, shown
+in the <code class="docutils literal notranslate"><span class="pre">repr</span></code> and on plots and saved by <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>. None is
+unknown. See <code class="xref py py-mod docutils literal notranslate"><span class="pre">surpyval.utils.units</span></code>. (Not <code class="docutils literal notranslate"><span class="pre">units</span></code>, which
+names the items measured: a degradation model’s unit ids.)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The unit of the data the model describes (#845)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.with_params">
+<span class="sig-name descname"><span class="pre">with_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel"><span class="pre">AdditiveHazardsModel</span></a></span></span><a class="headerlink" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.with_params" title="Link to this definition"></a></dt>
+<dd><p>The same model with other coefficients, and the baseline Lin and
+Ying’s estimator gives at them.</p>
+<p>The baseline cumulative hazard is the Breslow-type sum less the
+covariate-mean drift, <code class="docutils literal notranslate"><span class="pre">H0(t)</span> <span class="pre">=</span> <span class="pre">Lambda(t)</span> <span class="pre">-</span> <span class="pre">beta'</span> <span class="pre">G(t)</span></code>, linear
+in the coefficients; the rebuilt model has that baseline at the
+new <code class="docutils literal notranslate"><span class="pre">beta</span></code>, so <code class="docutils literal notranslate"><span class="pre">with_params(beta)</span></code> is what the fit would
+predict had it estimated <code class="docutils literal notranslate"><span class="pre">beta</span></code>. The covariate names, formula
+and its encoding of a DataFrame are kept.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>params</strong> (<em>array like</em>) – The coefficients, in the order of <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance_names" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance_names"><code class="xref py py-attr docutils literal notranslate"><span class="pre">covariance_names</span></code></a>:
+a draw from <a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel.covariance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">covariance()</span></code></a>, say. An aliased coefficient
+stays <code class="docutils literal notranslate"><span class="pre">nan</span></code> (taken as 0).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A model without the data or the covariance: <code class="docutils literal notranslate"><span class="pre">covariance</span></code>,
+<code class="docutils literal notranslate"><span class="pre">standard_errors</span></code> and <code class="docutils literal notranslate"><span class="pre">concordance</span></code> refuse; its
+<code class="docutils literal notranslate"><span class="pre">with_params</span></code> works (it keeps what the baseline needs).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel" title="surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel">AdditiveHazardsModel</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – For a vector of the wrong length; or on a model restored from
+    a dict, which does not keep the risk sets the baseline is
+    re-estimated from.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdditiveHazards</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_rossi_static</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_rossi_static</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"week"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"arrest"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">AdditiveHazards</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">df</span><span class="p">[[</span><span class="s2">"fin"</span><span class="p">,</span> <span class="s2">"prio"</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">same</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">with_params</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">_estimates</span><span class="p">())</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">same</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">52</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span> <span class="o">==</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">52</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">]))</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">with_params</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">])</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">52</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">np.float64(0.737)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="interval_cox.html" class="btn btn-neutral float-left" title="Interval-Censored Cox (Semi-Parametric PH)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="aalen_additive.html" class="btn btn-neutral float-right" title="Non-Parametric Additive Hazards (Aalen)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,899 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multivariate Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Non-Parametric SurPyval Modelling" href="Non-Parametric%20SurPyval%20Modelling.html" />
+    <link rel="prev" title="Landmark Analysis" href="Landmark%20Analysis.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Multivariate Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#copulas-and-sklar-s-theorem">Copulas and Sklar’s theorem</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-probability-integral-transform">The probability integral transform</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#definition-and-sklar-s-theorem">Definition and Sklar’s theorem</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#everything-else-from-the-copula">Everything else from the copula</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#families-of-dependence">Families of dependence</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#measuring-dependence">Measuring dependence</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-families-in-detail">The families in detail</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#choosing-a-family">Choosing a family</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#estimation">Estimation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-likelihood-with-censored-data">The likelihood with censored data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#truncation-conditioning-on-being-seen">Truncation: conditioning on being seen</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#how-surpyval-fits">How SurPyval fits</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ifm-or-mle">IFM or MLE?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#standard-errors">Standard errors</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Multivariate Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Multivariate Analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="multivariate-analysis">
+<h1>Multivariate Analysis<a class="headerlink" href="#multivariate-analysis" title="Link to this heading"></a></h1>
+<p>Every distribution and model covered so far is <em>univariate</em>: each unit has a
+single event time, and units are treated as independent replicates.
+Multivariate survival analysis relaxes the independence: it models several
+<em>correlated</em> event-time series jointly. A pair of failure times on the two
+bearings of one shaft, the times to two related complications in one patient,
+or the lifetimes of two components sharing an environment are all naturally
+dependent, and pretending otherwise understates the joint risk.</p>
+<p>How much can independence get wrong? Take two pumps in a redundant
+(parallel) pair, each with a 10% chance of failing within a year. If they fail
+independently, the chance that <em>both</em> fail — and the system goes down — is
+<span class="math notranslate nohighlight">\(0.1 \times 0.1 = 1\%\)</span>. If they share a cause of early failure (the same
+batch of seals, the same contaminated fluid), the joint probability can be
+several times larger, even though each pump on its own is exactly as reliable
+as before. Nothing in the two marginal distributions reveals this; it lives
+entirely in the dependence between them.</p>
+<p>The difficulty is that a joint distribution mixes two very different things:
+what each series looks like <em>on its own</em>, and how the series <em>move together</em>.
+The <strong>copula</strong> is the device that separates them. SurPyval’s
+<code class="docutils literal notranslate"><span class="pre">surpyval.multivariate</span></code> module implements bivariate copula models whose
+margins are ordinary SurPyval distributions; worked examples are on the
+<a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html"><span class="doc">Multivariate Modelling with SurPyval</span></a> page and the API on
+<a class="reference internal" href="surpyval.multivariate.html"><span class="doc">Multivariate Modelling</span></a>.</p>
+<section id="copulas-and-sklar-s-theorem">
+<h2>Copulas and Sklar’s theorem<a class="headerlink" href="#copulas-and-sklar-s-theorem" title="Link to this heading"></a></h2>
+<section id="the-probability-integral-transform">
+<h3>The probability integral transform<a class="headerlink" href="#the-probability-integral-transform" title="Link to this heading"></a></h3>
+<p>The starting point is a fact every simulation relies on: if <span class="math notranslate nohighlight">\(X\)</span> has a
+continuous CDF <span class="math notranslate nohighlight">\(F\)</span>, then <span class="math notranslate nohighlight">\(U = F(X)\)</span> is uniform on <span class="math notranslate nohighlight">\([0, 1]\)</span>.
+Transforming each series by its own CDF therefore strips away its marginal
+shape — Weibull, LogNormal, whatever it was — and leaves a uniform variable.
+What remains <em>between</em> the transformed variables <span class="math notranslate nohighlight">\(U_1 = F_1(X_1)\)</span> and
+<span class="math notranslate nohighlight">\(U_2 = F_2(X_2)\)</span> is pure dependence: if the bearings tend to fail early
+together, <span class="math notranslate nohighlight">\(U_1\)</span> and <span class="math notranslate nohighlight">\(U_2\)</span> tend to be small together.</p>
+</section>
+<section id="definition-and-sklar-s-theorem">
+<h3>Definition and Sklar’s theorem<a class="headerlink" href="#definition-and-sklar-s-theorem" title="Link to this heading"></a></h3>
+<p>A copula <span class="math notranslate nohighlight">\(C(u_1, u_2)\)</span> is simply a joint distribution function whose
+margins are uniform on <span class="math notranslate nohighlight">\([0, 1]\)</span>:
+<span class="math notranslate nohighlight">\(C(u_1, u_2) = P(U_1 \leq u_1, U_2 \leq u_2)\)</span>. Its whole job is to
+encode dependence, stripped of any marginal shape. Sklar’s theorem
+<a class="reference internal" href="#sklar1959mv" id="id1"><span>[Sklar1959mv]</span></a> says that <em>any</em> joint distribution can be written this way:
+given marginal CDFs <span class="math notranslate nohighlight">\(F_1, F_2\)</span>, the joint CDF is</p>
+<div class="math notranslate nohighlight">
+\[H(x_1, x_2) = C\big(F_1(x_1),\, F_2(x_2)\big).\]</div>
+<p>For continuous margins the copula is unique, and conversely <em>any</em> copula
+combined with <em>any</em> margins through this formula gives a valid joint
+distribution. Because <span class="math notranslate nohighlight">\(F_1\)</span> and <span class="math notranslate nohighlight">\(F_2\)</span> map each series onto uniform
+margins, the copula <span class="math notranslate nohighlight">\(C\)</span> carries <em>only</em> the dependence structure. This is
+the key modelling freedom: the margins can be any survival distribution — a
+Weibull for one series, a LogNormal for the other — while the copula, chosen
+separately, governs how they are coupled. The marginal question (“how long
+does this component last?”) and the dependence question (“do the two fail
+together?”) are answered by different parts of the model.</p>
+<p>Two copulas bracket all the others. Independence is <span class="math notranslate nohighlight">\(C(u_1, u_2) = u_1
+u_2\)</span>. Every copula lies between the Fréchet-Hoeffding bounds</p>
+<div class="math notranslate nohighlight">
+\[\max(u_1 + u_2 - 1,\, 0) \;\leq\; C(u_1, u_2) \;\leq\; \min(u_1, u_2),\]</div>
+<p>the lower bound describing perfect negative dependence (one series is a
+decreasing function of the other) and the upper bound perfect positive
+dependence (one is an increasing function of the other). A copula family with a
+parameter moves between independence and one or both of these extremes.</p>
+</section>
+<section id="everything-else-from-the-copula">
+<h3>Everything else from the copula<a class="headerlink" href="#everything-else-from-the-copula" title="Link to this heading"></a></h3>
+<p>Writing <span class="math notranslate nohighlight">\(u_1 = F_1(x_1)\)</span> and <span class="math notranslate nohighlight">\(u_2 = F_2(x_2)\)</span>, every joint
+quantity used in survival analysis follows from <span class="math notranslate nohighlight">\(C\)</span> and the margins:</p>
+<ul>
+<li><p>the <strong>joint CDF</strong> <span class="math notranslate nohighlight">\(H(x_1, x_2) = P(X_1 \leq x_1, X_2 \leq x_2) =
+C(u_1, u_2)\)</span> — both have failed by their respective times;</p></li>
+<li><p>the <strong>joint survival function</strong>, by inclusion-exclusion,</p>
+<div class="math notranslate nohighlight">
+\[S(x_1, x_2) = P(X_1 &gt; x_1,\, X_2 &gt; x_2) = 1 - u_1 - u_2 + C(u_1, u_2);\]</div>
+</li>
+<li><p>the <strong>joint density</strong> <span class="math notranslate nohighlight">\(f(x_1, x_2) = c(u_1, u_2)\, f_1(x_1)\,
+f_2(x_2)\)</span>, where <span class="math notranslate nohighlight">\(c = \partial^2 C / \partial u_1 \partial u_2\)</span> is the
+copula density and <span class="math notranslate nohighlight">\(f_1, f_2\)</span> the marginal densities;</p></li>
+<li><p>the <strong>conditional distribution</strong> of one series given the exact value of the
+other, through the partial derivative of <span class="math notranslate nohighlight">\(C\)</span> (often called the
+<em>h-function</em>):</p>
+<div class="math notranslate nohighlight">
+\[P(X_2 \leq x_2 \mid X_1 = x_1) = \frac{\partial C(u_1, u_2)}{\partial u_1}.\]</div>
+</li>
+</ul>
+<p>Where they are small these formulas subtract numbers close to 1: under
+strong negative dependence the joint survival beyond both margins’ upper
+tails can be far below <span class="math notranslate nohighlight">\(10^{-16}\)</span>, which <span class="math notranslate nohighlight">\(1 - u_1 - u_2 + C(u_1,
+u_2)\)</span> cannot represent (it gave noise, or 0). SurPyval
+evaluates each such probability – the joint survival, <span class="math notranslate nohighlight">\(P(X_1 \leq x_1,
+X_2 &gt; x_2)\)</span> and <span class="math notranslate nohighlight">\(P(X_2 &gt; x_2 \mid X_1 = x_1)\)</span> – directly, keeping its
+relative accuracy: for the radially symmetric families (Gaussian, Student-t,
+Frank) the joint survival is <span class="math notranslate nohighlight">\(C(1 - u_1, 1 - u_2)\)</span>, and the other
+families and their rotations use closed forms written without the
+cancellation (#619). The likelihood of a censored row (below) is built from
+them.</p>
+<p>The h-function is also the key to simulation: draw <span class="math notranslate nohighlight">\(u_1\)</span> uniform, draw
+a second uniform <span class="math notranslate nohighlight">\(w\)</span>, and solve <span class="math notranslate nohighlight">\(\partial C/\partial u_1(u_1,
+u_2) = w\)</span> for <span class="math notranslate nohighlight">\(u_2\)</span>; then map back through the margins’ quantile
+functions, <span class="math notranslate nohighlight">\(x_j = F_j^{-1}(u_j)\)</span>.</p>
+<p>A note on orientation. SurPyval applies the copula to the marginal <em>CDFs</em>, as
+in Sklar’s theorem above. Some survival texts instead apply a copula to the
+marginal <em>survival</em> functions, <span class="math notranslate nohighlight">\(S(x_1, x_2) = \tilde{C}(S_1(x_1),
+S_2(x_2))\)</span> (a “survival copula”); for example, the shared gamma-frailty model
+is a Clayton copula applied in this second way. The same family name then
+describes a different model — the tail that is dependent is flipped — so when
+comparing with published results check which convention was used.</p>
+</section>
+</section>
+<section id="families-of-dependence">
+<h2>Families of dependence<a class="headerlink" href="#families-of-dependence" title="Link to this heading"></a></h2>
+<p>Different copula families describe qualitatively different dependence,
+especially in the <em>tails</em> — whether two series tend to fail together at short
+lives (lower-tail dependence) or survive together to long lives (upper-tail
+dependence):</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Copula</p></th>
+<th class="head"><p>Parameter</p></th>
+<th class="head"><p>Dependence</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Independence</p></td>
+<td><p>none</p></td>
+<td><p>none (<span class="math notranslate nohighlight">\(\tau = 0\)</span>)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Clayton</p></td>
+<td><p><span class="math notranslate nohighlight">\(\theta &gt; 0\)</span></p></td>
+<td><p>lower-tail (joint early failure)</p></td>
+</tr>
+<tr class="row-even"><td><p>Gumbel</p></td>
+<td><p><span class="math notranslate nohighlight">\(\theta \geq 1\)</span></p></td>
+<td><p>upper-tail (joint long survival)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Frank</p></td>
+<td><p><span class="math notranslate nohighlight">\(\theta \neq 0\)</span></p></td>
+<td><p>symmetric, no tail</p></td>
+</tr>
+<tr class="row-even"><td><p>Gaussian</p></td>
+<td><p><span class="math notranslate nohighlight">\(\rho \in (-1, 1)\)</span></p></td>
+<td><p>symmetric, no tail</p></td>
+</tr>
+<tr class="row-odd"><td><p>Joe</p></td>
+<td><p><span class="math notranslate nohighlight">\(\theta \geq 1\)</span></p></td>
+<td><p>upper-tail, stronger than Gumbel’s</p></td>
+</tr>
+<tr class="row-even"><td><p>AMH (Ali-Mikhail-Haq)</p></td>
+<td><p><span class="math notranslate nohighlight">\(-1 \leq \theta \leq 1\)</span></p></td>
+<td><p>weak only (<span class="math notranslate nohighlight">\(-0.18 \leq \tau \leq 1/3\)</span>), no tail</p></td>
+</tr>
+<tr class="row-odd"><td><p>StudentT</p></td>
+<td><p><span class="math notranslate nohighlight">\(\rho \in (-1, 1)\)</span>, <span class="math notranslate nohighlight">\(\nu &gt; 0\)</span></p></td>
+<td><p>symmetric, both tails</p></td>
+</tr>
+</tbody>
+</table>
+<p>The strength of dependence is summarised by rank measures that do not depend on
+the margins — <strong>Kendall’s</strong> <span class="math notranslate nohighlight">\(\tau\)</span> and <strong>Spearman’s</strong> <span class="math notranslate nohighlight">\(\rho\)</span> — and
+the tendency to fail (or survive) together in the extremes by the <strong>tail
+dependence</strong> coefficients. Choosing a family is largely a question of which
+tail behaviour matches the physics or the clinical reality.</p>
+<section id="measuring-dependence">
+<h3>Measuring dependence<a class="headerlink" href="#measuring-dependence" title="Link to this heading"></a></h3>
+<p>The usual (Pearson) correlation is a poor summary for lifetimes: it depends on
+the margins, and it changes if you take logs of the times. The copula-based
+measures depend only on <span class="math notranslate nohighlight">\(C\)</span>, so they are the same whatever the margins
+and whatever monotone transformation is applied to the times:</p>
+<ul>
+<li><p><strong>Kendall’s tau</strong> is the probability that two independent pairs are
+<em>concordant</em> (the unit that fails first on series 1 also fails first on
+series 2) minus the probability they are discordant:
+<span class="math notranslate nohighlight">\(\tau = 4\,E[C(U_1, U_2)] - 1 \in [-1, 1]\)</span>.</p></li>
+<li><p><strong>Spearman’s rho</strong> is the ordinary correlation of the uniforms,
+<span class="math notranslate nohighlight">\(\rho_S = \operatorname{corr}(U_1, U_2) = 12\int_0^1\!\int_0^1
+C(u_1, u_2)\, du_1\, du_2 - 3\)</span>.</p></li>
+<li><p>The <strong>tail-dependence coefficients</strong> measure clustering in the extremes:</p>
+<div class="math notranslate nohighlight">
+\[\lambda_L = \lim_{q \to 0^+} P\big(U_1 \leq q \mid U_2 \leq q\big)
+          = \lim_{q \to 0^+} \frac{C(q, q)}{q},
+\qquad
+\lambda_U = \lim_{q \to 1^-} P\big(U_1 &gt; q \mid U_2 &gt; q\big).\]</div>
+<p><span class="math notranslate nohighlight">\(\lambda_L &gt; 0\)</span> means that, given one unit is among the very earliest
+failures, there is a non-vanishing probability that its partner is too:
+early failures come in pairs. <span class="math notranslate nohighlight">\(\lambda_U &gt; 0\)</span> is the same statement
+for the longest survivors.</p>
+</li>
+</ul>
+<p>Two copulas can share the same <span class="math notranslate nohighlight">\(\tau\)</span> and still differ greatly in the
+tails, which is exactly where the risk of joint failure is decided. Fit the
+family, not just the correlation.</p>
+</section>
+<section id="the-families-in-detail">
+<h3>The families in detail<a class="headerlink" href="#the-families-in-detail" title="Link to this heading"></a></h3>
+<p>The formulas below are standard; <a class="reference internal" href="#nelsen2006mv" id="id2"><span>[Nelsen2006mv]</span></a> derives them and many more.</p>
+<p><strong>Independence</strong> — <span class="math notranslate nohighlight">\(C(u_1, u_2) = u_1 u_2\)</span>. No parameter; the joint
+distribution is the product of the margins. It is the baseline against which
+the others are judged: if a dependent copula does not fit clearly better, the
+simpler independent model may do.</p>
+<p><strong>Clayton</strong> —</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}C(u_1, u_2) = \big(u_1^{-\theta} + u_2^{-\theta} - 1\big)^{-1/\theta},
+\qquad \theta &gt; 0,\\\tau = \frac{\theta}{\theta + 2}, \qquad
+\lambda_L = 2^{-1/\theta}, \qquad \lambda_U = 0 .\end{aligned}\end{align} \]</div>
+<p><span class="math notranslate nohighlight">\(\theta \to 0\)</span> gives independence and <span class="math notranslate nohighlight">\(\theta \to \infty\)</span> perfect
+positive dependence. Dependence concentrates in the <em>lower</em> tail: the two
+series are most tightly linked among early failures. Use it for <strong>common-cause
+early failure</strong> — a shared manufacturing defect, a shared harsh start-up, a
+shared contamination event — where knowing one unit failed young is strong
+evidence its partner will too.</p>
+<p><strong>Gumbel</strong> (Gumbel-Hougaard) —</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}C(u_1, u_2) = \exp\!\Big(-\big[(-\ln u_1)^{\theta} +
+              (-\ln u_2)^{\theta}\big]^{1/\theta}\Big),
+\qquad \theta \geq 1,\\\tau = 1 - \frac{1}{\theta}, \qquad
+\lambda_L = 0, \qquad \lambda_U = 2 - 2^{1/\theta} .\end{aligned}\end{align} \]</div>
+<p><span class="math notranslate nohighlight">\(\theta = 1\)</span> is independence. Dependence concentrates in the <em>upper</em>
+tail: the series are most tightly linked among the longest lives. Use it when
+a shared <em>benign</em> factor (a gentle duty cycle, a robust batch) lets pairs
+survive to old age together. (The Gumbel copula is unrelated to the univariate
+Gumbel distribution, <code class="docutils literal notranslate"><span class="pre">surpyval.Gumbel</span></code>.)</p>
+<p><strong>Frank</strong> —</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}C(u_1, u_2) = -\frac{1}{\theta}\ln\!\left(1 +
+    \frac{(e^{-\theta u_1} - 1)(e^{-\theta u_2} - 1)}{e^{-\theta} - 1}\right),
+\qquad \theta \neq 0,\\\tau = 1 - \frac{4}{\theta}\big[1 - D_1(\theta)\big],
+\qquad \lambda_L = \lambda_U = 0,\end{aligned}\end{align} \]</div>
+<p>where <span class="math notranslate nohighlight">\(D_1(\theta) = \frac{1}{\theta}\int_0^{\theta}
+\frac{s}{e^s - 1}\,ds\)</span> is the first Debye function. <span class="math notranslate nohighlight">\(\theta &gt; 0\)</span> gives
+positive and <span class="math notranslate nohighlight">\(\theta &lt; 0\)</span> negative dependence, symmetric in the two
+tails and with no tail dependence. Use it for moderate, “everywhere-alike”
+association, or whenever the dependence may be <em>negative</em> (one series tends to
+be long when the other is short, as when two failure modes compete for the
+same weakness).</p>
+<p><strong>Gaussian</strong> —</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}C(u_1, u_2) = \Phi_2\big(\Phi^{-1}(u_1), \Phi^{-1}(u_2); \rho\big),
+\qquad -1 &lt; \rho &lt; 1,\\\tau = \frac{2}{\pi}\arcsin\rho, \qquad
+\rho_S = \frac{6}{\pi}\arcsin\frac{\rho}{2}, \qquad
+\lambda_L = \lambda_U = 0,\end{aligned}\end{align} \]</div>
+<p>where <span class="math notranslate nohighlight">\(\Phi\)</span> is the standard normal CDF and <span class="math notranslate nohighlight">\(\Phi_2(\cdot,
+\cdot; \rho)\)</span> the bivariate normal CDF with correlation <span class="math notranslate nohighlight">\(\rho\)</span>. It is
+the dependence of a bivariate normal distribution transplanted onto arbitrary
+margins, so <span class="math notranslate nohighlight">\(\rho\)</span> has the familiar meaning of a correlation between the
+normal scores <span class="math notranslate nohighlight">\(\Phi^{-1}(u_j)\)</span>. Positive and negative dependence are both
+allowed. Its lack of tail dependence means that, however large <span class="math notranslate nohighlight">\(\rho\)</span>,
+joint <em>extreme</em> events become asymptotically independent — a Gaussian copula
+can understate the risk of joint early failure when the true dependence is
+Clayton-like.</p>
+<p><strong>Joe</strong> —</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}C(u_1, u_2) = 1 - \big(\bar u_1^{\theta} + \bar u_2^{\theta}
+    - \bar u_1^{\theta} \bar u_2^{\theta}\big)^{1/\theta},
+\qquad \bar u = 1 - u, \qquad \theta \geq 1,\\\tau = 1 - \frac{2}{\theta}\,
+    \frac{\psi(2/\theta + 1) - \psi(2)}{2/\theta - 1}, \qquad
+\lambda_L = 0, \qquad \lambda_U = 2 - 2^{1/\theta},\end{aligned}\end{align} \]</div>
+<p>with <span class="math notranslate nohighlight">\(\psi\)</span> the digamma function (at <span class="math notranslate nohighlight">\(\theta = 2\)</span> the quotient
+is <span class="math notranslate nohighlight">\(\psi'(2)\)</span>). Like the Gumbel it links the long lives, but more
+strongly for the same Kendall’s tau: at <span class="math notranslate nohighlight">\(\tau = 0.5\)</span> the Joe copula has
+<span class="math notranslate nohighlight">\(\lambda_U = 0.73\)</span> (<span class="math notranslate nohighlight">\(\theta = 2.86\)</span>), the Gumbel 0.59. The
+parameterisation is that of R’s <code class="docutils literal notranslate"><span class="pre">copula::joeCopula</span></code> and of VineCopula’s
+family 6.</p>
+<p><strong>Ali-Mikhail-Haq (AMH)</strong> —</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}C(u_1, u_2) = \frac{u_1 u_2}{1 - \theta(1 - u_1)(1 - u_2)},
+\qquad -1 \leq \theta \leq 1,\\\tau = 1 - \frac{2\{\theta + (1 - \theta)^2 \ln(1 - \theta)\}}
+    {3\theta^2}, \qquad
+\lambda_L = \lambda_U = 0 \ (\theta &lt; 1).\end{aligned}\end{align} \]</div>
+<p>Spearman’s rho has a closed form too, through the dilogarithm. The family
+reaches only weak dependence of either sign, <span class="math notranslate nohighlight">\(-0.1817 \leq \tau
+\leq 1/3\)</span>, and is a cheap closed-form model for it (R’s
+<code class="docutils literal notranslate"><span class="pre">copula::amhCopula</span></code>). Data more strongly dependent than that drive the fit
+to the bound <span class="math notranslate nohighlight">\(\theta = \pm 1\)</span> (a valid copula; <span class="math notranslate nohighlight">\(\theta = 1\)</span> is
+the Clayton copula with <span class="math notranslate nohighlight">\(\theta = 1\)</span>, with <span class="math notranslate nohighlight">\(\lambda_L = 1/2\)</span>),
+which it returns, as Clayton returns independence for negatively dependent
+data: compare the empirical Kendall’s tau with that range first.</p>
+<p><strong>Student-t</strong> —</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}C(u_1, u_2) = T_{2,\nu}\big(T_\nu^{-1}(u_1), T_\nu^{-1}(u_2);
+    \rho\big),
+\qquad -1 &lt; \rho &lt; 1, \quad \nu &gt; 0,\\\tau = \frac{2}{\pi}\arcsin\rho, \qquad
+\lambda_L = \lambda_U = 2\,T_{\nu + 1}\!\left(-\sqrt{\frac{(\nu + 1)
+    (1 - \rho)}{1 + \rho}}\right),\end{aligned}\end{align} \]</div>
+<p>where <span class="math notranslate nohighlight">\(T_\nu\)</span> is the t CDF with <span class="math notranslate nohighlight">\(\nu\)</span> degrees of freedom and
+<span class="math notranslate nohighlight">\(T_{2,\nu}\)</span> the bivariate t CDF. It is the Gaussian copula with heavier
+joint tails: the same Kendall’s tau for a given <span class="math notranslate nohighlight">\(\rho\)</span>, but extreme
+events — the earliest failures <em>and</em> the longest survivals — come together,
+the more so the smaller <span class="math notranslate nohighlight">\(\nu\)</span>. As <span class="math notranslate nohighlight">\(\nu \to \infty\)</span> it becomes
+the Gaussian copula; data with no tail dependence send the fitted
+<span class="math notranslate nohighlight">\(\nu\)</span> there, and the fit then warns (“No finite maximum”) and
+recommends the Gaussian copula. The parameters are R’s
+<code class="docutils literal notranslate"><span class="pre">copula::tCopula(param</span> <span class="pre">=</span> <span class="pre">rho,</span> <span class="pre">df</span> <span class="pre">=</span> <span class="pre">nu)</span></code>.</p>
+<p><strong>Rotations.</strong> Turning a copula round gives a new one: the 180-degree
+rotation, <span class="math notranslate nohighlight">\(C_{180}(u_1, u_2) = u_1 + u_2 - 1 + C(1 - u_1, 1 - u_2)\)</span>,
+is the <em>survival copula</em>, the copula of <span class="math notranslate nohighlight">\((1 - U_1, 1 - U_2)\)</span>, with the
+lower and upper tail dependence swapped; the 90- and 270-degree rotations,
+<span class="math notranslate nohighlight">\(u_2 - C(1 - u_1, u_2)\)</span> and <span class="math notranslate nohighlight">\(u_1 - C(u_1, 1 - u_2)\)</span>, negate
+Kendall’s tau and Spearman’s rho and put the family’s tail in a corner where
+one series is short and the other long. SurPyval rotates the Clayton, Gumbel
+and Joe copulas with the <code class="docutils literal notranslate"><span class="pre">rotation</span></code> option of <code class="docutils literal notranslate"><span class="pre">fit</span></code> and <code class="docutils literal notranslate"><span class="pre">from_params</span></code>
+(R’s <code class="docutils literal notranslate"><span class="pre">VineCopula</span></code> convention, with the parameter kept in its own range as
+in pyvinecopulib); a survival Clayton links long lives, a survival Gumbel or
+Joe early failures.</p>
+<p>In SurPyval, Kendall’s tau is computed in closed form for every family
+(Frank’s through a numerically evaluated Debye integral), and so are
+Spearman’s rho for the Gaussian, Independence, Frank and AMH copulas (Frank’s
+is <span class="math notranslate nohighlight">\(1 - 12\{D_1(\theta) - D_2(\theta)\}/\theta\)</span>, with <span class="math notranslate nohighlight">\(D_k\)</span>
+the Debye functions) and the tail-dependence coefficients. Spearman’s rho for
+the Clayton, Gumbel and Joe copulas is the integral above, taken by
+Gauss-Legendre quadrature (accurate to about <span class="math notranslate nohighlight">\(10^{-11}\)</span>), and the
+Student-t’s is <span class="math notranslate nohighlight">\(12\,E[U_1 U_2] - 3\)</span> integrated through its conditional
+distribution (to about <span class="math notranslate nohighlight">\(10^{-13}\)</span>). (Before version 0.22 it was
+estimated from 50,000 simulated pairs, up to <span class="math notranslate nohighlight">\(5 \times 10^{-3}\)</span> off.)</p>
+</section>
+<section id="choosing-a-family">
+<h3>Choosing a family<a class="headerlink" href="#choosing-a-family" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p>Start from the physics: is there a mechanism that makes <em>early</em> failures
+cluster (Clayton), <em>long</em> lives cluster (Gumbel), or a diffuse association
+with no special tail (Frank, Gaussian)?</p></li>
+<li><p>Joint extremes in <em>both</em> tails point to the Student-t; joint long lives
+more strongly than a Gumbel allows point to the Joe.</p></li>
+<li><p>Only Frank, Gaussian, Student-t and (weakly) AMH can express <strong>negative</strong>
+dependence. Clayton (<span class="math notranslate nohighlight">\(\theta &gt; 0\)</span>), Gumbel and Joe
+(<span class="math notranslate nohighlight">\(\theta \geq 1\)</span>) are positive-only in SurPyval; fitted to
+negatively dependent data they are pushed to their independence boundary,
+so check the sign of the empirical Kendall’s tau first.</p></li>
+<li><p>Compare fitted families by their log-likelihood or AIC (the fitted model’s
+<code class="docutils literal notranslate"><span class="pre">log_likelihood</span></code> and <code class="docutils literal notranslate"><span class="pre">aic()</span></code>, which use the full censored and truncated
+joint likelihood below) and by plotting simulated samples against the data.
+The how-to page shows both.</p></li>
+</ul>
+</section>
+</section>
+<section id="estimation">
+<h2>Estimation<a class="headerlink" href="#estimation" title="Link to this heading"></a></h2>
+<p>Fitting a copula model means estimating both the marginal parameters and the
+copula parameter. Two strategies trade off robustness against efficiency:</p>
+<ul class="simple">
+<li><p><strong>IFM</strong> (<em>Inference Functions for Margins</em>) fits each margin independently and
+then estimates the copula parameter with the margins held fixed. It is fast,
+a poor margin cannot spoil the other one, and it is the usual default.</p></li>
+<li><p><strong>MLE</strong> optimises the copula parameter jointly with all marginal parameters.
+It is more efficient when the model is well specified, at a higher
+computational cost, and it is the one that stays correct when the
+truncation or censoring of one series depends on the other (see
+<a class="reference internal" href="#ifm-or-mle">IFM or MLE?</a> below).</p></li>
+</ul>
+<p>Both maximise a likelihood, so the likelihood comes first.</p>
+<section id="the-likelihood-with-censored-data">
+<h3>The likelihood with censored data<a class="headerlink" href="#the-likelihood-with-censored-data" title="Link to this heading"></a></h3>
+<p>Because the margins are ordinary survival distributions, the joint likelihood
+inherits survival analysis’s treatment of incomplete data: each series of a
+joint observation can be observed, right, left or interval censored, whatever
+the status of the other series, using the same codes as the univariate models
+(<code class="docutils literal notranslate"><span class="pre">c</span></code> of <code class="docutils literal notranslate"><span class="pre">0</span></code>, <code class="docutils literal notranslate"><span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">-1</span></code>, <code class="docutils literal notranslate"><span class="pre">2</span></code>). One idea covers all of them.</p>
+<p><strong>Every censored row is a rectangle.</strong> What we know about a row is that
+<span class="math notranslate nohighlight">\(X_1\)</span> lies in some set <span class="math notranslate nohighlight">\(I_1\)</span> and <span class="math notranslate nohighlight">\(X_2\)</span> in some set
+<span class="math notranslate nohighlight">\(I_2\)</span>, and its likelihood is the probability of that. For a censored
+series the set is an interval: <span class="math notranslate nohighlight">\((x, \infty)\)</span> if right censored,
+<span class="math notranslate nohighlight">\((-\infty, x]\)</span> if left censored, <span class="math notranslate nohighlight">\((x_l, x_r]\)</span> if interval
+censored. On the copula scale an interval <span class="math notranslate nohighlight">\((a_j, b_j]\)</span> of <span class="math notranslate nohighlight">\(X_j\)</span>
+becomes <span class="math notranslate nohighlight">\((F_j(a_j), F_j(b_j)]\)</span> of <span class="math notranslate nohighlight">\(U_j\)</span>, with
+<span class="math notranslate nohighlight">\(F_j(-\infty) = 0\)</span> and <span class="math notranslate nohighlight">\(F_j(\infty) = 1\)</span>. The probability of a
+rectangle then follows from the joint CDF by inclusion-exclusion, as it does
+for any bivariate distribution:</p>
+<div class="math notranslate nohighlight">
+\[P(a_1 &lt; X_1 \leq b_1,\; a_2 &lt; X_2 \leq b_2)
+= C(B_1, B_2) - C(A_1, B_2) - C(B_1, A_2) + C(A_1, A_2),\]</div>
+<p>with <span class="math notranslate nohighlight">\(A_j = F_j(a_j)\)</span> and <span class="math notranslate nohighlight">\(B_j = F_j(b_j)\)</span>. Every copula has
+<span class="math notranslate nohighlight">\(C(0, \cdot) = C(\cdot, 0) = 0\)</span>, <span class="math notranslate nohighlight">\(C(u, 1) = u\)</span> and
+<span class="math notranslate nohighlight">\(C(1, v) = v\)</span>, so an infinite end of an interval simply drops terms or
+turns <span class="math notranslate nohighlight">\(C\)</span> into a margin. For example, both series right censored gives
+<span class="math notranslate nohighlight">\(1 - u_1 - u_2 + C(u_1, u_2)\)</span> with <span class="math notranslate nohighlight">\(u_j = F_j(x_j)\)</span>, the joint
+survival function.</p>
+<p><strong>An exact observation is a very thin rectangle.</strong> If <span class="math notranslate nohighlight">\(X_1\)</span> is observed
+at <span class="math notranslate nohighlight">\(x_1\)</span>, shrink its interval to <span class="math notranslate nohighlight">\((x_1, x_1 + \mathrm{d}x_1]\)</span>.
+The difference <span class="math notranslate nohighlight">\(C(F_1(x_1 + \mathrm{d}x_1), \cdot) - C(F_1(x_1), \cdot)\)</span>
+becomes <span class="math notranslate nohighlight">\(\partial C/\partial u_1 \cdot f_1(x_1)\,\mathrm{d}x_1\)</span>: the
+difference in that argument turns into a derivative, multiplied by the
+marginal density. (The <span class="math notranslate nohighlight">\(\mathrm{d}x_1\)</span> is the same for every value of
+the parameters, so it is dropped, exactly as a univariate likelihood uses the
+density for an observed failure.)</p>
+<p>So each series applies one operation to its argument of <span class="math notranslate nohighlight">\(C\)</span>:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>What is known about <span class="math notranslate nohighlight">\(X_j\)</span></p></th>
+<th class="head"><p>Censoring code <code class="docutils literal notranslate"><span class="pre">c</span></code></p></th>
+<th class="head"><p>Operation on argument <span class="math notranslate nohighlight">\(j\)</span> of <span class="math notranslate nohighlight">\(C\)</span></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>observed exactly at <span class="math notranslate nohighlight">\(x\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code></p></td>
+<td><p>differentiate at <span class="math notranslate nohighlight">\(u = F_j(x)\)</span>, and multiply by <span class="math notranslate nohighlight">\(f_j(x)\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>right censored, <span class="math notranslate nohighlight">\(X_j &gt; x\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(C(\cdot, 1) - C(\cdot, F_j(x))\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>left censored, <span class="math notranslate nohighlight">\(X_j \leq x\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">-1</span></code></p></td>
+<td><p>evaluate at <span class="math notranslate nohighlight">\(F_j(x)\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>interval censored, <span class="math notranslate nohighlight">\(x_l &lt; X_j \leq x_r\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(C(\cdot, F_j(x_r)) - C(\cdot, F_j(x_l))\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<p>Applying the operations for both series gives the row’s likelihood; with four
+codes per series there are sixteen combinations, all built from the four
+functions <span class="math notranslate nohighlight">\(C\)</span>, <span class="math notranslate nohighlight">\(\partial C/\partial u_1\)</span>,
+<span class="math notranslate nohighlight">\(\partial C/\partial u_2\)</span> and the copula density <span class="math notranslate nohighlight">\(c\)</span>. Some
+examples, with <span class="math notranslate nohighlight">\(u_j = F_j(x_j)\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\text{both observed:}\quad &amp; c(u_1, u_2)\, f_1(x_1)\, f_2(x_2) \\
+\text{1 observed, 2 right censored:}\quad &amp;
+    f_1(x_1)\Big[1 - \frac{\partial C}{\partial u_1}(u_1, u_2)\Big] \\
+\text{1 observed, 2 left censored:}\quad &amp;
+    f_1(x_1)\,\frac{\partial C}{\partial u_1}(u_1, u_2) \\
+\text{both right censored:}\quad &amp; 1 - u_1 - u_2 + C(u_1, u_2) \\
+\text{both left censored:}\quad &amp; C(u_1, u_2) \\
+\text{1 left censored, 2 interval censored:}\quad &amp;
+    C\big(u_1, F_2(x_{r,2})\big) - C\big(u_1, F_2(x_{l,2})\big)\end{split}\]</div>
+<p>The second and third lines read naturally: the density of seeing series 1 fail
+at <span class="math notranslate nohighlight">\(x_1\)</span>, times the conditional probability that series 2 had <em>not</em>
+(or <em>had</em>) failed by <span class="math notranslate nohighlight">\(x_2\)</span> given that. This is the h-function at work, and
+it is how a censored partner still carries information about the dependence:
+a row where series 1 failed early and series 2 was still running at a late
+censoring time is evidence <em>against</em> strong lower-tail dependence.</p>
+<p><strong>Counts</strong> <code class="docutils literal notranslate"><span class="pre">n</span></code> weight each row’s log-likelihood, so a row standing for
+five identical units counts five times.</p>
+<p>For the likelihood to be valid the censoring must not depend on the
+<em>unobserved</em> lifetimes. For a single series this is the usual
+independent-censoring assumption. Jointly it allows more: series 2 may be
+censored at a time that depends on what happened to series 1 (for example,
+the unit is retired a fixed time after series 1 fails), because <span class="math notranslate nohighlight">\(x_1\)</span> is
+part of the observed row. As explained below, IFM does <em>not</em> allow this.</p>
+</section>
+<section id="truncation-conditioning-on-being-seen">
+<h3>Truncation: conditioning on being seen<a class="headerlink" href="#truncation-conditioning-on-being-seen" title="Link to this heading"></a></h3>
+<p>Truncation is different from censoring. Censoring hides part of an
+observation that is in the sample; truncation decides which rows are in the
+sample at all. If series <span class="math notranslate nohighlight">\(j\)</span> could only be seen inside the window
+<span class="math notranslate nohighlight">\((t_{l,j}, t_{r,j})\)</span>, a row appears in the data only if <em>both</em> series
+landed in their windows. Each row’s likelihood (from the rectangle rule
+above) is therefore divided by the probability of that event, which is the
+copula mass of the truncation rectangle, by the same inclusion-exclusion:</p>
+<div class="math notranslate nohighlight">
+\[P(\text{row observable})
+= C(r_1, r_2) - C(l_1, r_2) - C(r_1, l_2) + C(l_1, l_2),
+\qquad l_j = F_j(t_{l,j}),\; r_j = F_j(t_{r,j}).\]</div>
+<p>In SurPyval the window is given per row and per series (<code class="docutils literal notranslate"><span class="pre">t</span></code> of shape
+<code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">2,</span> <span class="pre">2)</span></code>), with <span class="math notranslate nohighlight">\(\pm\infty\)</span> for “no limit”
+(<span class="math notranslate nohighlight">\(l_j = 0\)</span>, <span class="math notranslate nohighlight">\(r_j = 1\)</span>).</p>
+<p>A common special case is truncation of one series only, say a burn-in of length <span class="math notranslate nohighlight">\(b\)</span>: rows
+are seen only if <span class="math notranslate nohighlight">\(X_1 &gt; b\)</span>. The divisor is then
+<span class="math notranslate nohighlight">\(C(1, 1) - C(F_1(b), 1) = 1 - F_1(b)\)</span>, a marginal probability that
+does not involve the copula parameter. It is tempting to conclude that the
+truncation can be dealt with inside margin 1 alone. It cannot, because the
+selection also changes which values of <span class="math notranslate nohighlight">\(X_2\)</span> are seen. The density of
+<span class="math notranslate nohighlight">\(X_2\)</span> among the rows that pass the burn-in is</p>
+<div class="math notranslate nohighlight">
+\[f_2(x_2)\,\frac{P(X_1 &gt; b \mid X_2 = x_2)}{P(X_1 &gt; b)}
+= f_2(x_2)\,
+  \frac{1 - \dfrac{\partial C}{\partial u_2}\big(F_1(b), F_2(x_2)\big)}
+       {1 - F_1(b)} .\]</div>
+<p>Under independence the fraction is one and nothing changes. Under positive
+dependence a long <span class="math notranslate nohighlight">\(X_2\)</span> makes passing the burn-in more likely, so the
+observed <span class="math notranslate nohighlight">\(X_2\)</span> values are shifted towards long lives, although series 2
+was never truncated itself. The joint likelihood accounts for this
+automatically, through the copula density <span class="math notranslate nohighlight">\(c(u_1, u_2)\)</span> that pairs each
+<span class="math notranslate nohighlight">\(x_2\)</span> with its <span class="math notranslate nohighlight">\(x_1\)</span>. A fit of margin 2 alone cannot.</p>
+</section>
+<section id="how-surpyval-fits">
+<h3>How SurPyval fits<a class="headerlink" href="#how-surpyval-fits" title="Link to this heading"></a></h3>
+<p>Every family has the same <code class="docutils literal notranslate"><span class="pre">fit(x,</span> <span class="pre">c=None,</span> <span class="pre">n=None,</span> <span class="pre">t=None,</span> <span class="pre">margins=None,</span>
+<span class="pre">how=&quot;IFM&quot;,</span> <span class="pre">xl=None,</span> <span class="pre">xr=None,</span> <span class="pre">init=None)</span></code>; <code class="docutils literal notranslate"><span class="pre">margins</span></code> (one per series) is
+required and exactly two series are supported. With <code class="docutils literal notranslate"><span class="pre">how=&quot;IFM&quot;</span></code> <a class="reference internal" href="#joexu1996mv" id="id3"><span>[JoeXu1996mv]</span></a>:</p>
+<ol class="arabic simple">
+<li><p>each margin is fitted by the usual univariate maximum likelihood to its own
+series, honouring that series’ censoring codes (interval-censored entries
+through <code class="docutils literal notranslate"><span class="pre">xl</span></code>/<code class="docutils literal notranslate"><span class="pre">xr</span></code>), the row counts <code class="docutils literal notranslate"><span class="pre">n</span></code> and that series’ own truncation
+window; margins passed as already-fitted models are used as they are
+(under <code class="docutils literal notranslate"><span class="pre">how=&quot;MLE&quot;</span></code> they supply the starting values and are re-estimated
+with the configuration they were fitted with: the same offset,
+limited-failure or zero-inflated option, and any <code class="docutils literal notranslate"><span class="pre">fixed</span></code> parameters kept
+at their values). A margin can also be <strong>non-parametric</strong> (the class
+<code class="docutils literal notranslate"><span class="pre">surpyval.KaplanMeier</span></code>, say, or a fitted non-parametric model), which
+gives the semi-parametric estimator of <a class="reference internal" href="#genestghoudirivest1995mv" id="id4"><span>[GenestGhoudiRivest1995mv]</span></a>: the
+margin’s step CDF, rescaled by <span class="math notranslate nohighlight">\(N/(N+1)\)</span> so the largest values stay
+inside the unit square, replaces <span class="math notranslate nohighlight">\(F_j\)</span>, and the margin contributes no
+density term (a step function has none, and it would not depend on
+<span class="math notranslate nohighlight">\(\theta\)</span>). The copula parameter then rests on no assumption about
+the margins’ shapes; the likelihood is a pseudo-likelihood, so its value
+and the criteria compare copula families with the same margins only, and
+<code class="docutils literal notranslate"><span class="pre">k</span></code> counts the copula parameters (plus any parametric margin’s);</p></li>
+<li><p>with the margins fixed, the copula parameter is chosen to maximise the joint
+log-likelihood above (censoring operations and truncation divisor
+included). The search is a Nelder-Mead search on an unconstrained
+transformation of the parameter (for the Gaussian copula,
+<span class="math notranslate nohighlight">\(\rho = \tanh(\cdot)\)</span>). It starts from the value that matches the
+empirical Kendall’s tau of the rows where both series are observed (or
+from near-independence if fewer than three such rows exist), unless a
+starting value is passed as <code class="docutils literal notranslate"><span class="pre">init</span></code>.</p></li>
+</ol>
+<p>With <code class="docutils literal notranslate"><span class="pre">how=&quot;MLE&quot;</span></code> the IFM solution is the starting point for a joint
+Nelder-Mead search over the copula parameter and every margin parameter,
+maximising the full likelihood. This is slower (about ten times the IFM time
+in the examples on the how-to page) and, like any joint fit, it lets a
+misspecified margin pull on the copula parameter and on the other margin.</p>
+</section>
+<section id="ifm-or-mle">
+<h3>IFM or MLE?<a class="headerlink" href="#ifm-or-mle" title="Link to this heading"></a></h3>
+<p>IFM’s first stage fits each series as if it were the only one. That is
+correct when the data of each series, looked at on its own, is an honest
+sample of that margin: every series censored independently of its own
+lifetime, and no rows selected by what happened to the <em>other</em> series. The
+second stage then needs only the correct margins, so IFM is consistent, and
+it loses little efficiency when the dependence is moderate <a class="reference internal" href="#joexu1996mv" id="id5"><span>[JoeXu1996mv]</span></a>.
+Two common designs break the first stage:</p>
+<ul class="simple">
+<li><p><strong>Truncation of a partner series.</strong> As shown above, a burn-in on series 1
+shifts the observed values of series 2. Margin 2 is fitted to the shifted
+sample as if it were the population. The copula stage then has to explain
+the data with a distorted margin, and it does so with the wrong amount of
+dependence (too little, in the how-to page’s example). The margin of the
+truncated series itself is fine: its own window is exactly the selection
+it is subject to.</p></li>
+<li><p><strong>Censoring that depends on the partner.</strong> If series 2 is censored at a
+time set by series 1 (a unit retired soon after its first part fails, a
+patient whose follow-up for one complication stops after the other), the
+censoring of series 2 is related to <span class="math notranslate nohighlight">\(X_2\)</span> through the dependence.
+Viewed one series at a time this is informative censoring, and margin 2 is
+biased. The joint likelihood is valid, because the censoring depends only
+on the observed <span class="math notranslate nohighlight">\(x_1\)</span>.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">how=&quot;MLE&quot;</span></code> maximises the joint likelihood, in which the margins, the
+copula, the censoring operations and the truncation divisor all appear
+together, so it is right in both cases. It costs more time and is more
+exposed to a badly chosen margin. A practical check: fit both. If they agree,
+the cheaper IFM fit is fine; if they differ, look for truncation or
+censoring of one series that is driven by the other. The how-to page shows
+both failures of IFM and their MLE correction.</p>
+</section>
+<section id="standard-errors">
+<h3>Standard errors<a class="headerlink" href="#standard-errors" title="Link to this heading"></a></h3>
+<p>Write <span class="math notranslate nohighlight">\(\eta_1, \eta_2\)</span> for the margins’ parameters and
+<span class="math notranslate nohighlight">\(\theta\)</span> for the copula’s. The joint MLE is an ordinary maximum
+likelihood estimate of <span class="math notranslate nohighlight">\((\theta, \eta_1, \eta_2)\)</span>, so its covariance
+is the inverse of the observed information, the Hessian of the joint
+negative log-likelihood at the estimate.</p>
+<p>The IFM estimate is not: it solves the margins’ own score equations
+<span class="math notranslate nohighlight">\(\sum_i n_i \psi_{j,i}(\eta_j) = 0\)</span>, then the copula stage’s
+<span class="math notranslate nohighlight">\(\sum_i n_i \psi_{c,i}(\theta; \eta_1, \eta_2) = 0\)</span> with the margins
+held. Stacking the three gives one set of estimating equations
+<span class="math notranslate nohighlight">\(\sum_i n_i \psi_i = 0\)</span>, whose estimate has the Godambe (sandwich)
+covariance <a class="reference internal" href="#joe2005mv" id="id6"><span>[Joe2005mv]</span></a></p>
+<div class="math notranslate nohighlight">
+\[V = H^{-1} J H^{-T}, \qquad
+H = -\sum_i n_i \frac{\partial \psi_i}{\partial (\theta, \eta)}, \qquad
+J = \sum_i n_i \psi_i \psi_i^T .\]</div>
+<p><span class="math notranslate nohighlight">\(H\)</span> is block triangular: a margin’s score depends on its own
+parameters only, while the copula’s depends on all of them, and its blocks
+<span class="math notranslate nohighlight">\(-\partial \psi_c / \partial \eta_j\)</span> are what carry the margins’
+estimation error into <span class="math notranslate nohighlight">\(\theta\)</span>. Holding the margins as known
+instead, <span class="math notranslate nohighlight">\(H_{cc}^{-1}\)</span>, understates the copula parameter’s
+variance: for a Clayton copula of Kendall’s <span class="math notranslate nohighlight">\(\tau = 0.5\)</span> with Weibull
+margins, 300 rows, its standard error is 0.173 where the Godambe one is
+0.223 (the joint MLE’s is 0.222, and a bootstrap of the IFM fit, of 150
+rows, agrees with its Godambe value to the bootstrap’s own 5%).</p>
+<p>The copula likelihood is evaluated by row type (see above), not written for
+automatic differentiation, so the Hessians and the rows’ scores are
+central finite differences. A margin’s offset, a parameter fixed at fit
+time and a margin passed to an IFM fit already fitted are known (zero
+variance), as in the univariate models; a parameter on a bound of its
+space has no Wald variance. <code class="docutils literal notranslate"><span class="pre">param_cb</span></code> forms the interval on the scale on
+which the parameter’s space is the whole line, as the univariate models
+do: <span class="math notranslate nohighlight">\(\log(\theta - a)\)</span> for a parameter bounded below by <span class="math notranslate nohighlight">\(a\)</span>, and
+<span class="math notranslate nohighlight">\(\log((\theta - a) / (b - \theta))\)</span> for one in <span class="math notranslate nohighlight">\((a, b)\)</span>, which for
+a correlation on <span class="math notranslate nohighlight">\((-1, 1)\)</span> is <span class="math notranslate nohighlight">\(2 \operatorname{artanh} \rho\)</span>,
+Fisher’s <span class="math notranslate nohighlight">\(z\)</span>. <code class="docutils literal notranslate"><span class="pre">cb</span></code> applies the delta method to the joint survival
+<span class="math notranslate nohighlight">\(S(x_1, x_2)\)</span> or CDF <span class="math notranslate nohighlight">\(H(x_1, x_2)\)</span> with the covariance of every
+parameter, on the logit of the probability, so the margins’ uncertainty is
+in the bound with the copula’s.</p>
+<p>Some further points worth knowing:</p>
+<ul class="simple">
+<li><p>The copula parameter is estimated on the scale <span class="math notranslate nohighlight">\(u_j = F_j(x_j)\)</span>, so a
+poorly chosen margin distorts it. Check the margins with the univariate
+tools first (see <a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a>).</p></li>
+<li><p>The fitted model reports its estimates with their uncertainty
+(<code class="docutils literal notranslate"><span class="pre">standard_errors</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">param_cb</span></code> on the copula’s
+parameters and <code class="docutils literal notranslate"><span class="pre">cb</span></code> on the joint <code class="docutils literal notranslate"><span class="pre">sf</span></code> and CDF): see <a class="reference internal" href="#standard-errors">Standard errors</a>
+below. Its
+<code class="docutils literal notranslate"><span class="pre">log_likelihood</span></code> (<code class="docutils literal notranslate"><span class="pre">neg_ll()</span></code>) is the full joint log-likelihood above at
+those estimates, and <code class="docutils literal notranslate"><span class="pre">aic()</span></code>/<code class="docutils literal notranslate"><span class="pre">bic()</span></code> count as parameters the copula’s and
+those of every margin the fit estimated (a margin passed already fitted is
+not re-estimated under IFM, so it does not count); <code class="docutils literal notranslate"><span class="pre">bic()</span></code> uses the number
+of rows in which at least one series failed (was not right-censored), or of
+all rows when none did – the sample-size rule of every SurPyval model (see
+<a class="reference internal" href="Parametric%20Estimation.html#information-criteria"><span class="std std-ref">Comparing models: information criteria</span></a>). A <code class="docutils literal notranslate"><span class="pre">from_params</span></code> model has no likelihood and
+raises a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p></li>
+<li><p>Margin probabilities are kept a tiny distance (<span class="math notranslate nohighlight">\(10^{-10}\)</span>) inside
+<span class="math notranslate nohighlight">\((0, 1)\)</span> to keep the Archimedean formulas finite.</p></li>
+<li><p>The Frank, Clayton, Gumbel and Joe formulas are evaluated in log space,
+from terms that neither cancel nor overflow, so they stay accurate however
+strong the dependence (Frank’s and the Student-t’s samplers also invert
+their h-functions in closed form). The Gaussian and Student-t formulas
+are written in <span class="math notranslate nohighlight">\(1 - |\rho|\)</span> and in the difference of the two
+quantiles, so they are accurate for any <span class="math notranslate nohighlight">\(|\rho| &lt; 1\)</span> (the Gaussian
+CDF is scipy’s, Genz’s algorithm, within <span class="math notranslate nohighlight">\(10^{-14}\)</span> of a 40-digit
+integration up to <span class="math notranslate nohighlight">\(\rho = 1 - 2^{-52}\)</span>); <span class="math notranslate nohighlight">\(\rho = \pm 1\)</span>, the
+comonotone or countermonotone copula, is not a member of either family
+and <code class="docutils literal notranslate"><span class="pre">from_params</span></code> refuses it. A fit whose <span class="math notranslate nohighlight">\(\rho\)</span> runs to
+<span class="math notranslate nohighlight">\(\pm 1\)</span> warns that the likelihood has no finite maximum.</p></li>
+<li><p>The Student-t copula’s CDF (needed for rows censored in both series and
+for truncation) is the integral of its closed-form h-function, taken by
+tanh-sinh quadrature over the closed-form CDF of the t distribution
+with 2 degrees of freedom (the Cauchy’s for <span class="math notranslate nohighlight">\(\nu &lt; 2\)</span>), so with no
+t quantile at each node: within <span class="math notranslate nohighlight">\(10^{-11}\)</span> of Genz’s exact algorithm
+(R’s <code class="docutils literal notranslate"><span class="pre">mvtnorm</span></code>, integer <span class="math notranslate nohighlight">\(\nu\)</span>) and <span class="math notranslate nohighlight">\(10^{-15}\)</span> of a
+30-digit integration at non-integer <span class="math notranslate nohighlight">\(\nu\)</span>. scipy’s
+<code class="docutils literal notranslate"><span class="pre">multivariate_t.cdf</span></code> is a randomised quasi-Monte Carlo integration
+(about <span class="math notranslate nohighlight">\(10^{-4}\)</span> off, different on every call), which an optimiser
+cannot use.</p></li>
+<li><p>Only bivariate models are supported; more than two series raise a
+<code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code>.</p></li>
+</ul>
+<p>For worked examples — fitting a copula, checking each censoring pattern’s
+likelihood contribution, IFM against MLE under truncation and dependent
+censoring, querying the joint distribution and dependence measures,
+simulating correlated lifetimes and defining a new copula family — see the
+<a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html"><span class="doc">Multivariate Modelling with SurPyval</span></a> page.</p>
+<p class="rubric">References</p>
+<div role="list" class="citation-list">
+<div class="citation" id="sklar1959mv" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">Sklar1959mv</a><span class="fn-bracket">]</span></span>
+<p>Sklar, A. (1959). Fonctions de répartition à n dimensions et
+leurs marges. <em>Publications de l’Institut de Statistique de l’Université
+de Paris</em>, 8, 229–231.</p>
+</div>
+<div class="citation" id="joexu1996mv" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>JoeXu1996mv<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id3">1</a>,<a role="doc-backlink" href="#id5">2</a>)</span>
+<p>Joe, H., &amp; Xu, J. J. (1996). The estimation method of
+inference functions for margins for multivariate models. Technical Report
+166, Department of Statistics, University of British Columbia.</p>
+</div>
+<div class="citation" id="joe2005mv" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id6">Joe2005mv</a><span class="fn-bracket">]</span></span>
+<p>Joe, H. (2005). Asymptotic efficiency of the two-stage
+estimation method for copula-based models. <em>Journal of Multivariate
+Analysis</em>, 94(2), 401-419.</p>
+</div>
+<div class="citation" id="nelsen2006mv" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">Nelsen2006mv</a><span class="fn-bracket">]</span></span>
+<p>Nelsen, R. B. (2006). <em>An Introduction to Copulas</em>
+(2nd ed.). Springer. The standard reference for the families, dependence
+measures and tail dependence used on this page.</p>
+</div>
+<div class="citation" id="genestghoudirivest1995mv" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">GenestGhoudiRivest1995mv</a><span class="fn-bracket">]</span></span>
+<p>Genest, C., Ghoudi, K. and Rivest, L.-P.
+(1995). A semiparametric estimation procedure of dependence parameters in
+multivariate families of distributions. <em>Biometrika</em>, 82(3), 543-552.</p>
+</div>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Landmark%20Analysis.html" class="btn btn-neutral float-left" title="Landmark Analysis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Non-Parametric%20SurPyval%20Modelling.html" class="btn btn-neutral float-right" title="Non-Parametric SurPyval Modelling" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

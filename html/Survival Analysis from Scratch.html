@@ -1,0 +1,950 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Survival Analysis from Scratch &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Types of Data" href="Types%20of%20Data.html" />
+    <link rel="prev" title="Choosing a Model" href="Choosing%20a%20Model.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Survival Analysis from Scratch</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-is-time-to-event-data">What is time-to-event data?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-you-can-t-just-average-the-times">Why you can’t just average the times</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#censoring-knowing-only-part-of-the-answer">Censoring: knowing only part of the answer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#truncation-units-you-never-saw">Truncation: units you never saw</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#three-ways-to-describe-how-long-things-last">Three ways to describe how long things last</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#kaplan-meier-by-hand">Kaplan-Meier by hand</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-sure-are-we-bounds">How sure are we? Bounds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fitting-a-weibull-distribution">Fitting a Weibull distribution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#comparing-two-groups">Comparing two groups</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-regression-comes-in">Where regression comes in</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-to-go-next">Where to go next</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Survival Analysis from Scratch</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Survival Analysis from Scratch.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="survival-analysis-from-scratch">
+<h1>Survival Analysis from Scratch<a class="headerlink" href="#survival-analysis-from-scratch" title="Link to this heading"></a></h1>
+<p>This page is for someone who has never met survival analysis. It assumes you
+can read a little Python and know what an average is, and nothing else. By
+the end you will know what makes “how long until something happens” data
+different, how to estimate a survival curve by hand, how to fit and read a
+Weibull distribution, how to compare two groups, and where to go next.</p>
+<p>Two small stories run through the page, because the same statistics serve
+both:</p>
+<ul class="simple">
+<li><p><strong>Pumps</strong> (engineering): how many running hours does a pump last before it
+fails?</p></li>
+<li><p><strong>Relapse</strong> (medicine): after treatment, how many weeks does a patient stay
+in remission before the disease returns?</p></li>
+</ul>
+<p>Different fields use different words for the same ideas. An engineer says
+<em>failure</em>, <em>unit</em> and <em>reliability</em>; a clinician says <em>event</em>, <em>subject</em> and
+<em>survival</em>. This page uses them side by side, and the <a class="reference internal" href="Glossary.html"><span class="doc">Glossary</span></a> maps
+one vocabulary to the other. The data sets here are made up for teaching,
+and small enough to check on paper.</p>
+<section id="what-is-time-to-event-data">
+<h2>What is time-to-event data?<a class="headerlink" href="#what-is-time-to-event-data" title="Link to this heading"></a></h2>
+<p>Time-to-event data records, for each unit (a pump, a patient, a customer),
+<strong>how long it took for some event to happen</strong>. Three things define it:</p>
+<ul class="simple">
+<li><p>a <strong>starting point</strong>: the pump is installed; the patient finishes
+treatment;</p></li>
+<li><p>an <strong>event</strong>: the pump fails; the patient relapses;</p></li>
+<li><p>a <strong>clock</strong> that runs between them: running hours; weeks.</p></li>
+</ul>
+<p>The clock need not be calendar time. Cycles, kilometres and start-ups are all
+“time” here. SurPyval calls the measured value <code class="docutils literal notranslate"><span class="pre">x</span></code> whatever its unit, and
+answers in the unit you gave it.</p>
+</section>
+<section id="why-you-can-t-just-average-the-times">
+<h2>Why you can’t just average the times<a class="headerlink" href="#why-you-can-t-just-average-the-times" title="Link to this heading"></a></h2>
+<p>Six pumps were installed at one site. Today, four have failed and two are
+still running:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 25.0%" />
+<col style="width: 55.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Pump</p></th>
+<th class="head"><p>Hours</p></th>
+<th class="head"><p>What happened</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>A</p></td>
+<td><p>150</p></td>
+<td><p>failed</p></td>
+</tr>
+<tr class="row-odd"><td><p>B</p></td>
+<td><p>340</p></td>
+<td><p>still running (installed recently)</p></td>
+</tr>
+<tr class="row-even"><td><p>C</p></td>
+<td><p>560</p></td>
+<td><p>failed</p></td>
+</tr>
+<tr class="row-odd"><td><p>D</p></td>
+<td><p>800</p></td>
+<td><p>failed</p></td>
+</tr>
+<tr class="row-even"><td><p>E</p></td>
+<td><p>1130</p></td>
+<td><p>still running</p></td>
+</tr>
+<tr class="row-odd"><td><p>F</p></td>
+<td><p>1720</p></td>
+<td><p>failed</p></td>
+</tr>
+</tbody>
+</table>
+<p>How long does a pump last, on average? There are two tempting answers, and
+both are wrong.</p>
+<ol class="arabic simple">
+<li><p><strong>Average the four failures</strong>: <span class="math notranslate nohighlight">\((150 + 560 + 800 + 1720) / 4 =
+807.5\)</span> hours. This throws away pumps B and E. But pump E has already run
+1130 hours <em>without</em> failing, which is good news about pump life, and this
+answer ignores it.</p></li>
+<li><p><strong>Average all six numbers</strong>: <span class="math notranslate nohighlight">\(783.3\)</span> hours. This pretends pumps B
+and E failed at 340 and 1130 hours. They did not; they will fail later
+than that.</p></li>
+</ol>
+<p>Both answers are too low, and the more units that are still going, the worse
+they get. A study that stopped after one failure would report that failure’s
+time as “the average life”. The same trap exists in the relapse story:
+patients who are still in remission when the study ends are the ones doing
+<em>best</em>, so leaving them out, or counting the end of the study as a relapse,
+makes any treatment look worse than it is.</p>
+<p>What we know about pump E is not nothing. We know its life is <em>more than</em>
+1130 hours. Survival analysis is the set of methods that uses exactly that
+much information: no more, and no less.</p>
+</section>
+<section id="censoring-knowing-only-part-of-the-answer">
+<h2>Censoring: knowing only part of the answer<a class="headerlink" href="#censoring-knowing-only-part-of-the-answer" title="Link to this heading"></a></h2>
+<p>An observation is <strong>censored</strong> when we know the unit exists but know only a
+<em>range</em> for its time.</p>
+<ul class="simple">
+<li><p><strong>Right censored</strong>: the event had not happened when we last looked, so the
+time is <em>longer than</em> the value recorded. Pumps B and E are right censored
+(an engineer may call them <em>suspensions</em>). So is a patient still in
+remission when the study ends, or one who moves away and is lost to
+follow-up.</p></li>
+<li><p><strong>Left censored</strong>: the event had already happened when we first looked, so
+the time is <em>shorter than</em> the value recorded. A pump found failed at its
+first inspection; a patient who has already relapsed at the first clinic
+visit.</p></li>
+<li><p><strong>Interval censored</strong>: the event happened <em>between</em> two looks. A pump that
+was running at the 500 hour inspection and failed by the 600 hour one; a
+relapse found at the week 12 visit that was not there at week 8.</p></li>
+</ul>
+<p>SurPyval records this with a flag <code class="docutils literal notranslate"><span class="pre">c</span></code> for every value <code class="docutils literal notranslate"><span class="pre">x</span></code>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 10.0%" />
+<col style="width: 30.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">c</span></code></p></th>
+<th class="head"><p>Meaning</p></th>
+<th class="head"><p>What is known</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>observed exactly</p></td>
+<td><p>the event happened at <code class="docutils literal notranslate"><span class="pre">x</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>1</p></td>
+<td><p>right censored</p></td>
+<td><p>the event happens after <code class="docutils literal notranslate"><span class="pre">x</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>-1</p></td>
+<td><p>left censored</p></td>
+<td><p>the event happened before <code class="docutils literal notranslate"><span class="pre">x</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>2</p></td>
+<td><p>interval censored</p></td>
+<td><p>the event happened between the two values given, <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>The codes follow a timeline: the event is at the recorded value (0), to its
+left (-1) or to its right (1). <strong>Note the direction: 0 is the event and 1 is
+censored.</strong> Some other software, and many clinical data sets, use 1 for the
+event; convert such a column (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">event</span></code>) before fitting.</p>
+<p>The six pumps are therefore:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">150</span><span class="p">,</span> <span class="mi">340</span><span class="p">,</span> <span class="mi">560</span><span class="p">,</span> <span class="mi">800</span><span class="p">,</span> <span class="mi">1130</span><span class="p">,</span> <span class="mi">1720</span><span class="p">]</span>   <span class="c1"># running hours</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span>  <span class="mi">0</span><span class="p">,</span>   <span class="mi">1</span><span class="p">,</span>   <span class="mi">0</span><span class="p">,</span>   <span class="mi">0</span><span class="p">,</span>    <span class="mi">1</span><span class="p">,</span>    <span class="mi">0</span><span class="p">]</span>   <span class="c1"># 0 = failed, 1 = still running</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>If <code class="docutils literal notranslate"><span class="pre">c</span></code> is left out, every value is taken to be an observed event. Two more
+arrays complete SurPyval’s data layout. <code class="docutils literal notranslate"><span class="pre">n</span></code> is a count, for when several
+units share a row (“five pumps were still running at 1500 hours” is one row
+with <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">5</span></code>). <code class="docutils literal notranslate"><span class="pre">t</span></code> (or <code class="docutils literal notranslate"><span class="pre">tl</span></code> and <code class="docutils literal notranslate"><span class="pre">tr</span></code>) describes truncation, which is
+next. <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a> defines all four exactly.</p>
+<p>Censoring is only harmless if it is <em>uninformative</em>: the reason a unit was
+censored must have nothing to do with how close it was to the event. The end
+of a study is uninformative. A pump pulled from service because it was
+running rough, or a patient who leaves a trial because they feel worse, is
+not: those units were censored <em>because</em> the event was near, and every
+method on this page would then be too optimistic.</p>
+</section>
+<section id="truncation-units-you-never-saw">
+<h2>Truncation: units you never saw<a class="headerlink" href="#truncation-units-you-never-saw" title="Link to this heading"></a></h2>
+<p>Censoring hides part of an answer. <strong>Truncation</strong> hides whole units.</p>
+<p>Suppose the site only started keeping records two years ago. A pump that was
+installed earlier and failed before the records began is not in the data at
+all: not as a failure, not as a censored value. The pumps that <em>are</em> in the
+data from that era are there because they lasted long enough to be recorded,
+so they are a hand-picked set of survivors. This is <strong>left truncation</strong> (also
+called <em>delayed entry</em>). The medical version: a registry that enrols patients
+some weeks after treatment can only enrol those who have not yet relapsed.</p>
+<p>The fix is to tell the method when each unit came under observation. If pump
+C was already 400 hours old, and pump E 600 hours old, when the records
+began:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">tl</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">400</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">600</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>   <span class="c1"># age at which each pump entered the records</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>A method given <code class="docutils literal notranslate"><span class="pre">tl</span></code> counts a unit as “at risk” only from that age onwards.
+The difference between the two ideas, in one line each:</p>
+<ul class="simple">
+<li><p>censored: the unit is in the data, with an incomplete time;</p></li>
+<li><p>truncated: units like it may be missing from the data altogether.</p></li>
+</ul>
+<p><a class="reference internal" href="Types%20of%20Data.html"><span class="doc">Types of Data</span></a> works through every combination, including right
+truncation.</p>
+</section>
+<section id="three-ways-to-describe-how-long-things-last">
+<h2>Three ways to describe how long things last<a class="headerlink" href="#three-ways-to-describe-how-long-things-last" title="Link to this heading"></a></h2>
+<p>Because a single average is not available, survival analysis describes the
+whole pattern of “how long”. Three functions do it; they are three views of
+the same thing.</p>
+<p><strong>The survival function</strong>, <span class="math notranslate nohighlight">\(S(t)\)</span>, is the fraction of units that have
+<em>not yet</em> had the event by time <span class="math notranslate nohighlight">\(t\)</span>. It starts at 1 (everything is
+running; everyone is in remission) and falls over time. “70% of pumps are
+still running at 500 hours” is <span class="math notranslate nohighlight">\(S(500) = 0.7\)</span>. Engineers call it the
+<em>reliability function</em> and write <span class="math notranslate nohighlight">\(R(t)\)</span>; it is the same thing. In
+SurPyval it is <code class="docutils literal notranslate"><span class="pre">sf</span></code>.</p>
+<p><strong>The hazard</strong>, <span class="math notranslate nohighlight">\(h(t)\)</span>, answers a different question: <em>among the units
+that have made it to time</em> <span class="math notranslate nohighlight">\(t\)</span>, <em>how quickly are events happening right
+now?</em> It is a rate (events per unit of time), not a probability. Its shape
+over time is the story of the process:</p>
+<ul class="simple">
+<li><p>a hazard that <strong>falls</strong> means the risky period is early: pumps with
+assembly defects fail soon and the rest settle in; the risk of relapse is
+highest just after treatment;</p></li>
+<li><p>a hazard that is <strong>flat</strong> means age does not matter: events arrive by
+chance, as often for an old unit as a new one;</p></li>
+<li><p>a hazard that <strong>rises</strong> means wear-out: bearings wear, seals harden; risk
+grows with age.</p></li>
+</ul>
+<p>Engineers call the hazard the <em>failure rate</em>. In SurPyval it is <code class="docutils literal notranslate"><span class="pre">hf</span></code>.</p>
+<p><strong>The cumulative hazard</strong>, <span class="math notranslate nohighlight">\(H(t)\)</span>, is the hazard added up from the
+start to time <span class="math notranslate nohighlight">\(t\)</span>: the total amount of risk a unit has been exposed to
+so far. It is less intuitive than the other two, but it is the easiest to
+estimate and to plot, and its <em>shape</em> shows the hazard: a straight line means
+a constant hazard, a curve bending upwards means a rising one. In SurPyval it
+is <code class="docutils literal notranslate"><span class="pre">Hf</span></code>.</p>
+<p>Now the formulas. With <span class="math notranslate nohighlight">\(T\)</span> the time of the event:</p>
+<div class="math notranslate nohighlight">
+\[S(t) = P(T &gt; t), \qquad
+h(t) = \frac{f(t)}{S(t)}, \qquad
+H(t) = \int_0^t h(u)\,du, \qquad
+S(t) = e^{-H(t)}\]</div>
+<p>where <span class="math notranslate nohighlight">\(f(t)\)</span> is the probability density of <span class="math notranslate nohighlight">\(T\)</span>. The last identity
+ties them together: know one of the three and you know the others.
+<a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html"><span class="doc">Handy References - Aide-mémoire</span></a> lists every such relationship.</p>
+</section>
+<section id="kaplan-meier-by-hand">
+<h2>Kaplan-Meier by hand<a class="headerlink" href="#kaplan-meier-by-hand" title="Link to this heading"></a></h2>
+<p>The <strong>Kaplan-Meier estimator</strong> estimates the survival function directly from
+censored data, with no assumption about its shape. The idea is simple: to
+survive past 800 hours a pump must survive the first failure time, <em>and</em> the
+second, <em>and</em> the third. So walk through the failure times in order, and at
+each one ask: <em>of the units still under observation just before this time,
+what fraction got through it?</em> Multiply those fractions together.</p>
+<p>A censored unit is counted among those under observation (“at risk”) for as
+long as we watched it, and then quietly leaves. That is how its information
+is used: pump E is in the denominator at 150, 560 and 800 hours, which is
+exactly what we know about it.</p>
+<p>For the six pumps:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.0%" />
+<col style="width: 14.0%" />
+<col style="width: 12.0%" />
+<col style="width: 26.0%" />
+<col style="width: 36.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Hours</p></th>
+<th class="head"><p>At risk</p></th>
+<th class="head"><p>Failed</p></th>
+<th class="head"><p>Fraction surviving this time</p></th>
+<th class="head"><p>Survival so far</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>150</p></td>
+<td><p>6</p></td>
+<td><p>1</p></td>
+<td><p>5/6</p></td>
+<td><p>5/6 = 0.833</p></td>
+</tr>
+<tr class="row-odd"><td><p>340</p></td>
+<td><p>5</p></td>
+<td><p>0 (B censored)</p></td>
+<td><p>5/5</p></td>
+<td><p>0.833</p></td>
+</tr>
+<tr class="row-even"><td><p>560</p></td>
+<td><p>4</p></td>
+<td><p>1</p></td>
+<td><p>3/4</p></td>
+<td><p>5/6 × 3/4 = 0.625</p></td>
+</tr>
+<tr class="row-odd"><td><p>800</p></td>
+<td><p>3</p></td>
+<td><p>1</p></td>
+<td><p>2/3</p></td>
+<td><p>0.625 × 2/3 = 0.417</p></td>
+</tr>
+<tr class="row-even"><td><p>1130</p></td>
+<td><p>2</p></td>
+<td><p>0 (E censored)</p></td>
+<td><p>2/2</p></td>
+<td><p>0.417</p></td>
+</tr>
+<tr class="row-odd"><td><p>1720</p></td>
+<td><p>1</p></td>
+<td><p>1</p></td>
+<td><p>0/1</p></td>
+<td><p>0</p></td>
+</tr>
+</tbody>
+</table>
+<p>Read the “at risk” column carefully: it falls by one at every row, whether
+the pump failed or was censored, but the survival estimate only steps down at
+a failure. The same calculation in SurPyval:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">km</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"at risk :"</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">r</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"failed  :"</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">d</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"survival:"</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">R</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>at risk : [6 5 4 3 2 1]
+failed  : [1 0 1 1 0 1]
+survival: [0.833 0.833 0.625 0.417 0.417 0.   ]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>In symbols, with <span class="math notranslate nohighlight">\(d_i\)</span> events among <span class="math notranslate nohighlight">\(r_i\)</span> units at risk at the
+<span class="math notranslate nohighlight">\(i\)</span>-th event time <span class="math notranslate nohighlight">\(x_i\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\hat{S}(t) = \prod_{x_i \le t} \left(1 - \frac{d_i}{r_i}\right)\]</div>
+<p>The fitted model answers questions at any time. The estimate is a staircase:
+flat between failures, with a step down at each one.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"S(500), S(1000):"</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">500</span><span class="p">,</span> <span class="mi">1000</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"median life    :"</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>S(500), S(1000): [0.833 0.417]
+median life    : 800.0
+</pre></div>
+</div>
+</div>
+</div>
+<p>The <strong>median</strong> is the time by which half the units have had the event: the
+first time the curve reaches 0.5 or below, here 800 hours. The median is the
+usual one-number summary in survival analysis because, unlike the mean, it
+can often be read off even when the longest-lived units are censored.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The cumulative hazard has an equally simple estimator, the <strong>Nelson-Aalen
+estimator</strong>: add up the fraction failing at each event time,
+<span class="math notranslate nohighlight">\(\hat{H}(t) = \sum_{x_i \le t} d_i / r_i\)</span>. For the pumps that is
+<span class="math notranslate nohighlight">\(1/6 = 0.167\)</span> after the first failure, <span class="math notranslate nohighlight">\(1/6 + 1/4 = 0.417\)</span> after
+the second and <span class="math notranslate nohighlight">\(1/6 + 1/4 + 1/3 = 0.75\)</span> after the third:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">na</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">NelsonAalen</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">na</span><span class="o">.</span><span class="n">Hf</span><span class="p">([</span><span class="mi">150</span><span class="p">,</span> <span class="mi">560</span><span class="p">,</span> <span class="mi">800</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.167 0.417 0.75 ]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Left truncation changes only the “at risk” column: a unit is counted from the
+age at which it entered the records. With the entry ages from above, pumps C
+and E are not yet at risk at 150 hours, so the first step is 3/4 rather than
+5/6:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">km_late</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"at risk :"</span><span class="p">,</span> <span class="n">km_late</span><span class="o">.</span><span class="n">r</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"survival:"</span><span class="p">,</span> <span class="n">km_late</span><span class="o">.</span><span class="n">R</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>at risk : [4 3 3 3 2 1]
+survival: [0.75  0.75  0.5   0.333 0.333 0.   ]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="how-sure-are-we-bounds">
+<h2>How sure are we? Bounds<a class="headerlink" href="#how-sure-are-we-bounds" title="Link to this heading"></a></h2>
+<p>Six pumps cannot pin down a survival curve. Every estimate should travel with
+<strong>confidence bounds</strong>: a range that would contain the true value in (say) 95%
+of studies like this one. <code class="docutils literal notranslate"><span class="pre">cb</span></code> gives them:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"S(1000)           :"</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">1000</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"95% bounds on it  :"</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="mi">1000</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>S(1000)           : 0.417
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>95% bounds on it  : [0.056 0.767]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The estimate is 0.42, but anything from 0.06 to 0.77 is consistent with the
+data. That is not a flaw in the method. It is the honest size of what six
+pumps can tell you, and it is the reason to quote bounds with every number.
+More data narrows them, and it is the number of <em>events</em>, not the number of
+units, that does most of the narrowing.</p>
+</section>
+<section id="fitting-a-weibull-distribution">
+<h2>Fitting a Weibull distribution<a class="headerlink" href="#fitting-a-weibull-distribution" title="Link to this heading"></a></h2>
+<p>Kaplan-Meier describes the data you have and stops where the data stops. A
+<strong>parametric model</strong> assumes the survival function has a particular smooth
+shape, described by a few numbers (parameters). In return it gives smooth
+curves, a hazard, and the ability to ask about times with little or no data
+(with due caution).</p>
+<p>The <strong>Weibull</strong> distribution is the usual first choice because its two
+parameters cover all three hazard stories:</p>
+<div class="math notranslate nohighlight">
+\[S(t) = \exp\left[-\left(\frac{t}{\alpha}\right)^{\beta}\right]\]</div>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(\alpha\)</span>, the <strong>scale</strong>, is in the units of time. It is the time by
+which 63.2% of units have had the event (engineers call it the
+<em>characteristic life</em>). A larger <span class="math notranslate nohighlight">\(\alpha\)</span> stretches the whole curve
+to later times.</p></li>
+<li><p><span class="math notranslate nohighlight">\(\beta\)</span>, the <strong>shape</strong>, has no units and sets the hazard:
+<span class="math notranslate nohighlight">\(\beta &lt; 1\)</span> is a falling hazard, <span class="math notranslate nohighlight">\(\beta = 1\)</span> a constant one
+(the exponential distribution) and <span class="math notranslate nohighlight">\(\beta &gt; 1\)</span> a rising one.</p></li>
+</ul>
+<p>Here is the whole fleet of twenty pumps: eleven failures, and nine pumps
+still running at 1000, 1500 or 2000 hours. The count array <code class="docutils literal notranslate"><span class="pre">n</span></code> saves
+repeating rows:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">hours</span> <span class="o">=</span> <span class="p">[</span><span class="mi">270</span><span class="p">,</span> <span class="mi">340</span><span class="p">,</span> <span class="mi">390</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">720</span><span class="p">,</span> <span class="mi">740</span><span class="p">,</span> <span class="mi">840</span><span class="p">,</span> <span class="mi">890</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span>
+         <span class="mi">1140</span><span class="p">,</span> <span class="mi">1280</span><span class="p">,</span> <span class="mi">1460</span><span class="p">,</span> <span class="mi">1500</span><span class="p">,</span> <span class="mi">2000</span><span class="p">]</span>
+<span class="n">c_fleet</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">n_fleet</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">weibull</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">hours</span><span class="p">,</span> <span class="n">c_fleet</span><span class="p">,</span> <span class="n">n_fleet</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">weibull</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 20 units: 11 events at 11 unique times, 9 right censored
+Parameters          :
+     alpha: 1619.4362070473233
+      beta: 1.6010362513122893
+</pre></div>
+</div>
+</div>
+</div>
+<p>The fit is by <em>maximum likelihood</em>: it chooses the <span class="math notranslate nohighlight">\(\alpha\)</span> and
+<span class="math notranslate nohighlight">\(\beta\)</span> that make the data seen the most probable, where a failure
+contributes the chance of failing <em>at</em> its time and a censored pump
+contributes the chance of surviving <em>past</em> its time. That is how censored
+units pull the answer towards longer lives without anyone pretending to know
+when they fail.</p>
+<p>Reading the result: <span class="math notranslate nohighlight">\(\alpha \approx 1620\)</span> hours, so about 63% of pumps
+are expected to have failed by then; <span class="math notranslate nohighlight">\(\beta \approx 1.6\)</span> is above 1,
+which points to wear-out. Ask the model the questions you care about:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"S(1000)                 :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">1000</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"  95% bounds            :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="mi">1000</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"time when 10</span><span class="si">% f</span><span class="s2">ailed    :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"  95% bounds            :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">quantile_cb</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"95% bounds on the shape :"</span><span class="p">,</span> <span class="n">weibull</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"beta"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>S(1000)                 : 0.63
+  95% bounds            : [0.422 0.781]
+time when 10% failed    : 397.0
+  95% bounds            : [196. 805.]
+95% bounds on the shape : [0.96 2.68]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>About 63% of pumps are expected to survive 1000 hours (between 42% and 78%),
+and 10% are expected to have failed by about 400 hours (the engineer’s <em>B10
+life</em>; a clinician would call it the 10th percentile of the time to the
+event). Two lessons sit in the last line. First, the bounds on the shape run
+from just under 1 to 2.7, so although wear-out is the best reading, twenty
+pumps cannot quite rule out a constant hazard. Second, compare the fit that
+ignores censoring, <code class="docutils literal notranslate"><span class="pre">surv.Weibull.fit(hours,</span> <span class="pre">n=n_fleet)</span></code>: its scale is about
+1190 hours instead of 1620, the same “too low” error as the naive average at
+the top of the page.</p>
+<p>Always check a parametric fit against the non-parametric estimate, which
+assumes nothing. Here the Kaplan-Meier estimate of surviving 1000 hours is
+0.60, close to the Weibull’s 0.63. <code class="docutils literal notranslate"><span class="pre">weibull.plot()</span></code> draws the comparison: the
+points are the non-parametric estimate, the line is the fitted distribution,
+and on these axes a Weibull is a straight line.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">weibull</span><span class="o">.</span><span class="n">plot</span><span class="p">();</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Survival%20Analysis%20from%20Scratch_15_0.png" src="_images/Survival%20Analysis%20from%20Scratch_15_0.png" />
+</div>
+</div>
+<p>If the points bend away from the line, try another distribution;
+<a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a> shows how, and <code class="docutils literal notranslate"><span class="pre">surv.fit_best</span></code> ranks a
+set of candidates.</p>
+</section>
+<section id="comparing-two-groups">
+<h2>Comparing two groups<a class="headerlink" href="#comparing-two-groups" title="Link to this heading"></a></h2>
+<p>Now the relapse story. Thirty patients were randomised to a control or a new
+treatment and followed for up to 52 weeks. <code class="docutils literal notranslate"><span class="pre">x</span></code> is the week of relapse, or
+the last week the patient was known to be in remission (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x_control</span> <span class="o">=</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">27</span><span class="p">,</span> <span class="mi">27</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">43</span><span class="p">]</span>
+<span class="n">c_control</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="n">x_treated</span> <span class="o">=</span> <span class="p">[</span><span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">22</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">31</span><span class="p">,</span> <span class="mi">35</span><span class="p">,</span> <span class="mi">38</span><span class="p">,</span> <span class="mi">43</span><span class="p">,</span> <span class="mi">43</span><span class="p">,</span> <span class="mi">46</span><span class="p">,</span> <span class="mi">46</span><span class="p">,</span> <span class="mi">51</span><span class="p">,</span> <span class="mi">52</span><span class="p">]</span>
+<span class="n">c_treated</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+
+<span class="n">km_control</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_control</span><span class="p">,</span> <span class="n">c_control</span><span class="p">)</span>
+<span class="n">km_treated</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_treated</span><span class="p">,</span> <span class="n">c_treated</span><span class="p">)</span>
+
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">model</span> <span class="ow">in</span> <span class="p">[(</span><span class="s2">"control"</span><span class="p">,</span> <span class="n">km_control</span><span class="p">),</span> <span class="p">(</span><span class="s2">"treated"</span><span class="p">,</span> <span class="n">km_treated</span><span class="p">)]:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="s2">"| in remission at 26 weeks:"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">26</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">),</span>
+          <span class="s2">"| median weeks to relapse:"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>control | in remission at 26 weeks: 0.32 | median weeks to relapse: 13.0
+treated | in remission at 26 weeks: 0.87 | median weeks to relapse: 46.0
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+
+<span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">model</span> <span class="ow">in</span> <span class="p">[(</span><span class="s2">"control"</span><span class="p">,</span> <span class="n">km_control</span><span class="p">),</span> <span class="p">(</span><span class="s2">"treated"</span><span class="p">,</span> <span class="n">km_treated</span><span class="p">)]:</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">step</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">x</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">R</span><span class="p">],</span> <span class="n">where</span><span class="o">=</span><span class="s2">"post"</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">"weeks since treatment"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">"fraction still in remission"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">();</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Survival%20Analysis%20from%20Scratch_17_0.png" src="_images/Survival%20Analysis%20from%20Scratch_17_0.png" />
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>At 26 weeks, 32% of the control group are still in remission against 87% of
+the treated group, and the median time to relapse is 13 weeks against 46.
+Notice that eight of the fifteen treated patients are censored, against one
+in the control group: a comparison of plain averages would have discarded, or
+misused, most of the treated group’s good news.</p>
+<p>Is the difference more than chance? The <strong>log-rank test</strong> compares whole
+curves. At every event time it asks how many events each group <em>would</em> have
+had if the groups were the same, given how many were at risk in each, and
+adds up the gap between that and what happened:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x_control</span> <span class="o">+</span> <span class="n">x_treated</span><span class="p">)</span>
+<span class="n">c_all</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">c_control</span> <span class="o">+</span> <span class="n">c_treated</span><span class="p">)</span>
+<span class="n">treated</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">15</span> <span class="o">+</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="mi">15</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">surv</span><span class="o">.</span><span class="n">logrank</span><span class="p">(</span><span class="n">x_all</span><span class="p">,</span> <span class="n">treated</span><span class="p">,</span> <span class="n">c_all</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Log-Rank Test
+=============
+Weighting        : log-rank
+Statistic        : 13.9747
+DoF              : 1
+p-value          : 0.000185285
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>A p-value this small (below 0.001) says a gap this large would be very rare
+if the treatment did nothing. The same test compares pumps from two
+suppliers, or bearings run with two lubricants. A test says <em>whether</em> the
+groups differ; it does not say by how much. For that, and for anything beyond
+one yes/no grouping, use regression.</p>
+</section>
+<section id="where-regression-comes-in">
+<h2>Where regression comes in<a class="headerlink" href="#where-regression-comes-in" title="Link to this heading"></a></h2>
+<p>Groups are rarely alike in everything but the treatment. Patients differ in
+age; pumps differ in duty, fluid and speed. <strong>Regression</strong> models how the
+time to the event depends on such <em>covariates</em>, several at once, so that the
+effect of one is estimated with the others held fixed. Covariates go in
+<code class="docutils literal notranslate"><span class="pre">Z</span></code>, one row per row of <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+<p>The most used model is <strong>Cox proportional hazards</strong>. It assumes each
+covariate multiplies the hazard by a constant factor, the <em>hazard ratio</em>,
+and, like Kaplan-Meier, assumes nothing about the shape of the hazard over
+time. Here it is with treatment and age:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">age</span> <span class="o">=</span> <span class="p">[</span><span class="mi">58</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">64</span><span class="p">,</span> <span class="mi">74</span><span class="p">,</span> <span class="mi">68</span><span class="p">,</span> <span class="mi">54</span><span class="p">,</span> <span class="mi">55</span><span class="p">,</span> <span class="mi">62</span><span class="p">,</span> <span class="mi">44</span><span class="p">,</span> <span class="mi">42</span><span class="p">,</span> <span class="mi">57</span><span class="p">,</span> <span class="mi">66</span><span class="p">,</span> <span class="mi">53</span><span class="p">,</span> <span class="mi">68</span><span class="p">,</span> <span class="mi">56</span><span class="p">,</span>
+       <span class="mi">52</span><span class="p">,</span> <span class="mi">57</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">52</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">57</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">55</span><span class="p">,</span> <span class="mi">59</span><span class="p">,</span> <span class="mi">59</span><span class="p">,</span> <span class="mi">44</span><span class="p">,</span> <span class="mi">46</span><span class="p">,</span> <span class="mi">52</span><span class="p">]</span>
+<span class="n">Z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">treated</span><span class="p">,</span> <span class="n">age</span><span class="p">])</span>
+
+<span class="n">cox</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">CoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_all</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c_all</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">cox</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Semi-Parametric Regression SurPyval Model
+=========================================
+Type                : Proportional Hazards
+Kind                : Cox
+Parameterization    : Semi-Parametric
+Data                : 30 units: 21 events at 16 unique times, 9 right censored
+Tie method          : efron
+Coefficients        : exp(coef) is the hazard ratio; Wald 95% intervals
+              coef  exp(coef)  se(coef)  lower 95%  upper 95%      z       p
+    coef_0  -1.656      0.191    0.6044      -2.84    -0.4709 -2.739 0.00616
+    coef_1 0.03224      1.033   0.03101   -0.02854    0.09302   1.04  0.2986
+
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Read the <code class="docutils literal notranslate"><span class="pre">exp(coef)</span></code> column. For treatment (<code class="docutils literal notranslate"><span class="pre">coef_0</span></code>) the hazard ratio is
+0.19: at any moment, a treated patient’s rate of relapse is about a fifth of
+that of a control patient of the same age, and the interval around the
+coefficient excludes “no effect”. For age (<code class="docutils literal notranslate"><span class="pre">coef_1</span></code>) it is 1.03 per year,
+with an interval that includes no effect, so these data do not show that age
+matters. A hazard ratio below 1 means fewer events; above 1, more.</p>
+<p>The engineering reading is identical: replace “treated” with “new seal
+design” and “age” with “operating temperature”. Engineering also has its own
+regression family, <em>accelerated life</em> models, in which a stress such as
+temperature or load shortens life by a known physical law, so that tests at
+high stress can predict life at normal stress. <a class="reference internal" href="regression%20analysis.html"><span class="doc">Regression Analysis</span></a>
+explains every family and when each fits.</p>
+</section>
+<section id="where-to-go-next">
+<h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Link to this heading"></a></h2>
+<p>You now have the core of the subject: censoring and truncation, the three
+functions, a non-parametric estimate, a parametric fit, bounds, a comparison
+and a regression. From here:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="Quickstart.html"><span class="doc">Quickstart</span></a> shows one small example of every area of the package.</p></li>
+<li><p><a class="reference internal" href="Types%20of%20Data.html"><span class="doc">Types of Data</span></a> goes deeper into censoring and truncation, and how to
+recognise each in a real data set. This matters more than any choice of
+model.</p></li>
+<li><p><a class="reference internal" href="Data%20Wrangler%20Examples.html"><span class="doc">Data Wrangling Examples</span></a> turns the data you have (a spreadsheet, a
+list of failures and survivors, a study table) into <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>
+and <code class="docutils literal notranslate"><span class="pre">t</span></code>; <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a> is the reference for them.</p></li>
+<li><p><a class="reference internal" href="Non-Parametric%20Estimation.html"><span class="doc">Non-Parametric Estimation</span></a> and <a class="reference internal" href="Parametric%20Estimation.html"><span class="doc">Parametric Estimation</span></a> give the
+theory behind this page; <a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html"><span class="doc">Non-Parametric SurPyval Modelling</span></a> and
+<a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a> are the how-to pages.</p></li>
+<li><p><a class="reference internal" href="regression%20analysis.html"><span class="doc">Regression Analysis</span></a> and <a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Regression Modelling with SurPyval</span></a>
+cover Cox, accelerated failure time and the other regression models.</p></li>
+<li><p><a class="reference internal" href="Model%20Diagnostics.html"><span class="doc">Model Diagnostics</span></a> shows how to check that a fitted model describes
+its data.</p></li>
+<li><p>More than one kind of event (relapse or death from another cause; failure
+by wear or by shock)? See <a class="reference internal" href="Competing%20Risks%20Analysis.html"><span class="doc">Competing Risks Analysis</span></a>.</p></li>
+<li><p>Events that happen again and again to the same unit (repeated repairs,
+repeated hospital admissions)? See <a class="reference internal" href="Recurrent%20Event%20Analysis.html"><span class="doc">Recurrent Event Analysis</span></a>.</p></li>
+<li><p>A measurement drifting towards a threshold (wear, a biomarker)? See
+<a class="reference internal" href="Degradation%20Analysis.html"><span class="doc">Degradation Analysis</span></a> and <a class="reference internal" href="Joint%20Models.html"><span class="doc">Joint Models</span></a>.</p></li>
+<li><p><a class="reference internal" href="Glossary.html"><span class="doc">Glossary</span></a> maps the engineering, medical and statistical words for
+the same ideas.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Choosing%20a%20Model.html" class="btn btn-neutral float-left" title="Choosing a Model" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Types%20of%20Data.html" class="btn btn-neutral float-right" title="Types of Data" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,717 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Distributional Regression &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Mixture-Cure Regression" href="Mixture-Cure%20Regression.html" />
+    <link rel="prev" title="Regression Modelling with SurPyval" href="Regression%20Modelling%20with%20SurPyval.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Distributional Regression</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-it-does">What it does</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-worked-example-does-the-shape-depend-on-load">A worked example: does the shape depend on load?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#choosing-each-parameter-s-covariates">Choosing each parameter’s covariates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-model-in-formulas">The model, in formulas</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#smooth-terms">Smooth terms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#limits">Limits</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Distributional Regression</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Distributional Regression.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="distributional-regression">
+<h1>Distributional Regression<a class="headerlink" href="#distributional-regression" title="Link to this heading"></a></h1>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<section id="what-it-does">
+<h2>What it does<a class="headerlink" href="#what-it-does" title="Link to this heading"></a></h2>
+<p>A regression model in SurPyval usually lets the covariates change one
+thing about the life distribution. In an accelerated failure time (AFT)
+model a heavier load makes every unit wear out sooner by the same
+factor; in a proportional hazards (PH) model it multiplies the hazard by
+the same factor at every age. Either way the <em>shape</em> of the distribution
+is the same for every unit: if failures are wear-out at light load, they
+are wear-out, in the same way, at heavy load.</p>
+<p>A <strong>distributional regression</strong> lets the covariates change every
+parameter of the distribution, each through its own link. For a Weibull
+that is the scale <code class="docutils literal notranslate"><span class="pre">alpha</span></code> (how long units typically last) <em>and</em> the
+shape <code class="docutils literal notranslate"><span class="pre">beta</span></code> (whether failures come early, at random or from wear-out).
+It answers a question the AFT and PH models assume away: <strong>does the way
+units fail change with the conditions they run in?</strong> It is the model of
+R’s <code class="docutils literal notranslate"><span class="pre">gamlss</span></code> (“generalised additive models for location, scale and
+shape”) and of <code class="docutils literal notranslate"><span class="pre">flexsurvreg</span></code>’s <code class="docutils literal notranslate"><span class="pre">anc</span></code> argument, on SurPyval’s survival
+data: right, left and interval censoring, truncation and counts work as
+in every other fit.</p>
+<p>When to use it:</p>
+<ul class="simple">
+<li><p>the shape may depend on a stress (a shape near 1 at light load,
+random failures, and well above 1 at heavy load, wear-out), which
+changes the maintenance strategy, not only the interval;</p></li>
+<li><p>the spread of lives differs between groups (sites, suppliers,
+treatment arms) while the typical life may or may not;</p></li>
+<li><p>a plot of the data by group shows lines that are not parallel on a
+Weibull (or log-normal) probability plot: the AFT and PH models make
+them parallel.</p></li>
+</ul>
+</section>
+<section id="a-worked-example-does-the-shape-depend-on-load">
+<h2>A worked example: does the shape depend on load?<a class="headerlink" href="#a-worked-example-does-the-shape-depend-on-load" title="Link to this heading"></a></h2>
+<p>Bearings were run at four loads (1 to 4 kN) until they failed or the
+test stopped at 2000 hours. (The data are simulated, with a shape that
+grows with load, so we can see whether the fits find it.)</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">2026</span><span class="p">)</span>
+<span class="n">load</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="n">size</span><span class="o">=</span><span class="mi">240</span><span class="p">)</span>
+<span class="n">life</span> <span class="o">=</span> <span class="mi">3000</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.4</span> <span class="o">*</span> <span class="n">load</span><span class="p">)</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.25</span> <span class="o">*</span> <span class="n">load</span><span class="p">))</span>
+<span class="n">bearings</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">"hours"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">life</span><span class="p">,</span> <span class="mf">2000.0</span><span class="p">),</span>
+    <span class="s2">"censored"</span><span class="p">:</span> <span class="p">(</span><span class="n">life</span> <span class="o">&gt;</span> <span class="mf">2000.0</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">),</span>
+    <span class="s2">"load"</span><span class="p">:</span> <span class="n">load</span><span class="p">,</span>
+<span class="p">})</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>First the usual model, a Weibull AFT: load shortens life, one shape for
+all. Then the distributional model, with load on both parameters (with
+no parameter named, every covariate goes on every parameter):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">aft</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullAFT</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">bearings</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"load"</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullDistributional</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">bearings</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"load"</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Distributional Regression SurPyval Model
+========================================
+Kind                : Distributional
+Distribution        : Weibull
+Parameters          : log(alpha) ~ 1 - load; log(beta) ~ 1 + load
+Fitted by           : MLE
+Data                : 240 units: 202 events at 202 unique times, 38 right censored
+Baseline            : Weibull parameters; Wald 95% intervals
+           estimate    se  lower 95%  upper 95%
+    alpha      3133 377.8       2474       3969
+    beta      0.958  0.16     0.6906      1.329
+Coefficients        : Wald 95% intervals
+                 coef  se(coef)  lower 95%  upper 95%     z         p
+    alpha_load 0.3978   0.03641     0.3265     0.4692 10.93 8.707e-28
+    beta_load  0.2695     0.057     0.1578     0.3812 4.729  2.26e-06
+</pre></div>
+</div>
+</div>
+</div>
+<p>Read the coefficients through their links, with SurPyval’s sign (that of
+its AFT models: a positive coefficient means a shorter life).
+<code class="docutils literal notranslate"><span class="pre">alpha_load</span> <span class="pre">=</span> <span class="pre">0.40</span></code>: each kN divides the scale by <span class="math notranslate nohighlight">\(e^{0.40} =
+1.49\)</span>, the same coefficient the AFT model reports. <code class="docutils literal notranslate"><span class="pre">beta_load</span> <span class="pre">=</span> <span class="pre">0.27</span></code>:
+each kN multiplies the shape by <span class="math notranslate nohighlight">\(e^{0.27} = 1.31\)</span> (a shape has no
+direction of its own, so its coefficient keeps the link’s sign), and its
+interval is well clear of 0. So the shape does change with load. The
+shape at each load is one call away:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">loads</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"load"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]})</span>
+<span class="n">model</span><span class="o">.</span><span class="n">parameters_at</span><span class="p">(</span><span class="n">loads</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>alpha</th>
+      <th>beta</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>2104.83</td>
+      <td>1.25</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>1413.98</td>
+      <td>1.64</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>949.88</td>
+      <td>2.15</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>638.11</td>
+      <td>2.82</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+<p>At 1 kN the shape is 1.25, close to random failures; at 4 kN it is 2.8,
+clear wear-out. <code class="docutils literal notranslate"><span class="pre">parameter_cb</span></code> bounds a parameter at each row, and
+<code class="docutils literal notranslate"><span class="pre">plot_parameter</span></code> draws it against one covariate with its band:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">parameter_cb</span><span class="p">(</span><span class="s2">"beta"</span><span class="p">,</span> <span class="n">loads</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<span class="n">ax</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">plot_parameter</span><span class="p">(</span><span class="s2">"beta"</span><span class="p">,</span> <span class="s2">"load"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[[1.   1.57]
+ [1.43 1.89]
+ [1.92 2.41]
+ [2.36 3.37]]
+</pre></div>
+</div>
+<img alt="_images/Distributional%20Regression_4_1.png" src="_images/Distributional%20Regression_4_1.png" />
+</div>
+</div>
+<p>The likelihood-ratio test of “the shape does not depend on load”
+compares the two fits (the AFT is the distributional model with
+<code class="docutils literal notranslate"><span class="pre">beta_load</span> <span class="pre">=</span> <span class="pre">0</span></code>), and the AIC agrees:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">chi2</span>
+
+<span class="n">lr</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">aft</span><span class="o">.</span><span class="n">neg_ll</span><span class="p">()</span> <span class="o">-</span> <span class="n">model</span><span class="o">.</span><span class="n">neg_ll</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"LR statistic </span><span class="si">{</span><span class="n">lr</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, p = </span><span class="si">{</span><span class="n">chi2</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">lr</span><span class="p">,</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="si">:</span><span class="s2">.1e</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"AIC: AFT </span><span class="si">{</span><span class="n">aft</span><span class="o">.</span><span class="n">aic</span><span class="p">()</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, distributional </span><span class="si">{</span><span class="n">model</span><span class="o">.</span><span class="n">aic</span><span class="p">()</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>LR statistic 22.3, p = 2.3e-06
+AIC: AFT 3115.6, distributional 3095.2
+</pre></div>
+</div>
+</div>
+</div>
+<p>It matters for what the models predict. The B10 life (the age by which
+10% have failed) at each load, from each model:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"distributional:"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">loads</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"AFT:           "</span><span class="p">,</span> <span class="n">aft</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">loads</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">quantile_cb</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">loads</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>distributional: [350. 359. 334. 287.]
+AFT:            [649. 430. 285. 189.]
+[[226. 541.]
+ [289. 447.]
+ [287. 388.]
+ [237. 347.]]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The AFT model, forced to one shape for all loads, puts the B10 at 4 kN
+at 189 hours; the distributional model, which lets the heavy-load
+failures bunch up as wear-out does, at 287 hours (95% bounds 237 to 347).
+At 1 kN it is the other way round: 649 hours from the AFT, 350 from the
+distributional model, because random-looking failures at light load
+start early.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="choosing-each-parameter-s-covariates">
+<h2>Choosing each parameter’s covariates<a class="headerlink" href="#choosing-each-parameter-s-covariates" title="Link to this heading"></a></h2>
+<p>Each parameter takes its own covariates. With columns, <code class="docutils literal notranslate"><span class="pre">covariates</span></code>
+names them per parameter; a parameter not named has none (its intercept
+only):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">shape_only</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullDistributional</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">bearings</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"load"</span><span class="p">],</span>
+    <span class="n">covariates</span><span class="o">=</span><span class="p">{</span><span class="s2">"beta"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"load"</span><span class="p">]},</span>
+<span class="p">)</span>
+<span class="n">shape_only</span><span class="o">.</span><span class="n">parameter_names</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>['alpha', 'beta', 'beta_load']
+</pre></div>
+</div>
+</div>
+</div>
+<p>With a formula per parameter, <code class="docutils literal notranslate"><span class="pre">formulas</span></code> does the same, with
+everything a formula can say (categorical columns, interactions,
+transforms such as <code class="docutils literal notranslate"><span class="pre">np.log(load)</span></code>):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">by_formula</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullDistributional</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">bearings</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span>
+    <span class="n">formulas</span><span class="o">=</span><span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="s2">"load"</span><span class="p">,</span> <span class="s2">"beta"</span><span class="p">:</span> <span class="s2">"np.log(load)"</span><span class="p">},</span>
+<span class="p">)</span>
+<span class="n">by_formula</span><span class="o">.</span><span class="n">parameter_names</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>['alpha', 'beta', 'alpha_load', 'beta_np.log(load)']
+</pre></div>
+</div>
+</div>
+</div>
+<p>With arrays, <code class="docutils literal notranslate"><span class="pre">fit(x,</span> <span class="pre">Z,</span> <span class="pre">c=...,</span> <span class="pre">covariates={&quot;beta&quot;:</span> <span class="pre">[0]})</span></code> picks columns
+of <code class="docutils literal notranslate"><span class="pre">Z</span></code> by number. A fitted model predicts from a DataFrame with the
+same columns, or from an array of every column it was fitted to, one row
+per unit, as every regression does.</p>
+</section>
+<section id="the-model-in-formulas">
+<h2>The model, in formulas<a class="headerlink" href="#the-model-in-formulas" title="Link to this heading"></a></h2>
+<p>For a distribution with parameters <span class="math notranslate nohighlight">\(\theta_1, \dots, \theta_K\)</span>,
+each parameter has a linear predictor and a link <span class="math notranslate nohighlight">\(g_k\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[g_k\bigl(\theta_k(z)\bigr) = g_k(\theta_k) + s_k\, x_k(z)' b_k,
+\qquad k = 1, \dots, K,\]</div>
+<p>where <span class="math notranslate nohighlight">\(\theta_k\)</span> is the parameter at <span class="math notranslate nohighlight">\(z = 0\)</span>,
+<span class="math notranslate nohighlight">\(x_k(z)\)</span> the parameter’s columns and <span class="math notranslate nohighlight">\(s_k = \pm 1\)</span> its sign
+(below). A unit with covariates <span class="math notranslate nohighlight">\(z\)</span>
+has the distribution’s own functions at its parameters, so for a Weibull</p>
+<div class="math notranslate nohighlight">
+\[S(t \mid z) = \exp\left[-\left(\frac{t}{\alpha(z)}\right)^{\beta(z)}\right],
+\qquad
+\alpha(z) = \alpha\, e^{-x_\alpha(z)' b_\alpha},
+\quad
+\beta(z) = \beta\, e^{x_\beta(z)' b_\beta}.\]</div>
+<p>The likelihood is that of every SurPyval regression, each row at its own
+parameters: <span class="math notranslate nohighlight">\(\log f\)</span> for an observed time, <span class="math notranslate nohighlight">\(\log S\)</span> for a
+right censored one, <span class="math notranslate nohighlight">\(\log F\)</span> for a left censored one,
+<span class="math notranslate nohighlight">\(\log(F(r) - F(l))\)</span> for an interval, less the log of each row’s
+probability of falling inside its truncation window, all weighted by the
+counts. It is maximised directly, with the exact gradient and Hessian.</p>
+<p><strong>Links.</strong> The default link keeps each parameter in its range: log for a
+positive parameter (a scale, a shape, a rate), identity for one on the
+whole line (a location). <code class="docutils literal notranslate"><span class="pre">links={&quot;mu&quot;:</span> <span class="pre">&quot;log&quot;}</span></code> puts a log link on a
+location; an identity link on a positive parameter is refused, because
+it could take the parameter below 0, where the likelihood is not
+defined.</p>
+<p><strong>Parameters.</strong> <code class="docutils literal notranslate"><span class="pre">params</span></code> are the distribution’s parameters at
+<span class="math notranslate nohighlight">\(z = 0\)</span> (at the covariate means with <code class="docutils literal notranslate"><span class="pre">center=True</span></code>), then each
+parameter’s coefficients on its link’s scale, named
+<code class="docutils literal notranslate"><span class="pre">&lt;parameter&gt;_&lt;column&gt;</span></code>.</p>
+<p><strong>The sign.</strong> The coefficients follow SurPyval’s sign convention, that of
+its AFT and PH models: <strong>a positive coefficient means a shorter life</strong>.
+Each parameter’s sign <span class="math notranslate nohighlight">\(s_k\)</span> (<code class="docutils literal notranslate"><span class="pre">model.coefficient_signs</span></code>) says how
+its coefficients enter, one rule for each kind of parameter:</p>
+<ul class="simple">
+<li><p>A <strong>scale</strong> (a Weibull’s, log-logistic’s or ExpoWeibull’s <code class="docutils literal notranslate"><span class="pre">alpha</span></code>, a
+Rayleigh’s <code class="docutils literal notranslate"><span class="pre">sigma</span></code>): <span class="math notranslate nohighlight">\(s = -1\)</span>, so <span class="math notranslate nohighlight">\(\alpha(z) = \alpha
+e^{-b'z}\)</span> and a positive coefficient shrinks the scale, exactly as the
+AFT model’s coefficient does.</p></li>
+<li><p>A <strong>rate</strong> (an Exponential’s <code class="docutils literal notranslate"><span class="pre">failure_rate</span></code>, a Gamma’s <code class="docutils literal notranslate"><span class="pre">beta</span></code>):
+<span class="math notranslate nohighlight">\(s = +1\)</span>, so <span class="math notranslate nohighlight">\(\lambda(z) = \lambda e^{b'z}\)</span> and a positive
+coefficient raises the rate, again the AFT model’s coefficient.</p></li>
+<li><p>A <strong>location</strong> (<code class="docutils literal notranslate"><span class="pre">mu</span></code> of a LogNormal, Normal, Gumbel, GumbelLEV or
+Logistic): <span class="math notranslate nohighlight">\(s = -1\)</span>, so <span class="math notranslate nohighlight">\(\mu(z) = \mu - b'z\)</span> (or
+<span class="math notranslate nohighlight">\(\mu e^{-b'z}\)</span> with a log link) and a positive coefficient moves
+failures earlier; for the LogNormal it is the AFT model’s coefficient.</p></li>
+<li><p>A <strong>shape that orders lives</strong>, one whose increase makes every quantile
+later (a Gamma’s shape <code class="docutils literal notranslate"><span class="pre">alpha</span></code>, an ExpoWeibull’s <code class="docutils literal notranslate"><span class="pre">mu</span></code>, a Beta’s
+<code class="docutils literal notranslate"><span class="pre">alpha</span></code>): <span class="math notranslate nohighlight">\(s = -1\)</span>, so a positive coefficient lowers it and
+shortens lives; a Beta’s <code class="docutils literal notranslate"><span class="pre">beta</span></code>, whose increase makes values earlier,
+has <span class="math notranslate nohighlight">\(s = +1\)</span>.</p></li>
+<li><p>A <strong>shape or spread with no direction</strong> (a Weibull’s or log-logistic’s
+shape <code class="docutils literal notranslate"><span class="pre">beta</span></code>, every <code class="docutils literal notranslate"><span class="pre">sigma</span></code> of a location-scale distribution): it
+makes some quantiles earlier and others later, so “shorter life” does
+not say which way it should go. It keeps the link’s sign, <span class="math notranslate nohighlight">\(s =
++1\)</span>: a positive coefficient raises the shape or the spread.</p></li>
+</ul>
+<p>Beside the other regressions:</p>
+<table class="docutils align-default" id="id1">
+<caption><span class="caption-text">What a positive coefficient means</span><a class="headerlink" href="#id1" title="Link to this table"></a></caption>
+<colgroup>
+<col style="width: 40.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Model</p></th>
+<th class="head"><p>A positive coefficient</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>PH (<code class="docutils literal notranslate"><span class="pre">WeibullPH</span></code>, <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>, <code class="docutils literal notranslate"><span class="pre">RoystonParmarPH</span></code>, …) and AFT
+(<code class="docutils literal notranslate"><span class="pre">WeibullAFT</span></code>, <code class="docutils literal notranslate"><span class="pre">BuckleyJames</span></code>, …)</p></td>
+<td><p>a shorter life (a higher hazard, or faster ageing)</p></td>
+</tr>
+<tr class="row-odd"><td><p>PO (<code class="docutils literal notranslate"><span class="pre">PO(dist)</span></code>, <code class="docutils literal notranslate"><span class="pre">ProportionalOdds</span></code>, <code class="docutils literal notranslate"><span class="pre">RoystonParmarPO</span></code>)</p></td>
+<td><p>higher survival odds: a longer life</p></td>
+</tr>
+<tr class="row-even"><td><p>Distributional regression (<code class="docutils literal notranslate"><span class="pre">WeibullDistributional</span></code>, …)</p></td>
+<td><p>on a scale or a location, a shorter life, as AFT; on each
+parameter as <code class="docutils literal notranslate"><span class="pre">model.coefficient_signs</span></code> says</p></td>
+</tr>
+</tbody>
+</table>
+<p>PO differs because it models the odds of <em>surviving</em>: a positive
+coefficient multiplies those odds, so it lengthens life.</p>
+<p>R’s <code class="docutils literal notranslate"><span class="pre">gamlss</span></code> and <code class="docutils literal notranslate"><span class="pre">flexsurvreg</span></code> (and lifelines and <code class="docutils literal notranslate"><span class="pre">survreg</span></code>) give
+every coefficient the link’s sign, <span class="math notranslate nohighlight">\(s = +1\)</span>, so their coefficients
+on a scale or a location are SurPyval’s with the sign changed, and their
+coefficients on a shape or spread are SurPyval’s as they are. SurPyval
+0.26 did the same; see the changelog for 0.27. A model saved by 0.26
+(<code class="docutils literal notranslate"><span class="pre">to_dict</span></code> or <code class="docutils literal notranslate"><span class="pre">pickle</span></code>) is converted on loading and predicts as it
+did.</p>
+<p><strong>The AFT model is a special case.</strong> Covariates on the scale alone give
+an AFT model (SurPyval’s AFT writes <span class="math notranslate nohighlight">\(H_0(e^{b'z} x)\)</span>, where a
+positive coefficient shortens life), with the same coefficients:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>AFT model</p></th>
+<th class="head"><p>The same distributional model</p></th>
+<th class="head"><p>Coefficients</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">WeibullAFT</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Weibull</span></code>, covariates on <code class="docutils literal notranslate"><span class="pre">alpha</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alpha_z</span> <span class="pre">=</span> <span class="pre">b_z</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ExponentialAFT</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Exponential</span></code>, on <code class="docutils literal notranslate"><span class="pre">failure_rate</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">failure_rate_z</span> <span class="pre">=</span> <span class="pre">b_z</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LogNormalAFT</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">LogNormal</span></code>, on <code class="docutils literal notranslate"><span class="pre">mu</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">mu_z</span> <span class="pre">=</span> <span class="pre">b_z</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">AFT(LogLogistic)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">LogLogistic</span></code>, on <code class="docutils literal notranslate"><span class="pre">alpha</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alpha_z</span> <span class="pre">=</span> <span class="pre">b_z</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GammaAFT</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Gamma</span></code>, on its rate <code class="docutils literal notranslate"><span class="pre">beta</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beta_z</span> <span class="pre">=</span> <span class="pre">b_z</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>A Weibull PH model with covariates is also one, covariates on <code class="docutils literal notranslate"><span class="pre">alpha</span></code>
+with <code class="docutils literal notranslate"><span class="pre">b_PH</span> <span class="pre">=</span> <span class="pre">beta</span> <span class="pre">*</span> <span class="pre">alpha_z</span></code>; and the accelerated life models with a
+log-linear life (<code class="docutils literal notranslate"><span class="pre">Power</span></code>: <code class="docutils literal notranslate"><span class="pre">alpha</span></code> on <code class="docutils literal notranslate"><span class="pre">np.log(V)</span></code>) are too. The
+tests check each of these gives the same fit.</p>
+<p><strong>Inference.</strong> Wald bounds come from the exact observed information;
+<code class="docutils literal notranslate"><span class="pre">method=&quot;lr&quot;</span></code> gives likelihood-ratio bounds and <code class="docutils literal notranslate"><span class="pre">method=&quot;bootstrap&quot;</span></code>
+parametric bootstrap bounds, for the parameters (<code class="docutils literal notranslate"><span class="pre">param_cb</span></code>), the
+functions (<code class="docutils literal notranslate"><span class="pre">cb</span></code>), the quantiles (<code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code>) and each row’s
+parameters (<code class="docutils literal notranslate"><span class="pre">parameter_cb</span></code>, computed on the link’s scale, so a shape’s
+bound stays above 0). A calibration study (in the test suite) checks
+their coverage. <code class="docutils literal notranslate"><span class="pre">parameters_at(Z)</span></code> gives each row’s parameters and
+<code class="docutils literal notranslate"><span class="pre">distribution_at(row)</span></code> the univariate distribution of one unit, with
+every univariate function.</p>
+<p><strong>Tests of the covariates.</strong> <code class="docutils literal notranslate"><span class="pre">likelihood_ratio_test()</span></code> asks whether the
+covariates, on all the parameters together, explain anything: the null
+model is the distribution fitted alone to the same data, and twice the
+gain in log-likelihood is compared with a chi-squared distribution with
+one degree of freedom per estimated coefficient. With a parameter named,
+it tests that parameter’s covariates alone: <code class="docutils literal notranslate"><span class="pre">parameter=&quot;beta&quot;</span></code> asks
+whether the shape depends on the covariates, against the fit with the
+shape’s coefficients at 0 and the scale’s kept (refitted), on one degree
+of freedom per coefficient of the shape. Aliased coefficients and those
+held at 0 are not counted; a coefficient held at another value refuses
+the test, since the null model is then not inside the fitted one.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">likelihood_ratio_test</span><span class="p">()</span>                  <span class="c1"># every coefficient</span>
+<span class="n">model</span><span class="o">.</span><span class="n">likelihood_ratio_test</span><span class="p">(</span><span class="n">parameter</span><span class="o">=</span><span class="s2">"beta"</span><span class="p">)</span>  <span class="c1"># the shape's alone</span>
+</pre></div>
+</div>
+<p>The result is a dictionary, <code class="docutils literal notranslate"><span class="pre">{&quot;statistic&quot;,</span> <span class="pre">&quot;df&quot;,</span> <span class="pre">&quot;p_value&quot;,</span>
+<span class="pre">&quot;log_likelihood&quot;,</span> <span class="pre">&quot;log_likelihood_null&quot;}</span></code>, as for the other regressions.</p>
+<p><strong>Checks of the fit.</strong> Each parameter’s columns are checked on their
+own: a column that is constant, or a combination of that parameter’s
+other columns, is aliased (reported as <code class="docutils literal notranslate"><span class="pre">nan</span></code>, with one warning). A
+search that does not reach a verified maximum says so, and data with no
+finite maximum (for example a group whose failures all fall at one time,
+whose shape then grows without bound) give a “No finite maximum”
+warning.</p>
+</section>
+<section id="smooth-terms">
+<h2>Smooth terms<a class="headerlink" href="#smooth-terms" title="Link to this heading"></a></h2>
+<p>A spline basis of fixed size in the formula, <code class="docutils literal notranslate"><span class="pre">bs(load,</span> <span class="pre">df=3)</span></code> or
+<code class="docutils literal notranslate"><span class="pre">cr(load,</span> <span class="pre">df=3,</span> <span class="pre">constraints=&quot;center&quot;)</span></code>, lets a parameter follow a
+smooth curve in a covariate rather than a straight line. The basis is
+fixed before the fit, so the fit and its bounds are ordinary maximum
+likelihood; compare a few sizes by AIC:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">curved</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullDistributional</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">bearings</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span>
+    <span class="n">formulas</span><span class="o">=</span><span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="s2">"load"</span><span class="p">,</span> <span class="s2">"beta"</span><span class="p">:</span> <span class="s2">"bs(load, df=3)"</span><span class="p">},</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"AIC: straight line </span><span class="si">{</span><span class="n">model</span><span class="o">.</span><span class="n">aic</span><span class="p">()</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">, spline </span><span class="si">{</span><span class="n">curved</span><span class="o">.</span><span class="n">aic</span><span class="p">()</span><span class="si">:</span><span class="s2">.1f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>AIC: straight line 3095.2, spline 3099.0
+</pre></div>
+</div>
+</div>
+</div>
+<p>Here the straight line on the log scale is enough (the simulation used
+one), and the AIC says so. <code class="docutils literal notranslate"><span class="pre">cr()</span></code> without <code class="docutils literal notranslate"><span class="pre">constraints=&quot;center&quot;</span></code>
+includes the intercept’s direction, so one of its columns is aliased (the
+fit says so); <code class="docutils literal notranslate"><span class="pre">bs()</span></code> does not. A fitted spline predicts, saves and
+loads through its formula. Penalised splines, whose flexibility is
+chosen from the data, are not available yet.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="limits">
+<h2>Limits<a class="headerlink" href="#limits" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>The distributions are the continuous ones whose support does not
+depend on their parameters: Exponential, Rayleigh, Weibull, Gamma,
+LogNormal, LogLogistic, Normal, Gumbel, GumbelLEV, Logistic, Beta and
+ExpoWeibull. Prebuilt fitters are <code class="docutils literal notranslate"><span class="pre">WeibullDistributional</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ExponentialDistributional</span></code>, <code class="docutils literal notranslate"><span class="pre">GammaDistributional</span></code>,
+<code class="docutils literal notranslate"><span class="pre">LogNormalDistributional</span></code>, <code class="docutils literal notranslate"><span class="pre">LogLogisticDistributional</span></code>,
+<code class="docutils literal notranslate"><span class="pre">NormalDistributional</span></code>, <code class="docutils literal notranslate"><span class="pre">GumbelDistributional</span></code> and
+<code class="docutils literal notranslate"><span class="pre">LogisticDistributional</span></code>; <code class="docutils literal notranslate"><span class="pre">Distributional(dist)</span></code> builds the others.</p></li>
+<li><p>A covariate that changes over a unit’s life is not supported:
+<code class="docutils literal notranslate"><span class="pre">sf_tvc</span></code> and the other path functions refuse, because with the
+shape moving there is no accumulated age to carry from one value to
+the next. Use an AFT or PH model for a covariate path.</p></li>
+<li><p>More parameters need more data: covariates on the shape typically
+need several failures at each covariate level.</p></li>
+</ul>
+<p>The fits are checked against R’s <code class="docutils literal notranslate"><span class="pre">flexsurvreg(anc</span> <span class="pre">=</span> <span class="pre">...)</span></code> (with left
+truncation) and <code class="docutils literal notranslate"><span class="pre">gamlss</span></code> with <code class="docutils literal notranslate"><span class="pre">gamlss.cens</span></code> (observed, right, left
+and interval censored data together) for the Weibull, Gamma, LogNormal,
+Normal, Logistic and largest-extreme Gumbel.</p>
+<p>References: Rigby and Stasinopoulos (2005), <em>Generalized additive models
+for location, scale and shape</em>, Applied Statistics 54(3); Jackson
+(2016), <em>flexsurv: a platform for parametric survival modeling in R</em>,
+Journal of Statistical Software 70(8); Meeker and Escobar (1998),
+<em>Statistical Methods for Reliability Data</em>, on accelerated tests whose
+shape depends on stress.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Regression%20Modelling%20with%20SurPyval.html" class="btn btn-neutral float-left" title="Regression Modelling with SurPyval" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Mixture-Cure%20Regression.html" class="btn btn-neutral float-right" title="Mixture-Cure Regression" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

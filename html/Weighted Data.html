@@ -1,0 +1,1002 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weighted Data &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Non-Parametric Estimation" href="Non-Parametric%20Estimation.html" />
+    <link rel="prev" title="Data Wrangling Examples" href="Data%20Wrangler%20Examples.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Weighted Data</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-a-weight-is">What a weight is</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#when-to-use-w-and-when-n">When to use <code class="docutils literal notranslate"><span class="pre">w</span></code> and when <code class="docutils literal notranslate"><span class="pre">n</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-the-intervals-change">Why the intervals change</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-worked-example">A worked example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#bootstrap-bounds-of-a-weighted-fit">Bootstrap bounds of a weighted fit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#interval-censored-data-the-weighted-turnbull-estimate">Interval censored data: the weighted Turnbull estimate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#comparing-weighted-groups">Comparing weighted groups</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#competing-risks-regressions">Competing-risks regressions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#distributional-and-royston-parmar-regression-with-weights">Distributional and Royston-Parmar regression with weights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#competing-risks-weighted-cumulative-incidence">Competing risks: weighted cumulative incidence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#penalised-fits-with-weights">Penalised fits with weights</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-a-weighted-fit-will-not-do">What a weighted fit will not do</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-formulas">The formulas</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#aalen-s-additive-hazards-model-with-weights">Aalen’s additive hazards model with weights</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-robust-formula-hc0-with-counts-as-frequency-weights">The robust formula: HC0, with counts as frequency weights</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#weights-and-counts-with-tied-failure-times-cox-efron">Weights and counts with tied failure times (Cox, Efron)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#weights-and-counts-in-the-log-rank-test">Weights and counts in the log-rank test</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#translating-from-lifelines-and-r">Translating from lifelines and R</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Weighted Data</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Weighted Data.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="weighted-data">
+<h1>Weighted Data<a class="headerlink" href="#weighted-data" title="Link to this heading"></a></h1>
+<p>Some data come with a number on each row that says how much that row
+<em>counts</em>: a <strong>weight</strong>. SurPyval takes it as <code class="docutils literal notranslate"><span class="pre">w</span></code>, beside the counts <code class="docutils literal notranslate"><span class="pre">n</span></code>,
+in the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators, the
+parametric distributions, the parametric regressions, Cox regression,
+Aalen’s additive hazards model, the non-parametric competing-risks
+estimate (<code class="docutils literal notranslate"><span class="pre">CompetingRisks</span></code>) and the competing-risks regressions
+(cause-specific Cox and Fine-Gray).
+This page says what weights are, when to use <code class="docutils literal notranslate"><span class="pre">w</span></code> rather than <code class="docutils literal notranslate"><span class="pre">n</span></code>, why a
+weighted fit’s intervals are computed differently, and what a weighted fit
+will not do.</p>
+<section id="what-a-weight-is">
+<h2>What a weight is<a class="headerlink" href="#what-a-weight-is" title="Link to this heading"></a></h2>
+<p>A count <code class="docutils literal notranslate"><span class="pre">n</span></code> says how many <em>identical units</em> a row records: <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">3</span></code> is
+three units, each seen, with the same time and the same censoring. Writing
+the row out three times gives the same answer.</p>
+<p>A weight <code class="docutils literal notranslate"><span class="pre">w</span></code> says how many units of the <em>population</em> each unit stands
+for, or how much it should be up- or down-weighted to undo a bias. Nobody
+saw <code class="docutils literal notranslate"><span class="pre">w</span></code> units. Three common sources:</p>
+<ul class="simple">
+<li><p><strong>Sampling weights.</strong> You inspected one pump in every 40 at the small
+sites and one in every 5 at the big site. Each pump inspected at a small
+site stands for 40 pumps, each at the big site for 5. Without the weights
+the big site dominates the answer; with them the answer describes the
+whole fleet. Survey and registry data work the same way.</p></li>
+<li><p><strong>Inverse probability of treatment weights.</strong> In observational data the
+units that got a treatment (an overhaul, a new supplier, a drug) differ
+from those that did not. Weighting each unit by one over the probability
+that it got what it got makes the groups comparable, as in a randomised
+trial. <a class="reference internal" href="Adjusted%20Survival%20Curves.html"><span class="doc">Adjusted Survival Curves</span></a> works through it, with the
+checks on such weights.</p></li>
+<li><p><strong>Inverse probability of censoring weights.</strong> If units drop out of
+follow-up for reasons tied to their risk, each unit still followed is
+weighted by one over its probability of still being followed.</p></li>
+</ul>
+<p>A weight is any positive number (0.37, 12.5); a count is a whole number. A
+row may have both: <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">3</span></code> identical units, each standing for <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">12.5</span></code>.</p>
+</section>
+<section id="when-to-use-w-and-when-n">
+<h2>When to use <code class="docutils literal notranslate"><span class="pre">w</span></code> and when <code class="docutils literal notranslate"><span class="pre">n</span></code><a class="headerlink" href="#when-to-use-w-and-when-n" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 36.0%" />
+<col style="width: 36.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"></th>
+<th class="head"><p>Count <code class="docutils literal notranslate"><span class="pre">n</span></code></p></th>
+<th class="head"><p>Weight <code class="docutils literal notranslate"><span class="pre">w</span></code></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Meaning</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">n</span></code> identical units were seen</p></td>
+<td><p>one unit seen, standing for <code class="docutils literal notranslate"><span class="pre">w</span></code> units</p></td>
+</tr>
+<tr class="row-odd"><td><p>Values</p></td>
+<td><p>1, 2, 3, …</p></td>
+<td><p>any positive number</p></td>
+</tr>
+<tr class="row-even"><td><p>Every value multiplied by 10</p></td>
+<td><p>ten times the data: the intervals shrink</p></td>
+<td><p>the same data: <strong>nothing changes</strong></p></td>
+</tr>
+<tr class="row-odd"><td><p>Variance</p></td>
+<td><p>the classical formulas</p></td>
+<td><p>a robust (sandwich) variance</p></td>
+</tr>
+</tbody>
+</table>
+<p>Use <code class="docutils literal notranslate"><span class="pre">n</span></code> when the numbers count units you saw. Use <code class="docutils literal notranslate"><span class="pre">w</span></code> when they say
+how much each unit stands for, <strong>even if they are whole numbers</strong>: survey
+weights of exactly 40 put in <code class="docutils literal notranslate"><span class="pre">n</span></code> would be read as forty units seen, and
+the intervals would be more than six times too narrow. SurPyval refuses a
+decimal <code class="docutils literal notranslate"><span class="pre">n</span></code> and says to use <code class="docutils literal notranslate"><span class="pre">w</span></code>, but it cannot tell whole-number weights
+from counts.</p>
+</section>
+<section id="why-the-intervals-change">
+<h2>Why the intervals change<a class="headerlink" href="#why-the-intervals-change" title="Link to this heading"></a></h2>
+<p>The estimate itself is easy: each unit’s contribution is multiplied by its
+weight (to the numbers at risk and of failures, or to the likelihood).</p>
+<p>The uncertainty is not. The classical formulas – Greenwood’s for a
+Kaplan-Meier curve, the inverse of the information for a fitted Weibull –
+assume that the information in the data grows with the number of units, and
+with weights they would take the <em>total of the weights</em> for that number.
+Multiply every weight by 10 and they would claim ten times the information
+from the same data. The honest amount of information depends on how uneven
+the weights are: a few units with huge weights give a noisy answer however
+large the total. A useful summary is the <strong>effective sample size</strong>,
+<span class="math notranslate nohighlight">\((\sum n w)^2 / \sum n w^2\)</span>, which equals the number of units when
+the weights are equal and is smaller the more uneven they are. A weighted
+fit prints it, and warns when it is below 20.</p>
+<p>So every weighted fit uses a <strong>robust</strong> variance, one that is valid
+whatever the weights’ scale, and there is no option of the classical one.
+The intervals are then built from it exactly as before (log(-log) bounds
+for a survival curve, Wald bounds on each parameter’s scale), so <code class="docutils literal notranslate"><span class="pre">cb</span></code>,
+<code class="docutils literal notranslate"><span class="pre">param_cb</span></code>, <code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code> and the rest work as usual.</p>
+</section>
+<section id="a-worked-example">
+<h2>A worked example<a class="headerlink" href="#a-worked-example" title="Link to this heading"></a></h2>
+<p>Suppose a study samples long-lived units more often than short-lived ones:
+of a population of lifetimes, a unit above the median is kept with
+probability 0.8 and one below it with probability 0.2. The sample then
+overstates how long units last. Each kept unit stands for one over its
+probability of being kept:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">truth</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">])</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">2000</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="n">rng</span><span class="p">)</span>
+<span class="n">censor</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">2000</span><span class="p">)</span>
+<span class="n">keep_probability</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="n">truth</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">),</span> <span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)</span>
+<span class="n">kept</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">2000</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">keep_probability</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">censor</span><span class="p">)[</span><span class="n">kept</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">censor</span> <span class="o">&lt;</span> <span class="n">t</span><span class="p">)[</span><span class="n">kept</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="n">w</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">keep_probability</span><span class="p">[</span><span class="n">kept</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>          <span class="c1"># biased: too long-lived</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="n">w</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>                           <span class="c1"># close to (10, 1.5)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[13.44767134  2.06542644]
+[10.07362197  1.55035084]
+Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 994 units: 595 events at 595 unique times, 399 right censored
+Weights             : effective sample size 636.2; robust covariance
+Parameters          :
+     alpha: 10.07362197180848
+      beta: 1.550350842432863
+</pre></div>
+</div>
+</div>
+</div>
+<p>The weighted fit recovers the population’s Weibull, and its bounds use the
+robust covariance:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"alpha"</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">]))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">covariance</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[ 9.52461759 10.65427127]
+[[0.68011377 0.74408771]
+ [0.34002769 0.4040684 ]
+ [0.13353322 0.18143483]]
+[[0.08296213 0.00539581]
+ [0.00539581 0.00297592]]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The same weights scaled by any constant give the same model and the same
+intervals:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">scaled</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="mi">10</span> <span class="o">*</span> <span class="n">w</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">scaled</span><span class="o">.</span><span class="n">cb</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">]),</span> <span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">])))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>True
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>A Kaplan-Meier curve and a Cox model take <code class="docutils literal notranslate"><span class="pre">w</span></code> the same way:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">km</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="n">w</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">]))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">km</span><span class="o">.</span><span class="n">cb</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">15</span><span class="p">]))</span>
+
+<span class="n">z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">kept</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+<span class="n">cox</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">CoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="n">w</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">cox</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">cox</span><span class="o">.</span><span class="n">standard_errors</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.72277633 0.3530067  0.15944094]
+[[0.676936   0.76327588]
+ [0.31696182 0.38920117]
+ [0.13511903 0.18558333]]
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.00749283] [0.0849832]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The at-risk table of <code class="docutils literal notranslate"><span class="pre">plot_nonparametric</span></code> and <code class="docutils literal notranslate"><span class="pre">at_risk_table</span></code> counts
+the units themselves, not their weights. <code class="docutils literal notranslate"><span class="pre">sf_diff</span></code> and <code class="docutils literal notranslate"><span class="pre">rmst_diff</span></code> of
+weighted estimates use their robust variances.</p>
+</section>
+<section id="bootstrap-bounds-of-a-weighted-fit">
+<h2>Bootstrap bounds of a weighted fit<a class="headerlink" href="#bootstrap-bounds-of-a-weighted-fit" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">method=&quot;bootstrap&quot;</span></code> on <code class="docutils literal notranslate"><span class="pre">cb</span></code>, <code class="docutils literal notranslate"><span class="pre">param_cb</span></code> and <code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code> (and
+<code class="docutils literal notranslate"><span class="pre">mrl_cb</span></code> of a distribution) of a weighted parametric fit or a weighted
+parametric regression is the <em>case</em> bootstrap: each resample draws the
+units with replacement, each keeping its own weight, covariates, time,
+censoring and entry time, and refits the weighted model. The bounds are
+the percentiles of the refits, corrected for bias as for unweighted data
+(and, for the regressions, for skewness: the BCa interval). They do not
+lean on the normal approximation the Wald bounds make, so they are the
+ones to compare with when the sample is small or the weights are uneven.
+The parametric bootstrap of unweighted data simulates from the fitted
+model, which knows nothing of how the units were sampled; resampling the
+units does. A seed gives the same bounds at any scale of the weights.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"beta"</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"beta"</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"bootstrap"</span><span class="p">,</span> <span class="n">n_boot</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[1.44703451 1.66104382]
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[1.45060054 1.65587975]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Since nothing is simulated, left- and interval-censored data are
+resampled as they are. A limited-failure or zero-inflated fit with
+weights has no bootstrap (without weights it has, with BCa intervals; see
+<a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a>); discrete fits and time-varying
+covariate fits have none, weighted or not.</p>
+</section>
+<section id="interval-censored-data-the-weighted-turnbull-estimate">
+<h2>Interval censored data: the weighted Turnbull estimate<a class="headerlink" href="#interval-censored-data-the-weighted-turnbull-estimate" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">Turnbull.fit</span></code> takes <code class="docutils literal notranslate"><span class="pre">w</span></code> too, for data the Kaplan-Meier family cannot
+handle: inspection intervals, left censoring and right truncation. The
+estimate is the one that best explains the population the weights
+describe: each unit counts as <code class="docutils literal notranslate"><span class="pre">w</span></code> units when the estimate shares out
+the chance of failing among the intervals the unit could have failed in.
+Multiplying every weight by the same number changes nothing, whole-number
+weights give the same curve as counting each row that many times
+(<code class="docutils literal notranslate"><span class="pre">n</span></code>), and on right censored data its Kaplan-Meier option is the
+weighted Kaplan-Meier.</p>
+<p>What it does not have is a formula for its uncertainty. Greenwood’s
+formula would read the weights as units seen, and the robust
+(infinitesimal jackknife) variance of the weighted Turnbull estimate is
+not built. So <code class="docutils literal notranslate"><span class="pre">cb</span></code>, <code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code>, the bounds of <code class="docutils literal notranslate"><span class="pre">rmst</span></code> and
+<code class="docutils literal notranslate"><span class="pre">sf_diff</span></code> refuse it, and its bounds come from <code class="docutils literal notranslate"><span class="pre">bootstrap_cb</span></code>: the
+units (a row with <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">k</span></code> is <code class="docutils literal notranslate"><span class="pre">k</span></code> units) are drawn with replacement,
+each keeping its weight, the estimate is refitted, and the bounds are
+the percentiles of the refits. Give a seed (<code class="docutils literal notranslate"><span class="pre">random_state</span></code>) and the
+same bounds come back, at any scale of the weights. <code class="docutils literal notranslate"><span class="pre">plot</span></code> draws the
+curve without bounds.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Inspected every 2 time units: a failure is known to lie in (2k, 2k + 2]</span>
+<span class="n">left</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">c</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">x</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span>
+<span class="n">right</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">c</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">left</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span>
+<span class="n">tb</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Turnbull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">xl</span><span class="o">=</span><span class="n">left</span><span class="p">,</span> <span class="n">xr</span><span class="o">=</span><span class="n">right</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="n">w</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">tb</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">]))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">tb</span><span class="o">.</span><span class="n">bootstrap_cb</span><span class="p">([</span><span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="n">n_boot</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.77788935 0.4703155 ]
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[[0.74103421 0.8172031 ]
+ [0.42845973 0.51864412]]
+</pre></div>
+</div>
+</div>
+</div>
+<p>A probability plot of weighted left or interval censored or truncated
+data uses these weighted Turnbull positions (<code class="docutils literal notranslate"><span class="pre">heuristic=&quot;Turnbull&quot;</span></code>).</p>
+<p>In symbols: with <span class="math notranslate nohighlight">\(\alpha_{ij} = 1\)</span> when piece <span class="math notranslate nohighlight">\(j\)</span> lies in
+row <span class="math notranslate nohighlight">\(i\)</span>’s interval, the self-consistency (EM) step is</p>
+<div class="math notranslate nohighlight">
+\[p_j \leftarrow \frac{1}{\sum_i n_i w_i}
+    \sum_i n_i w_i \frac{\alpha_{ij} p_j}{\sum_k \alpha_{ik} p_k},\]</div>
+<p>the unweighted step with <span class="math notranslate nohighlight">\(n_i w_i\)</span> in place of <span class="math notranslate nohighlight">\(n_i\)</span>; delayed
+entry and right truncation add their unseen “ghost” units in the same
+way, each carrying its row’s <span class="math notranslate nohighlight">\(n_i w_i\)</span>. Without truncation the
+default algorithm is the EM-ICM, as R’s <code class="docutils literal notranslate"><span class="pre">icenReg::ic_np</span></code>, whose
+<code class="docutils literal notranslate"><span class="pre">weights</span></code> give the same estimate (checked to 1e-8). The
+Fleming-Harrington and Nelson-Aalen options are applied to the weighted
+expected numbers at risk and of failures, with Fleming-Harrington’s tied
+failures at their mean weight as in the weighted <code class="docutils literal notranslate"><span class="pre">FlemingHarrington</span></code>.
+The coverage of the 95% bootstrap bounds under informative sampling was
+0.946 and 0.930 (Monte Carlo error 0.01) at two times in 500 simulated
+samples (<code class="docutils literal notranslate"><span class="pre">scripts/studies/weighted_turnbull/coverage.py</span></code>).</p>
+</section>
+<section id="comparing-weighted-groups">
+<h2>Comparing weighted groups<a class="headerlink" href="#comparing-weighted-groups" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">logrank</span></code> and <code class="docutils literal notranslate"><span class="pre">pairwise_logrank</span></code> take <code class="docutils literal notranslate"><span class="pre">w</span></code>. The numerator compares
+the weighted observed and expected events in each group; the variance is
+the design-based one, the sum of the units’ squared weighted score
+residuals, so the test is R’s robust score test,
+<code class="docutils literal notranslate"><span class="pre">coxph(Surv(x,</span> <span class="pre">d)</span> <span class="pre">~</span> <span class="pre">group,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">TRUE,</span> <span class="pre">ties</span> <span class="pre">=</span>
+<span class="pre">&quot;breslow&quot;)$rscore</span></code>. Every weighting, <code class="docutils literal notranslate"><span class="pre">strata</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code> and <code class="docutils literal notranslate"><span class="pre">t0</span></code> take
+weights, and the result does not depend on their scale. A weighted test
+answers the population question the weights describe; an unweighted test
+of weighted data answers a question about the sample, and a test that
+weighted the counts without this variance would be too confident.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">group</span> <span class="o">=</span> <span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="n">kept</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">surv</span><span class="o">.</span><span class="n">logrank</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="n">w</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Log-Rank Test
+=============
+Weighting        : log-rank
+Variance         : robust (sampling weights w)
+Statistic        : 0.0136764
+DoF              : 1
+p-value          : 0.906903
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> holds the weights too (<code class="docutils literal notranslate"><span class="pre">SurpyvalData(x,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">w=w)</span></code>,
+<code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_dataframe(df,</span> <span class="pre">...,</span> <span class="pre">w_col=&quot;weight&quot;)</span></code>), and
+<code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> takes <code class="docutils literal notranslate"><span class="pre">w_col</span></code> (Cox’s too: a row dropped for a missing
+covariate drops its weight with it).</p>
+<p>A Cox model with time-varying covariates takes weights as well,
+<code class="docutils literal notranslate"><span class="pre">CoxPH.fit_tvc(i,</span> <span class="pre">xl,</span> <span class="pre">xr,</span> <span class="pre">c,</span> <span class="pre">Z,</span> <span class="pre">w=w)</span></code> (and <code class="docutils literal notranslate"><span class="pre">fit_tvc_from_df(...,</span>
+<span class="pre">w_col=)</span></code>), one weight per interval row: give each of a subject’s rows
+the subject’s weight. Its robust covariance clusters the rows by subject,
+as R’s <code class="docutils literal notranslate"><span class="pre">coxph(Surv(start,</span> <span class="pre">stop,</span> <span class="pre">event)</span> <span class="pre">~</span> <span class="pre">z,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">TRUE,</span>
+<span class="pre">id</span> <span class="pre">=</span> <span class="pre">id)</span></code>, so splitting a subject’s follow-up into episodes on which
+nothing changes gives the same fit and the same standard errors.</p>
+</section>
+<section id="competing-risks-regressions">
+<h2>Competing-risks regressions<a class="headerlink" href="#competing-risks-regressions" title="Link to this heading"></a></h2>
+<p>Both competing-risks regressions take <code class="docutils literal notranslate"><span class="pre">w</span></code>:
+<code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards.fit(x,</span> <span class="pre">Z,</span> <span class="pre">e,</span> <span class="pre">w=w)</span></code> (<code class="docutils literal notranslate"><span class="pre">model=&quot;Cox&quot;</span></code>
+or <code class="docutils literal notranslate"><span class="pre">&quot;Fine-Gray&quot;</span></code>), <code class="docutils literal notranslate"><span class="pre">FineGray.fit(x,</span> <span class="pre">Z,</span> <span class="pre">e,</span> <span class="pre">event=...,</span> <span class="pre">w=w)</span></code> and their
+<code class="docutils literal notranslate"><span class="pre">fit_from_df(...,</span> <span class="pre">w_col=)</span></code>.</p>
+<ul class="simple">
+<li><p><strong>Cause-specific Cox</strong> (<code class="docutils literal notranslate"><span class="pre">model=&quot;Cox&quot;</span></code>) is one weighted Cox model per
+cause, the other causes censored, exactly as <code class="docutils literal notranslate"><span class="pre">CoxPH.fit(...,</span> <span class="pre">w=w)</span></code>:
+R’s <code class="docutils literal notranslate"><span class="pre">coxph(Surv(x,</span> <span class="pre">e</span> <span class="pre">==</span> <span class="pre">k)</span> <span class="pre">~</span> <span class="pre">z,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">TRUE)</span></code> for each
+cause <code class="docutils literal notranslate"><span class="pre">k</span></code>, with R’s tie convention and the robust (Lin-Wei) standard
+errors.</p></li>
+<li><p><strong>Fine-Gray</strong> keeps a unit that failed from another cause in the risk
+set of the cause of interest, down-weighted by how likely it is still
+to be followed (<code class="docutils literal notranslate"><span class="pre">G(t-)</span> <span class="pre">/</span> <span class="pre">G(x-)</span></code>, <code class="docutils literal notranslate"><span class="pre">G</span></code> the probability of not yet
+being censored). With weights, each unit counts <code class="docutils literal notranslate"><span class="pre">w</span></code> times that. <code class="docutils literal notranslate"><span class="pre">G</span></code>
+is estimated from the weighted censoring times, so a whole-number
+weight gives exactly the fit of the row repeated that many times. The
+standard errors are robust, each unit’s contributions over its time at
+risk summed (clustered by unit).</p></li>
+</ul>
+<p>R’s <code class="docutils literal notranslate"><span class="pre">survival::finegray(...,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w)</span></code> multiplies the weights into
+its censoring weights the same way but estimates <code class="docutils literal notranslate"><span class="pre">G</span></code> without the
+weights; on the reference data the two differ in the third decimal of
+the coefficients. <code class="docutils literal notranslate"><span class="pre">cmprsk::crr</span></code> takes no weights. The weighted
+Fine-Gray standard errors are Fine and Gray’s sandwich, the default
+without weights too, with each unit’s influence multiplied by its weight:
+they include the part that comes from estimating <code class="docutils literal notranslate"><span class="pre">G</span></code> (from the weighted
+Kaplan-Meier), so a fit with <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">1</span></code> is the fit without <code class="docutils literal notranslate"><span class="pre">w</span></code>, standard
+errors included. Those of <code class="docutils literal notranslate"><span class="pre">coxph</span></code> on <code class="docutils literal notranslate"><span class="pre">finegray</span></code>’s data hold <code class="docutils literal notranslate"><span class="pre">G</span></code>
+fixed and leave that part out; on the reference data the two differ by
+under 1%. A weighted fit has no model-based covariance:
+<code class="docutils literal notranslate"><span class="pre">covariance(robust=False)</span></code> is refused.</p>
+<p>The information criteria, the diagnostics (<code class="docutils literal notranslate"><span class="pre">diagnose()</span></code>, the
+proportional subdistribution hazards test) and the penalised fit refuse
+weighted fits; <code class="docutils literal notranslate"><span class="pre">summary()</span></code> gives robust Wald tests and intervals, and
+the printout the effective sample size.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.univariate.competing_risks</span><span class="w"> </span><span class="kn">import</span> <span class="n">FineGray</span>
+
+<span class="c1"># Two causes of failure, and the group of the log-rank example above</span>
+<span class="n">kind</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="n">x</span><span class="o">.</span><span class="n">size</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.6</span>
+<span class="n">cause</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">c</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">kind</span><span class="p">,</span> <span class="s2">"wear"</span><span class="p">,</span> <span class="s2">"shock"</span><span class="p">))</span>
+<span class="n">fg</span> <span class="o">=</span> <span class="n">FineGray</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">group</span><span class="p">,</span> <span class="n">cause</span><span class="p">,</span> <span class="n">event</span><span class="o">=</span><span class="s2">"wear"</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="n">w</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fg</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Fine-Gray Subdistribution Hazard Model
+======================================
+Cause of interest   : wear
+Coefficients (beta'Z acts on the subdistribution hazard):
+   coef_0  :   0.157059  (se 0.136773, p 0.2508)
+Weights             : effective sample size 636.2; robust covariance
+</pre></div>
+</div>
+</div>
+</div>
+<p>In formulas: the weighted Fine-Gray estimate solves</p>
+<div class="math notranslate nohighlight">
+\[\sum_i n_i w_i \delta_i \left(Z_i - \bar Z(x_i)\right) = 0,
+\qquad
+\bar Z(t) = \frac{\sum_j n_j w_j W_j(t) e^{\beta' Z_j} Z_j}
+                  {\sum_j n_j w_j W_j(t) e^{\beta' Z_j}},\]</div>
+<p>with <code class="docutils literal notranslate"><span class="pre">W_j(t)</span></code> 1 while unit <code class="docutils literal notranslate"><span class="pre">j</span></code> is under observation,
+<code class="docutils literal notranslate"><span class="pre">G(t-)/G(x_j-)</span></code> after it failed from another cause and 0 otherwise, and
+<code class="docutils literal notranslate"><span class="pre">G</span></code> the Kaplan-Meier of the censoring with each unit counted <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">w</span></code>.
+The covariance is <code class="docutils literal notranslate"><span class="pre">A^-1</span> <span class="pre">(sum_i</span> <span class="pre">n_i</span> <span class="pre">w_i^2</span> <span class="pre">L_i</span> <span class="pre">L_i')</span> <span class="pre">A^-1</span></code>, <code class="docutils literal notranslate"><span class="pre">A</span></code> the
+weighted information and <code class="docutils literal notranslate"><span class="pre">L_i</span></code> unit <code class="docutils literal notranslate"><span class="pre">i</span></code>’s score residual over its
+whole time at risk, as for Cox.</p>
+</section>
+<section id="distributional-and-royston-parmar-regression-with-weights">
+<h2>Distributional and Royston-Parmar regression with weights<a class="headerlink" href="#distributional-and-royston-parmar-regression-with-weights" title="Link to this heading"></a></h2>
+<p>Distributional regression (<code class="docutils literal notranslate"><span class="pre">WeibullDistributional.fit(...,</span> <span class="pre">w=w)</span></code>, any
+<code class="docutils literal notranslate"><span class="pre">Distributional(...)</span></code> fitter) and the Royston-Parmar spline regression
+(<code class="docutils literal notranslate"><span class="pre">RoystonParmarPH.fit(...,</span> <span class="pre">w=w)</span></code>, <code class="docutils literal notranslate"><span class="pre">RoystonParmarPO</span></code>,
+<code class="docutils literal notranslate"><span class="pre">RoystonParmarRegression(...)</span></code>) take weights as the other parametric
+regressions do: the estimates maximise the weighted log-likelihood, every
+row’s term counted <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">*</span> <span class="pre">w</span></code> times, and the covariance is the robust
+(sandwich) one. <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> takes <code class="docutils literal notranslate"><span class="pre">w_col</span></code>; a row dropped for a
+missing covariate drops its weight with it. The Wald bounds
+(<code class="docutils literal notranslate"><span class="pre">cb</span></code>, <code class="docutils literal notranslate"><span class="pre">param_cb</span></code>, <code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code> and a distributional model’s
+<code class="docutils literal notranslate"><span class="pre">parameter_cb</span></code>) use the robust covariance, <code class="docutils literal notranslate"><span class="pre">method=&quot;bootstrap&quot;</span></code> is
+the case bootstrap, and the likelihood-ratio bounds, the
+<code class="docutils literal notranslate"><span class="pre">likelihood_ratio_test()</span></code> and the information criteria refuse.</p>
+<p>A Royston-Parmar fit places its knots on the event times counted by
+<code class="docutils literal notranslate"><span class="pre">n</span></code>, <em>not</em> weighted, so the spline’s shape is the same whatever the
+weights and their scale, and <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">1</span></code> gives the unweighted fit exactly.
+A weight of 2 is therefore not quite a count of 2 here: a count moves the
+quantiles the knots sit at and a weight does not. Pass <code class="docutils literal notranslate"><span class="pre">knots</span></code> to fix
+them; with the same knots, whole-number weights give the fit of the rows
+counted that many times. R’s <code class="docutils literal notranslate"><span class="pre">flexsurvspline(...,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w)</span></code> places
+its default knots at weighted quantiles found by an approximate expansion
+of the weights (each rounded to a multiple of a hundredth of a unit), so
+pass the knots to it too when comparing. A left truncation at 0 (the
+usual “no late entry”) is read as none.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">load</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">kept</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>  <span class="c1"># no effect: coefficients near 0</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullDistributional</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">,</span> <span class="n">load</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">w</span><span class="o">=</span><span class="n">w</span><span class="p">,</span> <span class="n">covariates</span><span class="o">=</span><span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s2">"beta"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">]}</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="n">model</span><span class="o">.</span><span class="n">standard_errors</span><span class="p">()</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[ 9.593  1.592 -0.1   -0.051] [0.511 0.116 0.096 0.126]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Checked against R: <code class="docutils literal notranslate"><span class="pre">flexsurvreg(...,</span> <span class="pre">anc</span> <span class="pre">=</span> <span class="pre">list(shape</span> <span class="pre">=</span> <span class="pre">~</span> <span class="pre">z1),</span> <span class="pre">weights</span> <span class="pre">=</span>
+<span class="pre">w)</span></code> and <code class="docutils literal notranslate"><span class="pre">flexsurvspline(...,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w)</span></code> on both scales for the
+estimates (to 1e-5) and the log-likelihood, and a sandwich computed by
+hand from numDeriv’s per-row scores and Hessian for the robust standard
+errors (to 1e-4 relative); flexsurv’s own standard errors with weights are
+model based.</p>
+</section>
+<section id="competing-risks-weighted-cumulative-incidence">
+<h2>Competing risks: weighted cumulative incidence<a class="headerlink" href="#competing-risks-weighted-cumulative-incidence" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">CompetingRisks.fit(x,</span> <span class="pre">e,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">w=w)</span></code> (and <code class="docutils literal notranslate"><span class="pre">fit_from_df(...,</span>
+<span class="pre">w_col=)</span></code>) gives the Aalen-Johansen cumulative incidence of each cause in
+the population the weights describe. Each unit counts <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">*</span> <span class="pre">w</span></code> in the
+numbers at risk and of failures from each cause, so whole-number weights
+give exactly the estimate of the same rows counted that many times, and
+<code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">1</span></code> gives the unweighted estimate. The bounds of <code class="docutils literal notranslate"><span class="pre">cb</span></code> (on the
+cumulative incidence, and on <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code> and <code class="docutils literal notranslate"><span class="pre">Hf</span></code>) use the robust,
+infinitesimal-jackknife variance, the one R’s <code class="docutils literal notranslate"><span class="pre">survfit(Surv(x,</span>
+<span class="pre">factor(e))</span> <span class="pre">~</span> <span class="pre">1,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w)</span></code> reports as <code class="docutils literal notranslate"><span class="pre">std.err</span></code>, so they do not
+change when every weight is multiplied by the same number. With <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">1</span></code>
+they are the robust bounds, close to but not the same as those without
+<code class="docutils literal notranslate"><span class="pre">w</span></code> (which use Aalen’s variance). The fit warns if the effective sample
+size is below 20, and its printout shows it.</p>
+<p>In symbols, with <span class="math notranslate nohighlight">\(\hat S\)</span> the weighted all-cause Kaplan-Meier
+survival, <span class="math notranslate nohighlight">\(h_{jk} = d_{jk} / r_j\)</span> cause <span class="math notranslate nohighlight">\(k\)</span>’s weighted hazard
+increment at <span class="math notranslate nohighlight">\(t_j\)</span> and <span class="math notranslate nohighlight">\(V_i\)</span> unit <span class="math notranslate nohighlight">\(i\)</span>’s influence on
+<span class="math notranslate nohighlight">\(\log \hat S\)</span> (the formula below), unit <span class="math notranslate nohighlight">\(i\)</span>’s influence on
+cause <span class="math notranslate nohighlight">\(k\)</span>’s cumulative incidence is</p>
+<div class="math notranslate nohighlight">
+\[U_{ik}(t) = \sum_{t_j \le t} \hat S(t_{j-1}) \left[
+    \frac{dN_{ik}(t_j) - Y_i(t_j)\, h_{jk}}{r_j}
+    + h_{jk}\, V_i(t_{j-1}) \right],\]</div>
+<p>and the variance is <span class="math notranslate nohighlight">\(\sum_i n_i w_i^2 U_{ik}(t)^2\)</span>. The estimate
+takes no delayed entry, weighted or not; Gray’s test refuses weights (see
+below).</p>
+</section>
+<section id="penalised-fits-with-weights">
+<h2>Penalised fits with weights<a class="headerlink" href="#penalised-fits-with-weights" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">CoxPH.fit_penalised</span></code>, <code class="docutils literal notranslate"><span class="pre">CoxPH.fit_tvc_penalised</span></code> and the parametric
+families’ <code class="docutils literal notranslate"><span class="pre">fit_penalised</span></code> (<code class="docutils literal notranslate"><span class="pre">WeibullPH</span></code>, <code class="docutils literal notranslate"><span class="pre">WeibullAFT</span></code>, <code class="docutils literal notranslate"><span class="pre">WeibullPO</span></code>
+and the others) take <code class="docutils literal notranslate"><span class="pre">w</span></code>. A penalised fit divides the log-likelihood by
+the number of units before adding the penalty; with weights that number is
+the weighted one, <span class="math notranslate nohighlight">\(N_w = \sum n w\)</span>, and the covariates are
+standardised with the weighted mean and standard deviation (divisor
+<span class="math notranslate nohighlight">\(N_w\)</span>). Both scale with the weights, so the fit depends only on their
+proportions, and glmnet’s Cox fit with <code class="docutils literal notranslate"><span class="pre">weights</span></code> is the same objective
+(checked to 1e-6). Penalised estimates have no standard errors, weighted or
+not, and the information criteria stay refused. The details are in
+<a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Regression Modelling with SurPyval</span></a> (Penalised regression). The other
+models’ penalised fits (competing risks, recurrent events, Royston-Parmar,
+distributional) refuse <code class="docutils literal notranslate"><span class="pre">w</span></code>.</p>
+</section>
+<section id="what-a-weighted-fit-will-not-do">
+<h2>What a weighted fit will not do<a class="headerlink" href="#what-a-weighted-fit-will-not-do" title="Link to this heading"></a></h2>
+<p>Some bounds and methods are wrong with weights, and refuse with a message
+saying what to use instead:</p>
+<ul class="simple">
+<li><p><strong>Likelihood-ratio bounds</strong> (<code class="docutils literal notranslate"><span class="pre">method=&quot;lr&quot;</span></code>): the likelihood-ratio
+statistic of a weighted likelihood is not chi-squared. Use the Wald
+bounds (the default) or the case bootstrap (<code class="docutils literal notranslate"><span class="pre">method=&quot;bootstrap&quot;</span></code>).</p></li>
+<li><p><strong>AIC, BIC, AICc and</strong> <code class="docutils literal notranslate"><span class="pre">fit_best</span></code>: a weighted fit maximises a
+<em>pseudo</em>-likelihood, which does not compare models.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">likelihood_ratio_test()</span></code> of a regression or Cox model: the ratio of
+weighted pseudo-likelihoods is not chi-squared (it grows with the scale
+of the weights). Use the Wald tests of <code class="docutils literal notranslate"><span class="pre">summary()</span></code>, which are on the
+robust covariance.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">life_table</span></code> of weighted data or a weighted estimate: use
+<code class="docutils literal notranslate"><span class="pre">KaplanMeier.fit(data)</span></code>, or the arrays without the weights for the
+table of the units themselves.</p></li>
+<li><p><strong>Bayesian fits</strong>: <code class="docutils literal notranslate"><span class="pre">fit_bayes</span></code>, <code class="docutils literal notranslate"><span class="pre">update</span></code>, <code class="docutils literal notranslate"><span class="pre">prior.from_data</span></code>,
+<code class="docutils literal notranslate"><span class="pre">log_likelihood_fn</span></code>, <code class="docutils literal notranslate"><span class="pre">BayesianParametric.from_draws</span></code> and the PyMC
+helpers (<code class="docutils literal notranslate"><span class="pre">log_likelihood</span></code>, <code class="docutils literal notranslate"><span class="pre">censored_likelihood</span></code>, <code class="docutils literal notranslate"><span class="pre">to_surpyval</span></code>)
+refuse weighted data, since a posterior from the weighted likelihood
+would treat the weights as units seen. Fit by maximum likelihood with
+the weights instead.</p></li>
+<li><p><strong>Simultaneous bands and</strong> <code class="docutils literal notranslate"><span class="pre">bootstrap_cb</span></code> of a Kaplan-Meier,
+Nelson-Aalen or Fleming-Harrington estimate: use <code class="docutils literal notranslate"><span class="pre">cb</span></code>. A weighted
+Turnbull estimate is the other way round: <code class="docutils literal notranslate"><span class="pre">cb</span></code> refuses and
+<code class="docutils literal notranslate"><span class="pre">bootstrap_cb</span></code> gives its bounds (above).</p></li>
+<li><p><strong>Rank-based plotting positions</strong> (Blom, median ranks, …): a weighted
+model’s probability plot uses the weighted Kaplan-Meier, Nelson-Aalen,
+Fleming-Harrington or Turnbull positions.</p></li>
+<li><p><strong>Methods other than maximum likelihood</strong> (<code class="docutils literal notranslate"><span class="pre">how=&quot;MPP&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;MOM&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;MSE&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;MPS&quot;</span></code>).</p></li>
+<li><p>The Cox model’s residuals and <code class="docutils literal notranslate"><span class="pre">diagnose()</span></code>, strata and
+exact ties. These may come later.</p></li>
+<li><p><strong>Gray’s test</strong> (<code class="docutils literal notranslate"><span class="pre">gray_test</span></code>) of weighted data: R’s <code class="docutils literal notranslate"><span class="pre">cmprsk</span></code> has no
+weighted version to check one against. Use <code class="docutils literal notranslate"><span class="pre">logrank(...,</span> <span class="pre">w=w)</span></code> on the
+cause-specific hazards, or compare the groups’ weighted cumulative
+incidences by their bounds.</p></li>
+<li><p><strong>Aalen’s</strong> <code class="docutils literal notranslate"><span class="pre">constant_effects_test()</span></code>: its null distribution is
+simulated for an unweighted fit, and a weighted version has not been
+built or checked. Judge a constant effect from the robust bands of
+<code class="docutils literal notranslate"><span class="pre">plot()</span></code> or <code class="docutils literal notranslate"><span class="pre">cumulative_coefficients_cb()</span></code> (a straight line through
+0 inside the band), or test it on the data without <code class="docutils literal notranslate"><span class="pre">w</span></code>.</p></li>
+<li><p><strong>The fitters that do not take</strong> <code class="docutils literal notranslate"><span class="pre">w</span></code>: the parametric competing-risks
+models, recurrent events, degradation, mixtures and the frailty models,
+among others, which refuse weighted data (the Bayesian fits and the
+life table are above).</p></li>
+<li><p><strong>Reshaping weighted data</strong> with <code class="docutils literal notranslate"><span class="pre">censor_at</span></code>, <code class="docutils literal notranslate"><span class="pre">select</span></code> and the other
+record-based methods: index the rows, <code class="docutils literal notranslate"><span class="pre">data[rows]</span></code>, which keeps the
+weights, or build a new <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> from the arrays.</p></li>
+</ul>
+<p>Two cautions:</p>
+<ul class="simple">
+<li><p><strong>Estimated weights.</strong> When the weights are themselves estimated (inverse
+probability of treatment weights from a logistic regression), the robust
+variance ignores that estimation and is usually a little conservative:
+intervals slightly too wide. This is what R and lifelines do too.</p></li>
+<li><p><strong>Complex survey designs.</strong> With <code class="docutils literal notranslate"><span class="pre">w</span></code> alone, units are independent draws
+with unequal weights. Strata, clusters of units sampled together and
+finite-population corrections are out of scope; for a Cox model or a
+parametric regression, <code class="docutils literal notranslate"><span class="pre">robust_covariance(cluster)</span></code> (and
+<code class="docutils literal notranslate"><span class="pre">summary(robust=True,</span> <span class="pre">cluster=...)</span></code>) gives the variance for units
+sampled in clusters, and R’s <code class="docutils literal notranslate"><span class="pre">survey</span></code> package handles full designs.</p></li>
+</ul>
+</section>
+<section id="the-formulas">
+<h2>The formulas<a class="headerlink" href="#the-formulas" title="Link to this heading"></a></h2>
+<p>Kaplan-Meier, Nelson-Aalen and Fleming-Harrington use weighted numbers at
+risk and of deaths, <span class="math notranslate nohighlight">\(r_k = \sum_i n_i w_i Y_i(t_k)\)</span> and
+<span class="math notranslate nohighlight">\(d_k = \sum_i n_i w_i dN_i(t_k)\)</span>. Their variance is the
+infinitesimal jackknife (R’s <code class="docutils literal notranslate"><span class="pre">survfit(...,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">TRUE)</span></code>):
+with <span class="math notranslate nohighlight">\(U_i(t)\)</span> the derivative of <span class="math notranslate nohighlight">\(\log \hat S(t)\)</span> in unit
+<span class="math notranslate nohighlight">\(i\)</span>’s weight,</p>
+<div class="math notranslate nohighlight">
+\[\widehat{Var}\,\log \hat S(t) = \sum_i n_i w_i^2 U_i(t)^2,
+\qquad
+U_i^{KM}(t) = -\sum_{t_k \le t}
+    \frac{dN_i(t_k) - Y_i(t_k)\, d_k / r_k}{r_k - d_k}\]</div>
+<p>(with <span class="math notranslate nohighlight">\(r_k\)</span> in place of <span class="math notranslate nohighlight">\(r_k - d_k\)</span> for Nelson-Aalen).
+Fleming-Harrington’s increment with <span class="math notranslate nohighlight">\(m_k\)</span> tied deaths takes each at
+the deaths’ mean weight, <span class="math notranslate nohighlight">\(\sum_{l &lt; m_k} a_k / (r_k - l a_k)\)</span>,
+<span class="math notranslate nohighlight">\(a_k = d_k / m_k\)</span>, as R’s <code class="docutils literal notranslate"><span class="pre">ctype</span> <span class="pre">=</span> <span class="pre">2</span></code> does. The restricted mean’s
+variance is the same jackknife of the area under the curve.</p>
+<p>A parametric or regression fit maximises the pseudo-likelihood
+<span class="math notranslate nohighlight">\(\sum_i n_i w_i \ell_i(\theta)\)</span>. With <span class="math notranslate nohighlight">\(H\)</span> the Hessian of its
+negative and <span class="math notranslate nohighlight">\(s_i\)</span> the score of one unit of row <span class="math notranslate nohighlight">\(i\)</span>, the robust
+covariance is the sandwich (Huber, 1967; Binder, 1983)</p>
+<div class="math notranslate nohighlight">
+\[V = H^{-1} \Big( \sum_i n_i w_i^2 s_i s_i^\top \Big) H^{-1},\]</div>
+<p>as R’s <code class="docutils literal notranslate"><span class="pre">survreg(...,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">TRUE)</span></code> computes it, and every
+Wald bound follows from it by the delta method. <code class="docutils literal notranslate"><span class="pre">covariance()</span></code> holds it,
+and so a regression’s <code class="docutils literal notranslate"><span class="pre">robust_covariance()</span></code> and <code class="docutils literal notranslate"><span class="pre">summary(robust=True)</span></code>
+are the same. A parametric model’s <code class="docutils literal notranslate"><span class="pre">hess_inv</span></code> is <span class="math notranslate nohighlight">\(H^{-1}\)</span> itself,
+the inverse Hessian of the weighted log-likelihood with the weights as given
+(R’s <code class="docutils literal notranslate"><span class="pre">naive.var</span></code>): it is not the variance of the estimate, and nothing in
+SurPyval uses it for one, so read <code class="docutils literal notranslate"><span class="pre">covariance()</span></code> or <code class="docutils literal notranslate"><span class="pre">standard_errors()</span></code>
+for a variance; with
+<code class="docutils literal notranslate"><span class="pre">cluster</span></code> the meat sums each cluster’s <span class="math notranslate nohighlight">\(n_i w_i s_i\)</span> first, as
+<code class="docutils literal notranslate"><span class="pre">survreg</span></code> with <code class="docutils literal notranslate"><span class="pre">cluster()</span></code> does.</p>
+<p>A saved weighted model (<code class="docutils literal notranslate"><span class="pre">to_dict</span></code>, <code class="docutils literal notranslate"><span class="pre">to_json</span></code>) keeps each matrix under
+its own name: <code class="docutils literal notranslate"><span class="pre">&quot;hess_inv&quot;</span></code> is <span class="math notranslate nohighlight">\(H^{-1}\)</span> and <code class="docutils literal notranslate"><span class="pre">&quot;covariance&quot;</span></code> is
+<span class="math notranslate nohighlight">\(V\)</span>. It is stamped schema 4, which SurPyval 0.26 refuses with a
+request to upgrade (0.26 saved <span class="math notranslate nohighlight">\(V\)</span> as <code class="docutils literal notranslate"><span class="pre">&quot;hess_inv&quot;</span></code>, and would read
+the smaller <span class="math notranslate nohighlight">\(H^{-1}\)</span> as the variance). A weighted model saved by
+0.26 still loads, with its robust bounds and no <code class="docutils literal notranslate"><span class="pre">hess_inv</span></code>, which it did
+not save. Weighted data (<code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> with <code class="docutils literal notranslate"><span class="pre">w</span></code>) is schema 3.</p>
+<p>The Cox model maximises the weighted partial likelihood, with Efron’s tie
+correction taking the <span class="math notranslate nohighlight">\(m\)</span> tied deaths at their mean weight (R’s
+<code class="docutils literal notranslate"><span class="pre">coxph</span></code> convention), and its covariance is the Lin-Wei sandwich
+<span class="math notranslate nohighlight">\(\sum_i n_i w_i^2 D_i^\top D_i\)</span>, <span class="math notranslate nohighlight">\(D_i\)</span> the dfbeta of unit
+<span class="math notranslate nohighlight">\(i\)</span> (R’s <code class="docutils literal notranslate"><span class="pre">coxph(...,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">TRUE)</span></code>); within clusters
+the weighted dfbetas are summed first. R’s <code class="docutils literal notranslate"><span class="pre">survey::svycoxph</span></code> gives the
+same coefficients and standard errors larger by
+<span class="math notranslate nohighlight">\(\sqrt{n / (n - 1)}\)</span>, a finite-sample factor SurPyval, as R’s
+<code class="docutils literal notranslate"><span class="pre">survival</span></code>, does not apply.</p>
+<section id="aalen-s-additive-hazards-model-with-weights">
+<h3>Aalen’s additive hazards model with weights<a class="headerlink" href="#aalen-s-additive-hazards-model-with-weights" title="Link to this heading"></a></h3>
+<p>In plain words: at each event time Aalen’s model fits a straight-line
+(least-squares) regression of “who failed now” on the covariates of
+everyone still at risk. With weights it is a <em>weighted</em> least-squares
+fit, each unit counting as much as its weight says, and the running sum
+of the fitted slopes is the cumulative effect <span class="math notranslate nohighlight">\(B(t)\)</span>. Its
+uncertainty is measured by how much each unit moves <span class="math notranslate nohighlight">\(B(t)\)</span>, unit by
+unit, so it does not depend on how the weights are scaled.</p>
+<p>At each event time, with <span class="math notranslate nohighlight">\(X\)</span> the rows at risk (a leading 1 for the
+baseline), <span class="math notranslate nohighlight">\(W\)</span> the diagonal of <span class="math notranslate nohighlight">\(n_i w_i\)</span> over them, <span class="math notranslate nohighlight">\(P\)</span>
+the ridge penalty of <code class="docutils literal notranslate"><span class="pre">penalizer</span></code> (0 by default) and <span class="math notranslate nohighlight">\(dN\)</span> the
+events,</p>
+<div class="math notranslate nohighlight">
+\[dB(t) = (X^\top W X + P)^{-1} X^\top W\, dN(t),\]</div>
+<p>and the robust variance of <span class="math notranslate nohighlight">\(B(t)\)</span> sums each unit’s squared
+influence, its martingale residuals mapped as the increments are:</p>
+<div class="math notranslate nohighlight">
+\[\psi_i(t) = \sum_{s \le t} (X^\top W X + P)^{-1} X_i w_i
+    \bigl(dN_i(s) - Y_i(s) X_i^\top dB(s)\bigr), \qquad
+\widehat{Var}\, B(t) = \sum_i n_i \psi_i(t) \psi_i(t)^\top.\]</div>
+<p>This is R’s <code class="docutils literal notranslate"><span class="pre">timereg::aalen(...,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">1)</span></code>
+(<code class="docutils literal notranslate"><span class="pre">robvar.cum</span></code>), checked to about <span class="math notranslate nohighlight">\(10^{-15}\)</span>. Every bound of the
+model (<code class="docutils literal notranslate"><span class="pre">cumulative_coefficients_cb</span></code>, <code class="docutils literal notranslate"><span class="pre">summary</span></code> and <code class="docutils literal notranslate"><span class="pre">cb</span></code> on <code class="docutils literal notranslate"><span class="pre">sf</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ff</span></code> and <code class="docutils literal notranslate"><span class="pre">Hf</span></code>) takes it. With a penalty, <span class="math notranslate nohighlight">\(P\)</span> is <code class="docutils literal notranslate"><span class="pre">penalizer</span></code>
+times each covariate’s weighted sum of squares about its weighted mean,
+over <span class="math notranslate nohighlight">\(\sum_i n_i - 1\)</span>, so that it grows with the weights as
+<span class="math notranslate nohighlight">\(X^\top W X\)</span> does and the fit does not depend on their scale; the
+price is that whole-number weights then differ from counts (without a
+penalty they are the same, to the last digit).</p>
+</section>
+<section id="the-robust-formula-hc0-with-counts-as-frequency-weights">
+<h3>The robust formula: HC0, with counts as frequency weights<a class="headerlink" href="#the-robust-formula-hc0-with-counts-as-frequency-weights" title="Link to this heading"></a></h3>
+<p>Every robust (sandwich) standard error in SurPyval, with weights or from
+<code class="docutils literal notranslate"><span class="pre">robust_covariance()</span></code> and <code class="docutils literal notranslate"><span class="pre">summary(robust=True)</span></code> without them, is the
+plain sandwich above, known as <strong>HC0</strong>: no small-sample correction is
+applied. R’s <code class="docutils literal notranslate"><span class="pre">survival</span></code> (<code class="docutils literal notranslate"><span class="pre">survreg</span></code> and <code class="docutils literal notranslate"><span class="pre">coxph</span></code> with <code class="docutils literal notranslate"><span class="pre">robust</span> <span class="pre">=</span>
+<span class="pre">TRUE</span></code>), R’s <code class="docutils literal notranslate"><span class="pre">sandwich</span></code> package by default and lifelines give the same.
+R’s <code class="docutils literal notranslate"><span class="pre">survey</span></code> package multiplies each standard error by
+<span class="math notranslate nohighlight">\(\sqrt{n / (n - 1)}\)</span>, <span class="math notranslate nohighlight">\(n\)</span> the number of units (or of clusters
+with <code class="docutils literal notranslate"><span class="pre">cluster</span></code>). The difference is small unless the sample is: about
+0.5% at <span class="math notranslate nohighlight">\(n = 100\)</span> (<span class="math notranslate nohighlight">\(\sqrt{100/99} = 1.005\)</span>) and about 5% at
+<span class="math notranslate nohighlight">\(n = 10\)</span> (<span class="math notranslate nohighlight">\(\sqrt{10/9} = 1.054\)</span>). To match <code class="docutils literal notranslate"><span class="pre">survey</span></code>, multiply
+SurPyval’s standard errors by that factor.</p>
+<p>The counts <code class="docutils literal notranslate"><span class="pre">n</span></code> are <strong>frequency weights</strong>: a row with <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">3</span></code> is three
+units, in the sandwich as in the fit. Without <code class="docutils literal notranslate"><span class="pre">cluster</span></code> each of the three
+is a unit (a group) of its own; with <code class="docutils literal notranslate"><span class="pre">cluster</span></code> the three are members of
+the row’s cluster. Either way the result is that of the data written out
+one row per unit, so counting does not change a robust standard error.</p>
+</section>
+<section id="weights-and-counts-with-tied-failure-times-cox-efron">
+<h3>Weights and counts with tied failure times (Cox, Efron)<a class="headerlink" href="#weights-and-counts-with-tied-failure-times-cox-efron" title="Link to this heading"></a></h3>
+<p>In a weighted Cox model with tied failure times, Efron’s method gives a
+different answer for one subject with weight 3 than for three identical
+copies of that subject (or one row with <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">3</span></code>). The copies are three
+deaths tied at one time, and Efron’s correction shrinks the risk set as
+each tied death is processed; a single weighted death is one death, and
+there is nothing to shrink. R’s <code class="docutils literal notranslate"><span class="pre">coxph</span></code> does the same (SurPyval follows
+it).</p>
+<p>A worked example: two subjects, A and B, at equal risk; A dies, B is still
+at risk. Each death adds a term <span class="math notranslate nohighlight">\(\log(\text{its risk} /
+\text{the risk set's total})\)</span> to the partial log-likelihood, here with
+every risk 1.</p>
+<ul class="simple">
+<li><p><strong>A with weight 3</strong> (one row, <code class="docutils literal notranslate"><span class="pre">w</span> <span class="pre">=</span> <span class="pre">3</span></code>): one death of weight 3 against
+a risk set of weight <span class="math notranslate nohighlight">\(3 + 1 = 4\)</span>, so the death term is
+<span class="math notranslate nohighlight">\(-3 \log 4 = -4.16\)</span>.</p></li>
+<li><p><strong>Three tied copies of A</strong> (three rows, or <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">3</span></code>): three deaths, the
+risk set 4, then 3, then 2 as Efron processes them, so the term is
+<span class="math notranslate nohighlight">\(-\log 4 - \log 3 - \log 2 = -3.18\)</span>.</p></li>
+<li><p><strong>With Breslow’s ties</strong> (<code class="docutils literal notranslate"><span class="pre">tie_method=&quot;breslow&quot;</span></code>) both are
+<span class="math notranslate nohighlight">\(-3 \log 4\)</span>: Breslow does not shrink the risk set within a tie.</p></li>
+</ul>
+<p>So use the counts <code class="docutils literal notranslate"><span class="pre">n</span></code> for repeated identical units (several pumps that
+failed at the same inspection) and the weights <code class="docutils literal notranslate"><span class="pre">w</span></code> for survey and
+importance weights, where one unit stands for others that were not seen.
+The test <code class="docutils literal notranslate"><span class="pre">surpyval/tests/univariate/regression/test_weighted_cox_ties.py</span></code>
+checks these numbers against SurPyval’s fits and R’s <code class="docutils literal notranslate"><span class="pre">coxph</span></code>.</p>
+</section>
+<section id="weights-and-counts-in-the-log-rank-test">
+<h3>Weights and counts in the log-rank test<a class="headerlink" href="#weights-and-counts-in-the-log-rank-test" title="Link to this heading"></a></h3>
+<p>The log-rank test does <strong>not</strong> have the tie problem of the Cox model above.
+Its weighted observed-minus-expected numerator treats a tied death of
+weight 3 and three tied copies the same, for every weighting (log-rank,
+Fleming-Harrington, Gehan, Tarone-Ware, Peto-Peto): there is no
+shrinking risk set. What differs is how sure the test says it is.</p>
+<ul class="simple">
+<li><p><strong>Counts</strong> <code class="docutils literal notranslate"><span class="pre">n</span></code> give exactly the answer of writing each row out <code class="docutils literal notranslate"><span class="pre">n</span></code>
+times, statistic, degrees of freedom and p-value alike (checked to
+rounding, <code class="docutils literal notranslate"><span class="pre">1e-10</span></code>, with no ties, heavy ties and late entry,
+<code class="docutils literal notranslate"><span class="pre">pairwise_logrank</span></code> too). The classical (hypergeometric) variance treats
+them as that many units seen, which is right for counts.</p></li>
+<li><p><strong>Weights</strong> <code class="docutils literal notranslate"><span class="pre">w</span></code> give the same numerator but a larger variance, so a
+smaller statistic and a larger p-value than the copies. The variance is
+the robust one, which counts the <em>units</em>, not the weights: ten copies of
+a unit are ten independent pieces of evidence, but one unit with weight
+10 is still one. Roughly, the statistic is the copies’ times the
+effective sample size over the total weight,
+<span class="math notranslate nohighlight">\((\sum w)^2 / \sum w^2 \,/\, \sum w\)</span>, so it is lower the more
+uneven the weights (about a third of the copies’ statistic for weights
+spread evenly over 1 to 4). Multiplying the weights by a constant changes
+nothing, as it should.</p></li>
+</ul>
+<p>Use <code class="docutils literal notranslate"><span class="pre">n</span></code> for repeated identical units and <code class="docutils literal notranslate"><span class="pre">w</span></code> for sampling or inverse
+probability weights, where a unit stands for others that were not seen:
+treating those as copies would claim evidence nobody collected. Two smaller
+differences: a test with all weights equal to 1 is the robust test, which
+differs a little from the classical test without <code class="docutils literal notranslate"><span class="pre">w</span></code> (more with tied
+times, as the classical variance has a tie correction the robust one has
+not), and Gehan’s, Tarone-Ware’s and Peto-Peto’s weights use the numbers at
+risk scaled to a mean weight of 1 per unit, so they too do not match the
+copies. Gray’s test for competing risks takes counts <code class="docutils literal notranslate"><span class="pre">n</span></code> only, and they
+equal copies.</p>
+</section>
+</section>
+<section id="translating-from-lifelines-and-r">
+<h2>Translating from lifelines and R<a class="headerlink" href="#translating-from-lifelines-and-r" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>lifelines <code class="docutils literal notranslate"><span class="pre">KaplanMeierFitter().fit(T,</span> <span class="pre">E,</span> <span class="pre">weights=w)</span></code> is
+<code class="docutils literal notranslate"><span class="pre">KaplanMeier.fit(T,</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">E,</span> <span class="pre">w=w)</span></code>; <code class="docutils literal notranslate"><span class="pre">CoxPHFitter().fit(df,</span> <span class="pre">&quot;T&quot;,</span> <span class="pre">&quot;E&quot;,</span>
+<span class="pre">weights_col=&quot;w&quot;,</span> <span class="pre">robust=True)</span></code> is <code class="docutils literal notranslate"><span class="pre">CoxPH.fit_from_df(df,</span> <span class="pre">&quot;T&quot;,</span> <span class="pre">Z_cols,</span>
+<span class="pre">c_col=...,</span> <span class="pre">w_col=&quot;w&quot;)</span></code>, with the flag column holding <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">E</span></code>.</p></li>
+<li><p>R <code class="docutils literal notranslate"><span class="pre">survfit(Surv(T,</span> <span class="pre">E)</span> <span class="pre">~</span> <span class="pre">1,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">TRUE)</span></code> is
+<code class="docutils literal notranslate"><span class="pre">KaplanMeier.fit(T,</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">E,</span> <span class="pre">w=w)</span></code>; <code class="docutils literal notranslate"><span class="pre">survreg(Surv(T,</span> <span class="pre">E)</span> <span class="pre">~</span> <span class="pre">z,</span> <span class="pre">weights</span> <span class="pre">=</span>
+<span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">TRUE)</span></code> is <code class="docutils literal notranslate"><span class="pre">WeibullAFT.fit(T,</span> <span class="pre">z,</span> <span class="pre">c=1</span> <span class="pre">-</span> <span class="pre">E,</span> <span class="pre">w=w)</span></code> (on
+SurPyval’s parameterisation); <code class="docutils literal notranslate"><span class="pre">coxph(Surv(T,</span> <span class="pre">E)</span> <span class="pre">~</span> <span class="pre">z,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span>
+<span class="pre">=</span> <span class="pre">TRUE)</span></code> is <code class="docutils literal notranslate"><span class="pre">CoxPH.fit(T,</span> <span class="pre">z,</span> <span class="pre">c=1</span> <span class="pre">-</span> <span class="pre">E,</span> <span class="pre">w=w)</span></code>; per cause, <code class="docutils literal notranslate"><span class="pre">coxph(Surv(T,</span>
+<span class="pre">cause</span> <span class="pre">==</span> <span class="pre">k)</span> <span class="pre">~</span> <span class="pre">z,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">TRUE)</span></code> is
+<code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards.fit(T,</span> <span class="pre">z,</span> <span class="pre">e,</span> <span class="pre">w=w)</span></code>;
+<code class="docutils literal notranslate"><span class="pre">timereg::aalen(Surv(T,</span> <span class="pre">E)</span> <span class="pre">~</span> <span class="pre">z,</span> <span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">1)</span></code> is
+<code class="docutils literal notranslate"><span class="pre">AalenAdditive.fit(T,</span> <span class="pre">z,</span> <span class="pre">c=1</span> <span class="pre">-</span> <span class="pre">E,</span> <span class="pre">w=w)</span></code> (pass <code class="docutils literal notranslate"><span class="pre">weights</span> <span class="pre">=</span> <span class="pre">df$w</span></code>:
+<code class="docutils literal notranslate"><span class="pre">aalen</span></code> looks for a bare <code class="docutils literal notranslate"><span class="pre">w</span></code> outside the data).</p></li>
+</ul>
+<p>The reference tests (<code class="docutils literal notranslate"><span class="pre">surpyval/tests/reference/test_weights.py</span></code>) compare
+these with R <code class="docutils literal notranslate"><span class="pre">survival</span></code> and <code class="docutils literal notranslate"><span class="pre">survey</span></code> and with lifelines, and the
+calibration study (<code class="docutils literal notranslate"><span class="pre">surpyval/tests/calibration/test_coverage_weights.py</span></code>)
+checks the intervals’ coverage under informative sampling, at any scale of
+the weights, and with estimated treatment weights.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Data%20Wrangler%20Examples.html" class="btn btn-neutral float-left" title="Data Wrangling Examples" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Non-Parametric%20Estimation.html" class="btn btn-neutral float-right" title="Non-Parametric Estimation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

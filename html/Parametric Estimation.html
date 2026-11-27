@@ -1,0 +1,1680 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parametric Estimation &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Regression Analysis" href="regression%20analysis.html" />
+    <link rel="prev" title="Non-Parametric Estimation" href="Non-Parametric%20Estimation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Parametric Estimation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#method-of-moments-mom">Method of Moments (MOM)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#method-of-probability-plotting-mpp">Method of Probability Plotting (MPP)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#censoring-and-truncation-in-a-probability-plot">Censoring and truncation in a probability plot</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#details-of-the-regression">Details of the regression</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#mean-square-error-mse">Mean Square Error (MSE)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#maximum-likelihood-estimation-mle">Maximum Likelihood Estimation (MLE)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#censored-data">Censored data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#truncated-data">Truncated data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#censored-and-truncated-data">Censored and truncated data</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#exact-solutions-closed-form-mle">Exact solutions: closed-form MLE</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#how-surpyval-finds-the-maximum">How SurPyval finds the maximum</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#offsets-threshold-parameters">Offsets (threshold parameters)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#limited-failure-populations">Limited failure populations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#zero-inflation">Zero inflation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#discrete-distributions">Discrete distributions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#uncertainty-confidence-bounds">Uncertainty: confidence bounds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#comparing-models-information-criteria">Comparing models: information criteria</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#maximum-product-of-spacings-mps">Maximum Product of Spacings (MPS)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#censoring-ties-and-truncation">Censoring, ties and truncation</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Parametric Estimation</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Parametric Estimation.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="parametric-estimation">
+<h1>Parametric Estimation<a class="headerlink" href="#parametric-estimation" title="Link to this heading"></a></h1>
+<p>Parametric modelling is the process of estimating the parameters of a particular distribution from a set of data. This is distinct from non-parametric modelling where we make no assumptions about the shape of the distribution. In parametric modelling we make some assumptions, explicit or implied, about the shape of the data that we have.</p>
+<p>For this segment I will use the Weibull distribution as the example distribution. The Weibull distribution is a very useful distribution for one interesting reason. It is the distribution for the ‘weakest link.’ As the normal distribution is the limiting distribution of averages, the Weibull distribution is the limiting distribution for minimums. What does that mean? If we have a large number of sets of samples, the averages of these sets will be (approximately) normally distributed, whatever distribution with a finite variance the samples came from. If the samples come from something bounded below – a strength or a lifetime can never be negative – the minimums of these sets of samples will be (approximately) Weibull distributed. (Minimums of quantities with no lower bound, such as normally distributed ones, tend instead to the Gumbel distribution, which is also available in SurPyval as <code class="docutils literal notranslate"><span class="pre">Gumbel</span></code>; its mirror image, the limit for <em>maximums</em>, is <code class="docutils literal notranslate"><span class="pre">GumbelLEV</span></code>.) This is analogous to a chain. It is common wisdom that a chain is only as strong as its weakest link. The Weibull distribution enables us to model the strength of a chain based on the strength of the links.</p>
+<p>The Weibull distribution can then be used in scenarios where we assume that the shape of the distribution will be due to a weakest link effect. This assumption holds in many scenarios, the strength of materials, the fielded life of equipment, the lifetime of animals, the time until another recession, or the time until germination of seeds. This example makes clear the assumption that we can make when using the Weibull distribution. Other distributions have differing processes that can result in their generation. If we know and understand these processes we can check them against the scenario we are analysing and choose a distribution from them. For example, a lognormal distribution can arise due to the combined effect of the product of random variables so in petroleum engineering the total recoverable oil is a product of the height, width, depth, features of the rock and an infinitude of other variables of the field. Therefore fields can be lognormally distributed. Similar considerations can be applied for many other types of distributions. Finally, If we don’t know, or mind, what distribution we have, we can simply find the best fit amongst a set of distributions.</p>
+<p>This page explains <em>how</em> the parameters are found. The companion page,
+<a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a>, shows the code for every capability
+described here and tabulates the distributions SurPyval provides, and the
+API reference for each distribution is listed in <a class="reference internal" href="surpyval.parametric.html"><span class="doc">Parametric</span></a>.</p>
+<p class="rubric">What a parametric model is</p>
+<p>A parametric distribution is a family of curves indexed by a parameter
+vector <span class="math notranslate nohighlight">\(\theta\)</span>. For the Weibull, <span class="math notranslate nohighlight">\(\theta = (\alpha, \beta)\)</span>: the
+scale <span class="math notranslate nohighlight">\(\alpha\)</span> stretches the curve along the time axis and the shape
+<span class="math notranslate nohighlight">\(\beta\)</span> bends it. Once <span class="math notranslate nohighlight">\(\theta\)</span> is known, every quantity we care
+about in survival analysis is known too, because they are all tied together:</p>
+<ul class="simple">
+<li><p>the CDF, or failure function, <span class="math notranslate nohighlight">\(F(x) = P(X \leq x)\)</span> (<code class="docutils literal notranslate"><span class="pre">ff</span></code>);</p></li>
+<li><p>the survival, or reliability, function <span class="math notranslate nohighlight">\(R(x) = 1 - F(x)\)</span> (<code class="docutils literal notranslate"><span class="pre">sf</span></code>);</p></li>
+<li><p>the density <span class="math notranslate nohighlight">\(f(x) = \frac{d}{dx}F(x)\)</span> (<code class="docutils literal notranslate"><span class="pre">df</span></code>);</p></li>
+<li><p>the hazard rate <span class="math notranslate nohighlight">\(h(x) = f(x) / R(x)\)</span> (<code class="docutils literal notranslate"><span class="pre">hf</span></code>), the instantaneous
+rate of failure among the units still surviving; and</p></li>
+<li><p>the cumulative hazard <span class="math notranslate nohighlight">\(H(x) = \int_{0}^{x} h(u)\,du = -\ln R(x)\)</span>
+(<code class="docutils literal notranslate"><span class="pre">Hf</span></code>).</p></li>
+</ul>
+<p>Any one of these determines all of the others. That is why, as the
+<a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a> notes show, a completely new
+distribution can be created from nothing more than its cumulative hazard
+function. <em>Estimation</em> is the reverse problem: given data, which
+<span class="math notranslate nohighlight">\(\theta\)</span> should we believe?</p>
+<p class="rubric">The data</p>
+<p>Throughout, the data are written the way SurPyval stores them (see
+<a class="reference internal" href="Types%20of%20Data.html"><span class="doc">Types of Data</span></a> and <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>). Observation <span class="math notranslate nohighlight">\(i\)</span> has a
+value <span class="math notranslate nohighlight">\(x_{i}\)</span>, a censoring flag <span class="math notranslate nohighlight">\(c_{i}\)</span>, a count <span class="math notranslate nohighlight">\(n_{i}\)</span> of
+how many units share that row, and a truncation window
+<span class="math notranslate nohighlight">\((t_{l_{i}}, t_{r_{i}}]\)</span> inside which it had to fall to be recorded at
+all. The censoring flag is</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(c_{i} = 0\)</span>: observed exactly, the event happened at <span class="math notranslate nohighlight">\(x_{i}\)</span>;</p></li>
+<li><p><span class="math notranslate nohighlight">\(c_{i} = 1\)</span>: right censored, the event happened <em>after</em> <span class="math notranslate nohighlight">\(x_{i}\)</span>;</p></li>
+<li><p><span class="math notranslate nohighlight">\(c_{i} = -1\)</span>: left censored, the event happened at or <em>before</em>
+<span class="math notranslate nohighlight">\(x_{i}\)</span>;</p></li>
+<li><p><span class="math notranslate nohighlight">\(c_{i} = 2\)</span>: interval censored, the event happened inside
+<span class="math notranslate nohighlight">\((x_{l_{i}}, x_{r_{i}}]\)</span>.</p></li>
+</ul>
+<p>An untruncated observation has <span class="math notranslate nohighlight">\(t_{l} = -\infty\)</span> and
+<span class="math notranslate nohighlight">\(t_{r} = \infty\)</span>. The total number of units is
+<span class="math notranslate nohighlight">\(N = \sum_{i} n_{i}\)</span>.</p>
+<p class="rubric">The estimation methods</p>
+<p>SurPyval offers users several methods for estimating parameters, these are:</p>
+<ul class="simple">
+<li><p>Method of Moments (MOM)</p></li>
+<li><p>Method of Probability Plotting (MPP)</p></li>
+<li><p>Mean Square Error (MSE)</p></li>
+<li><p>Maximum Likelihood Estimation (MLE)</p></li>
+<li><p>Maximum Product of Spacings (MPS)</p></li>
+</ul>
+<p>There are other methods that can be used, e.g. L-moments or generalised method of moments. These are interesting, and may be added in future, but for now surpyval offers the above estimation methods. Surpyval is unusual in letting you choose the estimation technique; most other survival analysis packages fix the method for you. The advantage of this flexibility will become apparent. The method is chosen with the <code class="docutils literal notranslate"><span class="pre">how</span></code> argument of <code class="docutils literal notranslate"><span class="pre">fit</span></code> (<code class="docutils literal notranslate"><span class="pre">how='MLE'</span></code> is the default).</p>
+<p>Each method answers the question “which <span class="math notranslate nohighlight">\(\theta\)</span> fits best?” with a
+different definition of <em>best</em>, and so each accepts a different range of
+data. The table below is a map of what the following sections explain; the
+reasons for every entry are given there.</p>
+<table class="docutils align-default" id="id5">
+<caption><span class="caption-text">What each method optimises and what it accepts</span><a class="headerlink" href="#id5" title="Link to this table"></a></caption>
+<colgroup>
+<col style="width: 8.0%" />
+<col style="width: 24.0%" />
+<col style="width: 18.0%" />
+<col style="width: 20.0%" />
+<col style="width: 15.0%" />
+<col style="width: 15.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">how</span></code></p></th>
+<th class="head"><p>Chooses <span class="math notranslate nohighlight">\(\theta\)</span> to…</p></th>
+<th class="head"><p>Censoring</p></th>
+<th class="head"><p>Truncation</p></th>
+<th class="head"><p>Extras</p></th>
+<th class="head"><p>Not available for</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>MOM</p></td>
+<td><p>match the sample moments</p></td>
+<td><p>none</p></td>
+<td><p>none</p></td>
+<td><p>offset, <code class="docutils literal notranslate"><span class="pre">fixed</span></code></p></td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><p>MPP</p></td>
+<td><p>fit a straight line on a probability plot</p></td>
+<td><p>right with any heuristic; left and interval with <code class="docutils literal notranslate"><span class="pre">'Turnbull'</span></code></p></td>
+<td><p>left with <code class="docutils literal notranslate"><span class="pre">'Nelson-Aalen'</span></code>, <code class="docutils literal notranslate"><span class="pre">'Kaplan-Meier'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'Fleming-Harrington'</span></code> or <code class="docutils literal notranslate"><span class="pre">'Turnbull'</span></code>; right with <code class="docutils literal notranslate"><span class="pre">'Turnbull'</span></code></p></td>
+<td><p>offset (no <code class="docutils literal notranslate"><span class="pre">fixed</span></code>)</p></td>
+<td><p>Gamma, ExpoWeibull, Beta, Beta4, the discrete distributions,
+custom distributions</p></td>
+</tr>
+<tr class="row-even"><td><p>MSE</p></td>
+<td><p>minimise squared distance to the non-parametric CDF</p></td>
+<td><p>right, left and interval</p></td>
+<td><p>none</p></td>
+<td><p>offset, <code class="docutils literal notranslate"><span class="pre">fixed</span></code></p></td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><p>MLE</p></td>
+<td><p>maximise the likelihood</p></td>
+<td><p>all</p></td>
+<td><p>any, per observation</p></td>
+<td><p>offset, <code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">lfp</span></code>, <code class="docutils literal notranslate"><span class="pre">zi</span></code>, confidence bounds</p></td>
+<td></td>
+</tr>
+<tr class="row-even"><td><p>MPS</p></td>
+<td><p>maximise the geometric mean of the CDF spacings</p></td>
+<td><p>right and left (no interval)</p></td>
+<td><p>one common window (scalar <code class="docutils literal notranslate"><span class="pre">tl</span></code> / <code class="docutils literal notranslate"><span class="pre">tr</span></code>)</p></td>
+<td><p>offset, <code class="docutils literal notranslate"><span class="pre">fixed</span></code></p></td>
+<td><p>the discrete distributions</p></td>
+</tr>
+</tbody>
+</table>
+<p>Asking a method for data, options or a distribution outside its row raises an
+error rather than returning a quietly wrong answer. Whatever the method, the
+fitted model has every function the distribution provides (<code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>,
+<code class="docutils literal notranslate"><span class="pre">df</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code>, …) and its log-likelihood and information
+criteria.</p>
+<p>As a rule of thumb: use <strong>MLE</strong> unless you have a reason not to. It takes
+any data, it is the only method that can fit limited-failure and
+zero-inflated models, and it is the only one whose fitted model carries a
+parameter covariance and therefore confidence bounds. Reach for <strong>MPS</strong> when
+a parameter sets where the support starts or ends (an offset, the Uniform’s
+end points) or when an MLE fit struggles. Use <strong>MPP</strong> when you want a quick,
+visual, assumption-light fit, or a starting point. <strong>MSE</strong> and <strong>MOM</strong> are
+useful cross-checks and fall-backs.</p>
+<section id="method-of-moments-mom">
+<h2>Method of Moments (MOM)<a class="headerlink" href="#method-of-moments-mom" title="Link to this heading"></a></h2>
+<p>This method is the simplest (and least accurate) method to find parameters of a distribution. The intent of the Method of Moments (MOM) is to find the closest match of a distribution’s moments to the moments of a sample of data. The intuition is that a distribution’s moments summarise its shape – the first is its centre, the second (about the mean) its spread, the third its skew – so a distribution whose moments agree with the sample’s should look like the sample.</p>
+<p>For a given data set, or sample, the kth moment is defined as:</p>
+<div class="math notranslate nohighlight">
+\[M_{k} = \frac{1}{n} \sum_{i=1}^{n}X_{i}^{k}\]</div>
+<p>(with counts, each <span class="math notranslate nohighlight">\(X_{i}^{k}\)</span> is simply repeated <span class="math notranslate nohighlight">\(n_{i}\)</span> times,
+so <span class="math notranslate nohighlight">\(M_{k} = \frac{1}{N}\sum_{i} n_{i} x_{i}^{k}\)</span>).</p>
+<p>If the distribution has only one parameter, like the exponential distribution, then the method of moments simply equates the sample moment to the distribution moment. For a continuous distribution the kth moment is defined as:</p>
+<div class="math notranslate nohighlight">
+\[E[X^{k}] = \int_{-\infty}^{\infty}x^{k}f(x)dx\]</div>
+<p>Where f(x) is the density function of that distribution. Therefore, for the exponential distribution, the moments can be computed (with some working) to be:</p>
+<div class="math notranslate nohighlight">
+\[E[X^{k}] = \frac{k!}{\lambda^{k}}\]</div>
+<p>Because there is only one parameter of the exponential distribution, we need to only match the first moment of the distribution (k=1) to the first moment of the sample. Therefore we get:</p>
+<div class="math notranslate nohighlight">
+\[\frac{1}{n} \sum_{i=1}^{n}X_{i} = \frac{1}{\lambda}\]</div>
+<p>This is to say that the method of moments solution for the parameter of the exponential is simply the inverse of the average. We can check that SurPyval agrees:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Exponential</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">200</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"1 / mean(x)  :"</span><span class="p">,</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">x</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"MOM estimate :"</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">Exponential</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">'MOM'</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>1 / mean(x)  : 0.46336944498055815
+MOM estimate : 0.46336944498055815
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>This is an easy result. When we extend to other distributions with more than one parameter, we need one equation per unknown: a distribution with <span class="math notranslate nohighlight">\(k\)</span> free parameters is matched on its first <span class="math notranslate nohighlight">\(k\)</span> moments, and an offset adds one more parameter and so one more moment. Such simple analytical solutions are not always available. A few distributions have them – the Uniform, Beta and Beta-Geometric solve their moment equations in closed form, and SurPyval uses those solutions directly when there is no offset and nothing is fixed; an offset LogNormal matches its mean, variance and skewness in closed form too – but in general numeric optimisation is needed. SurPyval uses numeric optimisation to compute the parameters for these distributions.</p>
+<p>One closed form is SurPyval’s own choice and worth knowing about: for the
+LogNormal, <code class="docutils literal notranslate"><span class="pre">how='MOM'</span></code> matches the mean and variance of <span class="math notranslate nohighlight">\(\ln x\)</span>, not
+of <span class="math notranslate nohighlight">\(x\)</span>. Those are exactly the parameters <span class="math notranslate nohighlight">\(\mu\)</span> and
+<span class="math notranslate nohighlight">\(\sigma^{2}\)</span> of the underlying normal, so the answer is simple and
+stable, but it is the same as the maximum likelihood estimate on complete data
+rather than the textbook method of moments (which solves
+<span class="math notranslate nohighlight">\(E[X] = e^{\mu + \sigma^{2}/2}\)</span> and
+<span class="math notranslate nohighlight">\(\mathrm{Var}(X) = (e^{\sigma^{2}} - 1)e^{2\mu + \sigma^{2}}\)</span> for the
+raw data and gives slightly different values).</p>
+<p>That optimisation matches <em>central</em> moments — the variance, and the skew- and
+kurtosis-like higher moments about the mean — rather than the raw moments
+<span class="math notranslate nohighlight">\(E[X^{k}]\)</span>, and scales each by the corresponding power of the standard
+deviation before comparing. Concretely, writing <span class="math notranslate nohighlight">\(\hat{m}_{1}\)</span> for the
+sample mean, <span class="math notranslate nohighlight">\(\hat{m}_{j}\)</span> (<span class="math notranslate nohighlight">\(j \geq 2\)</span>) for the sample central
+moments, <span class="math notranslate nohighlight">\(\mu_{j}(\theta)\)</span> for the same quantities of the model and
+<span class="math notranslate nohighlight">\(\hat{s} = \sqrt{\hat{m}_{2}}\)</span> for the sample standard deviation, the
+parameters minimise</p>
+<div class="math notranslate nohighlight">
+\[\sum_{j=1}^{K} \left( \frac{\hat{m}_{j} - \mu_{j}(\theta)}{\hat{s}^{\,j}} \right)^{2},\]</div>
+<p>where <span class="math notranslate nohighlight">\(K\)</span> is the number of free parameters: the distribution’s, plus one
+for an offset, less any held with <code class="docutils literal notranslate"><span class="pre">fixed</span></code>. Every term is dimensionless: the
+first is the error in the mean measured in standard deviations, the second the
+relative error in the variance, the third the error in the skewness.</p>
+<p>The two are equivalent in exact arithmetic, since
+one set is a binomial transform of the other, but they are not equally easy to
+optimise. Raw moments of offset data are dominated by the offset: for data
+sitting near <span class="math notranslate nohighlight">\(\gamma\)</span>, every <span class="math notranslate nohighlight">\(E[X^{k}]\)</span> is close to
+<span class="math notranslate nohighlight">\(\gamma^{k}\)</span>, so the moments grow like powers of the offset while the
+differences that actually identify the shape parameters are swamped. Centring
+removes that common term and the scaling puts each residual on a comparable
+footing, which leaves the estimator far better conditioned on shifted data.</p>
+<p>The moments of an offset distribution are themselves computed exactly. If
+<span class="math notranslate nohighlight">\(X = \gamma + Y\)</span>, the binomial theorem gives</p>
+<div class="math notranslate nohighlight">
+\[E[X^{n}] = \sum_{k=0}^{n} \binom{n}{k} \gamma^{\,n-k} E[Y^{k}],\]</div>
+<p>so only the moments of the un-shifted distribution are needed. Those come from
+each distribution’s closed form where one exists, and from numerical
+integration otherwise, on the distribution’s own scale so that the answer is
+as accurate for data in thousandths as in thousands: the exponentiated Weibull
+integrates over <span class="math notranslate nohighlight">\(t = (x/\alpha)^{\beta}\)</span>, whose density does not depend
+on <span class="math notranslate nohighlight">\(\alpha\)</span>, and a <code class="docutils literal notranslate"><span class="pre">CustomDistribution</span></code> integrates
+<span class="math notranslate nohighlight">\(k x^{k-1} R(x)\)</span> (which needs no derivative of the cumulative hazard) in
+pieces between its quantiles.</p>
+<p>The optimiser (BFGS, on the rescaled search described in
+<a class="reference internal" href="#numerical-mle"><span class="std std-ref">How SurPyval finds the maximum</span></a>) runs to a tight tolerance and, if the
+moments are still not matched, polishes the answer with Nelder-Mead. The
+scaling by <span class="math notranslate nohighlight">\(\hat{s}\)</span> applies however many moments are matched – with
+one free parameter the objective is the error in the mean in standard
+deviations – so the mismatch, and the optimiser’s stopping test with it, is
+the same whatever units the data are in. If the scaled mismatch above
+is still larger than <span class="math notranslate nohighlight">\(10^{-2}\)</span> SurPyval warns that the parameters may be
+unreliable. A healthy fit lands far below that: at about <span class="math notranslate nohighlight">\(10^{-12}\)</span> when
+the moment equations have an exact solution, or at about <span class="math notranslate nohighlight">\(10^{-3}\)</span> when
+sampling noise means no parameter vector reproduces the sample moments exactly.
+If the model’s moments are not finite at all – at the starting point, or
+anywhere the search goes – the objective is undefined and SurPyval raises a
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code> rather than return a fit; pass an <code class="docutils literal notranslate"><span class="pre">init</span></code> at which the moments
+exist, or use MLE.</p>
+<p>An offset LogNormal is not searched for at all when it can be solved. Its
+skewness depends on <span class="math notranslate nohighlight">\(\sigma\)</span> alone, <span class="math notranslate nohighlight">\((w + 2)\sqrt{w - 1}\)</span> with
+<span class="math notranslate nohighlight">\(w = e^{\sigma^{2}}\)</span>, so the sample’s skewness gives <span class="math notranslate nohighlight">\(\sigma\)</span>,
+the variance <span class="math notranslate nohighlight">\(e^{2\mu} w (w - 1)\)</span> then gives <span class="math notranslate nohighlight">\(\mu\)</span> and the mean
+the offset. The mismatch has a second, spurious minimum with the offset pressed
+against the smallest observation, and a search could end in either depending
+on its route. The optimiser takes over only when a parameter is fixed or
+the solution does not exist – a sample with no positive skew, or one whose
+solution puts the offset at or above the smallest value.</p>
+<p>Fixing a parameter (<code class="docutils literal notranslate"><span class="pre">fixed=</span></code>) reduces <span class="math notranslate nohighlight">\(K\)</span>: a fixed parameter is known,
+so it needs no equation of its own. A Weibull with <span class="math notranslate nohighlight">\(\beta\)</span> fixed at 2,
+for example, is fitted to the sample mean alone, with <span class="math notranslate nohighlight">\(\alpha\)</span> the one
+unknown, and matches it exactly.</p>
+<p>The method of moments, although interesting, can produce incorrect results, and it can only be used with observed data, so it cannot account for truncation or censoring. It is also statistically inefficient: higher sample moments are dominated by the few most extreme observations, so they are noisy, and for heavy-tailed distributions (a LogLogistic with a small shape, say) the higher moments may not even exist. With an offset, matching three moments to three parameters is close to unidentifiable, so treat offset MOM fits with care. But it is good to understand as it is one of the oldest methods used to estimate the parameters of a distribution, and it is a quick cross-check on complete data.</p>
+</section>
+<section id="method-of-probability-plotting-mpp">
+<h2>Method of Probability Plotting (MPP)<a class="headerlink" href="#method-of-probability-plotting-mpp" title="Link to this heading"></a></h2>
+<p>Probability plotting is an extremely simple way to find the parameters of a distribution. This method has a long history because it is a simple activity to do while providing an easy to understand graphic. Further, probability plotting produces a good estimate for the parameters even with few data points. All this combined with the fact that probability plotting can be used for all types of data, observed, censored, and truncated, it is easy to understand why it is widely used.</p>
+<p>It also has a property that no other method here has: it needs no initial guess. Apart from a few closed-form cases, every other estimator is solved by a numeric optimiser, and a numeric optimiser has to start somewhere. That makes probability plotting an excellent way to <em>seed</em> the other methods, and many SurPyval distributions (the Weibull, Normal, Gumbel, Logistic and LogLogistic among them) build the starting point for their other fits this way; others use a quick moment estimate instead. But the method itself can be sufficient for the majority of applications.</p>
+<p>So how does it work?</p>
+<p>Probability plotting works off the idea that a distribution’s CDF can be made into a straight line if the data is transformed. This can be shown by rearranging the CDF of a distribution. For the Weibull:</p>
+<div class="math notranslate nohighlight">
+\[F(x) = 1 - e^{-{(\frac{x}{\alpha}})^{\beta}}\]</div>
+<p>If we negate, add one, and then take the log of each side we get:</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{ln}(1 - F(x)) = -{(\frac{x}{\alpha}})^{\beta}\]</div>
+<p>Then take the log again:</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{ln}(-\mathrm{ln}(1 - F(x))) = \beta \mathrm{ln}(x) - \beta\mathrm{ln}(\alpha)\]</div>
+<p>From here, we can see that there is a relationship between the CDF and x. That is, the log of the log of (1 - CDF) has a linear relationship with the log of x. Therefore, if we take the log of x, and take the log of the negative log of 1 minus the CDF and plot these, we will get a straight line whose slope is <span class="math notranslate nohighlight">\(\beta\)</span> and whose intercept is <span class="math notranslate nohighlight">\(-\beta\ln\alpha\)</span>. To make this work, we therefore need a method to estimate the CDF empirically. Traditionally, there have been heuristics used to create the CDF. However, we can also use the non-parametric estimate as discussed in the <a class="reference internal" href="Non-Parametric%20Estimation.html"><span class="doc">Non-Parametric Estimation</span></a> section. Concretely, we can use the Kaplan-Meier, the Nelson-Aalen, Fleming-Harrington, or Turnbull estimates to approximate the CDF, F(x), transform it, plot, and then do the linear regression. SurPyval uses as a default, the Nelson-Aalen estimator for the plotting point.</p>
+<p>Other methods are available. The simplest estimate, for complete data, is the empirical CDF:</p>
+<div class="math notranslate nohighlight">
+\[\hat{F}(x) = \frac{1}{n}\sum_{i=1}^{n}1_{X_{i} \leq x}\]</div>
+<p>This equation says, that (for a fully observed data set) for any given value, x, the estimate of the CDF at that value is simply the sum of all the observations that occurred below that value divided by the total number of observations. This is a simple percentage estimate that has failed at any given point. This equation will therefore make a step function that increases from 0 to 1.</p>
+<p>One issue with this is that the highest value is always 1. But if this is transformed as above, this will be an undefined number (<span class="math notranslate nohighlight">\(\ln(-\ln 0)\)</span>). As such, you can adjust the value with a simple change:</p>
+<div class="math notranslate nohighlight">
+\[\hat{F}(x) = \frac{1}{n+1}\sum_{i=1}^{n}1_{X_{i} \leq x}\]</div>
+<p>By using this simple change, the highest value will not be 1, and will therefore be plottable, and not undefined. There are many different methods used to adjust the simple ECDF to be used with a plotting method to estimate the parameters of a distribution. For example, consider Blom’s method:</p>
+<div class="math notranslate nohighlight">
+\[\hat{F}_{k} = (k - 0.375)/(n + 0.25)\]</div>
+<p>Where k is the rank of an observation k is in (1, 2, 3, 4…. n) for n observations. Using these methods we can therefore plot the linearised version above.</p>
+<p>Fitting a distribution this way — the probability-plotting method with a chosen
+heuristic — is nothing more than a straight-line fit through the transformed
+points, and the slope and intercept give the parameters. For the Weibull the
+line is <span class="math notranslate nohighlight">\(y = \beta\ln x - \beta\ln\alpha\)</span>, so <span class="math notranslate nohighlight">\(\beta\)</span> is the slope
+and <span class="math notranslate nohighlight">\(\alpha = e^{-\text{intercept}/\beta}\)</span>. We can do it by hand with
+Blom’s positions and check that SurPyval does the same thing:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">8</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">20</span><span class="p">,</span> <span class="mf">10.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">))</span>   <span class="c1"># alpha = 10, beta = 2</span>
+<span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+<span class="n">F</span> <span class="o">=</span> <span class="p">(</span><span class="n">rank</span> <span class="o">-</span> <span class="mf">0.375</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">n</span> <span class="o">+</span> <span class="mf">0.25</span><span class="p">)</span>               <span class="c1"># Blom's plotting positions</span>
+
+<span class="n">slope</span><span class="p">,</span> <span class="n">intercept</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">polyfit</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">F</span><span class="p">)),</span> <span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"by hand  : alpha ="</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">intercept</span> <span class="o">/</span> <span class="n">slope</span><span class="p">),</span> <span class="s2">" beta ="</span><span class="p">,</span> <span class="n">slope</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">'MPP'</span><span class="p">,</span> <span class="n">heuristic</span><span class="o">=</span><span class="s1">'Blom'</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"how='MPP':"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">heuristic</span><span class="o">=</span><span class="s1">'Blom'</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>by hand  : alpha = 11.056774846353477  beta = 1.8415053052469188
+how='MPP': [11.05677485  1.84150531]
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={'center': 'Weibull Probability Plot'}, xlabel='Time', ylabel='Fraction failed'&gt;
+</pre></div>
+</div>
+<img alt="_images/Parametric%20Estimation_2_2.png" src="_images/Parametric%20Estimation_2_2.png" />
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The two agree exactly, and with twenty points they land near the
+<span class="math notranslate nohighlight">\(\alpha = 10\)</span>, <span class="math notranslate nohighlight">\(\beta = 2\)</span> used to simulate the data. On the plot
+the axes are already transformed (a log scale for <span class="math notranslate nohighlight">\(x\)</span>, and the
+double-log scale labelled with CDF values), so the fitted Weibull is the
+straight line and the points are the Blom positions. SurPyval has the option to use many different plotting methods, including the regular KM, NA, and FH non-parametric estimates. All you need to do is change the <code class="docutils literal notranslate"><span class="pre">heuristic</span></code> parameter; the rank-based ones SurPyval includes are:</p>
+<table class="docutils align-center" id="id6">
+<caption><span class="caption-text">Plotting-position heuristics <span class="math notranslate nohighlight">\(\hat{F}_{k} = (k - A)/(n + B)\)</span></span><a class="headerlink" href="#id6" title="Link to this table"></a></caption>
+<thead>
+<tr class="row-odd"><th class="head"><p>Method</p></th>
+<th class="head"><p>A</p></th>
+<th class="head"><p>B</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Blom</p></td>
+<td><p>0.375</p></td>
+<td><p>0.25</p></td>
+</tr>
+<tr class="row-odd"><td><p>Median</p></td>
+<td><p>0.3</p></td>
+<td><p>0.4</p></td>
+</tr>
+<tr class="row-even"><td><p>ECDF</p></td>
+<td><p>0</p></td>
+<td><p>0</p></td>
+</tr>
+<tr class="row-odd"><td><p>ECDF_Adj</p></td>
+<td><p>0</p></td>
+<td><p>1</p></td>
+</tr>
+<tr class="row-even"><td><p>Mean</p></td>
+<td><p>0</p></td>
+<td><p>1</p></td>
+</tr>
+<tr class="row-odd"><td><p>Weibull</p></td>
+<td><p>0</p></td>
+<td><p>1</p></td>
+</tr>
+<tr class="row-even"><td><p>Modal</p></td>
+<td><p>1</p></td>
+<td><p>-1</p></td>
+</tr>
+<tr class="row-odd"><td><p>DPW</p></td>
+<td><p>1</p></td>
+<td><p>0</p></td>
+</tr>
+<tr class="row-even"><td><p>Midpoint</p></td>
+<td><p>0.5</p></td>
+<td><p>0</p></td>
+</tr>
+<tr class="row-odd"><td><p>Benard</p></td>
+<td><p>0.3</p></td>
+<td><p>0.4</p></td>
+</tr>
+<tr class="row-even"><td><p>Beard</p></td>
+<td><p>0.31</p></td>
+<td><p>0.38</p></td>
+</tr>
+<tr class="row-odd"><td><p>Hazen</p></td>
+<td><p>0.5</p></td>
+<td><p>0</p></td>
+</tr>
+<tr class="row-even"><td><p>Gringorten</p></td>
+<td><p>0.44</p></td>
+<td><p>0.12</p></td>
+</tr>
+<tr class="row-odd"><td><p>Larsen</p></td>
+<td><p>0.567</p></td>
+<td><p>-0.134</p></td>
+</tr>
+<tr class="row-even"><td><p>Tukey</p></td>
+<td><p>1/3</p></td>
+<td><p>1/3</p></td>
+</tr>
+<tr class="row-odd"><td><p>None</p></td>
+<td><p>0</p></td>
+<td><p>0</p></td>
+</tr>
+</tbody>
+</table>
+<p>Which is used with the general formula to estimate the plotting position heuristic:</p>
+<div class="math notranslate nohighlight">
+\[\hat{F}_{k} = (k - A)/(n + B)\]</div>
+<p>Some names are synonyms: <code class="docutils literal notranslate"><span class="pre">'ECDF'</span></code> and <code class="docutils literal notranslate"><span class="pre">'None'</span></code> are the raw empirical CDF
+<span class="math notranslate nohighlight">\(k/n\)</span>, and <code class="docutils literal notranslate"><span class="pre">'Mean'</span></code>, <code class="docutils literal notranslate"><span class="pre">'Weibull'</span></code> and <code class="docutils literal notranslate"><span class="pre">'ECDF_Adj'</span></code> are all
+<span class="math notranslate nohighlight">\(k/(n + 1)\)</span>, the expected value of the <span class="math notranslate nohighlight">\(k\)</span>-th uniform order
+statistic. <code class="docutils literal notranslate"><span class="pre">'Median'</span></code> and <code class="docutils literal notranslate"><span class="pre">'Benard'</span></code> are both Benard’s
+approximation to the median rank, <span class="math notranslate nohighlight">\((k - 0.3)/(n + 0.4)\)</span>. Any point with <span class="math notranslate nohighlight">\(\hat{F} = 0\)</span> or <span class="math notranslate nohighlight">\(1\)</span> (the top point of
+<code class="docutils literal notranslate"><span class="pre">'ECDF'</span></code>, for example) cannot be transformed and is left out of the fit.</p>
+<p>One final option available is that of the Filliben estimate (<code class="docutils literal notranslate"><span class="pre">'Filliben'</span></code>),
+an approximation to the <em>median</em> of each uniform order statistic:</p>
+<img alt="_images/filiben.svg" class="align-center" src="_images/filiben.svg" />
+<p>The last group of options are the non-parametric estimators themselves:
+<code class="docutils literal notranslate"><span class="pre">'Nelson-Aalen'</span></code> (the default), <code class="docutils literal notranslate"><span class="pre">'Kaplan-Meier'</span></code>, <code class="docutils literal notranslate"><span class="pre">'Fleming-Harrington'</span></code>
+and <code class="docutils literal notranslate"><span class="pre">'Turnbull'</span></code> (see <a class="reference internal" href="Non-Parametric%20Estimation.html"><span class="doc">Non-Parametric Estimation</span></a>).</p>
+<section id="censoring-and-truncation-in-a-probability-plot">
+<h3>Censoring and truncation in a probability plot<a class="headerlink" href="#censoring-and-truncation-in-a-probability-plot" title="Link to this heading"></a></h3>
+<p>A right-censored unit has no failure time to plot, but it still matters: it
+tells us that a unit survived past <span class="math notranslate nohighlight">\(x_{i}\)</span>, so the units that fail
+later must be ranked higher than their raw position suggests. The rank
+heuristics above therefore adjust the ranks of the failures that follow a
+censored unit (the “mean order number” adjustment), and the non-parametric
+estimators handle right censoring natively through their risk sets.</p>
+<p>Left- and interval-censored data do not have ranks at all, so they need the
+Turnbull estimator (<code class="docutils literal notranslate"><span class="pre">heuristic='Turnbull'</span></code>), which spreads each censored
+unit’s probability over the times where it could have failed. Truncation
+changes the risk set rather than the ranks, so left-truncated data needs one of
+the estimators (<code class="docutils literal notranslate"><span class="pre">'Nelson-Aalen'</span></code>, <code class="docutils literal notranslate"><span class="pre">'Kaplan-Meier'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'Fleming-Harrington'</span></code> or <code class="docutils literal notranslate"><span class="pre">'Turnbull'</span></code>) and right-truncated data needs
+<code class="docutils literal notranslate"><span class="pre">'Turnbull'</span></code>. The Turnbull estimator is expensive, so when
+<code class="docutils literal notranslate"><span class="pre">heuristic='Turnbull'</span></code> is asked for data with no left or interval censoring
+and no right truncation, SurPyval uses the estimator named by
+<code class="docutils literal notranslate"><span class="pre">turnbull_estimator</span></code> (Fleming-Harrington by default) directly, which is
+what Turnbull reduces to on such data. A pitfall: when <em>every</em> observation shares the same truncation
+window, the non-parametric estimate cannot tell how much probability lies
+outside that window, so a probability plot of such data runs from about 0 to
+about 1 inside the window and the fitted line ignores the truncation. The
+<a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a> notes show this and how MLE avoids it.</p>
+</section>
+<section id="details-of-the-regression">
+<h3>Details of the regression<a class="headerlink" href="#details-of-the-regression" title="Link to this heading"></a></h3>
+<p>Once the points are transformed, the line is found by least squares. By
+default (<code class="docutils literal notranslate"><span class="pre">rr='y'</span></code>) the vertical distances are minimised, i.e. the
+transformed CDF is regressed on the transformed x; <code class="docutils literal notranslate"><span class="pre">rr='x'</span></code> minimises the
+horizontal distances instead. A plotting position at a time where nothing
+failed (a time at which units were only censored, such as the end of a test)
+carries no failure; <code class="docutils literal notranslate"><span class="pre">on_d_is_0=False</span></code> (the default) leaves such points out
+of the regression and <code class="docutils literal notranslate"><span class="pre">on_d_is_0=True</span></code> keeps them.</p>
+<p>An offset (<code class="docutils literal notranslate"><span class="pre">offset=True</span></code>, see below) cannot be read off a line, because
+shifting <span class="math notranslate nohighlight">\(x\)</span> bends the plot. SurPyval therefore searches for the shift
+<span class="math notranslate nohighlight">\(\gamma &lt; \min(x)\)</span> that makes the transformed points <em>most</em> linear – it
+maximises their Pearson correlation – and then fits the line to
+<span class="math notranslate nohighlight">\(x - \gamma\)</span>. The search is over the log of the distance below
+<span class="math notranslate nohighlight">\(\min(x)\)</span> measured in the data’s mean spacing, so that it is the same
+search whatever units the data are in, and it is finished by a bracketed
+Brent search, because the correlation is very flat near its peak. (The Exponential and Rayleigh, whose plots stay straight
+under a shift, read <span class="math notranslate nohighlight">\(\gamma\)</span> off the line’s intercept instead; should
+that land at or past the first failure, the offset is set just below it and the
+line refitted.) Here <span class="math notranslate nohighlight">\(\min(x)\)</span> is the smallest value whose failure was
+seen – exact, left or interval censored – so that every such observation
+stays inside the support.</p>
+<p>Probability plotting has real weaknesses. The transformation stretches the
+tails, so a least-squares line gives the extreme points far more influence
+than they deserve; the plotting positions are not independent, so the
+regression carries no honest measure of uncertainty (MPP fits have no
+confidence bounds); and parameters cannot be fixed. Some distributions have no
+straight-line transform at all. The Gamma’s CDF is the regularised incomplete
+gamma function with the shape <em>inside</em> the special function, so the only
+linearising axis depends on the shape you are trying to estimate; the same is
+true of the exponentiated Weibull and of the Beta and four-parameter Beta.
+SurPyval refuses <code class="docutils literal notranslate"><span class="pre">how='MPP'</span></code> for those rather than guess an axis, and it
+refuses it for the discrete distributions too, whose step-shaped CDFs cannot be
+linearised. (A fitted Gamma can still be <em>drawn</em> on a probability plot, since
+by then the parameters are known.) A <code class="docutils literal notranslate"><span class="pre">CustomDistribution</span></code> knows only its
+cumulative hazard, so it has no transform either: its plots use plain linear
+axes, and <code class="docutils literal notranslate"><span class="pre">how='MPP'</span></code> is refused for it with a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p>
+</section>
+</section>
+<section id="mean-square-error-mse">
+<h2>Mean Square Error (MSE)<a class="headerlink" href="#mean-square-error-mse" title="Link to this heading"></a></h2>
+<p>MSE is essentially the same as probability plotting. Instead of finding the minimum against the transformed data in the x and y axes. The parameters are found by minimising the distance to the non-parametric estimate without transforming the data to be linear. Mathematically, MSE find the parameters by minimising:</p>
+<div class="math notranslate nohighlight">
+\[\Sigma \left( \hat{F} - F(x; \theta) \right )^{2}\]</div>
+<p>This is the difference between the, untransformed, empirical estimate of the CDF and the parametric distribution.</p>
+<p>More precisely, <span class="math notranslate nohighlight">\(\hat{F}\)</span> is the Fleming-Harrington estimate of the CDF
+(or, when there are left- or interval-censored observations, the Turnbull
+estimate with Fleming-Harrington survival), evaluated at each distinct time
+<span class="math notranslate nohighlight">\(x_{j}\)</span> in the data, and the objective is</p>
+<div class="math notranslate nohighlight">
+\[\sum_{j} \left( \hat{F}(x_{j}) - F(x_{j} - \gamma; \theta) \right)^{2},\]</div>
+<p>with <span class="math notranslate nohighlight">\(\gamma = 0\)</span> unless an offset is requested. The <code class="docutils literal notranslate"><span class="pre">heuristic</span></code>
+argument does not apply to MSE: it always uses this estimate. Each distinct
+time contributes one term, however many units share it; the counts enter only
+through the non-parametric estimate <span class="math notranslate nohighlight">\(\hat{F}\)</span>.</p>
+<p>Why bother, when probability plotting already fits a curve to the same
+points? Because MSE works on the probability scale, where every point is
+measured in the same units. The double-log transform of a Weibull plot turns a
+CDF difference of 0.001 in the far tail into a large vertical gap; MSE sees it
+as the 0.001 it is. MSE is therefore less driven by the few most extreme
+points, and it works for any distribution with a CDF, including those that
+have no probability-plot transform (Gamma, exponentiated Weibull, Beta) and
+the discrete distributions.</p>
+<p>Like MPP, MSE handles censoring through the non-parametric estimate, so right,
+left and interval censoring are all accepted. It does not yet support
+truncation (SurPyval raises <code class="docutils literal notranslate"><span class="pre">NotImplementedError</span></code>), and like MPP it carries
+no likelihood-based measure of uncertainty, so an MSE fit has no confidence
+bounds. The minimisation is done with BFGS using the automatic gradient, on
+the rescaled search described in <a class="reference internal" href="#numerical-mle"><span class="std std-ref">How SurPyval finds the maximum</span></a>, escalating to Newton-CG and then to the derivative-free Nelder-Mead if a method
+fails.</p>
+</section>
+<section id="maximum-likelihood-estimation-mle">
+<h2>Maximum Likelihood Estimation (MLE)<a class="headerlink" href="#maximum-likelihood-estimation-mle" title="Link to this heading"></a></h2>
+<p>Maximum Likelihood Estimation (MLE) is the most widely used, and most flexible of all the estimation methods. Its relative simplicity (because of modern computing power) makes it the reasonable first choice for parametric estimation. What does it do? Essentially MLE asks what parameters of a distribution are ‘most likely’ given the data that we have seen. Consider the following data and distributions:</p>
+<img alt="_images/mle-1.png" class="align-center" src="_images/mle-1.png" />
+<p>The solid lines are the densities of two different Weibull distributions. The dashed lines represent the data we have observed, their height is the density of the two distributions at the x value for each observation. Given the data and the two distributions, which one seems to explain the distribution of the data better? That is, which distribution is more likely to produce, if sampled, the dashed lines? It should be fairly intuitive that the red distribution is more likely to do so. For example, the observation just above 10, you can see the height to the black line and the height to the red line. The red line is taller than the black line, therefore this observation is more ‘likely’ to have come from the red distribution than the black one. Conversely, the value near 15 is more likely to have come from the black distribution than the red one because the height to the black line is greater than the height to the red line. To find the distribution of best fit then we need to find the parameters that best averages the height of all these lines.</p>
+<p>MLE formalises this concept by saying that the most likely distribution is the one that has the highest (geometric) mean of the height of the density function for each sample of data. The height of the density at a particular observation is known as the likelihood. Mathematically, (for uncensored data) MLE then maximises the following:</p>
+<div class="math notranslate nohighlight">
+\[L = {\left ( \prod_{i=1}^{n}f(x_{i} | \theta ) \right )}^{1/n}\]</div>
+<p>f is the pdf of the distribution being estimated, x is the observed value, theta is the parameter vector, and L is the geometric mean of all the values. This is complicated, but a simplification is available by taking the log of this product yielding:</p>
+<div class="math notranslate nohighlight">
+\[l = { \frac{1}{n}} \sum_{i=1}^{n} \ln f(x_{i} | \theta )\]</div>
+<p>Therefore MLE simply finds the parameters of the distribution that maximise the average of the log of the likelihood for each point… One final transform that is used in optimisers is that we take the negative of the above equation so that we find the minimum of the negative log-likelihood.</p>
+<p>Dividing by <span class="math notranslate nohighlight">\(n\)</span> does not move the maximum, so it makes no difference to
+the answer whether the average or the sum is maximised. SurPyval works with the
+<em>sum</em>, the log-likelihood <span class="math notranslate nohighlight">\(\ell(\theta) = \sum_{i} n_{i} \ln f(x_{i} \mid \theta)\)</span>
+(counts simply multiply each term), and <code class="docutils literal notranslate"><span class="pre">model.neg_ll()</span></code> reports
+<span class="math notranslate nohighlight">\(-\ell(\hat{\theta})\)</span>, the total negative log-likelihood at the fitted
+parameters. The sum is what the information criteria and the confidence bounds
+below are built on.</p>
+<p>Armed with the log likelihood we can then search for the parameter where the log likelihood is maximised. Using an Exponential distribution as an example, we can see the change in the value of the log likelihood as the exponential parameter changes. The following is a random sample of 100 observations with a parameter of 10. Then changing the value of the parameter ‘lambda’ from low to high we can see what the log-likelihood is and find the value at which it is maximized.</p>
+<img alt="_images/mle-2.png" class="align-center" src="_images/mle-2.png" />
+<p>On the chart above you can see that the maximum is near 10. As we would expect given that we know that the answer is 10. It is this simple and intuitive approach that allows the parameters of distributions are estimated with the MLE.</p>
+<section id="censored-data">
+<h3>Censored data<a class="headerlink" href="#censored-data" title="Link to this heading"></a></h3>
+<p>What about censored data?</p>
+<p>All the equations above are for observed data. Handling the likelihood of censored data also has an intuitive understanding. What we know about the point when the data point is censored is that we know it is above or below the value at which we observed. So for a censored point, its contribution to the likelihood is the probability of what we <em>did</em> see: that the point was right censored (it survived to that time, the survival function), left censored (it had already failed, the CDF), or interval censored (it failed somewhere in the interval, the difference of two CDF values). Formally, the log-likelihood is a single sum over every observation, with each term chosen by that observation’s censoring flag:</p>
+<div class="math notranslate nohighlight">
+\[\ell(\theta) = \sum_{c_{i}=0} n_{i} \ln f(x_{i} \mid \theta)
+             + \sum_{c_{i}=1} n_{i} \ln R(x_{i} \mid \theta)
+             + \sum_{c_{i}=-1} n_{i} \ln F(x_{i} \mid \theta)
+             + \sum_{c_{i}=2} n_{i} \ln \left[ F(x_{r_{i}} \mid \theta) - F(x_{l_{i}} \mid \theta) \right]\]</div>
+<p>It is one sum over all <span class="math notranslate nohighlight">\(N\)</span> units, not an average taken separately
+within each type of observation. (Averaging each group by its own size would
+give a handful of censored units the same total weight as hundreds of
+failures, and would move the maximum.)</p>
+<p>This is not a special SurPyval formula: we can rebuild a fitted model’s
+likelihood by hand from the distribution functions and get exactly the number
+the model reports.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">12</span><span class="p">]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="n">alpha</span><span class="p">,</span> <span class="n">beta</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">params</span>
+
+<span class="n">W</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span>
+<span class="n">ll</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">W</span><span class="o">.</span><span class="n">df</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">4.</span><span class="p">,</span> <span class="mf">5.</span><span class="p">,</span> <span class="mf">9.</span><span class="p">,</span> <span class="mf">11.</span><span class="p">]),</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">beta</span><span class="p">))</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>  <span class="c1"># observed</span>
+      <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">W</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mf">12.</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">beta</span><span class="p">))</span>                                <span class="c1"># right censored</span>
+      <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">W</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="mf">2.</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">beta</span><span class="p">))</span>                                 <span class="c1"># left censored</span>
+      <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">W</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="mf">8.</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">beta</span><span class="p">)</span> <span class="o">-</span> <span class="n">W</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="mf">6.</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">beta</span><span class="p">)))</span>        <span class="c1"># interval</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"by hand   :"</span><span class="p">,</span> <span class="o">-</span><span class="n">ll</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"neg_ll()  :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">neg_ll</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>by hand   : 16.521401799676745
+neg_ll()  : 16.52140179967674
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>An easy and intuitive way to understand this is to compare these two possibilities. With some randomly generated data with a few values made to be left censored, and a few to be right censored. We get:</p>
+<img alt="_images/mle-3.png" class="align-center" src="_images/mle-3.png" />
+<p>In this example, again, we need to consider whether the red or black distribution is a more likely description of the observations, including some censored ones. Although the right censored point for the black distribution is very likely, this does not mean it is a good fit because the ‘average’ across all observations is poor. Therefore, it should be obvious that the red distribution is the better fit.</p>
+</section>
+<section id="truncated-data">
+<h3>Truncated data<a class="headerlink" href="#truncated-data" title="Link to this heading"></a></h3>
+<p>Truncated data is handled with the same logic, but on the <em>conditional</em>
+likelihood. A truncated observation was only observable because it fell inside
+its truncation window <span class="math notranslate nohighlight">\((t_{l}, t_{r}]\)</span>, so each contribution is
+renormalised by the probability of landing in that window:</p>
+<div class="math notranslate nohighlight">
+\[\ell(\theta) = \sum_{i} n_{i} \ln \frac{f(x_{i} \mid \theta)}{F(t_{r_{i}} \mid \theta) - F(t_{l_{i}} \mid \theta)}\]</div>
+<p>for exactly observed values (a censored value puts its own probability in the
+numerator, as in the next section). This inflates the contribution of observations from a narrow window, correcting
+for the units that could never have been seen — exactly the delayed-entry
+(left-truncation) and right-truncation adjustments. With no right bound,
+<span class="math notranslate nohighlight">\(F(t_{r}) = 1\)</span> and the denominator is the survival <span class="math notranslate nohighlight">\(R(t_{l})\)</span>; with
+no left bound, <span class="math notranslate nohighlight">\(F(t_{l}) = 0\)</span>. Because each observation carries its own
+window, a late entry into a study (a different <span class="math notranslate nohighlight">\(t_{l}\)</span> per unit) is
+handled exactly.</p>
+<p>A window in the upper tail (<span class="math notranslate nohighlight">\(F(t_{l}) &gt; 1/2\)</span>) is computed from the
+survival function in log space, <span class="math notranslate nohighlight">\(\ln R(t_{l}) + \ln(1 - R(t_{r}) / R(t_{l}))\)</span>,
+rather than as a difference of two numbers near 1. Once <span class="math notranslate nohighlight">\(F(t_{l})\)</span>
+rounds to 1 that difference is 0: a LogNormal left-truncated at 1 with
+<span class="math notranslate nohighlight">\(\mu = -5, \sigma = 0.6\)</span> had a log-likelihood of <span class="math notranslate nohighlight">\(+\infty\)</span> instead of
+<span class="math notranslate nohighlight">\(-23.73\)</span>, which could win a search, and truncated fits depended on the
+units the data were recorded in. The same applies to an interval-censored
+observation’s window.</p>
+<p>In the lower tail the difference <span class="math notranslate nohighlight">\(F(t_{r}) - F(t_{l})\)</span> keeps its
+digits, but the CDFs themselves underflow: a window whose probability is
+below the smallest normal float (about <span class="math notranslate nohighlight">\(2 \times 10^{-308}\)</span>) is
+computed from the CDF in log space instead,
+<span class="math notranslate nohighlight">\(\ln F(t_{r}) + \ln(1 - F(t_{l}) / F(t_{r}))\)</span>. A Normal far above
+truncated windows had log-likelihoods that were rounding (-9.67 where the
+supremum is -10.03) or <span class="math notranslate nohighlight">\(-\infty\)</span>, and windows of exactly 0 made the
+truncation term NaN, which ended its searches.</p>
+</section>
+<section id="censored-and-truncated-data">
+<h3>Censored and truncated data<a class="headerlink" href="#censored-and-truncated-data" title="Link to this heading"></a></h3>
+<p>The two combine. An observation can be <em>both</em> censored and truncated: a unit
+that entered a study late and was still running when it ended, or the
+right-truncated failure of an instrument that can only record events below some
+threshold. Such a point must be conditioned on its own window, so a
+right-censored observation inside <span class="math notranslate nohighlight">\((t_{l}, t_{r}]\)</span> contributes</p>
+<div class="math notranslate nohighlight">
+\[\frac{F(t_{r} \mid \theta) - F(x \mid \theta)}
+     {F(t_{r} \mid \theta) - F(t_{l} \mid \theta)},\]</div>
+<p>and a left-censored one contributes the mirror image with
+<span class="math notranslate nohighlight">\(F(x) - F(t_{l})\)</span> on top. The numerator matters: it must be capped by the
+truncation bound rather than run out to infinity as <span class="math notranslate nohighlight">\(R(x)\)</span> does. A ratio
+of <span class="math notranslate nohighlight">\(R(x)\)</span> to the window probability is not a probability at all — it grows
+without bound as the fitted distribution puts less and less mass inside the
+window, so an optimiser can drive the likelihood arbitrarily high and return a
+meaningless answer while reporting success.</p>
+<p>SurPyval sidesteps this by <em>rewriting</em> the observation rather than special-casing
+the likelihood. A right-censored point with a finite <span class="math notranslate nohighlight">\(t_{r}\)</span> is recast as
+the interval <span class="math notranslate nohighlight">\((x, t_{r}]\)</span>, and a left-censored point with a finite
+<span class="math notranslate nohighlight">\(t_{l}\)</span> as <span class="math notranslate nohighlight">\((t_{l}, x]\)</span>, before the likelihood is ever evaluated.
+The expressions above are then just the ordinary interval-censored contribution,
+already conditioned by the truncation denominator. Where the relevant bound is
+infinite there is nothing to cap, and the point stays a plain censored
+observation so that the numerically stable <code class="docutils literal notranslate"><span class="pre">log_sf</span></code> is used.</p>
+<p>This rewriting happens inside surpyval’s internal representation of the data.
+The <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code> and <code class="docutils literal notranslate"><span class="pre">t</span></code> arrays you passed to <code class="docutils literal notranslate"><span class="pre">fit</span></code> are unchanged, and
+the model reports the data back to you exactly as you supplied it.</p>
+</section>
+<section id="exact-solutions-closed-form-mle">
+<h3>Exact solutions: closed-form MLE<a class="headerlink" href="#exact-solutions-closed-form-mle" title="Link to this heading"></a></h3>
+<p>For a few distributions the maximum can be found with pen and paper, and
+SurPyval uses the exact answer instead of an optimiser whenever the data allow
+it:</p>
+<ul>
+<li><p><strong>Exponential</strong>, with exact and right-censored data (and any left
+truncation): setting the derivative of
+<span class="math notranslate nohighlight">\(\ell = d \ln\lambda - \lambda \sum_{i} n_{i}(x_{i} - t_{l_{i}})\)</span> to zero gives</p>
+<div class="math notranslate nohighlight">
+\[\hat{\lambda} = \frac{d}{\sum_{i} n_{i} (x_{i} - t_{l_{i}})}
+              = \frac{\text{number of failures}}{\text{total time on test}},\]</div>
+<p>where <span class="math notranslate nohighlight">\(d\)</span> is the number of exact failures and an untruncated unit
+enters at time zero. Left truncation only moves the start of each unit’s
+exposure; left or interval censoring and right truncation make the equation
+transcendental, so those fits use the optimiser.</p>
+</li>
+<li><p><strong>Normal</strong>, with complete, untruncated data: <span class="math notranslate nohighlight">\(\hat{\mu}\)</span> is the sample
+mean and <span class="math notranslate nohighlight">\(\hat{\sigma}\)</span> the standard deviation dividing by <span class="math notranslate nohighlight">\(N\)</span>
+(not <span class="math notranslate nohighlight">\(N - 1\)</span>).</p></li>
+<li><p><strong>LogNormal</strong>: the Normal solution applied to <span class="math notranslate nohighlight">\(\ln x\)</span>.</p></li>
+<li><p><strong>Uniform</strong>: <span class="math notranslate nohighlight">\(\hat{a} = \min(x)\)</span> and <span class="math notranslate nohighlight">\(\hat{b} = \max(x)\)</span>, for
+exactly observed data (truncated or not). With right- or left-censored
+values it is no longer the MLE: a unit known to survive past <span class="math notranslate nohighlight">\(r\)</span>
+contributes <span class="math notranslate nohighlight">\((b - r)/(b - a)\)</span>, which grows with <span class="math notranslate nohighlight">\(b\)</span>, so the
+maximum of the likelihood can have <span class="math notranslate nohighlight">\(b\)</span> well above the largest value
+(and, for left censoring, <span class="math notranslate nohighlight">\(a\)</span> below the smallest). There is no general
+closed form then, but the likelihood vanishes the moment <span class="math notranslate nohighlight">\(a\)</span> passes the
+smallest exact or left-censored value or <span class="math notranslate nohighlight">\(b\)</span> the largest exact or
+right-censored one, and the maximum usually sits on one of those edges.
+Without left censoring <span class="math notranslate nohighlight">\(a\)</span> is on its edge (the likelihood only
+improves as it rises), and <span class="math notranslate nohighlight">\(b\)</span> is the root of the likelihood’s
+derivative beyond the largest value, or that value itself; without right
+censoring, symmetrically; with both, <span class="math notranslate nohighlight">\(b\)</span> is profiled out and the same
+search is made for <span class="math notranslate nohighlight">\(a\)</span>. That includes data whose largest value is
+right censored: with <span class="math notranslate nohighlight">\(N\)</span> units, <span class="math notranslate nohighlight">\(k\)</span> of them censored at
+<span class="math notranslate nohighlight">\(r\)</span> above every failure and <span class="math notranslate nohighlight">\(\hat{a}\)</span> the smallest failure,
+<span class="math notranslate nohighlight">\(\hat{b} = (N r - k \hat{a})/(N - k)\)</span>. It refuses interval-censored
+data, data with no exactly observed value (any range containing the
+censoring points then explains them equally well), and truncated data whose
+censored values pull a bound to the truncation point, beyond which the
+truncated likelihood is flat.</p></li>
+</ul>
+<p>A request for an offset, a limited failure population, zero inflation or any
+fixed parameter adds structure that these formulas do not solve, so such fits
+always go to the optimiser. A closed-form fit reports <code class="docutils literal notranslate"><span class="pre">optimizer</span></code> as
+<code class="docutils literal notranslate"><span class="pre">'closed-form'</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span>  <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">2.</span><span class="p">,</span> <span class="mf">3.</span><span class="p">,</span> <span class="mf">5.</span><span class="p">,</span> <span class="mf">8.</span><span class="p">,</span> <span class="mf">13.</span><span class="p">])</span>
+<span class="n">c</span>  <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>      <span class="c1"># three failures, two survivors</span>
+<span class="n">tl</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>      <span class="c1"># late entries</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Exponential</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"fitted rate     :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"failures / time :"</span><span class="p">,</span> <span class="mi">3</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">tl</span><span class="p">)))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"optimizer       :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">optimizer</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>fitted rate     : 0.1111111111111111
+failures / time : 0.1111111111111111
+optimizer       : closed-form
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="how-surpyval-finds-the-maximum">
+<span id="numerical-mle"></span><h3>How SurPyval finds the maximum<a class="headerlink" href="#how-surpyval-finds-the-maximum" title="Link to this heading"></a></h3>
+<p>Everywhere else the likelihood is maximised numerically, in five steps. It is
+worth knowing what they are, because they explain the warnings you may see.</p>
+<ol class="arabic">
+<li><p><strong>A starting point.</strong> Unless you pass <code class="docutils literal notranslate"><span class="pre">init</span></code>, each distribution
+builds its own initial guess – from a probability plot for many, from a
+quick moment estimate or a rule of thumb for others, and for a
+<code class="docutils literal notranslate"><span class="pre">CustomDistribution</span></code>, which knows nothing about its parameters, from the
+best log-likelihood on a coarse grid of magnitudes. Interval-censored points
+are imputed at their midpoints and left-censored points half way to the
+smallest value, for this purpose only. An offset starts below the
+smallest value by the data’s mean spacing (their range over
+<span class="math notranslate nohighlight">\(n - 1\)</span>), a step that scales with the data, and the other parameters
+are seeded from the data shifted by that start; a limited-failure <span class="math notranslate nohighlight">\(p\)</span> at the Nelson-Aalen
+estimate of the fraction failed (capped at 0.6), and a zero-inflation
+<span class="math notranslate nohighlight">\(f_{0}\)</span> at the observed fraction of zeros.</p></li>
+<li><p><strong>More than one start, when it matters.</strong> Some likelihoods have more than
+one maximum, and the default start can lie nearer the worse one. For a
+limited failure population without zero inflation (where <span class="math notranslate nohighlight">\(p\)</span> and the failure distribution
+trade off, see below) SurPyval also starts from the failures alone, fitted
+as a complete sample (an interval-censored failure at its interval’s
+midpoint), with <span class="math notranslate nohighlight">\(p\)</span> at the observed failure fraction; for a
+<code class="docutils literal notranslate"><span class="pre">CustomDistribution</span></code> it also tries the plain default of each parameter (1
+above a lower bound, the middle of a finite interval, 0 if unbounded). Each
+start is optimised and the fit with the best likelihood is kept. These
+alternatives are tried for an MLE fit without <code class="docutils literal notranslate"><span class="pre">fixed</span></code>. An <code class="docutils literal notranslate"><span class="pre">init</span></code> you
+give is tried first and then the default start (and, where the answer is
+not verifiably a maximum, its alternatives), keeping the best likelihood:
+from a start far from the maximum the search can stall where the
+likelihood only looks level, so a poor <code class="docutils literal notranslate"><span class="pre">init</span></code> cannot return a worse
+model than no <code class="docutils literal notranslate"><span class="pre">init</span></code> would have.</p></li>
+<li><p><strong>Removing the bounds.</strong> Most parameters are constrained: a Weibull
+<span class="math notranslate nohighlight">\(\alpha\)</span> must be positive, a probability must lie in <span class="math notranslate nohighlight">\((0, 1)\)</span>,
+an offset must sit below the smallest observation. Rather than use a
+constrained optimiser, SurPyval maps each parameter <span class="math notranslate nohighlight">\(\theta\)</span> to an
+unbounded variable <span class="math notranslate nohighlight">\(u\)</span> and searches that unbounded space:</p>
+<ul class="simple">
+<li><p>bounded on one side, say <span class="math notranslate nohighlight">\(\theta &gt; L\)</span>: <span class="math notranslate nohighlight">\(u = \ln(\theta - L)\)</span>
+close to the bound (<span class="math notranslate nohighlight">\(\theta - L &lt; 1\)</span>) and
+<span class="math notranslate nohighlight">\(u = \theta - L - 1\)</span> further away, a smooth map that is logarithmic
+where the bound matters and linear where it does not (and the mirror
+image for an upper bound);</p></li>
+<li><p>bounded on both sides, <span class="math notranslate nohighlight">\(a &lt; \theta &lt; b\)</span>: a scaled inverse
+hyperbolic tangent,
+<span class="math notranslate nohighlight">\(u = 10\,\mathrm{artanh}\left(2\frac{\theta - a}{b - a} - 1\right)\)</span>,
+for any finite interval (a probability’s <span class="math notranslate nohighlight">\((0, 1)\)</span>, or whatever
+bounds a custom distribution declares);</p></li>
+<li><p>unbounded: <span class="math notranslate nohighlight">\(u = \theta\)</span>.</p></li>
+</ul>
+<p>The one-sided map is taken in units of each parameter’s own starting
+distance from its bound – <span class="math notranslate nohighlight">\(u = \ln((\theta - L) / d_{0})\)</span> below
+<span class="math notranslate nohighlight">\(d_{0} = \theta_{0} - L\)</span> and linear above it – rather than in units
+of 1, so every such parameter starts at <span class="math notranslate nohighlight">\(u = 0\)</span>. With a unit of 1 the
+switch sits at a fixed value, so the offset’s distance below the smallest
+observation, or a scale, was searched as a log for data in thousandths and
+linearly for data in thousands: a different search at every scale, and
+along the ridge an offset fit has (below) not always one that found the
+same optimum. Offset fits made the change first; since v0.22 every fit
+does, and a fit to data in millionths and one to the same data in
+millions now take the same steps (the fitted quantiles agree to about
+1e-15, where they differed by up to 2e-6).</p>
+<p>The likelihood’s gradient and Hessian come from automatic differentiation
+(<code class="docutils literal notranslate"><span class="pre">autograd</span></code>), which is why custom distributions must use
+<code class="docutils literal notranslate"><span class="pre">autograd.numpy</span></code>.</p>
+</li>
+<li><p><strong>An optimiser ladder.</strong> BFGS runs first; if its answer is not verifiably
+a maximum SurPyval tries TNC, then Newton-CG, then the derivative-free
+Nelder-Mead and Powell, each starting from the best point so far
+(Nelder-Mead also from the initial guess). It stops at the first rung
+after which the best point is a maximum: the gradient is zero (every
+component below <span class="math notranslate nohighlight">\(10^{-4}\)</span> in the rescaled units described next) and
+the Hessian is positive definite. An optimiser’s own “success” is not
+enough: from a start far from the maximum a gradient method reports it
+where the likelihood first looks flat – a Weibull started at
+<span class="math notranslate nohighlight">\(\alpha = 10^{7}\)</span> stopped at <span class="math notranslate nohighlight">\(\beta = 0.099\)</span>, 40 below the
+maximum log-likelihood – and BFGS often reports a loss of precision <em>at</em>
+the maximum. If no rung is verified the first rung that reported success
+is kept, as before.</p>
+<p>A likelihood with no finite maximum leaves the ladder nothing to verify:
+it keeps rising as a parameter runs off towards a limit no member of the
+family reaches (an ExpoWeibull whose <span class="math notranslate nohighlight">\(\mu\)</span> grows without end
+approaches a Fréchet distribution; a Normal fitted to rows whose windows
+are all bounded above has a mean that grows without end). Each rung then
+ran until its own limit, and the fit ended “unverified” after all five:
+23 s for an ExpoWeibull on 60 interval censored rows. So, as the
+regression fits do, SurPyval checks the point a search reached – after
+the first rung that stops short of a verified maximum, and in BFGS after
+100, 200, 400, … iterations – for a parameter along whose profile (the
+likelihood maximised over the others) Newton’s method cannot converge,
+where that profile is flat to the verification’s tolerance and the
+parameter is heading for an infinite end of its range. An offset fit
+whose offset runs down towards <span class="math notranslate nohighlight">\(-\infty\)</span> (its shape making up for
+it) is heading for its family’s limit there – a Normal for the
+LogNormal and the Gamma, the smallest extreme value distribution
+(<code class="docutils literal notranslate"><span class="pre">Gumbel</span></code>) for the Weibull, the <code class="docutils literal notranslate"><span class="pre">Logistic</span></code> for the LogLogistic –
+and the likelihood may approach the limit’s only as
+<span class="math notranslate nohighlight">\(1 / |\gamma|\)</span>, never flat on the way; there the limit fitting the
+data at least as well as the point reached takes the place of
+flatness (an offset LogNormal and Gamma on data with a long left tail
+ran every rung for 4-17 s, and now stop after the first in 0.3 s). A
+later rung’s point heading that way is checked too: the first rung can
+stop somewhere unrelated, and a later one run off. And where a rung
+ends unverified with the offset moved down and neither the point it
+reached nor any offset on the way there (a profile of the likelihood
+over the offset, read at up to eight offsets between the search’s
+start and that point) fitting the data better than the limit, the
+offset is taken to be running off: far out, Newton’s test reads
+derivatives that are rounding, and it missed an offset LogLogistic at
+<span class="math notranslate nohighlight">\(\gamma = -6.9 \times 10^{4}\)</span> on a smallest extreme value sample.
+That ends the ladder at the rung that finds it (left skewed LogLogistic
+samples took 1,000 to 3,000 likelihood evaluations to reach the verdict
+at the end of the ladder, and now 200 to 400). A point, or an offset on
+the way, that fits better than the limit is never called a runaway,
+however flat the profile: the likelihood then has a maximum short of
+the limit, which an offset LogNormal 0.012 above the Normal had been
+denied. “Better” is beyond a relative tolerance of <span class="math notranslate nohighlight">\(10^{-7}\)</span>,
+since far out the likelihood is computed to rounding. If one is
+running off, the search stops there, the fit warns “No finite maximum”,
+naming it (and the limit, where the family knows it), and <code class="docutils literal notranslate"><span class="pre">maximum</span></code> is
+<code class="docutils literal notranslate"><span class="pre">'no</span> <span class="pre">finite</span> <span class="pre">maximum'</span></code>; that ExpoWeibull now takes 6 s. A verified
+answer is checked the same way, since a likelihood that flattens towards
+its supremum can pass the verification far out on the way to it. A
+parameter running onto a finite bound of its range (an Exponential’s
+offset onto the first failure) is a maximum on the edge of the space,
+not a runaway.</p>
+<p>An offset running onto the first failure where the density at its
+origin is infinite (a Weibull, Gamma or LogLogistic shape below 1) is
+no maximum either: the likelihood is unbounded there. Data without
+truncation give it no way back, since with such a density every term
+of the likelihood rises as the offset moves up. A rung that gets there
+ends the ladder, and so does the first rung stopping on its way there
+(its line search failing on the steepening rise) with the offset moved
+up from its start: the ladder ends with the offset on the first
+failure, and the fit warns “No finite maximum” and recommends
+<code class="docutils literal notranslate"><span class="pre">how='MPS'</span></code>. The remaining rungs used to follow it into the corner,
+in 5,000 to 15,000 likelihood evaluations (2-8 s), and ended
+“unverified”, “MLE Failed” or “No finite maximum” as the last of them
+happened to stop. (An interior maximum, where there is one, has a shape
+above 1, since below 1 the likelihood rises with the offset
+everywhere. Where one start of a fit, the default or one given with
+<code class="docutils literal notranslate"><span class="pre">init</span></code>, finds a verified maximum and another runs into the corner,
+the maximum is kept.)</p>
+<p>A parameter bounded at both ends – a limited-failure <span class="math notranslate nohighlight">\(p\)</span>, a
+zero-inflation <span class="math notranslate nohighlight">\(f_{0}\)</span> – reaches its bound in floating point long
+before its <span class="math notranslate nohighlight">\(u\)</span> reaches infinity: <span class="math notranslate nohighlight">\(p\)</span> is exactly 1 once
+<span class="math notranslate nohighlight">\(u\)</span> passes about 190. There the likelihood no longer depends on
+<span class="math notranslate nohighlight">\(u\)</span>, its gradient and curvature in it are zero or rounding, and the
+test of the gradient and Hessian says nothing about it. Such a parameter
+is judged on its bound instead: it is a maximum there when the likelihood
+(the other parameters as fitted) does not rise as it moves off the bound
+by more than the same tolerance, per observation, and the other
+parameters must pass the test without it. Where the likelihood rises off
+the bound at all, the fit is also started with that parameter at the
+middle of its range, and the better answer kept. Without this, a Weibull
+with <code class="docutils literal notranslate"><span class="pre">lfp=True</span></code> fitted to monthly return counts of a 3% defective
+sub-population ran <span class="math notranslate nohighlight">\(p\)</span> to 1 and reported a verified maximum 3.8
+below the one at <span class="math notranslate nohighlight">\(p = 0.059\)</span> (#579).</p>
+<p>Before BFGS runs, the search is
+rescaled coordinate by coordinate, each <span class="math notranslate nohighlight">\(u\)</span> divided by the magnitude
+of its starting value, and the objective is divided by the number of
+observations. That does not move the optimum, but it makes the convergence
+test mean the same thing whether your data are measured in hours or
+seconds, and for ten observations or a million. A starting value near zero
+cannot set its own unit, so each coordinate has a floor that suits the
+space it is searched in: 1 for a bounded parameter, whose <span class="math notranslate nohighlight">\(u\)</span> is
+(for values near the bound) the log of its distance from the bound and so
+already in relative units, and the data’s standard deviation, capped at
+1, for an unbounded one, whose <span class="math notranslate nohighlight">\(u\)</span> is the parameter itself, in the
+data’s units. The result is that fits are <em>equivariant</em> under a change of
+units, in either direction: fitting <span class="math notranslate nohighlight">\(k x\)</span> gives the fit to <span class="math notranslate nohighlight">\(x\)</span>
+with every scale or location parameter multiplied by <span class="math notranslate nohighlight">\(k\)</span> (a rate
+divided by it, a log-location shifted by <span class="math notranslate nohighlight">\(\ln k\)</span>) and every shape
+parameter unchanged – to five significant figures or better for any
+<span class="math notranslate nohighlight">\(k\)</span> from <span class="math notranslate nohighlight">\(10^{-4}\)</span> to <span class="math notranslate nohighlight">\(10^{5}\)</span>. MPS, MSE and MOM search
+the same way, dividing by the objective’s starting magnitude instead:
+their objectives are dimensionless, so that magnitude does not change with
+the data’s units. Offset fits are equivariant too: their start and their
+search (step 3) are in the data’s units, and the offset itself is
+multiplied by <span class="math notranslate nohighlight">\(k\)</span>.</p>
+</li>
+<li><p><strong>Checks.</strong> Before fitting, SurPyval refuses data that cannot pin the
+parameters down: if there are fewer distinct non-right-censored values than
+free parameters the likelihood has a flat (or unbounded) direction and no
+unique answer exists. Fixing a parameter buys back a degree of freedom.
+An MLE fit also refuses data that a single failure time explains
+completely – an exact value at 0.5 and a value known only to be below 1,
+or the intervals <span class="math notranslate nohighlight">\((1, 3]\)</span> and <span class="math notranslate nohighlight">\((2, 4]\)</span> – for the families
+that can concentrate on one point (a location or scale with a free
+shape, or any of them with an offset): a distribution ever more
+concentrated there explains the data ever better, so the likelihood has
+no maximum, and the fit used to return wherever the search stopped (a
+Weibull <span class="math notranslate nohighlight">\(\beta\)</span> of 396, a Normal <span class="math notranslate nohighlight">\(\sigma\)</span> of
+<span class="math notranslate nohighlight">\(5 \times 10^{-324}\)</span>). After fitting, a non-finite parameter is never
+returned (SurPyval raises a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> instead). If every optimiser
+fails SurPyval warns (“MLE Failed; returning the optimiser’s starting point
+…”) and returns the starting point, which for many distributions is the
+probability-plot fit; if the answer kept is not verifiably a maximum it
+warns (“did not reach a verified maximum”, with the optimiser’s loss of
+precision as the reason where it reported one), as it can for the
+four-parameter Beta, whose likelihood is unbounded as a shape below 1
+meets an end point at the data’s extreme. The optimiser that found the answer is recorded in
+<code class="docutils literal notranslate"><span class="pre">model.optimizer</span></code> (<code class="docutils literal notranslate"><span class="pre">'closed-form'</span></code> for the exact solutions above),
+and what it reached in <code class="docutils literal notranslate"><span class="pre">model.maximum</span></code>: <code class="docutils literal notranslate"><span class="pre">'verified'</span></code> (or exact),
+<code class="docutils literal notranslate"><span class="pre">'unverified'</span></code> (the fit warned that it is not verifiably a maximum)
+or <code class="docutils literal notranslate"><span class="pre">'no</span> <span class="pre">finite</span> <span class="pre">maximum'</span></code> (the fit warned “No finite maximum”); a fit
+by another method, or a model built with <code class="docutils literal notranslate"><span class="pre">from_params</span></code>, has
+<code class="docutils literal notranslate"><span class="pre">'not</span> <span class="pre">applicable'</span></code>. <code class="docutils literal notranslate"><span class="pre">fit_best</span></code> reads it to set such fits aside.</p></li>
+</ol>
+</section>
+<section id="offsets-threshold-parameters">
+<h3>Offsets (threshold parameters)<a class="headerlink" href="#offsets-threshold-parameters" title="Link to this heading"></a></h3>
+<p>Many lifetimes cannot begin at zero: a part is guaranteed to survive its
+burn-in, a material has a minimum strength. An <em>offset</em> (or threshold, or
+location) <span class="math notranslate nohighlight">\(\gamma\)</span> shifts a distribution supported on
+<span class="math notranslate nohighlight">\([0, \infty)\)</span> so that it starts at <span class="math notranslate nohighlight">\(\gamma\)</span> instead:</p>
+<div class="math notranslate nohighlight">
+\[F(x) = F_{b}(x - \gamma), \qquad f(x) = f_{b}(x - \gamma), \qquad x &gt; \gamma,\]</div>
+<p>where <span class="math notranslate nohighlight">\(F_{b}\)</span> and <span class="math notranslate nohighlight">\(f_{b}\)</span> are the CDF and density of the
+un-shifted, <em>base</em> distribution (the subscript <span class="math notranslate nohighlight">\(b\)</span> is used for the
+base distribution throughout the next three sections). This is
+how the “three-parameter Weibull” or “two-parameter exponential” are built:
+<code class="docutils literal notranslate"><span class="pre">offset=True</span></code> adds <span class="math notranslate nohighlight">\(\gamma\)</span> as one extra parameter. Every term of the
+likelihood simply uses <span class="math notranslate nohighlight">\(x - \gamma\)</span> (and truncation bounds are shifted
+the same way), and <span class="math notranslate nohighlight">\(\gamma\)</span> is constrained to lie below the smallest
+observation. Offsets only make sense on a half-line support: a distribution on
+the whole real line (Normal, Gumbel, Logistic) is already free to move, and one
+with a bounded support (Beta) would stop being a member of its family if only
+one end moved – use <code class="docutils literal notranslate"><span class="pre">Beta4</span></code> to estimate both ends instead. Offsets are
+also a continuous-time idea: the discrete lifetimes below count cycles from
+one, and <code class="docutils literal notranslate"><span class="pre">offset=True</span></code> is not supported for them.</p>
+<p>An offset is available with every estimation method, and each handles it in
+its own way (MPP by maximising the straightness of the plot, MOM with the
+binomial expansion above, MPS and MSE by shifting the data). But threshold
+parameters are statistically awkward. <span class="math notranslate nohighlight">\(\gamma\)</span> trades off against the
+shape and scale, so the likelihood is flat along a ridge, and for shapes that
+make the density infinite at the origin (a Weibull with <span class="math notranslate nohighlight">\(\beta &lt; 1\)</span>)
+the likelihood grows without bound as <span class="math notranslate nohighlight">\(\gamma\)</span> approaches the smallest
+observation – the MLE is then not even defined. This is where MPS, below,
+earns its place. For the same reason a fitted <span class="math notranslate nohighlight">\(\gamma\)</span> carries no
+standard error: the regularity conditions behind the Wald approximation fail
+for a threshold, so SurPyval holds <span class="math notranslate nohighlight">\(\gamma\)</span> at its estimate when it
+computes confidence bounds for the other parameters.</p>
+</section>
+<section id="limited-failure-populations">
+<h3>Limited failure populations<a class="headerlink" href="#limited-failure-populations" title="Link to this heading"></a></h3>
+<p>Sometimes only part of a population can fail from the cause being studied: a
+defect affects only the units that carry it, a disease only those susceptible.
+No matter how long we wait the failure curve levels off below one. A <em>limited
+failure population</em> (LFP), or <em>defective subpopulation</em>, model captures this
+with a proportion <span class="math notranslate nohighlight">\(p\)</span> of units that are susceptible <a class="reference internal" href="#meeker1987lfp" id="id1"><span>[Meeker1987lfp]</span></a>:</p>
+<div class="math notranslate nohighlight">
+\[F(x) = p\,F_{b}(x), \qquad R(x) = 1 - p + p\,R_{b}(x), \qquad f(x) = p\,f_{b}(x).\]</div>
+<p>As <span class="math notranslate nohighlight">\(x \to \infty\)</span> the survival levels off at <span class="math notranslate nohighlight">\(1 - p\)</span>, the fraction
+that never fails. The likelihood is built from these functions exactly as
+before: an observed failure contributes <span class="math notranslate nohighlight">\(\ln p + \ln f_{b}(x)\)</span>, a
+survivor <span class="math notranslate nohighlight">\(\ln(1 - p + p R_{b}(x))\)</span>. The last term is the heart of the
+model: a unit still running at the end of the test is <em>either</em> a susceptible
+unit that has not failed yet <em>or</em> one that never will, and the likelihood
+weighs both possibilities.</p>
+<p><code class="docutils literal notranslate"><span class="pre">lfp=True</span></code> adds <span class="math notranslate nohighlight">\(p\)</span> as a parameter. Two cautions. First, <span class="math notranslate nohighlight">\(p\)</span> is
+only identifiable if the data are followed long enough for the failure curve
+to be seen levelling off; with short follow-up a small <span class="math notranslate nohighlight">\(p\)</span> with a short
+life and a large <span class="math notranslate nohighlight">\(p\)</span> with a long life explain the data equally well.
+The trade-off also shapes the likelihood surface. When the failures seen so
+far are only the start of a slowly rising curve, <span class="math notranslate nohighlight">\(F_{b}(x) \approx
+(x/\alpha)^{\beta}\)</span> for a Weibull with a huge <span class="math notranslate nohighlight">\(\alpha\)</span>, and
+<span class="math notranslate nohighlight">\(p F_{b}(x) \approx p\,\alpha^{-\beta} x^{\beta}\)</span> depends on
+<span class="math notranslate nohighlight">\(p\)</span> and <span class="math notranslate nohighlight">\(\alpha\)</span> only through one combination. The likelihood then
+has a long, nearly flat ridge on which the curve never levels off, and an
+optimiser started on it can stop there. On Meeker’s integrated-circuit data
+(<code class="docutils literal notranslate"><span class="pre">surpyval.datasets.load_meeker_lfp</span></code>, 28 failures among 4156 units on a
+1370-hour test) the default start is on that ridge and, on its own, stops at
+<span class="math notranslate nohighlight">\(p = 0.116\)</span> with a negative log-likelihood of 302.9, while the real
+maximum, almost ten log-likelihood units better, is at <span class="math notranslate nohighlight">\(p = 0.0067\)</span> with
+a curve that does level off. That is why SurPyval starts an LFP fit from more
+than one point (step 2 above) and keeps the better; the
+<a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a> notes show both.</p>
+<p>Second, because the model is written through its likelihood, only MLE can fit
+it. Two consequences worth knowing: any quantile at or above <span class="math notranslate nohighlight">\(p\)</span> is
+infinite, because that proportion of units never fails; and for the same
+reason the mean lifetime, <code class="docutils literal notranslate"><span class="pre">mean()</span></code>, is infinite (as are <code class="docutils literal notranslate"><span class="pre">var()</span></code> and
+<code class="docutils literal notranslate"><span class="pre">moment(n)</span></code>). <code class="docutils literal notranslate"><span class="pre">mean(defective=True)</span></code> is the <em>defective</em> mean
+<span class="math notranslate nohighlight">\(p\,E[X_{b}]\)</span> (plus the offset, if any, inside the expectation), in
+which a never-failing unit contributes nothing. Neither is the mean life of
+the susceptible units, which is the mean of the base distribution,
+<span class="math notranslate nohighlight">\(E[X_{b}]\)</span>.</p>
+</section>
+<section id="zero-inflation">
+<h3>Zero inflation<a class="headerlink" href="#zero-inflation" title="Link to this heading"></a></h3>
+<p>The mirror image of units that never fail is units that have failed before we
+start: dead on arrival, broken in shipping, seeds that never germinate. A
+continuous distribution gives zero probability to failing at exactly zero, so
+these units need their own mass. A <em>zero-inflated</em> (ZI) model puts a
+proportion <span class="math notranslate nohighlight">\(f_{0}\)</span> of the population at <span class="math notranslate nohighlight">\(x = 0\)</span>. With both
+features the general form SurPyval uses is</p>
+<div class="math notranslate nohighlight">
+\[F(x) = f_{0} + (p - f_{0})\,F_{b}(x - \gamma), \qquad
+R(x) = 1 - f_{0} - (p - f_{0})\,F_{b}(x - \gamma),\]</div>
+<p>so <span class="math notranslate nohighlight">\(p\)</span> is the total proportion that ever fails (including the
+<span class="math notranslate nohighlight">\(f_{0}\)</span> that fail at once) and <span class="math notranslate nohighlight">\(p - f_{0}\)</span> is the proportion that
+fails from the continuous distribution. Without LFP, <span class="math notranslate nohighlight">\(p = 1\)</span>; without
+ZI, <span class="math notranslate nohighlight">\(f_{0} = 0\)</span>; without an offset, <span class="math notranslate nohighlight">\(\gamma = 0\)</span>. In the
+likelihood, each observation at exactly <span class="math notranslate nohighlight">\(x = 0\)</span> contributes
+<span class="math notranslate nohighlight">\(\ln f_{0}\)</span>, and every other observed failure
+<span class="math notranslate nohighlight">\(\ln\left[(p - f_{0}) f_{b}(x - \gamma)\right]\)</span>. So that <code class="docutils literal notranslate"><span class="pre">df</span></code> gives
+the likelihood’s terms, <code class="docutils literal notranslate"><span class="pre">df(0)</span></code> of a zero-inflated model is the mass
+<span class="math notranslate nohighlight">\(f_{0}\)</span> itself, a probability rather than a density;
+<code class="docutils literal notranslate"><span class="pre">df(x,</span> <span class="pre">continuous=True)</span></code> is the continuous part alone, which integrates to
+<span class="math notranslate nohighlight">\(p - f_{0}\)</span>. The zero mass sits at zero even for an offset model, and
+nothing fails before zero. A unit known only to have failed by <span class="math notranslate nohighlight">\(t\)</span>
+(left censored at <span class="math notranslate nohighlight">\(t\)</span>, or an interval <span class="math notranslate nohighlight">\([0, t]\)</span>) may have failed
+at zero, so it contributes <span class="math notranslate nohighlight">\(\ln\left[f_{0} + (p - f_{0})
+F_{b}(t - \gamma)\right]\)</span>, the mass included (Moulton and Halsey 1995;
+Braekers and Grouwels 2016); an interval that opens above zero leaves the
+mass out. A left truncation at or below zero truncates nothing (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>). <code class="docutils literal notranslate"><span class="pre">zi=True</span></code> requires a distribution whose support starts at
+zero, and like LFP it can only be fitted by MLE.</p>
+</section>
+<section id="discrete-distributions">
+<h3>Discrete distributions<a class="headerlink" href="#discrete-distributions" title="Link to this heading"></a></h3>
+<p>Everything so far has assumed that time is continuous. Many lifetimes are
+counts instead: the number of cycles, demands or inspections until failure.
+For a lifetime <span class="math notranslate nohighlight">\(T\)</span> on the integers the functions change meaning slightly,
+and it is worth being precise because the continuous intuition misleads here:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">df</span></code> is the probability <em>mass</em> <span class="math notranslate nohighlight">\(P(T = k)\)</span>, not a density;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sf</span></code> is <span class="math notranslate nohighlight">\(R(k) = P(T &gt; k)\)</span>, so <code class="docutils literal notranslate"><span class="pre">ff</span></code> is <span class="math notranslate nohighlight">\(P(T \leq k)\)</span>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">hf</span></code> is the discrete hazard <span class="math notranslate nohighlight">\(h(k) = P(T = k) / R(k - 1)\)</span>, the
+probability of failing on cycle <span class="math notranslate nohighlight">\(k\)</span> given survival of the first
+<span class="math notranslate nohighlight">\(k - 1\)</span>; it is a probability, never more than one;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Hf</span></code> is still <span class="math notranslate nohighlight">\(H(k) = -\ln R(k)\)</span>, which is <em>not</em> the sum of the
+discrete hazards: <span class="math notranslate nohighlight">\(H(k) = -\sum_{j \leq k} \ln(1 - h(j))\)</span>.</p></li>
+</ul>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span>
+<span class="n">p</span> <span class="o">=</span> <span class="mf">0.2</span>   <span class="c1"># a Geometric lifetime: each cycle fails with probability 0.2</span>
+<span class="n">G</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Geometric</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"P(T = k)          :"</span><span class="p">,</span> <span class="n">G</span><span class="o">.</span><span class="n">df</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">p</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"h(k)              :"</span><span class="p">,</span> <span class="n">G</span><span class="o">.</span><span class="n">hf</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">p</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"P(T = k)/R(k - 1) :"</span><span class="p">,</span> <span class="n">G</span><span class="o">.</span><span class="n">df</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span> <span class="o">/</span> <span class="n">G</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">k</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">p</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"H(k)              :"</span><span class="p">,</span> <span class="n">G</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">p</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"cumsum of h(k)    :"</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">G</span><span class="o">.</span><span class="n">hf</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">p</span><span class="p">)))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>P(T = k)          : [0.2     0.16    0.128   0.1024  0.08192]
+h(k)              : [0.2 0.2 0.2 0.2 0.2]
+P(T = k)/R(k - 1) : [0.2 0.2 0.2 0.2 0.2]
+H(k)              : [0.22314355 0.4462871  0.66943065 0.89257421 1.11571776]
+cumsum of h(k)    : [0.2 0.4 0.6 0.8 1. ]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The likelihood follows directly: an exact failure on cycle <span class="math notranslate nohighlight">\(k\)</span>
+contributes <span class="math notranslate nohighlight">\(\ln P(T = k)\)</span>; a unit still working after cycle <span class="math notranslate nohighlight">\(k\)</span>
+(right censored) contributes <span class="math notranslate nohighlight">\(\ln P(T &gt; k)\)</span>; a left-censored one
+<span class="math notranslate nohighlight">\(\ln P(T \leq k)\)</span>; and an interval <span class="math notranslate nohighlight">\((a, b]\)</span> contributes
+<span class="math notranslate nohighlight">\(\ln\left[F(b) - F(a)\right] = \ln P(a &lt; T \leq b)\)</span>. Truncation divides
+by the probability of the window exactly as before.</p>
+<p>MLE, MSE and MOM all work for the discrete distributions. For the
+Beta-Geometric, whose moments are infinite unless the shape <span class="math notranslate nohighlight">\(a\)</span> exceeds
+the moment’s order, MOM solves the two moment equations in closed form; a
+solution exists only when the sample is more dispersed than a Geometric with
+the same mean (the Beta mixing can only add dispersion), and SurPyval raises a
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code> otherwise. MPP does not work for any of them, since a
+step-shaped CDF cannot be linearised, and MPS does not either: spacings are
+increments of a continuous CDF, and repeated integer values make them
+degenerate. The Geometric, Negative Binomial, discrete Weibull, Beta-Geometric
+and discretised continuous distributions live on <span class="math notranslate nohighlight">\(\{1, 2, \dots\}\)</span>, so
+the value zero is free to carry a zero-inflation mass; the Poisson and Binomial
+include zero in their support and so cannot be zero inflated.</p>
+<p>Some models are simple enough to need no optimiser at all, and have their own,
+narrower <code class="docutils literal notranslate"><span class="pre">fit</span></code>:</p>
+<ul>
+<li><p><strong>Bernoulli</strong>, a single pass/fail outcome with <span class="math notranslate nohighlight">\(P(X = 1) = p\)</span>, and
+<strong>FixedEventProbability</strong>, a probability <span class="math notranslate nohighlight">\(p\)</span> of the event with no
+time axis: <span class="math notranslate nohighlight">\(\hat{p}\)</span> is the (count-weighted) proportion of ones.</p></li>
+<li><p><strong>Binomial</strong>, the number of events in a known number of trials <span class="math notranslate nohighlight">\(m\)</span>:
+<span class="math notranslate nohighlight">\(\hat{p} = \sum_{i} n_{i} x_{i} / (m \sum_{i} n_{i})\)</span>.</p>
+<p>For these three the bounds on <span class="math notranslate nohighlight">\(p\)</span> come from the <span class="math notranslate nohighlight">\(k\)</span> events in
+<span class="math notranslate nohighlight">\(N\)</span> trials. By default they are exact (Clopper and Pearson): the
+lower bound is the <span class="math notranslate nohighlight">\(\alpha\)</span> quantile of
+<span class="math notranslate nohighlight">\(\mathrm{Beta}(k, N - k + 1)\)</span> (0 when <span class="math notranslate nohighlight">\(k = 0\)</span>) and the upper
+the <span class="math notranslate nohighlight">\(1 - \alpha\)</span> quantile of <span class="math notranslate nohighlight">\(\mathrm{Beta}(k + 1, N - k)\)</span>
+(1 when <span class="math notranslate nohighlight">\(k = N\)</span>). With <span class="math notranslate nohighlight">\(k = 0\)</span> the upper bound is
+<span class="math notranslate nohighlight">\(1 - \alpha^{1/N}\)</span>, the success-run bound.</p>
+</li>
+<li><p><strong>ExactEventTime</strong>, an event known to occur at a single time <span class="math notranslate nohighlight">\(T\)</span>,
+estimated from right-censored (“not yet”) and left-censored (“already”)
+observations: every <span class="math notranslate nohighlight">\(T\)</span> between the latest “not yet” and the earliest
+“already” has likelihood one, and SurPyval reports the midpoint.</p></li>
+<li><p><strong>InstantlyOccurs</strong> and <strong>NeverOccurs</strong> have no parameters at all; they are
+the degenerate limits (all mass at zero, all mass at infinity) that turn up
+as components of larger models.</p></li>
+</ul>
+</section>
+<section id="uncertainty-confidence-bounds">
+<h3>Uncertainty: confidence bounds<a class="headerlink" href="#uncertainty-confidence-bounds" title="Link to this heading"></a></h3>
+<p>A point estimate is only half an answer; we also need to know how far to trust
+it. The likelihood tells us. Near its maximum the log-likelihood is shaped
+like an upside-down bowl: a sharply curved bowl means the data pin
+<span class="math notranslate nohighlight">\(\theta\)</span> down tightly, a flat one means many values fit almost equally
+well. The curvature is measured by the Hessian (the matrix of second
+derivatives) of the negative log-likelihood, the <em>observed information</em>
+<span class="math notranslate nohighlight">\(I(\hat{\theta})\)</span>, and large-sample theory says the estimate is
+approximately normally distributed with covariance</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{Cov}(\hat{\theta}) \approx I(\hat{\theta})^{-1}.\]</div>
+<p>SurPyval computes this Hessian by automatic differentiation in the unbounded
+space the optimiser searched and maps it back to the parameters with the
+<em>delta method</em>: if <span class="math notranslate nohighlight">\(\theta = g(u)\)</span> then
+<span class="math notranslate nohighlight">\(\mathrm{Cov}(\hat{\theta}) \approx J\,\mathrm{Cov}(\hat{u})\,J^{T}\)</span>
+with <span class="math notranslate nohighlight">\(J\)</span> the Jacobian of <span class="math notranslate nohighlight">\(g\)</span>. User-fixed parameters carry no
+variance, the offset <span class="math notranslate nohighlight">\(\gamma\)</span> is held at its estimate (see above), and
+<span class="math notranslate nohighlight">\(p\)</span> and <span class="math notranslate nohighlight">\(f_{0}\)</span> are included. Only a likelihood fit has this
+curvature to measure, so <strong>confidence bounds are available only for models fit
+by MLE</strong> (including the closed forms). The Uniform is the exception that
+proves the rule: its MLE sits on the edge of the support rather than at the top
+of a bowl, so it has no covariance and SurPyval declines to give bounds.</p>
+<p><strong>Wald bounds on a parameter</strong> (<code class="docutils literal notranslate"><span class="pre">param_cb</span></code>, the default <code class="docutils literal notranslate"><span class="pre">method='wald'</span></code>)
+use the standard error <span class="math notranslate nohighlight">\(se = \sqrt{\mathrm{Var}(\hat{\theta})}\)</span> and the
+normal quantile <span class="math notranslate nohighlight">\(z\)</span>. A symmetric interval
+<span class="math notranslate nohighlight">\(\hat{\theta} \pm z\,se\)</span> could stray outside a parameter’s valid range,
+so it is built on a scale where the parameter is unbounded and mapped back:
+for a parameter bounded to <span class="math notranslate nohighlight">\((0, \infty)\)</span> on the log scale,
+<span class="math notranslate nohighlight">\(\hat{\theta}\exp(\pm z\,se/\hat{\theta})\)</span>; for one bounded to
+<span class="math notranslate nohighlight">\((0, 1)\)</span>, such as <span class="math notranslate nohighlight">\(p\)</span> and <span class="math notranslate nohighlight">\(f_{0}\)</span>, on the logit scale; and
+for any other parameter on the natural scale,
+<span class="math notranslate nohighlight">\(\hat{\theta} \pm z\,se\)</span> (which, for a parameter with some other
+bound, can cross it). The offset <span class="math notranslate nohighlight">\(\gamma\)</span> has no standard error, so it
+has no <code class="docutils literal notranslate"><span class="pre">param_cb</span></code>.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">15</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+<span class="n">beta</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">se</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">covariance</span><span class="p">()[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="n">z</span> <span class="o">=</span> <span class="mf">1.959964</span>                      <span class="c1"># the 97.5% normal quantile</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"by hand   :"</span><span class="p">,</span> <span class="n">beta</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="o">-</span><span class="n">z</span><span class="p">,</span> <span class="n">z</span><span class="p">])</span> <span class="o">*</span> <span class="n">se</span> <span class="o">/</span> <span class="n">beta</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"param_cb  :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s1">'beta'</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>by hand   : [1.42133107 3.20842444]
+param_cb  : [1.42133107 3.20842442]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><strong>Wald bounds on a function</strong> (<code class="docutils literal notranslate"><span class="pre">cb</span></code>) apply the delta method once more, to a
+function of the parameters: the variance of <span class="math notranslate nohighlight">\(\hat{R}(x)\)</span> is
+<span class="math notranslate nohighlight">\(\nabla R\,\mathrm{Cov}(\hat{\theta})\,\nabla R^{T}\)</span>. The interval is
+formed on the scale on which the distribution is a straight line in (log)
+time – its probability-plot scale – which also keeps it inside
+<span class="math notranslate nohighlight">\((0, 1)\)</span>: <span class="math notranslate nohighlight">\(\ln H = \ln(-\ln R)\)</span> for the Weibull, Exponential,
+Rayleigh and Gumbel, the normal quantile <span class="math notranslate nohighlight">\(\Phi^{-1}(F)\)</span> for the Normal
+and LogNormal, and the logit <span class="math notranslate nohighlight">\(\ln(F/R)\)</span> for the Logistic, the
+LogLogistic and every distribution with no such scale. For the Weibull,</p>
+<div class="math notranslate nohighlight">
+\[R_{\text{bound}} = \exp\left(-\hat{H}
+\exp\left(\pm z\,se(\hat{R}) / [\hat{R}\hat{H}]\right)\right).\]</div>
+<p>On the straight-line scale <span class="math notranslate nohighlight">\(a\,s - b\)</span> (with <span class="math notranslate nohighlight">\(s\)</span> the (log)
+time) the band is the envelope of the lines of the parameters’ Wald
+ellipsoid, so it rises with time whenever the slope’s – the shape’s – own
+Wald interval excludes 0. The logit scale used for every distribution
+before v0.22 had no such property: on small samples its bound on
+<span class="math notranslate nohighlight">\(F\)</span> could fall in a tail, 0.39 at <span class="math notranslate nohighlight">\(t = 5\)</span> and 0.00004 at
+<span class="math notranslate nohighlight">\(t = 10\)</span> on one six-point Weibull fit. With fewer failures than it
+takes for the shape’s interval to exclude 0, only the likelihood-ratio band
+below is sure to be monotone.</p>
+<p>Bounds on <span class="math notranslate nohighlight">\(F\)</span> and <span class="math notranslate nohighlight">\(H\)</span> follow from those on <span class="math notranslate nohighlight">\(R\)</span>
+(<span class="math notranslate nohighlight">\(F = 1 - R\)</span>, <span class="math notranslate nohighlight">\(H = -\ln R\)</span>), and bounds on the hazard and density
+are formed on the log scale so they stay positive – on the logit scale for a
+discrete distribution, whose hazard <span class="math notranslate nohighlight">\(h(k) = f(k)/R(k - 1)\)</span> and mass are
+probabilities. Where the hazard or density is 0 (below an offset, say) both
+bounds are 0.</p>
+<p>A Wald bound needs a positive variance. Where the inverse of the observed
+information has a negative variance – it is not positive definite, typically
+because an estimate is on or near a boundary of the parameter space – or
+where an estimate sits on the edge of its support, no Wald bound exists:
+<code class="docutils literal notranslate"><span class="pre">param_cb</span></code> and <code class="docutils literal notranslate"><span class="pre">cb</span></code> return <code class="docutils literal notranslate"><span class="pre">nan</span></code> there, with a warning saying why. A
+likelihood-ratio bound (below) does not need the variance.</p>
+<p><strong>Likelihood-ratio (profile) bounds</strong> (<code class="docutils literal notranslate"><span class="pre">method='lr'</span></code>) avoid the bowl
+approximation altogether and read the interval straight off the likelihood.
+For a parameter, the profile likelihood <span class="math notranslate nohighlight">\(\ell_{p}(\theta_{j})\)</span> is the
+best log-likelihood attainable with <span class="math notranslate nohighlight">\(\theta_{j}\)</span> held at a given value
+and the other parameters re-optimised; the interval is every value whose
+deviance is small enough,</p>
+<div class="math notranslate nohighlight">
+\[2\left[\ell(\hat{\theta}) - \ell_{p}(\theta_{j})\right] \leq \chi^{2}_{1, 1 - \alpha},\]</div>
+<p>with <span class="math notranslate nohighlight">\(\chi^{2}_{1, 1 - \alpha}\)</span> the <span class="math notranslate nohighlight">\(\chi^{2}\)</span> critical value
+with one degree of freedom. For a function such as <span class="math notranslate nohighlight">\(R(x)\)</span> the bound at
+each <span class="math notranslate nohighlight">\(x\)</span> is the most extreme value of the function over all parameter
+vectors inside that same likelihood region. These bounds are invariant to how
+the model is parameterised, respect the parameter’s range naturally, and are
+usually better calibrated than Wald bounds in small or heavily censored
+samples, which is why they are the reliability-engineering convention. They
+cost more (every bound is an optimisation) and they need the original data.
+For an offset, limited-failure-population or zero-inflated model the region is
+over every fitted parameter, the offset <span class="math notranslate nohighlight">\(\gamma\)</span>, the proportion
+<span class="math notranslate nohighlight">\(p\)</span> and the zero-inflation fraction <span class="math notranslate nohighlight">\(f_0\)</span> among them, so their
+uncertainty is in every bound, and they are bounded themselves.</p>
+<p><span class="math notranslate nohighlight">\(p\)</span> and <span class="math notranslate nohighlight">\(f_0\)</span> have a closed edge, <span class="math notranslate nohighlight">\(p = 1\)</span> and
+<span class="math notranslate nohighlight">\(f_0 = 0\)</span>, where the model is the plain one, and their estimates can
+sit on it. A side of the interval towards the edge is the edge itself
+whenever the deviance there is within the critical value. When the truth is
+on the edge, the deviance there is a 50:50 mixture of 0 and
+<span class="math notranslate nohighlight">\(\chi^{2}_{1}\)</span> asymptotically (Self and Liang, 1987), so a two-sided
+interval covers it with probability <span class="math notranslate nohighlight">\(1 - \alpha/2\)</span> and a one-sided
+bound towards it with <span class="math notranslate nohighlight">\(1 - \alpha\)</span>. With the estimate on the edge the
+other side is found by walking out in the parameter itself, where the
+deviance has curvature, rather than in its logit, which puts the edge at
+infinity.</p>
+<p>The offset <span class="math notranslate nohighlight">\(\gamma\)</span> is a threshold: as it reaches the first failure
+the likelihood is unbounded for a shape below 1 (Smith, 1985). Where the
+deviance stays below the critical value all the way to the first failure,
+the interval on <span class="math notranslate nohighlight">\(\gamma\)</span> runs up to it, the region holds points of
+any likelihood, and the bounds on functions of the model at that level are
+<code class="docutils literal notranslate"><span class="pre">nan</span></code>, with a warning. The <span class="math notranslate nohighlight">\(\chi^{2}_{1}\)</span> calibration also needs the
+likelihood to be regular, as an offset Weibull’s is for a shape above 2.</p>
+<p>The interval is the stretch of values around the estimate whose deviance
+stays below the critical value. Where the profile levels off below it on
+the way to the edge of the parameter’s space, no value out to the edge is
+excluded, and the bound is the edge itself: 0, 1 or <code class="docutils literal notranslate"><span class="pre">inf</span></code>. This happens
+when the model tends to a simpler one at that edge. A NegativeBinomial
+tends to a (shifted) Poisson as <span class="math notranslate nohighlight">\(r \to \infty\)</span>; if the Poisson’s
+deviance from the fit is below the critical value, the upper bound on
+<span class="math notranslate nohighlight">\(r\)</span> is <code class="docutils literal notranslate"><span class="pre">inf</span></code>. A band likewise reaches the edge of the function’s
+range (0 or 1 for <span class="math notranslate nohighlight">\(R\)</span>) when the region reaches that far.</p>
+<p>The region can also run out along a long, flat valley towards such an
+edge (an ExpoWeibull’s as <span class="math notranslate nohighlight">\(\beta \to \infty\)</span> with <span class="math notranslate nohighlight">\(\alpha\)</span> at
+the largest observation, or as <span class="math notranslate nohighlight">\(\alpha \to 0\)</span>), and a band’s or a
+quantile’s extreme can lie far down it, or be approached only at the end
+of the search’s range for the parameter (where it is no longer a double
+distinct from the edge). The search follows each parameter’s profile down
+such valleys before seeking the extreme there. Each bound is then taken
+exactly onto the region’s boundary from where the search ended, and along
+the boundary to where the function is most extreme, so it is the
+function’s value at a point of the region: where the extreme is
+reached at a point (inside the parameters’ space, or on the edge of a
+parameter’s range such as a Uniform’s smallest observation) the bound is
+that extreme to about one part in <span class="math notranslate nohighlight">\(10^{12}\)</span>. Where the extreme is
+only approached down a valley, the bound is as close to it as the
+parameters can be followed there in double precision: a few parts in
+<span class="math notranslate nohighlight">\(10^{9}\)</span> for a NegativeBinomial’s Poisson limit, where <span class="math notranslate nohighlight">\(1 - p\)</span>
+is about <span class="math notranslate nohighlight">\(10^{-8}\)</span>, and a few parts in <span class="math notranslate nohighlight">\(10^{7}\)</span> for an
+ExpoWeibull’s. Where a search is still moving out when it stops, the
+bound returned is the most extreme point of the region it found, with a
+warning saying so.</p>
+</section>
+<section id="comparing-models-information-criteria">
+<span id="information-criteria"></span><h3>Comparing models: information criteria<a class="headerlink" href="#comparing-models-information-criteria" title="Link to this heading"></a></h3>
+<p>The log-likelihood also lets us choose <em>between</em> models. A model with more
+parameters will always fit at least as well, so the comparison must penalise
+complexity. With <span class="math notranslate nohighlight">\(k\)</span> the number of parameters of the model (the
+distribution’s own, plus <span class="math notranslate nohighlight">\(\gamma\)</span>, <span class="math notranslate nohighlight">\(p\)</span> and <span class="math notranslate nohighlight">\(f_{0}\)</span> when the
+model has them),</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{AIC} = 2k + 2\,\mathrm{nll}, \qquad
+\mathrm{AIC_{c}} = \mathrm{AIC} + \frac{2k^{2} + 2k}{d - k - 1}, \qquad
+\mathrm{BIC} = k \ln d + 2\,\mathrm{nll},\]</div>
+<p>where <span class="math notranslate nohighlight">\(\mathrm{nll} = -\ell(\hat{\theta})\)</span> is <code class="docutils literal notranslate"><span class="pre">neg_ll()</span></code> and
+<span class="math notranslate nohighlight">\(d\)</span> is the sample size of both corrections, defined by one rule used by
+every model in SurPyval that reports a BIC or an <span class="math notranslate nohighlight">\(\mathrm{AIC_{c}}\)</span>:</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><strong>The sample-size rule.</strong> <span class="math notranslate nohighlight">\(d\)</span> is the number of <strong>observed
+failures</strong>: the exact, left-censored and interval-censored observations,
+each weighted by its count <code class="docutils literal notranslate"><span class="pre">n</span></code>. Right-censored observations, which have
+not failed, are left out. If there is no observed failure, <span class="math notranslate nohighlight">\(d\)</span> is
+the number of observations (again weighted by <code class="docutils literal notranslate"><span class="pre">n</span></code>) instead, so the
+criteria stay finite.</p>
+<ul class="simple">
+<li><p><em>Univariate parametric, mixture, Royston-Parmar and regression models</em> (including
+frailty and time-varying-covariate fits) count units. A
+time-varying-covariate subject is one unit however many intervals its
+follow-up is split into, and it counts as a failure when its last
+interval ends in one.</p></li>
+<li><p><em>Recurrent-event models</em> count observed events: each exact event, and
+every event in a left- or interval-censored count. The
+end-of-observation rows are not events.</p></li>
+<li><p><em>Copula models</em> count joint rows in which at least one series failed; a
+row right-censored in every series adds nothing.</p></li>
+<li><p><em>Semi-parametric models</em> – Cox (including its stratified and
+time-varying fits and the cause-specific competing-risks model), Cox
+frailty and proportional odds – count the events, as R’s
+<code class="docutils literal notranslate"><span class="pre">logLik.coxph</span></code> does (its <code class="docutils literal notranslate"><span class="pre">nobs</span></code> is <code class="docutils literal notranslate"><span class="pre">nevent</span></code>); a Fine-Gray model
+counts the events of its cause of interest, the terms of its
+weighted partial likelihood. Their criteria are on the partial (Cox),
+integrated (Cox frailty), profile (proportional odds) or weighted
+partial (Fine-Gray) likelihood, with <span class="math notranslate nohighlight">\(k\)</span> the estimated
+coefficients (and a Cox frailty’s <code class="docutils literal notranslate"><span class="pre">theta</span></code>), so they compare models
+of the same kind fitted to the same data – two sets of covariates,
+say – not a semi-parametric model with a parametric one.</p></li>
+</ul>
+</div>
+<p>Using the failures rather than all units follows <a class="reference internal" href="#volinsky2000bic" id="id2"><span>[Volinsky2000bic]</span></a>: a
+censored unit carries less information than a failure. For exact and
+right-censored data, <span class="math notranslate nohighlight">\(d\)</span> is the number of exact failures. Counting only
+exact failures, as some models once did, made <span class="math notranslate nohighlight">\(d = 0\)</span> and the BIC
+<span class="math notranslate nohighlight">\(-\infty\)</span> for purely interval-censored data. Because every model
+counts the same way, a univariate fit, a regression and a recurrent-event model
+of the same data penalise with the same <span class="math notranslate nohighlight">\(d\)</span>, and their criteria differ
+only through their likelihoods and parameter counts.
+<span class="math notranslate nohighlight">\(\mathrm{AIC_{c}}\)</span> exists only for <span class="math notranslate nohighlight">\(d &gt; k + 1\)</span>; otherwise
+<code class="docutils literal notranslate"><span class="pre">aic_c()</span></code> returns <code class="docutils literal notranslate"><span class="pre">nan</span></code>.</p>
+<p>Lower is better. Because the likelihood is a property of the parameters and the
+data, not of how they were found, these criteria are available after a fit by
+<em>any</em> method (but not for a model built with <code class="docutils literal notranslate"><span class="pre">from_params</span></code>, which has no
+data). <span class="math notranslate nohighlight">\(k\)</span> is the number of <em>estimated</em> parameters – the
+distribution’s, plus <code class="docutils literal notranslate"><span class="pre">gamma</span></code>, <code class="docutils literal notranslate"><span class="pre">lfp_p</span></code> and <code class="docutils literal notranslate"><span class="pre">f0</span></code> when they are fitted – so a
+parameter held with <code class="docutils literal notranslate"><span class="pre">fixed</span></code> is not counted: a Weibull with its shape fixed is
+penalised as the one-parameter model it is, and scores exactly as the
+equivalent Rayleigh does.</p>
+<p>Every fitted model that reports these spells them the same way (#572):
+<code class="docutils literal notranslate"><span class="pre">neg_ll()</span></code>, <code class="docutils literal notranslate"><span class="pre">aic()</span></code>, <code class="docutils literal notranslate"><span class="pre">aic_c()</span></code> and <code class="docutils literal notranslate"><span class="pre">bic()</span></code> are methods, and
+<code class="docutils literal notranslate"><span class="pre">log_likelihood</span></code>, where a model has it, is the number <span class="math notranslate nohighlight">\(\ell(\hat{\theta})\)</span>.</p>
+<p>Two pitfalls. Compare only models fitted to the <em>same</em> data. And do not compare
+a discrete model with a continuous one this way: a probability mass and a
+probability density are measured in different units, so their likelihoods are
+not on the same scale.</p>
+</section>
+</section>
+<section id="maximum-product-of-spacings-mps">
+<h2>Maximum Product of Spacings (MPS)<a class="headerlink" href="#maximum-product-of-spacings-mps" title="Link to this heading"></a></h2>
+<p>Maximum product of spacings — also called maximum spacing estimation, after Cheng &amp; Amin <a class="reference internal" href="#cheng1983mps" id="id3"><span>[Cheng1983mps]</span></a> and, independently, Ranneby <a class="reference internal" href="#ranneby1984mps" id="id4"><span>[Ranneby1984mps]</span></a> — is a close cousin of MLE that repairs the situations where MLE misbehaves. Where MLE maximises the geometric mean of the density <em>heights</em> at each observation, MPS maximises the geometric mean of the <em>gaps between the CDF values</em> of the ordered data.</p>
+<p>The intuition is this. If a distribution really did generate the data, then pushing the observations through its own CDF, <span class="math notranslate nohighlight">\(u_{i} = F(x_{i} \mid \theta)\)</span>, should produce values that look uniformly spread across <span class="math notranslate nohighlight">\([0, 1]\)</span> — this is the probability integral transform. A good fit is therefore one whose ordered CDF values are spaced as <em>evenly</em> as possible, and MPS makes that precise by scoring the spacings between consecutive ordered CDF values.</p>
+<p>Order the observations <span class="math notranslate nohighlight">\(x_{(1)} \leq x_{(2)} \leq \dots \leq x_{(n)}\)</span> and define the spacings</p>
+<div class="math notranslate nohighlight">
+\[D_{i}(\theta) = F(x_{(i)} \mid \theta) - F(x_{(i-1)} \mid \theta),
+\qquad i = 1, \dots, n + 1,\]</div>
+<p>with the conventions <span class="math notranslate nohighlight">\(F(x_{(0)}) = 0\)</span> and <span class="math notranslate nohighlight">\(F(x_{(n+1)}) = 1\)</span> for the two end gaps. There are <span class="math notranslate nohighlight">\(n + 1\)</span> spacings and, because <span class="math notranslate nohighlight">\(F\)</span> runs from 0 to 1, they always sum to one. MPS chooses the parameters that maximise their geometric mean,</p>
+<div class="math notranslate nohighlight">
+\[S(\theta) = \left( \prod_{i=1}^{n+1} D_{i}(\theta) \right)^{1/(n+1)},\]</div>
+<p>or, taking logs and negating for the optimiser exactly as we did for MLE,</p>
+<div class="math notranslate nohighlight">
+\[-\frac{1}{n + 1} \sum_{i=1}^{n+1} \ln D_{i}(\theta).\]</div>
+<p>Because a geometric mean is largest when its terms are equal, this is maximised when the spacings are as uniform as possible — precisely the “evenly spread” condition above. We can look at the spacings of a fitted model directly; they always sum to one, and on a small sample they are far from equal, which is exactly the randomness the estimator has to average over:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">how</span><span class="o">=</span><span class="s1">'MPS'</span><span class="p">)</span>
+
+<span class="n">u</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">D</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">diff</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([[</span><span class="mi">0</span><span class="p">],</span> <span class="n">u</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">]]))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"spacings :"</span><span class="p">,</span> <span class="n">D</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"sum      :"</span><span class="p">,</span> <span class="n">D</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>spacings : [0.019 0.389 0.079 0.045 0.1   0.03  0.043 0.14  0.155]
+sum      : 1.0
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Why bother, when MLE already works so well? The answer is those two <em>end</em> spacings, <span class="math notranslate nohighlight">\(D_{1} = F(x_{(1)}) - 0\)</span> and <span class="math notranslate nohighlight">\(D_{n+1} = 1 - F(x_{(n)})\)</span>. They let MPS “see” the room beyond the smallest and largest observations — information MLE simply throws away. This matters most when a parameter controls where the distribution’s support <em>starts or ends</em>: an offset (three-parameter) distribution, or a finitely bounded one such as the Uniform. There the likelihood is badly behaved, because MLE can drive the density to infinity by sliding the support boundary right up against the most extreme data point — a degenerate, unbounded likelihood. MPS cannot be fooled this way: pushing the boundary onto <span class="math notranslate nohighlight">\(x_{(1)}\)</span> forces the first spacing <span class="math notranslate nohighlight">\(D_{1}\)</span> to zero, and <span class="math notranslate nohighlight">\(\ln 0 = -\infty\)</span> is the <em>worst</em> possible score, so the estimator is pulled back to a sensible interior solution. This is exactly why, in the <a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a> notes, <code class="docutils literal notranslate"><span class="pre">how='MPS'</span></code> places the Uniform’s end points outside the sample instead of on its extremes, and fits an offset Log-Logistic to ten points on which the MLE fails.</p>
+<section id="censoring-ties-and-truncation">
+<h3>Censoring, ties and truncation<a class="headerlink" href="#censoring-ties-and-truncation" title="Link to this heading"></a></h3>
+<p>Censoring, ties and truncation are folded in with the same reasoning used for the likelihood. A right- or left-censored point contributes its survival <span class="math notranslate nohighlight">\(R(x \mid \theta)\)</span> or CDF <span class="math notranslate nohighlight">\(F(x \mid \theta)\)</span> — all we know is that the true value lies beyond the one we saw — and repeated (tied) observations contribute density terms, so exact ties do not collapse a spacing to zero. Left and right truncation are handled by renormalising the spacings over the observation window: every CDF value is rescaled as <span class="math notranslate nohighlight">\(\left(F(x) - F(t_{l})\right) / \left(F(t_{r}) - F(t_{l})\right)\)</span> before the gaps are taken, so the spacings again run over a unit interval, now <em>conditional</em> on the observation having fallen inside the window. This renormalisation is what lets surpyval fit right-truncated data with MPS, which the plotting-based estimators handle only through the Turnbull estimate and MSE and MOM do not handle at all.</p>
+<p>Written out in full, with <span class="math notranslate nohighlight">\(W = F(t_{r}) - F(t_{l})\)</span> the probability of
+the window, SurPyval minimises</p>
+<div class="math notranslate nohighlight">
+\[-\frac{1}{N}\left[
+  \sum_{i=1}^{m+1} \ln D_{i}
+  + \sum_{\text{tied } x_{j}} (n_{j} - 1) \ln \frac{f(x_{j})}{W}
+  + \sum_{c_{i} = 1} n_{i} \ln \frac{F(t_{r}) - F(x_{i})}{W}
+  + \sum_{c_{i} = -1} n_{i} \ln \frac{F(x_{i}) - F(t_{l})}{W}
+\right],\]</div>
+<p>where the <span class="math notranslate nohighlight">\(m + 1\)</span> normalised spacings are taken over the <span class="math notranslate nohighlight">\(m\)</span>
+distinct observed failure times. It is a single sum, so every unit carries the
+same weight whatever kind of observation it is; dividing by <span class="math notranslate nohighlight">\(N\)</span> only
+scales the objective. With an offset, the data and the truncation bounds are
+shifted together.</p>
+<p>The construction also sets MPS’s limits. Spacings need one ordering of the
+data within one window, so the truncation must be common to every observation
+(scalar <code class="docutils literal notranslate"><span class="pre">tl</span></code> and <code class="docutils literal notranslate"><span class="pre">tr</span></code>, not per-unit entry times), and there is no spacing
+for an interval, so interval-censored data must use MLE (or MPP with the
+Turnbull heuristic). Spacings are increments of a continuous CDF, so MPS is not
+available for discrete distributions. And MPS has no likelihood curvature to
+offer, so an MPS fit carries no confidence bounds (its <code class="docutils literal notranslate"><span class="pre">neg_ll</span></code> and
+information criteria are still available). The objective is minimised with
+BFGS with the automatic gradient, on the rescaled search described in
+<a class="reference internal" href="#numerical-mle"><span class="std std-ref">How SurPyval finds the maximum</span></a>, escalating to Newton-CG and then to the
+derivative-free Nelder-Mead if needed; if that too fails,
+SurPyval warns (“MPS FAILED: Try alternate estimation method”). The product
+of spacings of an offset fit can have no finite maximum as the likelihood can:
+on data skewed more to the left than any member of the family, the offset
+runs down towards <span class="math notranslate nohighlight">\(-\infty\)</span> and the family approaches its limit (the
+Normal for the LogNormal and the Gamma, the <code class="docutils literal notranslate"><span class="pre">Logistic</span></code> for the
+LogLogistic, the <code class="docutils literal notranslate"><span class="pre">Gumbel</span></code> for the Weibull). Where BFGS stops short with
+the offset moved down and the limit’s own MPS fit spacing the data at least
+as well, the fit stops there and warns “No finite maximum”, recommending the
+limit.</p>
+<p>Trading the density for spacings costs nothing asymptotically: under the usual regularity conditions MPS is consistent and asymptotically as efficient as MLE, attaining the same asymptotic variance. Its advantage is that it <em>stays</em> consistent in the awkward cases — J- or U-shaped densities, and distributions with unknown support — where the maximum likelihood estimate is inconsistent or fails to exist at all. In surpyval it is requested with <code class="docutils literal notranslate"><span class="pre">how='MPS'</span></code> and, like every other estimator, returns a fully-featured model (see the <a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a> notes for the code). This makes it a robust fall-back whenever an MLE fit struggles with an offset or a bounded support.</p>
+<p class="rubric">References</p>
+<div role="list" class="citation-list">
+<div class="citation" id="cheng1983mps" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">Cheng1983mps</a><span class="fn-bracket">]</span></span>
+<p>Cheng, R. C. H. and Amin, N. A. K. (1983). Estimating parameters in continuous univariate distributions with a shifted origin. <em>Journal of the Royal Statistical Society: Series B (Methodological)</em>, 45(3), 394-403.</p>
+</div>
+<div class="citation" id="ranneby1984mps" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">Ranneby1984mps</a><span class="fn-bracket">]</span></span>
+<p>Ranneby, B. (1984). The maximum spacing method. An estimation method related to the maximum likelihood method. <em>Scandinavian Journal of Statistics</em>, 11(2), 93-112.</p>
+</div>
+<div class="citation" id="meeker1987lfp" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">Meeker1987lfp</a><span class="fn-bracket">]</span></span>
+<p>Meeker, W. Q. (1987). Limited failure population life tests: application to integrated circuit reliability. <em>Technometrics</em>, 29(1), 51-65.</p>
+</div>
+<div class="citation" id="volinsky2000bic" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">Volinsky2000bic</a><span class="fn-bracket">]</span></span>
+<p>Volinsky, C. T. and Raftery, A. E. (2000). Bayesian information criterion for censored survival models. <em>Biometrics</em>, 56(1), 256-262.</p>
+</div>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Non-Parametric%20Estimation.html" class="btn btn-neutral float-left" title="Non-Parametric Estimation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="regression%20analysis.html" class="btn btn-neutral float-right" title="Regression Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,961 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Regression Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Competing Risks Analysis" href="Competing%20Risks%20Analysis.html" />
+    <link rel="prev" title="Parametric Estimation" href="Parametric%20Estimation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Regression Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#proportional-hazards-model">Proportional Hazards Model</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#maximum-likelihood-with-censoring-and-truncation">Maximum likelihood with censoring and truncation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#semi-parametric">Semi-Parametric</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#accelerated-failure-time">Accelerated Failure Time</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#accelerated-life">Accelerated Life</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#proportional-odds">Proportional Odds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#additive-hazards">Additive Hazards</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#semi-parametric-buckley-james">Semi-Parametric — Buckley-James</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#checking-a-proportional-hazards-fit">Checking a proportional hazards fit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#cluster-robust-standard-errors">Cluster-robust standard errors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#shared-frailty">Shared frailty</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stratification">Stratification</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#time-varying-covariates">Time-varying covariates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#validating-a-survival-predictor">Validating a survival predictor</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#concordance">Concordance</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#survival-trees-and-forests">Survival trees and forests</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#choosing-a-model">Choosing a model</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Regression Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/regression analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="regression-analysis">
+<h1>Regression Analysis<a class="headerlink" href="#regression-analysis" title="Link to this heading"></a></h1>
+<p>The time until some event happens will, almost certainly, be impacted by factors. For example, when considering how long a machine will last before failure an engineer will want to account for the operational conditions. It may operate in a humid environment, or it may operate at a higher rate. A clinician asking how long patients stay free of a disease will, in the same way, want to account for age, dose and other conditions. The question is then, how do we account for these variations, or ‘covariates’, on the time until failure, or until any other event?</p>
+<p>Regression analysis is the process of capturing the effect that covariates have on the item (the unit, or the subject). That is, we use data on other factors to ‘regress’ onto the survival distribution. The purpose of this type of regression is so that you can ask, and answer, questions like “what effect will increasing X have on the survival time?”</p>
+<p>Survival regression differs from ordinary (least-squares) regression in two ways. First, the response is a <em>time</em> that is often not fully observed: an item still running when the test stopped (or a patient still alive when the study ended) is right censored, one that was only inspected occasionally is interval censored, and one that only entered the study after it had already survived a while is left truncated (see <a class="reference internal" href="Types%20of%20Data.html"><span class="doc">Types of Data</span></a>). Second, the answer is a whole <em>distribution</em> of lifetimes for each covariate value, not a single predicted number. Every model on this page is therefore defined by how the covariates change a survival distribution, and every one is fitted by a likelihood that knows about censoring and truncation.</p>
+<p>Surpyval covers five families of regression model, distinguished by <em>how</em> the covariates act on the distribution:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Proportional Hazards (they multiply the hazard),</p></li>
+<li><p>Accelerated Failure Time (they scale the time axis),</p></li>
+<li><p>Accelerated Life (they replace the life parameter with a physical stress-life relationship),</p></li>
+<li><p>Proportional Odds (they multiply the odds of survival), and</p></li>
+<li><p>Additive Hazards (they add to the hazard).</p></li>
+</ul>
+</div></blockquote>
+<p>Around these sit a number of variations — semi-parametric versions that leave the baseline unspecified (Cox, Lin-Ying, Buckley-James), a random-effects (frailty) version for grouped data, stratified and time-varying-covariate versions, and tree-based predictors that make no structural assumption at all. There are special cases when several of these coincide, however, it is important to understand the difference between them in general. I detail the differences in the following sections; the worked, runnable versions of everything here are on the <a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Regression Modelling with SurPyval</span></a> page, and the complete API is under <a class="reference internal" href="surpyval.regression.html"><span class="doc">Regression Modelling</span></a>.</p>
+<p><strong>Notation.</strong> Throughout, <span class="math notranslate nohighlight">\(T\)</span> is the (random) lifetime and <span class="math notranslate nohighlight">\(x\)</span> an observed time or an age at which a function is evaluated. The sections on the Cox model and later, which follow a process along the time axis, also write <span class="math notranslate nohighlight">\(t\)</span> for a point on that axis and <span class="math notranslate nohighlight">\(t_k\)</span> for the <span class="math notranslate nohighlight">\(k\)</span>-th distinct failure time; truncation bounds are always subscripted, <span class="math notranslate nohighlight">\(t_l\)</span> and <span class="math notranslate nohighlight">\(t_r\)</span> (the <code class="docutils literal notranslate"><span class="pre">tl</span></code>/<code class="docutils literal notranslate"><span class="pre">tr</span></code> of surpyval’s <code class="docutils literal notranslate"><span class="pre">t</span></code>). The covariates of one unit are a row vector <span class="math notranslate nohighlight">\(Z = (z_1, \dots, z_p)\)</span> and the coefficients a column vector <span class="math notranslate nohighlight">\(\beta\)</span>, so <span class="math notranslate nohighlight">\(\beta' Z = \beta_1 z_1 + \dots + \beta_p z_p\)</span> is a single number, the <em>linear predictor</em>. The survival function is <span class="math notranslate nohighlight">\(S(x) = P(T &gt; x)\)</span>, the CDF <span class="math notranslate nohighlight">\(F = 1 - S\)</span>, the density <span class="math notranslate nohighlight">\(f\)</span>, the hazard <span class="math notranslate nohighlight">\(h = f / S\)</span> and the cumulative hazard <span class="math notranslate nohighlight">\(H = -\log S\)</span>. A subscript <span class="math notranslate nohighlight">\(0\)</span> marks the <em>baseline</em> — the distribution of a unit whose covariates are all zero. Censoring follows the surpyval convention: <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code> observed, <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code> right censored, <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code> left censored and <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code> interval censored.</p>
+<p>The table below is the one-line summary of each family — what the covariates do, and how to read a coefficient. The sign convention matters: in the PH, AFT and additive families a <em>positive</em> coefficient means a <em>shorter</em> life, while in the proportional odds family it means a <em>longer</em> one, and in accelerated life the stress-life function is written directly in units of life.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 30.0%" />
+<col style="width: 48.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Family</p></th>
+<th class="head"><p>Definition</p></th>
+<th class="head"><p>Reading a coefficient</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Proportional hazards</p></td>
+<td><p><span class="math notranslate nohighlight">\(h(x \mid Z) = e^{\beta' Z} h_0(x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(e^{\beta_j}\)</span> is the hazard ratio per unit of <span class="math notranslate nohighlight">\(z_j\)</span>; positive shortens life.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Accelerated failure time</p></td>
+<td><p><span class="math notranslate nohighlight">\(S(x \mid Z) = S_0(e^{\beta' Z} x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(e^{\beta_j}\)</span> is the factor by which a unit of <span class="math notranslate nohighlight">\(z_j\)</span> speeds up ageing; positive shortens life.</p></td>
+</tr>
+<tr class="row-even"><td><p>Accelerated life</p></td>
+<td><p><span class="math notranslate nohighlight">\(\text{life} = \phi(Z)\)</span>, a stress-life model</p></td>
+<td><p>The parameters of a physical law (activation energy, power-law exponent, …).</p></td>
+</tr>
+<tr class="row-odd"><td><p>Proportional odds</p></td>
+<td><p><span class="math notranslate nohighlight">\(\frac{S(x \mid Z)}{F(x \mid Z)} = e^{\beta' Z} \frac{S_0(x)}{F_0(x)}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(e^{\beta_j}\)</span> is the survival-odds ratio; positive <em>lengthens</em> life.</p></td>
+</tr>
+<tr class="row-even"><td><p>Additive hazards</p></td>
+<td><p><span class="math notranslate nohighlight">\(h(x \mid Z) = h_0(x) + \beta' Z\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\beta_j\)</span> is an absolute change in hazard (a rate); positive shortens life.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The families really are different, and the quickest way to see it is to look at the ratio of the hazard of a “treated” unit to the baseline hazard over time. The cell below takes one baseline (a log-normal) and applies a covariate effect of the same size through each of three families. Under proportional hazards the ratio is flat by definition; under proportional odds it starts at <span class="math notranslate nohighlight">\(e^{-\beta' Z}\)</span> and fades to 1; under accelerated failure time it changes shape with the baseline:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">LogNormal</span>
+
+<span class="n">mu</span><span class="p">,</span> <span class="n">sigma</span> <span class="o">=</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">0.5</span>          <span class="c1"># baseline log-normal</span>
+<span class="n">phi</span> <span class="o">=</span> <span class="mf">2.0</span>                     <span class="c1"># the covariate effect, exp(beta'Z)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">300</span><span class="p">)</span>
+<span class="n">S0</span><span class="p">,</span> <span class="n">F0</span> <span class="o">=</span> <span class="n">LogNormal</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">mu</span><span class="p">,</span> <span class="n">sigma</span><span class="p">),</span> <span class="n">LogNormal</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">mu</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
+<span class="n">h0</span> <span class="o">=</span> <span class="n">LogNormal</span><span class="o">.</span><span class="n">hf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">mu</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span>
+
+<span class="n">hr_ph</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full_like</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">phi</span><span class="p">)</span>                            <span class="c1"># e^{b'Z} h0 / h0</span>
+<span class="n">hr_aft</span> <span class="o">=</span> <span class="n">phi</span> <span class="o">*</span> <span class="n">LogNormal</span><span class="o">.</span><span class="n">hf</span><span class="p">(</span><span class="n">phi</span> <span class="o">*</span> <span class="n">x</span><span class="p">,</span> <span class="n">mu</span><span class="p">,</span> <span class="n">sigma</span><span class="p">)</span> <span class="o">/</span> <span class="n">h0</span>    <span class="c1"># phi h0(phi x) / h0</span>
+<span class="n">hr_po</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="n">F0</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">phi</span><span class="p">)</span> <span class="o">*</span> <span class="n">S0</span><span class="p">)</span>                     <span class="c1"># odds of survival x 1/phi</span>
+
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">hr_ph</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">'proportional hazards'</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">hr_aft</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">'accelerated failure time'</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">hr_po</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s1">'proportional odds'</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">axhline</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">color</span><span class="o">=</span><span class="s1">'grey'</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">'x'</span><span class="p">);</span> <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">'h(x | Z) / h0(x)'</span><span class="p">);</span> <span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/regression%20analysis_0_0.png" src="_images/regression%20analysis_0_0.png" />
+</div>
+</div>
+<p>(The proportional-odds curve uses a survival-odds multiplier of <span class="math notranslate nohighlight">\(1/2\)</span> so that, like the other two, the covariate is harmful.) Deciding which of these shapes matches your data is the central modelling choice; the last section, <a class="reference internal" href="#validating-a-survival-predictor">Validating a survival predictor</a>, closes with a guide to making it.</p>
+<section id="proportional-hazards-model">
+<h2>Proportional Hazards Model<a class="headerlink" href="#proportional-hazards-model" title="Link to this heading"></a></h2>
+<p>Every distribution can be described by its hazard rate <span class="math notranslate nohighlight">\(h(x)\)</span> — the instantaneous risk of failing at age <span class="math notranslate nohighlight">\(x\)</span>, given survival to <span class="math notranslate nohighlight">\(x\)</span> — and the density, CDF and survival function all follow from it (see the <a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html"><span class="doc">Handy References - Aide-mémoire</span></a> page). So a natural way to let covariates act on a lifetime is to let them act on the hazard. A proportional hazards model <em>multiplies</em> it:</p>
+<div class="math notranslate nohighlight">
+\[h(x \mid Z) = \phi(Z)\, h_{0}(x),\]</div>
+<p>where <span class="math notranslate nohighlight">\(h_0\)</span> is the <em>baseline</em> hazard and <span class="math notranslate nohighlight">\(\phi(Z) &gt; 0\)</span> a function of the covariates. A concrete picture: pumps run at high load (<span class="math notranslate nohighlight">\(z = 1\)</span>) wear twice as fast as pumps at low load (<span class="math notranslate nohighlight">\(z = 0\)</span>), so <span class="math notranslate nohighlight">\(\phi(1) = 2\)</span>, <span class="math notranslate nohighlight">\(\phi(0) = 1\)</span>. At <em>every</em> age, a high-load pump is twice as likely to fail in the next hour as a low-load pump of the same age; the shape of the hazard over age — rising for wear-out, flat for random failures — is the same for both, only its level differs.</p>
+<p>Which <span class="math notranslate nohighlight">\(\phi\)</span>? The simplest idea, <span class="math notranslate nohighlight">\(\phi(Z) = 1 + \beta' Z\)</span> (a linear <em>relative risk</em>), turns negative for a protective covariate with a large enough value, and a negative hazard is impossible, so its coefficients have to be constrained. The standard choice avoids that:</p>
+<div class="math notranslate nohighlight">
+\[\phi(Z) = e^{\beta' Z} = e^{\beta_1 z_1 + \beta_2 z_2 + \dots + \beta_p z_p}.\]</div>
+<p>It is positive for every <span class="math notranslate nohighlight">\(\beta\)</span> and <span class="math notranslate nohighlight">\(Z\)</span>; a positive coefficient raises the hazard and a negative one lowers it; and any number of covariates enter through the one linear predictor <span class="math notranslate nohighlight">\(\beta' Z\)</span>. This <em>log-linear</em> form is used by the Cox model and by every pre-built parametric PH model in surpyval. Another function can be supplied when the subject matter calls for one (see the custom-covariate-function example on the <a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Regression Modelling with SurPyval</span></a> page), but the log-linear form is the one whose coefficients have the clean reading below.</p>
+<p><strong>What a coefficient means.</strong> Compare two units that differ by one unit in <span class="math notranslate nohighlight">\(z_j\)</span> and agree on everything else. The ratio of their hazards is</p>
+<div class="math notranslate nohighlight">
+\[\frac{h(x \mid z_j + 1)}{h(x \mid z_j)} = e^{\beta_j},\]</div>
+<p>at <em>every</em> age <span class="math notranslate nohighlight">\(x\)</span> — that is what “proportional” means. <span class="math notranslate nohighlight">\(e^{\beta_j}\)</span> is the <strong>hazard ratio</strong>: <span class="math notranslate nohighlight">\(\beta_j = 0.7\)</span> roughly doubles the instantaneous risk of failure, <span class="math notranslate nohighlight">\(\beta_j = -0.7\)</span> roughly halves it. Because the hazards stay a constant multiple apart, the survival curves are powers of one another, <span class="math notranslate nohighlight">\(S(x \mid Z) = S_0(x)^{e^{\beta' Z}}\)</span>, and so they never cross. The multiplier only has meaning relative to the baseline: the baseline is the unit with <span class="math notranslate nohighlight">\(Z = 0\)</span>, so centring a covariate (subtracting its mean) changes the baseline but not <span class="math notranslate nohighlight">\(\beta\)</span>.</p>
+<p>For a <em>parametric</em> proportional hazards model (a known baseline such as the Weibull, with parameters <span class="math notranslate nohighlight">\(\theta\)</span>) surpyval estimates <span class="math notranslate nohighlight">\(\theta\)</span> and <span class="math notranslate nohighlight">\(\beta\)</span> together by maximum likelihood. Integrating the hazard gives <span class="math notranslate nohighlight">\(H(x \mid Z) = \phi(Z) H_0(x)\)</span>, and every other function follows:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}f(x \mid Z) = \phi(Z)\, h_{0}(x)\, e^{-\phi(Z) H_{0}(x)} \\
+\\
+F(x \mid Z) = 1 - e^{-\phi(Z) H_{0}(x)} \\
+\\
+S(x \mid Z) = e^{-\phi(Z) H_{0}(x)}\end{split}\]</div>
+<p>These are all the likelihood of the next section needs. (The Cox model further down is <em>semi-parametric</em> — its baseline is left unspecified and its coefficients are estimated by a <em>partial</em> likelihood instead.) Pre-built versions exist for the Exponential, Weibull, Normal, Gumbel, Logistic, Log-Normal and Gamma baselines (<code class="docutils literal notranslate"><span class="pre">WeibullPH</span></code> and friends), and the <code class="docutils literal notranslate"><span class="pre">PH(distribution)</span></code> factory builds one from other surpyval distributions; see <a class="reference internal" href="regression/parametric.html"><span class="doc">Parametric Regression Models</span></a>.</p>
+<p>The details on fitting proportional hazards model is detailed more in the <a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Regression Modelling with SurPyval</span></a> page.</p>
+<section id="maximum-likelihood-with-censoring-and-truncation">
+<h3>Maximum likelihood with censoring and truncation<a class="headerlink" href="#maximum-likelihood-with-censoring-and-truncation" title="Link to this heading"></a></h3>
+<p>Every <em>parametric</em> regression family in surpyval — proportional hazards, accelerated failure time, proportional odds, parametric additive hazards and accelerated life — is fitted by the same likelihood. The families differ only in the covariate-aware <span class="math notranslate nohighlight">\(f(x \mid Z)\)</span>, <span class="math notranslate nohighlight">\(S(x \mid Z)\)</span> and <span class="math notranslate nohighlight">\(F(x \mid Z)\)</span> they plug in; the treatment of the data is shared, which is why all of them accept the same censoring and truncation.</p>
+<p>Each row <span class="math notranslate nohighlight">\(i\)</span> contributes the probability of what was actually seen, weighted by its count <span class="math notranslate nohighlight">\(n_i\)</span>:</p>
+<ul class="simple">
+<li><p>observed at <span class="math notranslate nohighlight">\(x_i\)</span> (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>): the density <span class="math notranslate nohighlight">\(f(x_i \mid Z_i)\)</span>;</p></li>
+<li><p>right censored at <span class="math notranslate nohighlight">\(x_i\)</span> (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>): <span class="math notranslate nohighlight">\(S(x_i \mid Z_i)\)</span> — it was still working;</p></li>
+<li><p>left censored at <span class="math notranslate nohighlight">\(x_i\)</span> (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code>): <span class="math notranslate nohighlight">\(F(x_i \mid Z_i)\)</span> — it had already failed;</p></li>
+<li><p>interval censored in <span class="math notranslate nohighlight">\((x_{l,i}, x_{r,i}]\)</span> (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>): <span class="math notranslate nohighlight">\(F(x_{r,i} \mid Z_i) - F(x_{l,i} \mid Z_i)\)</span>.</p></li>
+</ul>
+<p>If the row could only have been observed inside a truncation window <span class="math notranslate nohighlight">\((t_{l,i}, t_{r,i})\)</span> — for example a unit that entered the study at age <span class="math notranslate nohighlight">\(t_{l,i}\)</span> having already survived that long — the contribution is divided by the probability of landing in the window, <span class="math notranslate nohighlight">\(F(t_{r,i} \mid Z_i) - F(t_{l,i} \mid Z_i)\)</span>. Putting it together,</p>
+<div class="math notranslate nohighlight">
+\[\log L(\theta, \beta) = \sum_i n_i \log \bigl[\text{contribution}_i\bigr]
+- \sum_{i \in \text{truncated}} n_i \log P\bigl(t_{l,i} &lt; T \le t_{r,i} \mid Z_i\bigr).\]</div>
+<p>The truncation term is where a naive analysis goes wrong: ignoring delayed entry treats every late entrant as if it had been watched from birth, so it over-represents long lives. For a window bounded on one side only, surpyval evaluates <span class="math notranslate nohighlight">\(\log S(t_l \mid Z)\)</span> or <span class="math notranslate nohighlight">\(\log F(t_r \mid Z)\)</span> directly rather than as a difference of CDFs, which keeps the term finite even when the probability underflows.</p>
+<p>The estimate <span class="math notranslate nohighlight">\((\hat\theta, \hat\beta)\)</span> maximises <span class="math notranslate nohighlight">\(\log L\)</span> numerically (the baseline parameters <span class="math notranslate nohighlight">\(\theta\)</span> are optimised on a transformed scale that respects their support). Parameters can be held at known values with <code class="docutils literal notranslate"><span class="pre">fixed=</span></code>, e.g. a Weibull shape known from experience. The information criteria reported with a fit, <span class="math notranslate nohighlight">\(\text{AIC} = 2k - 2\log L\)</span> and <span class="math notranslate nohighlight">\(\text{BIC} = k \log d - 2 \log L\)</span>, use <span class="math notranslate nohighlight">\(d\)</span>, the number of observed failures (exact, left- and interval-censored, weighted by their counts; the number of units if there is none), as the sample size of the BIC, the rule of every SurPyval model (see <a class="reference internal" href="Parametric%20Estimation.html#information-criteria"><span class="std std-ref">Comparing models: information criteria</span></a>), and count as <span class="math notranslate nohighlight">\(k\)</span> the parameters that were estimated — a parameter held at a known value with <code class="docutils literal notranslate"><span class="pre">fixed</span></code> is not counted.</p>
+<p><strong>Covariates far from zero.</strong> A log-linear family evaluates <span class="math notranslate nohighlight">\(e^{\beta' Z}\)</span>, which overflows for a covariate far from zero — a calendar year, a date as a day count — and used to send the optimiser, silently, to a wrong answer. <code class="docutils literal notranslate"><span class="pre">fit(...,</span> <span class="pre">center=True)</span></code> fits every family on the covariates centred at their (count-weighted) means <span class="math notranslate nohighlight">\(\bar Z\)</span> and reports the baseline there: the model keeps <span class="math notranslate nohighlight">\(\bar Z\)</span> as <code class="docutils literal notranslate"><span class="pre">center</span></code>, says so in its summary, and uses <span class="math notranslate nohighlight">\(Z - \bar Z\)</span> in every prediction, so nothing depends on where the covariates’ zero is. By default the baseline is reported at <span class="math notranslate nohighlight">\(Z = 0\)</span>, as always. Where the baseline family is closed under the change the link makes between the two points, the fit still runs on centred covariates and moves the baseline to <span class="math notranslate nohighlight">\(Z = 0\)</span> exactly, with <span class="math notranslate nohighlight">\(s = \beta'\bar Z\)</span>: for proportional hazards the cumulative hazard at <span class="math notranslate nohighlight">\(Z = 0\)</span> is <span class="math notranslate nohighlight">\(e^{-s}\)</span> times that at the means, which a Weibull or Rayleigh scale, an Exponential rate or a Gumbel location absorbs; for accelerated failure time time is rescaled by <span class="math notranslate nohighlight">\(e^{s}\)</span>, which every scale family absorbs (the Weibull, Exponential, Gamma, Log-Normal, Log-Logistic, Rayleigh and Exponentiated-Weibull scale, and both parameters of the Normal, Logistic and Gumbel); for proportional odds the survival odds are multiplied by <span class="math notranslate nohighlight">\(e^{-s}\)</span>, which a Log-Logistic scale or a Logistic location absorbs. For these the model is the same wherever the covariates’ zero is; if the baseline at <span class="math notranslate nohighlight">\(Z = 0\)</span> cannot be represented (<span class="math notranslate nohighlight">\(\alpha e^{s/\beta}\)</span> overflows for a Weibull PH with <span class="math notranslate nohighlight">\(s\)</span> in the thousands), the fit refuses and says to pass <code class="docutils literal notranslate"><span class="pre">center=True</span></code>. For the other pairs (a Log-Normal, Gamma, Normal or Logistic PH baseline, a PO baseline other than those two) the model with its baseline at the means is a different model from the one at <span class="math notranslate nohighlight">\(Z = 0\)</span>, with a different maximum likelihood, so the default fit is at <span class="math notranslate nohighlight">\(Z = 0\)</span> on the covariates as given, as before, and is not checked: on covariates far from zero it can fail or stop at a poor answer, and <code class="docutils literal notranslate"><span class="pre">center=True</span></code> is the way round that. The additive hazards models are fitted as defined too: <span class="math notranslate nohighlight">\(h_0(x) + \beta'(Z - \bar Z)\)</span> is a different model from <span class="math notranslate nohighlight">\(h_0(x) + \beta' Z\)</span>.</p>
+<p><strong>Uncertainty.</strong> The covariance of the estimates is approximated by the inverse of the observed information — the Hessian of <span class="math notranslate nohighlight">\(-\log L\)</span> at the optimum (the exact one the fit computes, or a numerical one where it has none), <span class="math notranslate nohighlight">\(\widehat{\text{Cov}} = \mathcal{I}(\hat\theta, \hat\beta)^{-1}\)</span> (fixed parameters get a zero row and column). From it:</p>
+<ul class="simple">
+<li><p>a Wald interval on a single parameter is formed on a scale that respects its support — the natural scale for an unbounded coefficient, the log of the distance from the bound for a positive parameter such as a Weibull scale — so the interval can never leave the parameter space;</p></li>
+<li><p>a band on a predicted curve at covariate <span class="math notranslate nohighlight">\(Z\)</span> uses the <strong>delta method</strong>: the gradient <span class="math notranslate nohighlight">\(g\)</span> of, say, <span class="math notranslate nohighlight">\(S(x \mid Z)\)</span> with respect to all parameters gives <span class="math notranslate nohighlight">\(\text{se} = \sqrt{g' \,\widehat{\text{Cov}}\, g}\)</span>, and the band is built on the baseline family’s probability-plot scale — <span class="math notranslate nohighlight">\(\log H\)</span> for a Weibull, Exponential, Rayleigh or Gumbel baseline, the normal quantile of <span class="math notranslate nohighlight">\(F\)</span> for a Normal or LogNormal one, the logit of <span class="math notranslate nohighlight">\(F\)</span> for the rest, as for the univariate models — from the cumulative hazard, with the bands on <span class="math notranslate nohighlight">\(S\)</span>, <span class="math notranslate nohighlight">\(F = 1 - S\)</span> and <span class="math notranslate nohighlight">\(H = -\log S\)</span> read off from it, so that <span class="math notranslate nohighlight">\(S\)</span> and <span class="math notranslate nohighlight">\(F\)</span> stay in <span class="math notranslate nohighlight">\((0, 1)\)</span> and <span class="math notranslate nohighlight">\(H\)</span> positive, and on the log scale for <span class="math notranslate nohighlight">\(h\)</span> and <span class="math notranslate nohighlight">\(f\)</span> (so they stay positive).</p></li>
+</ul>
+<p>Both are large-sample approximations. They are least trustworthy with few failures or with a parameter near a boundary, in which case the information matrix may not be invertible and the covariance is reported as unavailable.</p>
+</section>
+<section id="semi-parametric">
+<h3>Semi-Parametric<a class="headerlink" href="#semi-parametric" title="Link to this heading"></a></h3>
+<p>Earlier pages covered ‘parametric’ and ‘non-parametric’ survival models, so what is ‘semi-parametric’? A semi-parametric model is a survival model with a non-parametric baseline and a parametric function that acts on that baseline. Recall that a proportional hazards model is</p>
+<div class="math notranslate nohighlight">
+\[h(x \mid Z) = \phi(Z)\, h_{0}(x).\]</div>
+<p>The covariate function <span class="math notranslate nohighlight">\(\phi\)</span> has to be parametric — it is what the coefficients describe — but nothing forces the baseline hazard <span class="math notranslate nohighlight">\(h_0\)</span> to be: it can be left completely unspecified and estimated non-parametrically. A parametric covariate effect on a non-parametric baseline is a ‘semi-parametric’ model.</p>
+<p>By far the most common of any regression model of any kind (parametric, non-parametric, and semi-parametric of all the accelerated life, proportional hazard, and accelerated time) is the Cox Proportional Hazard model <a class="reference internal" href="#cox1972reg" id="id1"><span>[Cox1972reg]</span></a>, it is a semi-parametric model.</p>
+<p>The Cox model is used in a wide variety of fields. It has been used in criminology to study the recidivism of parolees, in engineering to understand the factors affecting tire reliability, and in medical science to understand factors affecting cancer and other diseases, among many many other applications. The wide use of the model shows the utility the model has and the broad applicability to solve problems.</p>
+<p><strong>The partial likelihood.</strong> Cox’s insight is that <span class="math notranslate nohighlight">\(\beta\)</span> can be estimated without ever writing down <span class="math notranslate nohighlight">\(h_0\)</span>. Order the distinct failure times <span class="math notranslate nohighlight">\(t_1 &lt; t_2 &lt; \dots\)</span>, and at each one ask: <em>given</em> that exactly one unit failed at <span class="math notranslate nohighlight">\(t_k\)</span>, what is the probability that it was the one that actually did? Every unit <span class="math notranslate nohighlight">\(j\)</span> still at risk has hazard <span class="math notranslate nohighlight">\(h_0(t_k) e^{\beta' Z_j}\)</span>, so that probability is</p>
+<div class="math notranslate nohighlight">
+\[\frac{h_0(t_k)\, e^{\beta' Z_{(k)}}}{\sum_{j \in R_k} h_0(t_k)\, e^{\beta' Z_j}}
+= \frac{e^{\beta' Z_{(k)}}}{\sum_{j \in R_k} e^{\beta' Z_j}},\]</div>
+<p>where <span class="math notranslate nohighlight">\(Z_{(k)}\)</span> is the covariate of the unit that failed and <span class="math notranslate nohighlight">\(R_k\)</span> is the <strong>risk set</strong> at <span class="math notranslate nohighlight">\(t_k\)</span>. The unknown baseline cancels. Multiplying over failure times gives the partial likelihood,</p>
+<div class="math notranslate nohighlight">
+\[\ell(\beta) = \sum_k \Bigl[\beta' Z_{(k)} - \log \sum_{j \in R_k} n_j\, e^{\beta' Z_j}\Bigr],\]</div>
+<p>with counts <span class="math notranslate nohighlight">\(n_j\)</span> as weights. Only the <em>order</em> of the failure times matters, which is why the Cox model cannot tell you anything about the shape of the baseline — and why it does not need to.</p>
+<p><strong>Risk sets, censoring and delayed entry.</strong> Censored units never appear in the numerator, but they do sit in the risk sets of every failure time up to their censoring time — that is how they contribute information. A unit that entered observation late (left truncation, <code class="docutils literal notranslate"><span class="pre">tl</span></code> in surpyval) is at risk only after it entered. surpyval uses the standard <code class="docutils literal notranslate"><span class="pre">(entry,</span> <span class="pre">exit]</span></code> convention: unit <span class="math notranslate nohighlight">\(j\)</span> is in <span class="math notranslate nohighlight">\(R_k\)</span> when <span class="math notranslate nohighlight">\(t_{l,j} &lt; t_k \le x_j\)</span>, so a unit entering exactly at a failure time is not at risk for it, and a unit is at risk at its own failure or censoring time. Right and interval truncation cannot be expressed in this forward-in-time comparison, so the Cox fitter accepts left truncation only. For the same reason it needs to know, for every unit, whether it was still at risk at each failure time, which a left- or interval-censored observation does not say: the Cox fitter is for observed (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>) and right-censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>) data, and refuses left- (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code>) and interval-censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>) rows; use a parametric family for those.</p>
+<p>A tiny example makes the formula concrete. Four units fail in turn at times 1, 2, 3 and 4; the first and third are “exposed” (<span class="math notranslate nohighlight">\(z = 1\)</span>). The partial log-likelihood at <span class="math notranslate nohighlight">\(\beta = 0.3\)</span>, computed by hand, matches the value surpyval optimises, <code class="docutils literal notranslate"><span class="pre">neg_ll_of(beta)</span></code>, the negative partial log-likelihood as a function of the coefficients (<code class="docutils literal notranslate"><span class="pre">neg_ll()</span></code> is its value at the fit):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">CoxPH</span>
+
+<span class="n">x_toy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">])</span>
+<span class="n">z_toy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">])</span>
+<span class="n">b</span> <span class="o">=</span> <span class="mf">0.3</span>
+
+<span class="n">by_hand</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">4</span><span class="p">):</span>                        <span class="c1"># failure k: risk set is units k..3</span>
+    <span class="n">risk_set</span> <span class="o">=</span> <span class="n">z_toy</span><span class="p">[</span><span class="n">k</span><span class="p">:]</span>
+    <span class="n">by_hand</span> <span class="o">+=</span> <span class="n">b</span> <span class="o">*</span> <span class="n">z_toy</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">b</span> <span class="o">*</span> <span class="n">risk_set</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">())</span>
+
+<span class="n">cox_toy</span> <span class="o">=</span> <span class="n">CoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x_toy</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">z_toy</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s1">'by hand          :'</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">by_hand</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s1">'surpyval (-neg_ll_of):'</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="o">-</span><span class="n">cox_toy</span><span class="o">.</span><span class="n">neg_ll_of</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">b</span><span class="p">])),</span> <span class="mi">6</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>by hand          : -3.010776
+surpyval (-neg_ll_of): -3.010776
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><strong>Tied failure times.</strong> The argument above assumes one failure at each time. With ties (times rounded to days, inspections, genuinely discrete time) there are several conventions, chosen with <code class="docutils literal notranslate"><span class="pre">method=</span></code>:</p>
+<ul class="simple">
+<li><p><strong>Breslow</strong> <a class="reference internal" href="#breslow1974reg" id="id2"><span>[Breslow1974reg]</span></a> treats the <span class="math notranslate nohighlight">\(d_k\)</span> tied units as if each failed against the full risk set: the log term becomes <span class="math notranslate nohighlight">\(d_k \log \sum_{j \in R_k} n_j e^{\beta' Z_j}\)</span>. Simple and fast, but it biases <span class="math notranslate nohighlight">\(\hat\beta\)</span> towards zero when ties are heavy.</p></li>
+<li><p><strong>Efron</strong> <a class="reference internal" href="#efron1977reg" id="id3"><span>[Efron1977reg]</span></a> assumes the tied failures happened in some unknown order and removes, on average, a fraction of their weight from the risk set for each successive one. Writing <span class="math notranslate nohighlight">\(\mathcal{R}_k = \sum_{j \in R_k} n_j e^{\beta' Z_j}\)</span> and <span class="math notranslate nohighlight">\(\mathcal{D}_k\)</span> for the same sum over the tied failures, the term is <span class="math notranslate nohighlight">\(\sum_{l=0}^{d_k - 1} \log\bigl(\mathcal{R}_k - \tfrac{l}{d_k}\mathcal{D}_k\bigr)\)</span>. It is much closer to the exact answer at almost no cost, and it is the default in R and lifelines.</p></li>
+<li><p><strong>Exact</strong> (<code class="docutils literal notranslate"><span class="pre">'exact'</span></code>) sums the sequential contribution over every ordering of the tied failures — appropriate when the ties come from rounding a continuous time. surpyval evaluates the sum over orderings as the one-dimensional integral of DeLong, Guirguis and So <a class="reference internal" href="#delong1994reg" id="id4"><span>[DeLong1994reg]</span></a>, <span class="math notranslate nohighlight">\(\int_0^\infty \prod_{j \in D_k} \bigl(1 - e^{-t\, e^{\beta' Z_j} / W_k}\bigr)\, e^{-t}\, dt\)</span> with <span class="math notranslate nohighlight">\(W_k\)</span> the total risk score of the units at risk that did not fail at <span class="math notranslate nohighlight">\(t_k\)</span> (the form SAS uses for <code class="docutils literal notranslate"><span class="pre">TIES=EXACT</span></code>), by quadrature, so its cost grows only linearly with the size of a tie group. Like the next method it needs integer counts <code class="docutils literal notranslate"><span class="pre">n</span></code>, because each row is expanded into that many tied units.</p></li>
+<li><p><strong>Kalbfleisch-Prentice</strong> (<code class="docutils literal notranslate"><span class="pre">'kalbfleisch-prentice'</span></code> or <code class="docutils literal notranslate"><span class="pre">'kp'</span></code>) is the exact <em>discrete-time</em> (conditional logistic) likelihood <a class="reference internal" href="#kalbfleischprentice2002reg" id="id5"><span>[KalbfleischPrentice2002reg]</span></a>, for time that really is discrete: the denominator sums the product of the risk scores over every subset of the risk set of size <span class="math notranslate nohighlight">\(d_k\)</span>, <span class="math notranslate nohighlight">\(\sum_{|D| = d_k,\, D \subseteq R_k} \prod_{j \in D} e^{\beta' Z_j}\)</span>. surpyval evaluates it, its score and its information by the recursion of Gail, Lubin and Rubinstein <a class="reference internal" href="#gail1981reg" id="id6"><span>[Gail1981reg]</span></a> (the method of R’s <code class="docutils literal notranslate"><span class="pre">coxph(ties=&quot;exact&quot;)</span></code>), in time proportional to <span class="math notranslate nohighlight">\(|R_k|\, \min(d_k, |R_k| - d_k)\)</span> rather than by listing subsets, so it has no limit on the size of a tie group; it is still slower than Efron.</p></li>
+</ul>
+<p>The first three estimate the same continuous-time hazard ratio and differ only in how well they approximate it; with light ties Breslow and Efron are close to the exact answer and Efron is the better of the two. Kalbfleisch-Prentice is a different <em>model</em>: in discrete time <span class="math notranslate nohighlight">\(e^{\beta}\)</span> is an odds ratio of the per-period failure probabilities, which is larger in magnitude than the hazard ratio when many units fail per period, so its <span class="math notranslate nohighlight">\(\hat\beta\)</span> is not directly comparable with the other three. With no ties all four are identical. Every <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code> fit defaults to Efron.</p>
+<p><strong>Estimation and uncertainty.</strong> The score <span class="math notranslate nohighlight">\(U(\beta) = \partial \ell / \partial \beta = \sum_k \bigl(Z_{(k)} - \bar Z_k\bigr)\)</span>, where <span class="math notranslate nohighlight">\(\bar Z_k\)</span> is the risk-weighted mean covariate over <span class="math notranslate nohighlight">\(R_k\)</span>, is solved for zero by Newton-Raphson with step-halving on the partial log-likelihood, the algorithm of R’s <code class="docutils literal notranslate"><span class="pre">coxph</span></code> and lifelines (falling back to a root finder, and then a direct minimisation, should it fail). The observed information <span class="math notranslate nohighlight">\(\mathcal{I}(\hat\beta) = -\partial^2 \ell / \partial\beta\,\partial\beta'\)</span> is the risk-weighted covariance of <span class="math notranslate nohighlight">\(Z\)</span> summed over failures; its inverse is the covariance of <span class="math notranslate nohighlight">\(\hat\beta\)</span>, and the reported <code class="docutils literal notranslate"><span class="pre">p_values</span></code> are the Wald tests <span class="math notranslate nohighlight">\(2\bigl(1 - \Phi(|\hat\beta_j| / \text{se}_j)\bigr)\)</span>. When the design is degenerate (for example a covariate that never varies inside a risk set) the information is singular and the standard error is reported as unavailable.</p>
+<p><strong>The baseline and predictions.</strong> Once <span class="math notranslate nohighlight">\(\hat\beta\)</span> is known the baseline is recovered non-parametrically by the Breslow estimator — at each distinct time, the number of failures divided by the total risk score at risk,</p>
+<div class="math notranslate nohighlight">
+\[\hat h_0(t_k) = \frac{d_k}{\sum_{j \in R_k} n_j e^{\hat\beta' Z_j}}, \qquad
+\hat H_0(t) = \sum_{t_k \le t} \hat h_0(t_k), \qquad
+\hat S(t \mid Z) = \exp\bigl(-e^{\hat\beta' Z}\,\hat H_0(t)\bigr).\]</div>
+<p>As R’s <code class="docutils literal notranslate"><span class="pre">coxph</span></code>, lifelines and scikit-survival do, surpyval computes all of this with the covariates centred on their (count-weighted) means <span class="math notranslate nohighlight">\(\bar Z\)</span>: every <span class="math notranslate nohighlight">\(Z\)</span> above is <span class="math notranslate nohighlight">\(Z - \bar Z\)</span>. The partial likelihood depends on the covariates only through their differences within a risk set, so <span class="math notranslate nohighlight">\(\hat\beta\)</span> and every prediction are unchanged by the shift, but a covariate far from zero — a calendar year, a date as a day count — can no longer overflow <span class="math notranslate nohighlight">\(e^{\beta' Z}\)</span>. The baseline this gives is that of a unit at the means; by default it is reported at <span class="math notranslate nohighlight">\(Z = 0\)</span>, <span class="math notranslate nohighlight">\(\hat h_0 e^{-\hat\beta'\bar Z}\)</span> (R’s <code class="docutils literal notranslate"><span class="pre">basehaz(fit,</span> <span class="pre">centered</span> <span class="pre">=</span> <span class="pre">FALSE)</span></code>), with <code class="docutils literal notranslate"><span class="pre">phi(Z)</span></code> <span class="math notranslate nohighlight">\(= e^{\hat\beta' Z}\)</span>, and predictions combine the two on the log scale. Where that baseline is not representable — covariates so far from zero that <span class="math notranslate nohighlight">\(e^{-\hat\beta'\bar Z}\)</span> over- or underflows — the fit refuses and says to pass <code class="docutils literal notranslate"><span class="pre">center=True</span></code>, which keeps the baseline at the means (<code class="docutils literal notranslate"><span class="pre">model.center</span></code>, R’s <code class="docutils literal notranslate"><span class="pre">basehaz(fit)</span></code>) and makes <code class="docutils literal notranslate"><span class="pre">phi(Z)</span></code> <span class="math notranslate nohighlight">\(= e^{\hat\beta' (Z - \bar Z)}\)</span>, the hazard ratio against a unit there. The Fine-Gray fit does the same.</p>
+<p>This is a step function that jumps only at observed failure times: it is 0 (so <span class="math notranslate nohighlight">\(\hat S = 1\)</span>) before the first failure, and beyond the last observed time the curve is simply held flat, so a Cox model predicts only within the range of the data and cannot be used to extrapolate. A parametric PH model is the tool for that. Note too that the Cox model’s <code class="docutils literal notranslate"><span class="pre">hf</span></code> is not a smooth hazard rate: it returns the <em>jump</em> of the step at the latest time <span class="math notranslate nohighlight">\(\le t\)</span> on the fitted baseline’s time grid, times <span class="math notranslate nohighlight">\(e^{\hat\beta' Z}\)</span>. That grid holds every distinct observed time, censoring times included, and the jump at a censoring time is zero, so <code class="docutils literal notranslate"><span class="pre">hf</span></code> is <span class="math notranslate nohighlight">\(\hat h_0(t_k) e^{\hat\beta' Z}\)</span> from a failure time <span class="math notranslate nohighlight">\(t_k\)</span> up to the next observed time and 0 after it. After an Efron fit the baseline takes the same tie correction as the likelihood: the <span class="math notranslate nohighlight">\(d_k\)</span> tied failures leave the risk set a fraction at a time, so the step at <span class="math notranslate nohighlight">\(t_k\)</span> is <span class="math notranslate nohighlight">\(\sum_{l=0}^{d_k - 1} 1 / \bigl(\mathcal{R}_k - \tfrac{l}{d_k}\mathcal{D}_k\bigr)\)</span> rather than <span class="math notranslate nohighlight">\(d_k / \mathcal{R}_k\)</span>. It is the covariate-weighted form of the Fleming-Harrington estimator (see <a class="reference internal" href="Non-Parametric%20Estimation.html"><span class="doc">Non-Parametric Estimation</span></a>), just as the Breslow estimator is the covariate-weighted Nelson-Aalen, and it is what R’s <code class="docutils literal notranslate"><span class="pre">survival</span></code> uses after an Efron fit. The two baselines differ only at tied times; after any other tie method the baseline is Breslow’s.</p>
+</section>
+</section>
+<section id="accelerated-failure-time">
+<h2>Accelerated Failure Time<a class="headerlink" href="#accelerated-failure-time" title="Link to this heading"></a></h2>
+<p>An accelerated failure time (AFT) model applies the covariate function somewhere else. Instead of multiplying the hazard, it multiplies <em>age</em>: a unit with covariates <span class="math notranslate nohighlight">\(Z\)</span> that has been running for a time <span class="math notranslate nohighlight">\(x\)</span> is as worn as a baseline unit that has been running for</p>
+<div class="math notranslate nohighlight">
+\[x_{a} = \phi(Z)\, x,\]</div>
+<p>its <em>accelerated age</em>. Think of a battery cycled at a higher temperature: each hour at 60 °C does the chemical damage of, say, three hours at 25 °C, so <span class="math notranslate nohighlight">\(\phi = 3\)</span> and every quantity of the baseline is simply read off three times further along the time axis. It is called accelerated failure time because the covariates speed up (or slow down) the clock. The survival and CDF are the baseline’s evaluated at the accelerated age; the density and hazard carry an extra <span class="math notranslate nohighlight">\(\phi(Z)\)</span> factor — the Jacobian of the change of variables <span class="math notranslate nohighlight">\(x \to \phi(Z) x\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}S(x \mid Z) = S_{0}(\phi(Z)\, x) \\
+\\
+F(x \mid Z) = F_{0}(\phi(Z)\, x) \\
+\\
+f(x \mid Z) = \phi(Z)\, f_{0}(\phi(Z)\, x) \\
+\\
+h(x \mid Z) = \phi(Z)\, h_{0}(\phi(Z)\, x)\end{split}\]</div>
+<p>surpyval fits these by the maximum likelihood of the previous section; pre-built versions are <code class="docutils literal notranslate"><span class="pre">WeibullAFT</span></code>, <code class="docutils literal notranslate"><span class="pre">LogNormalAFT</span></code> and friends (Exponential, Normal, Gumbel, Logistic, Log-Normal, Gamma, Weibull), and <code class="docutils literal notranslate"><span class="pre">AFT(distribution)</span></code> builds one for any distribution.</p>
+<p><strong>What a coefficient means.</strong> surpyval uses <span class="math notranslate nohighlight">\(\phi(Z) = e^{\beta' Z}\)</span>, so a unit with covariates <span class="math notranslate nohighlight">\(Z\)</span> “ages” <span class="math notranslate nohighlight">\(e^{\beta' Z}\)</span> times faster than the baseline: it reaches at time <span class="math notranslate nohighlight">\(x\)</span> the state a baseline unit reaches at <span class="math notranslate nohighlight">\(e^{\beta' Z} x\)</span>. Equivalently the lifetime itself is scaled, <span class="math notranslate nohighlight">\(T = T_0\, e^{-\beta' Z}\)</span>, so every quantile — the median, the B10 life — is multiplied by the <strong>time ratio</strong> <span class="math notranslate nohighlight">\(e^{-\beta' Z}\)</span>. As with PH, a positive coefficient shortens life. Taking logs,</p>
+<div class="math notranslate nohighlight">
+\[\log T = \log T_0 - \beta' Z,\]</div>
+<p>which is a linear regression of log-time on the covariates, with an error distribution fixed by the baseline: a log-normal baseline gives normal errors (censored linear regression on <span class="math notranslate nohighlight">\(\log T\)</span>), a Weibull baseline gives extreme-value errors, a log-logistic one logistic errors. This is the most direct interpretation of any family — “this covariate costs you 20% of your life” — and the reason AFT is often preferred in engineering, where a stress speeding up a physical process is exactly the mechanism.</p>
+<p><strong>Where AFT and PH meet.</strong> For a Weibull baseline with shape <span class="math notranslate nohighlight">\(k\)</span>, <span class="math notranslate nohighlight">\(H_0(x) = (x / \alpha)^k\)</span>, so</p>
+<div class="math notranslate nohighlight">
+\[H(x \mid Z) = H_0\bigl(e^{\beta_{AFT}' Z} x\bigr) = e^{k\,\beta_{AFT}' Z} H_0(x),\]</div>
+<p>which is a proportional hazards model with <span class="math notranslate nohighlight">\(\beta_{PH} = k\,\beta_{AFT}\)</span>. The Weibull (and its special case the Exponential) is the <em>only</em> distribution that is both PH and AFT <a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html#bagdonavicius" id="id7"><span>[Bagdonavicius]</span></a>: a Weibull PH fit and a Weibull AFT fit to the same data have the same likelihood and differ only in how the coefficients are scaled. For every other baseline — log-normal included — the two families are genuinely different models, and the hazard-ratio plot at the top of this page shows how.</p>
+</section>
+<section id="accelerated-life">
+<h2>Accelerated Life<a class="headerlink" href="#accelerated-life" title="Link to this heading"></a></h2>
+<p>An accelerated life model is, in many cases, simply the inverse of an accelerated time model. However, there are some cases where they are different. Consider an accelerated failure time model with a normal baseline:</p>
+<div class="math notranslate nohighlight">
+\[F(x \mid Z) = \Phi\left(\frac{\phi(Z)\,x - \mu}{\sigma}\right)\]</div>
+<p>where <span class="math notranslate nohighlight">\(\Phi\)</span> is the CDF of the standard normal distribution. Here <span class="math notranslate nohighlight">\(\mu\)</span> is the expected life of a baseline unit, and the covariates rescale time. But what we usually want to know is how the covariates change the expected life itself. So instead substitute the expected life directly:</p>
+<div class="math notranslate nohighlight">
+\[F(x \mid Z) = \Phi\left(\frac{x - \phi(Z)}{\sigma}\right)\]</div>
+<p>An accelerated life model is, therefore, simply a model where the life parameter of a distribution is substituted with a function of the covariates, that is, it ‘accelerates’ the expected life, as opposed to accelerating time as per an accelerated time model. This is the standard framework of accelerated life testing (ALT) <a class="reference internal" href="Degradation%20Analysis.html#meeker1998" id="id8"><span>[Meeker1998]</span></a>: units are tested at elevated stress — temperature, voltage, humidity, load — so that they fail quickly, and a physical stress-life relationship carries the result back to use conditions.</p>
+<p>For each of the distributions in Surpyval their life parameter that varies is as per the following table. The built-in stress-life functions <span class="math notranslate nohighlight">\(\phi(Z)\)</span> are written as a <em>life</em> (a time). For the Exponential, Gamma and Log-Normal, whose parameter is a rate or a log-location, surpyval converts the life to that parameter:</p>
+<table class="docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><strong>Distribution</strong></p></td>
+<td><p><strong>Life Param</strong></p></td>
+</tr>
+<tr class="row-even"><td><p>Weibull</p></td>
+<td><p>alpha</p></td>
+</tr>
+<tr class="row-odd"><td><p>Exponential</p></td>
+<td><p>1./lambda (<code class="docutils literal notranslate"><span class="pre">failure_rate</span></code> is set to <span class="math notranslate nohighlight">\(1/\phi(Z)\)</span>)</p></td>
+</tr>
+<tr class="row-even"><td><p>Normal</p></td>
+<td><p>mu</p></td>
+</tr>
+<tr class="row-odd"><td><p>LogNormal</p></td>
+<td><p>mu (set to <span class="math notranslate nohighlight">\(\log \phi(Z)\)</span>, so <span class="math notranslate nohighlight">\(\phi\)</span> is the
+median life)</p></td>
+</tr>
+<tr class="row-even"><td><p>Gamma</p></td>
+<td><p>1./beta (the rate <code class="docutils literal notranslate"><span class="pre">beta</span></code> is set to <span class="math notranslate nohighlight">\(1/\phi(Z)\)</span>, so
+<span class="math notranslate nohighlight">\(\phi\)</span> is the scale and the mean life
+<span class="math notranslate nohighlight">\(\alpha\,\phi(Z)\)</span>)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Gumbel</p></td>
+<td><p>mu</p></td>
+</tr>
+<tr class="row-even"><td><p>Logistic</p></td>
+<td><p>mu</p></td>
+</tr>
+<tr class="row-odd"><td><p>LogLogistic</p></td>
+<td><p>Not Avail</p></td>
+</tr>
+<tr class="row-even"><td><p>ExpoWeibull</p></td>
+<td><p>Not Avail</p></td>
+</tr>
+<tr class="row-odd"><td><p>Uniform</p></td>
+<td><p>Not Avail</p></td>
+</tr>
+<tr class="row-even"><td><p>Beta</p></td>
+<td><p>Not Avail</p></td>
+</tr>
+</tbody>
+</table>
+<p>Given the simple substitution into the life parameter, surpyval uses MLE to calculate the parameters: the remaining distribution parameters (for a Weibull, the shape) are shared across all stress levels — the assumption that the failure <em>mechanism</em> is the same at every stress and only its speed changes — and the life-model parameters replace the life parameter. The life parameter itself is kept in the parameter vector as a fixed placeholder (reported as <code class="docutils literal notranslate"><span class="pre">1.0</span></code>), since its value now comes from <span class="math notranslate nohighlight">\(\phi(Z)\)</span>; it is not estimated, so it is not counted in the <span class="math notranslate nohighlight">\(k\)</span> of the AIC and BIC, and an accelerated life model’s AIC is directly comparable with that of any other parametric family. To start the search, surpyval fits the distribution separately at each distinct stress and regresses those lives on the stress, so the data need at least two distinct stress levels.</p>
+<p>The built-in stress-life relationships, in <code class="docutils literal notranslate"><span class="pre">surpyval.life_models</span></code> (all are <code class="docutils literal notranslate"><span class="pre">LifeModel</span></code> instances, and a custom one can be written by subclassing <code class="docutils literal notranslate"><span class="pre">LifeModel</span></code>). The letters are the parameter names surpyval reports; <span class="math notranslate nohighlight">\(Z_1, Z_2\)</span> are the two columns of a two-stress <code class="docutils literal notranslate"><span class="pre">Z</span></code>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 26.0%" />
+<col style="width: 34.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Life model</p></th>
+<th class="head"><p><span class="math notranslate nohighlight">\(\phi(Z)\)</span></p></th>
+<th class="head"><p>Typical use</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Power</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(a Z^{n}\)</span></p></td>
+<td><p>Mechanical load, voltage (with <span class="math notranslate nohighlight">\(n &lt; 0\)</span>)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">InversePower</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(1 / (a Z^{n})\)</span></p></td>
+<td><p>The inverse power law of voltage endurance and fatigue</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Exponential</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(b\, e^{a / Z}\)</span></p></td>
+<td><p>Arrhenius: temperature (in kelvin) with <span class="math notranslate nohighlight">\(a = E_a / k_B\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Arrhenius</span></code></p></td>
+<td><p>another name for <code class="docutils literal notranslate"><span class="pre">Exponential</span></code></p></td>
+<td><p>A model built with it saves and loads as <code class="docutils literal notranslate"><span class="pre">Arrhenius</span></code> and is
+otherwise identical</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">InverseExponential</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(1 / (b\, e^{a / Z})\)</span></p></td>
+<td><p>Reciprocal of the above</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Eyring</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\frac{1}{Z} e^{-(b - a/Z)}\)</span></p></td>
+<td><p>Temperature, with a <span class="math notranslate nohighlight">\(1/Z\)</span> pre-factor from reaction-rate theory</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">InverseEyring</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(Z\, e^{c - a/Z}\)</span>, the reciprocal of Eyring</p></td>
+<td><p>Reciprocal of the above</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Linear</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(a + b Z\)</span></p></td>
+<td><p>First-order approximation over a narrow stress range</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DualExponential</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(c\, e^{a / Z_1} e^{b / Z_2}\)</span></p></td>
+<td><p>Two thermal-type stresses (e.g. temperature and humidity)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DualPower</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(c\, Z_1^{m} Z_2^{n}\)</span></p></td>
+<td><p>Two non-thermal stresses</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PowerExponential</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(c\, e^{a / Z_1} Z_2^{n}\)</span></p></td>
+<td><p>One thermal and one non-thermal stress</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GeneralLogLinear</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(c\, e^{\beta' Z}\)</span>, one <span class="math notranslate nohighlight">\(\beta_j\)</span> per column of <code class="docutils literal notranslate"><span class="pre">Z</span></code></p></td>
+<td><p>Any number of stresses (transformed as needed, e.g. <span class="math notranslate nohighlight">\(1/T\)</span>)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">GeneralLinear</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(a + \beta' Z\)</span>, one <span class="math notranslate nohighlight">\(\beta_j\)</span> per column of <code class="docutils literal notranslate"><span class="pre">Z</span></code></p></td>
+<td><p>Several covariates shifting a location (<code class="docutils literal notranslate"><span class="pre">Normal</span></code>, <code class="docutils literal notranslate"><span class="pre">Gumbel</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Logistic</span></code> <code class="docutils literal notranslate"><span class="pre">mu</span></code>): a quantity with no natural zero</p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Accelerated life versus AFT.</strong> For a Weibull, substituting a log-linear life <span class="math notranslate nohighlight">\(\alpha(Z) = e^{a + b' Z}\)</span> gives <span class="math notranslate nohighlight">\(S(t \mid Z) = \exp\bigl(-(t e^{-b'Z} / e^{a})^{k}\bigr)\)</span>, which is exactly an AFT model with <span class="math notranslate nohighlight">\(\beta = -b\)</span>. So for scale-family distributions the two coincide under a log-linear link, with opposite signs: an accelerated life coefficient says how much <em>life</em> a unit of stress buys, an AFT coefficient how much <em>faster</em> it ages. They part company for location-family distributions (Normal, Gumbel, Logistic), where accelerated life shifts the location but AFT rescales time, and whenever the stress-life relationship is not log-linear — which is the point of having physically motivated life models. The distinction follows <a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html#bagdonavicius" id="id9"><span>[Bagdonavicius]</span></a>; see also <a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html"><span class="doc">Handy References - Aide-mémoire</span></a>.</p>
+<p>The practical caution is extrapolation. The fitted life model is used precisely <em>outside</em> the tested stresses, so its form is an assumption about physics that the data can only weakly check: Arrhenius and a power law can fit three test temperatures equally well and still disagree substantially at use conditions, and the disagreement grows the further the use stress is from the tested range. Compare candidate life models, and prefer the one with a mechanism behind it.</p>
+</section>
+<section id="proportional-odds">
+<h2>Proportional Odds<a class="headerlink" href="#proportional-odds" title="Link to this heading"></a></h2>
+<p>A proportional odds model acts on the <em>odds</em> rather than on the hazard <a class="reference internal" href="#bennett1983reg" id="id10"><span>[Bennett1983reg]</span></a>. In surpyval it multiplies the odds of <em>survival</em> by time <span class="math notranslate nohighlight">\(x\)</span>, <span class="math notranslate nohighlight">\(O(x) = S(x) / F(x)\)</span>, by <span class="math notranslate nohighlight">\(e^{\beta' Z}\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\frac{S(x \mid Z)}{F(x \mid Z)} = e^{\beta' Z}\, \frac{S_{0}(x)}{F_{0}(x)}.\]</div>
+<p>(Writing it for the odds of <em>failure</em>, <span class="math notranslate nohighlight">\(F/S\)</span>, is the same model with the sign of <span class="math notranslate nohighlight">\(\beta\)</span> flipped.) Solving for the survival function and differentiating,</p>
+<div class="math notranslate nohighlight">
+\[S(x \mid Z) = \frac{e^{\beta' Z} S_0(x)}{F_0(x) + e^{\beta' Z} S_0(x)}, \qquad
+h(x \mid Z) = \frac{h_0(x)}{F_0(x) + e^{\beta' Z} S_0(x)} .\]</div>
+<p><strong>What a coefficient means.</strong> <span class="math notranslate nohighlight">\(e^{\beta_j}\)</span> is the ratio of the odds of surviving past any given time, per unit of <span class="math notranslate nohighlight">\(z_j\)</span>. Because it multiplies the odds of <em>survival</em>, a <strong>positive</strong> coefficient <strong>lengthens</strong> life — the opposite sign from the PH and AFT families. Keep this in mind when comparing fits: on the same data a PO model reports coefficients of the opposite sign to a PH model.</p>
+<p>Its defining feature is that the covariate effect <em>decays</em> over time. The hazard ratio is</p>
+<div class="math notranslate nohighlight">
+\[\frac{h(x \mid Z)}{h_0(x)} = \frac{1}{F_0(x) + e^{\beta' Z} S_0(x)},\]</div>
+<p>which starts at <span class="math notranslate nohighlight">\(e^{-\beta' Z}\)</span> when <span class="math notranslate nohighlight">\(x\)</span> is small (<span class="math notranslate nohighlight">\(S_0 \approx 1\)</span>) and tends to 1 as <span class="math notranslate nohighlight">\(x \to \infty\)</span> (<span class="math notranslate nohighlight">\(S_0 \to 0\)</span>). Two survival curves under a proportional odds model converge rather than staying a constant multiple apart. This makes it the natural choice when a treatment or covariate matters early but its influence fades, a pattern proportional hazards cannot represent.</p>
+<p>Two baselines make it especially natural. With a log-logistic baseline the survival odds are <span class="math notranslate nohighlight">\((x/\alpha)^{-k}\)</span>, and multiplying by <span class="math notranslate nohighlight">\(e^{\beta' Z}\)</span> is the same as rescaling <span class="math notranslate nohighlight">\(\alpha\)</span> — so a log-logistic PO model is also an AFT model, the log-logistic’s counterpart of the Weibull’s PH/AFT coincidence. With a logistic baseline the survival odds are <span class="math notranslate nohighlight">\(e^{-(x - \mu)/\sigma}\)</span>, and the multiplier shifts <span class="math notranslate nohighlight">\(\mu\)</span> by <span class="math notranslate nohighlight">\(\sigma \beta' Z\)</span> — a location shift of the whole distribution. Pre-built versions (<code class="docutils literal notranslate"><span class="pre">LogisticPO</span></code>, <code class="docutils literal notranslate"><span class="pre">WeibullPO</span></code>, …) and the <code class="docutils literal notranslate"><span class="pre">PO(distribution)</span></code> factory are fitted by the same censored and truncated likelihood as the other parametric families. Proportional odds is not fitted from time-varying data, but its hazard depends only on the time and the current covariate, so a fitted PO model is evaluated exactly along a step covariate path with <code class="docutils literal notranslate"><span class="pre">sf_tvc</span></code> / <code class="docutils literal notranslate"><span class="pre">Hf_tvc</span></code>.</p>
+</section>
+<section id="additive-hazards">
+<h2>Additive Hazards<a class="headerlink" href="#additive-hazards" title="Link to this heading"></a></h2>
+<p>Where proportional hazards <em>multiplies</em> the baseline hazard, an additive hazards model <em>adds</em> to it:</p>
+<div class="math notranslate nohighlight">
+\[h(x \mid Z) = h_{0}(x) + \beta' Z.\]</div>
+<p>The covariate shifts the absolute hazard by a constant amount at every age, rather than scaling it. This is often the more natural scale for risk-difference questions (excess deaths per unit time attributable to an exposure), and for reliability settings where hazards from separate mechanisms genuinely add — a component exposed to an extra, age-independent shock process of rate <span class="math notranslate nohighlight">\(\beta' Z\)</span> on top of its own wear-out. Integrating, the cumulative hazard is <span class="math notranslate nohighlight">\(H(x \mid Z) = H_0(x) + x\, \beta' Z\)</span>, so <span class="math notranslate nohighlight">\(S(x \mid Z) = S_0(x)\, e^{-x \beta' Z}\)</span>: the covariate multiplies survival by an exponential factor. A coefficient is a <em>rate</em>: <span class="math notranslate nohighlight">\(\beta_j = 0.01\)</span> per hour means one extra failure per hundred unit-hours for each unit of <span class="math notranslate nohighlight">\(z_j\)</span>, whatever the baseline is doing.</p>
+<p><strong>The Lin-Ying estimator.</strong> Like Cox, the Lin-Ying form <a class="reference internal" href="#linying1994reg" id="id11"><span>[LinYing1994reg]</span></a> leaves the baseline hazard unspecified, but unlike Cox it admits a <em>closed-form</em> estimator for <span class="math notranslate nohighlight">\(\beta\)</span> — no iteration and nothing to converge. With <span class="math notranslate nohighlight">\(Y_i(t)\)</span> the at-risk indicator, <span class="math notranslate nohighlight">\(N_i(t)\)</span> the failure counting process and <span class="math notranslate nohighlight">\(\bar Z(t)\)</span> the mean covariate among those at risk,</p>
+<div class="math notranslate nohighlight">
+\[\hat\beta = A^{-1} b, \qquad
+A = \sum_i \int_0^{\tau} Y_i(t) \bigl(Z_i - \bar Z(t)\bigr)^{\otimes 2}\, dt, \qquad
+b = \sum_i \int_0^{\tau} \bigl(Z_i - \bar Z(t)\bigr)\, dN_i(t).\]</div>
+<p><span class="math notranslate nohighlight">\(A\)</span> is the spread of the covariates in the risk set integrated over <em>time</em> — how long each covariate configuration was exposed — and <span class="math notranslate nohighlight">\(b\)</span> compares the covariates of those who failed with those at risk. The variance is the Lin-Ying sandwich <span class="math notranslate nohighlight">\(A^{-1} B A^{-1}\)</span>, with <span class="math notranslate nohighlight">\(B = \sum_i \int (Z_i - \bar Z)^{\otimes 2} dN_i\)</span>, from which the standard errors and Wald <code class="docutils literal notranslate"><span class="pre">p_values</span></code> follow. The baseline cumulative hazard is a Breslow-type step sum corrected for the covariate drift, <span class="math notranslate nohighlight">\(\hat H_0(t) = \sum_{t_k \le t} d_k / |R_k| - \int_0^t \bar Z(s)' \hat\beta\, ds\)</span>; the drift integral is evaluated continuously (<span class="math notranslate nohighlight">\(\bar Z\)</span> is constant between the times at which the risk set changes), so a prediction <span class="math notranslate nohighlight">\(H(t \mid Z) = \hat H_0(t) + t\, \hat\beta' Z\)</span> is the same however the covariates are centred. Because a step function has no rate, the hazard <span class="math notranslate nohighlight">\(h(t \mid Z)\)</span> is reported with a kernel-smoothed baseline (an Epanechnikov kernel over the increments of <span class="math notranslate nohighlight">\(\hat H_0\)</span>, bandwidth by a normal-reference rule unless you pass <code class="docutils literal notranslate"><span class="pre">bandwidth=</span></code>), which is least accurate near the ends of the observed time range. The semi-parametric fitter handles observed and right-censored data.</p>
+<p><strong>The parametric version.</strong> <code class="docutils literal notranslate"><span class="pre">AH(distribution)</span></code> and the pre-built <code class="docutils literal notranslate"><span class="pre">WeibullAH</span></code>, <code class="docutils literal notranslate"><span class="pre">ExponentialAH</span></code>, … use a parametric baseline, <span class="math notranslate nohighlight">\(h(x \mid Z) = h_0(x; \theta) + \beta' Z\)</span>, and are fitted by the censored and truncated likelihood of the proportional hazards section. They give a smooth, extrapolatable version of the same model.</p>
+<p><strong>The positivity caveat.</strong> Nothing constrains <span class="math notranslate nohighlight">\(h_0(x) + \beta' Z\)</span> to be positive. For a strongly protective covariate the additive hazard can go negative — impossible for a real hazard. The semi-parametric <code class="docutils literal notranslate"><span class="pre">AdditiveHazards</span></code> predicts with the running maximum of its cumulative-hazard estimate, so its survival stays in <span class="math notranslate nohighlight">\([0, 1]\)</span> and never rises; its fitted <span class="math notranslate nohighlight">\(\hat H_0\)</span> is left as estimated. The parametric models predict with the model as fitted: where <span class="math notranslate nohighlight">\(h_0(x) + \beta' Z\)</span> is negative the cumulative hazard falls, survival exceeds 1 and the density is negative, and each prediction there (<code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">cb</span></code>, <code class="docutils literal notranslate"><span class="pre">sf_tvc</span></code>, …) warns once that the values are the model’s, not a distribution’s. The parametric likelihood needs <span class="math notranslate nohighlight">\(\log h\)</span> at every failure, so surpyval’s optimiser treats any parameter value that makes the hazard non-positive at an observed failure as infeasible and stays inside the feasible region. When the data would prefer a negative hazard, the fit therefore returns the best <em>feasible</em> model — pressed against the boundary, with a near-zero hazard at the earliest failures of the protected units and a baseline distorted to compensate — and warns that it has done so; it raises an error only if the optimiser ends at an infeasible point. When effects are strongly protective, the exponential link of proportional hazards, which keeps the hazard positive by construction, is the safer choice.</p>
+</section>
+<section id="semi-parametric-buckley-james">
+<h2>Semi-Parametric — Buckley-James<a class="headerlink" href="#semi-parametric-buckley-james" title="Link to this heading"></a></h2>
+<p>Cox leaves the baseline <em>hazard</em> unspecified; Buckley-James <a class="reference internal" href="#buckleyjames1979reg" id="id12"><span>[BuckleyJames1979reg]</span></a> is the accelerated-failure-time counterpart that leaves the <em>error distribution</em> unspecified. It fits an AFT model by iterating between imputing the censored failure times from the current fit (using the Kaplan-Meier residual distribution) and re-estimating the coefficients by least squares on the completed data. The result is a semi-parametric AFT: covariate effects on the log-time scale without committing to a parametric family for the baseline.</p>
+<p>In detail, write the model as <span class="math notranslate nohighlight">\(\log T = \gamma' Z + \varepsilon\)</span> with <span class="math notranslate nohighlight">\(\varepsilon\)</span> from an arbitrary distribution. If there were no censoring, least squares of <span class="math notranslate nohighlight">\(y_i = \log x_i\)</span> on <span class="math notranslate nohighlight">\(Z_i\)</span> would be the obvious estimator. A censored <span class="math notranslate nohighlight">\(y_i\)</span> is only a lower bound, so Buckley-James replaces it by its conditional expectation given that it is at least that large:</p>
+<div class="math notranslate nohighlight">
+\[\hat y_i = \delta_i\, y_i + (1 - \delta_i)\Bigl[\gamma' Z_i + \frac{\sum_{e_k &gt; e_i} e_k\, \Delta \hat F(e_k)}{\hat S(e_i)}\Bigr],\]</div>
+<p>where <span class="math notranslate nohighlight">\(e_i = y_i - \gamma' Z_i\)</span> are the residuals, <span class="math notranslate nohighlight">\(\hat S\)</span> is their Kaplan-Meier survival function and <span class="math notranslate nohighlight">\(\Delta\hat F(e_k)\)</span> its jumps. The two steps — impute, then refit <span class="math notranslate nohighlight">\(\gamma\)</span> by least squares on the <span class="math notranslate nohighlight">\(\hat y_i\)</span> — alternate until <span class="math notranslate nohighlight">\(\gamma\)</span> stops moving. Some details matter in practice:</p>
+<ul class="simple">
+<li><p>the largest residual is treated as a failure (Efron’s tail correction), so the residual distribution is proper and every conditional mean is finite;</p></li>
+<li><p>the intercept is not identified separately from the error distribution, so only the slopes are estimated and the location lives in the residual distribution;</p></li>
+<li><p>the iteration can settle into a two-point cycle rather than a fixed point, a known property of the estimator; surpyval detects the cycle and averages it, and warns if the iteration has not converged;</p></li>
+<li><p>there is no likelihood, so there are no model-based standard errors: uncertainty comes from a percentile bootstrap.</p></li>
+</ul>
+<p>surpyval reports the coefficients as <span class="math notranslate nohighlight">\(\beta = -\gamma\)</span>, in the same sign convention as <code class="docutils literal notranslate"><span class="pre">WeibullAFT</span></code> (positive shortens life), and predicts with the residual distribution directly, <span class="math notranslate nohighlight">\(S(t \mid Z) = \hat S_\varepsilon(\log t + \beta' Z)\)</span> — a step function, like a Kaplan-Meier. The fitter accepts observed and right-censored data with positive times.</p>
+</section>
+<section id="checking-a-proportional-hazards-fit">
+<h2>Checking a proportional hazards fit<a class="headerlink" href="#checking-a-proportional-hazards-fit" title="Link to this heading"></a></h2>
+<p>Every proportional hazards model rests on one assumption: that a covariate multiplies the baseline hazard by a <em>constant</em> factor for all time. If that is false — a treatment that helps early but not late, a covariate whose effect drifts — the single coefficient the model reports is a time-average that can be misleading.</p>
+<p>The assumption is checked with the <strong>Schoenfeld residuals</strong>. At each event time the Schoenfeld residual for a covariate is the observed covariate value of the subject who failed minus the risk-weighted mean covariate value over everyone still at risk. If proportional hazards holds, these residuals have no trend in time; if the effect is drifting, they trend. The <strong>Grambsch-Therneau test</strong> <a class="reference internal" href="#grambschtherneau1994reg" id="id13"><span>[GrambschTherneau1994reg]</span></a> formalises this by regressing the <em>scaled</em> Schoenfeld residuals on a transform of time and testing for a non-zero slope, both per covariate and jointly. A small <span class="math notranslate nohighlight">\(p\)</span>-value is evidence <em>against</em> proportional hazards.</p>
+<p><strong>The precise definitions.</strong> For the unit failing at <span class="math notranslate nohighlight">\(t_k\)</span> the Schoenfeld residual is</p>
+<div class="math notranslate nohighlight">
+\[r_k = Z_{(k)} - \bar Z(t_k), \qquad
+\bar Z(t_k) = \frac{\sum_{j \in R_k} n_j e^{\hat\beta' Z_j} Z_j}{\sum_{j \in R_k} n_j e^{\hat\beta' Z_j}},\]</div>
+<p>(for an Efron fit the mean is averaged over the Efron-reduced risk sets of the tie group, so the residuals are consistent with the likelihood that was maximised). Grambsch and Therneau showed that, if the coefficient is really a function of time <span class="math notranslate nohighlight">\(\beta_j(t)\)</span>, the <strong>scaled</strong> residual <span class="math notranslate nohighlight">\(r^*_k = \hat\beta + d\, V r_k\)</span> — with <span class="math notranslate nohighlight">\(d\)</span> the number of failures and <span class="math notranslate nohighlight">\(V = \mathcal{I}^{-1}\)</span> the coefficient covariance — has expectation approximately <span class="math notranslate nohighlight">\(\beta(t_k)\)</span>. Plotting <span class="math notranslate nohighlight">\(r^*_k\)</span> against time is therefore a picture of how the coefficient changes, centred on the fitted constant. For a time transform <span class="math notranslate nohighlight">\(g\)</span> (<code class="docutils literal notranslate"><span class="pre">transform=</span></code> in <code class="docutils literal notranslate"><span class="pre">diagnose()</span></code>: <code class="docutils literal notranslate"><span class="pre">&quot;km&quot;</span></code>, the default, uses <span class="math notranslate nohighlight">\(g(t) = 1 - \hat S_{KM}(t^-)\)</span>, one minus the left-continuous Kaplan-Meier estimate from all the data; <code class="docutils literal notranslate"><span class="pre">&quot;rank&quot;</span></code> the average rank of each time among all the observations; <code class="docutils literal notranslate"><span class="pre">&quot;identity&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;log&quot;</span></code> use <span class="math notranslate nohighlight">\(t\)</span> and <span class="math notranslate nohighlight">\(\log t\)</span>), the test asks whether the time-dependent term <span class="math notranslate nohighlight">\(Z_j\, g(t)\)</span> belongs in the model. At the fitted <span class="math notranslate nohighlight">\(\hat\beta\)</span>, with a zero coefficient for the added term, its score is <span class="math notranslate nohighlight">\(U_j = \sum_k (g_k - \bar g)\, r_{kj}\)</span>, and with <span class="math notranslate nohighlight">\(W_k\)</span> the risk-set variance of <span class="math notranslate nohighlight">\(Z\)</span> summed over the failures at <span class="math notranslate nohighlight">\(t_k\)</span>, the information of the enlarged model (covariates <span class="math notranslate nohighlight">\(Z\)</span> and <span class="math notranslate nohighlight">\(Z g(t)\)</span>) is</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\mathcal{I} = \sum_k \begin{pmatrix} W_k &amp; g_k W_k \\ g_k W_k &amp; g_k^2 W_k \end{pmatrix}.\end{split}\]</div>
+<p>The score test <span class="math notranslate nohighlight">\(T = (0, U)'\, \mathcal{I}^{-1} (0, U)\)</span> of adding every term is <span class="math notranslate nohighlight">\(\chi^2_p\)</span> (the <code class="docutils literal notranslate"><span class="pre">GLOBAL</span></code> row), and the test of adding <span class="math notranslate nohighlight">\(Z_j g(t)\)</span> alone is <span class="math notranslate nohighlight">\(\chi^2_1\)</span>: the tests of R’s <code class="docutils literal notranslate"><span class="pre">cox.zph</span></code> since version 3.0, which surpyval reproduces. Grambsch and Therneau’s original form replaces each <span class="math notranslate nohighlight">\(W_k\)</span> by the average variance, <span class="math notranslate nohighlight">\(\mathcal{I}_{11} / d\)</span>, which gives, with <span class="math notranslate nohighlight">\(u = \sum_k (g_k - \bar g)\, r_k\)</span> and <span class="math notranslate nohighlight">\(s = \sum_k (g_k - \bar g)^2\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[T_{\text{global}} \approx \frac{d}{s}\, u' V u, \qquad
+T_j \approx \frac{d\, (V u)_j^2}{s\, V_{jj}};\]</div>
+<p>lifelines and R before version 3.0 compute these, and SurPyval did until v0.24. They agree closely in large samples and can differ in small ones, most under heavy ties. The <code class="docutils literal notranslate"><span class="pre">&quot;km&quot;</span></code> transform is the usual choice: it spreads the failures evenly and is not dominated by a few long times. The per-covariate tests are screens; with several covariates, look at the global test and at the plots.</p>
+<p>When the test rejects, the usual remedies are to <strong>stratify</strong> on the offending covariate (if it is a nuisance), to let its effect change over time by including an interaction with a function of time as a time-varying covariate, or to move to a family whose effect is not constant in time (AFT, proportional odds).</p>
+<p>SurPyval exposes several other residuals for a fitted Cox model, each answering a different question: <strong>martingale</strong> residuals (observed minus expected events, <span class="math notranslate nohighlight">\(M_i = \delta_i - e^{\hat\beta' Z_i}\bigl(\hat H_0(x_i) - \hat H_0(t_{l,i})\bigr)\)</span>, where <span class="math notranslate nohighlight">\(\delta_i = 1\)</span> for a failure; an Efron fit credits a tied failure with only its share of the baseline step at its own time) reveal non-linear covariate functional form when plotted against a covariate; <strong>deviance</strong> residuals, a symmetrised transform of the martingale residuals, highlight poorly-predicted individuals; <strong>score</strong> residuals are each observation’s contribution to <span class="math notranslate nohighlight">\(U(\hat\beta)\)</span>, and <strong>dfbeta</strong> residuals (score residuals times <span class="math notranslate nohighlight">\(V\)</span>) approximate how much each observation moves <span class="math notranslate nohighlight">\(\hat\beta\)</span>. The Schoenfeld, score and martingale residuals all sum to zero at the maximum of the partial likelihood. All of them respect delayed entry. They follow the tie method of a Breslow or Efron fit; after an <code class="docutils literal notranslate"><span class="pre">'exact'</span></code> or <code class="docutils literal notranslate"><span class="pre">'kalbfleisch-prentice'</span></code> fit they are computed with the Breslow forms, so under heavy ties they will not sum exactly to zero there. See <a class="reference internal" href="#therneaugrambsch2000reg" id="id14"><span>[TherneauGrambsch2000reg]</span></a> for a thorough treatment.</p>
+</section>
+<section id="cluster-robust-standard-errors">
+<h2>Cluster-robust standard errors<a class="headerlink" href="#cluster-robust-standard-errors" title="Link to this heading"></a></h2>
+<p>The model-based standard errors assume every observation is independent. When the data are <em>clustered</em> — repeated events on the same subject, several failures from one machine, grouped sampling — that assumption is wrong and the naive errors are too small. The <strong>Lin-Wei sandwich</strong> <a class="reference internal" href="#linwei1989reg" id="id15"><span>[LinWei1989reg]</span></a> (or “robust”) variance corrects for it. Writing <span class="math notranslate nohighlight">\(H\)</span> for the information matrix and <span class="math notranslate nohighlight">\(s_c\)</span> for the sum of a cluster’s score contributions, the robust covariance is</p>
+<div class="math notranslate nohighlight">
+\[V_{\text{robust}} = H^{-1} \left( \sum_{c} s_c s_c^{\top} \right) H^{-1},\]</div>
+<p>which reduces to the usual variance when there is one observation per cluster and there is no within-cluster correlation. Since the dfbeta residual of an observation is its score residual times <span class="math notranslate nohighlight">\(H^{-1}\)</span>, this is the same as summing the dfbeta residuals within each cluster, <span class="math notranslate nohighlight">\(D_c = H^{-1} s_c\)</span>, and forming <span class="math notranslate nohighlight">\(\sum_c D_c D_c^{\top}\)</span> — which is how surpyval computes it.</p>
+<p>The intuition for why clustering matters: if every observation were accidentally entered twice, a naive analysis would think it had twice the data and shrink the standard errors by <span class="math notranslate nohighlight">\(\sqrt 2\)</span>; declaring each pair a cluster tells the sandwich that the copies carry no new information, and the error returns to its correct size. For a start-stop (time-varying-covariate) Cox fit the rows of one subject are correlated by construction, so the robust variance clusters by subject unless told otherwise. Counts <code class="docutils literal notranslate"><span class="pre">n</span></code> are <em>frequency</em> weights here as everywhere in surpyval: a row with <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">3</span></code> is three independent observations (three clusters, unless <code class="docutils literal notranslate"><span class="pre">cluster=</span></code> groups them), so the robust errors — like the fit, the proportional-hazards test’s ranks and the Buckley-James bootstrap — are exactly those of the data written out one row per observation.</p>
+</section>
+<section id="shared-frailty">
+<h2>Shared frailty<a class="headerlink" href="#shared-frailty" title="Link to this heading"></a></h2>
+<p>Cluster-robust errors <em>correct</em> for within-cluster correlation but do not <em>model</em> it. A <strong>shared-frailty</strong> model does the opposite: it introduces the correlation explicitly through an unobserved random effect <a class="reference internal" href="#hougaard2000reg" id="id16"><span>[Hougaard2000reg]</span></a>. Each group <span class="math notranslate nohighlight">\(g\)</span> (a manufacturing lot, a site, a repairable unit) is given a <strong>frailty</strong> <span class="math notranslate nohighlight">\(u_g\)</span> — a random multiplier shared by every member of the group — acting on the hazard:</p>
+<div class="math notranslate nohighlight">
+\[h\bigl(t \mid Z, u_g\bigr) = u_g \, h_0(t) \, e^{\beta' Z},\]</div>
+<p>with the frailties drawn once per group from a Gamma distribution of mean 1 and variance <span class="math notranslate nohighlight">\(\theta\)</span>. The frailty is the survival analogue of a random intercept: it absorbs whatever unmeasured feature makes a whole group fail faster or slower than its covariates predict, and <span class="math notranslate nohighlight">\(\theta\)</span> measures that between-group variability (<span class="math notranslate nohighlight">\(\theta = 0\)</span> recovers ordinary proportional hazards). This is the <em>conditional</em> / random-effects counterpart of the <em>marginal</em> cluster-robust correction above — same within-group correlation, modelled rather than merely accounted for.</p>
+<p>Because the frailty multiplies the <em>cumulative</em> hazard, a Gamma frailty integrates out of a group’s likelihood in closed form. Writing <span class="math notranslate nohighlight">\(D_g\)</span> for the number of events in group <span class="math notranslate nohighlight">\(g\)</span> and <span class="math notranslate nohighlight">\(H_g = \sum_{j \in g} e^{\beta' z_j} H_0(t_j)\)</span> for the sum of its members’ cumulative hazards, the group contributes</p>
+<div class="math notranslate nohighlight">
+\[\sum_{\text{events}} \log\!\bigl(h_0 \, e^{\beta' Z}\bigr)
+- \tfrac{1}{\theta}\log\theta - \log\Gamma\!\bigl(\tfrac{1}{\theta}\bigr)
++ \log\Gamma\!\bigl(D_g + \tfrac{1}{\theta}\bigr)
+- \bigl(D_g + \tfrac{1}{\theta}\bigr)\log\!\bigl(H_g + \tfrac{1}{\theta}\bigr)\]</div>
+<p>to the marginal log-likelihood, which is maximised jointly over the baseline parameters, <span class="math notranslate nohighlight">\(\beta\)</span>, and <span class="math notranslate nohighlight">\(\theta\)</span>. The same conjugacy makes the <strong>posterior</strong> frailty of an observed group a closed form, <span class="math notranslate nohighlight">\(\hat u_g = (D_g + 1/\theta)/(H_g + 1/\theta)\)</span> — an empirical-Bayes estimate shrunk toward 1, larger for groups that fail early. Standard errors come from the Hessian of the marginal likelihood (exact; numerical where the variance sits at its limit of 0 and the exact one is singular); the Wald interval for <span class="math notranslate nohighlight">\(\theta\)</span> (and for the positive baseline parameters) is formed on the log scale so it stays positive. The closed form requires observed and right-censored data only. Gamma is the only frailty distribution surpyval offers (other choices, such as a log-normal frailty, have no closed form and need numerical integration); the <em>baseline</em> can be any surpyval distribution, via <code class="docutils literal notranslate"><span class="pre">Frailty(distribution)</span></code>.</p>
+<p>The distinction between the two curves the model can draw matters. Integrating the frailty out gives the <strong>marginal</strong> (population-averaged) survival of a unit from an <em>unknown</em> group, <span class="math notranslate nohighlight">\(S(t \mid Z) = (1 + \theta \, e^{\beta' Z} H_0(t))^{-1/\theta}\)</span> — a Laplace transform of the frailty distribution, and always heavier-tailed than the baseline. Conditioning on a value <span class="math notranslate nohighlight">\(u\)</span> gives <span class="math notranslate nohighlight">\(S(t \mid Z, u) = e^{-u \, e^{\beta' Z} H_0(t)}\)</span>, used with <span class="math notranslate nohighlight">\(\hat u_g\)</span> to predict a <em>new</em> member of an <em>already-observed</em> group. That is a plug-in of the posterior <em>mean</em>: the group’s frailty is still uncertain after its data (its posterior is a Gamma with shape <span class="math notranslate nohighlight">\(D_g + 1/\theta\)</span> and rate <span class="math notranslate nohighlight">\(H_g + 1/\theta\)</span>), and averaging over that posterior instead gives <span class="math notranslate nohighlight">\(\bigl(1 + \theta\, e^{\beta' Z} H_0(t) / (1 + \theta H_g)\bigr)^{-(D_g + 1/\theta)}\)</span>, which has a slightly heavier tail. The two agree closely for a group with many events, whose frailty is well determined. A subtle consequence is that a mixture of groups makes the <strong>population</strong> hazard bend down over time even when every group’s hazard rises, because the frail groups fail first and leave robust survivors — so an apparent decreasing hazard can be a heterogeneity artifact rather than a real one. Identification requires within-group replication: with a single group, or one observation per group, <span class="math notranslate nohighlight">\(\theta\)</span> is confounded with the baseline shape and cannot be estimated.</p>
+<p>The same selection effect changes what the coefficients mean. The marginal hazard is</p>
+<div class="math notranslate nohighlight">
+\[h(t \mid Z) = \frac{e^{\beta' Z} h_0(t)}{1 + \theta\, e^{\beta' Z} H_0(t)},\]</div>
+<p>so the <em>population</em> hazard ratio between two covariate values starts at <span class="math notranslate nohighlight">\(e^{\beta}\)</span> and shrinks towards 1 over time, even though <em>within</em> every group it is exactly <span class="math notranslate nohighlight">\(e^{\beta}\)</span>. <span class="math notranslate nohighlight">\(\beta\)</span> in a frailty model is a within-group (conditional) effect, and it is typically larger in magnitude than the coefficient an ordinary PH fit reports on the same data. The cell below shows the bending for a baseline whose hazard increases, with <span class="math notranslate nohighlight">\(\theta = 1\)</span>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.01</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">300</span><span class="p">)</span>
+<span class="n">h0</span><span class="p">,</span> <span class="n">H0</span> <span class="o">=</span> <span class="n">Weibull</span><span class="o">.</span><span class="n">hf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">),</span> <span class="n">Weibull</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">theta</span> <span class="ow">in</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]:</span>
+    <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">h0</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">theta</span> <span class="o">*</span> <span class="n">H0</span><span class="p">),</span> <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s1">'theta = </span><span class="si">{</span><span class="n">theta</span><span class="si">:</span><span class="s1">g</span><span class="si">}</span><span class="s1">'</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s1">'t'</span><span class="p">);</span> <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s1">'population (marginal) hazard'</span><span class="p">);</span> <span class="n">plt</span><span class="o">.</span><span class="n">legend</span><span class="p">()</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/regression%20analysis_3_0.png" src="_images/regression%20analysis_3_0.png" />
+</div>
+</div>
+<p>Every group’s hazard is the rising <span class="math notranslate nohighlight">\(\theta = 0\)</span> curve times its own <span class="math notranslate nohighlight">\(u_g\)</span>, yet the population hazard for <span class="math notranslate nohighlight">\(\theta = 1\)</span> rises and then falls. As <span class="math notranslate nohighlight">\(\theta \to 0\)</span> the marginal cumulative hazard <span class="math notranslate nohighlight">\(\log(1 + \theta e^{\beta' Z} H_0)/\theta\)</span> tends continuously to the proportional-hazards one, <span class="math notranslate nohighlight">\(e^{\beta' Z} H_0(t)\)</span>, and surpyval’s marginal predictions switch to that limit when <span class="math notranslate nohighlight">\(\theta\)</span> is numerically zero. Because <span class="math notranslate nohighlight">\(\theta\)</span> cannot be negative, data with no between-group heterogeneity push the estimate onto that boundary, where the Wald interval is no longer meaningful (the log-scale interval degenerates to <span class="math notranslate nohighlight">\([0, \infty)\)</span> or to a single point). A <span class="math notranslate nohighlight">\(\hat\theta\)</span> at or very near zero says the grouping explains nothing beyond the covariates, and the frailty fit then reproduces the ordinary proportional-hazards fit — same baseline, coefficients and likelihood: fit and report that model instead.</p>
+</section>
+<section id="stratification">
+<h2>Stratification<a class="headerlink" href="#stratification" title="Link to this heading"></a></h2>
+<p>When proportional hazards fails for a <em>nuisance</em> covariate — a study site, a batch, a device generation you would rather not model — the standard remedy is <strong>stratification</strong>: allow a separate baseline hazard <span class="math notranslate nohighlight">\(h_{0,g}(t)\)</span> for each stratum <span class="math notranslate nohighlight">\(g\)</span> while sharing the coefficients <span class="math notranslate nohighlight">\(\beta\)</span>. Because the partial likelihood is summed <em>within</em> strata, risk sets never cross a stratum boundary and the nuisance factor is removed from the comparison without ever estimating its effect. The Cox partial likelihood factorises across strata, so this is a small change to the estimation with a large gain in robustness:</p>
+<div class="math notranslate nohighlight">
+\[\ell(\beta) = \sum_{g} \ell_g(\beta),\]</div>
+<p>each <span class="math notranslate nohighlight">\(\ell_g\)</span> being the ordinary partial likelihood of stratum <span class="math notranslate nohighlight">\(g\)</span> alone. There is one Breslow baseline per stratum, so a prediction must say which stratum it is for. The price is that the stratifying variable gets no coefficient — you learn nothing about its effect, which is the point when it is a nuisance and a loss when it is not. The residual diagnostics and robust variance above assume a single baseline, so they are not available on a stratified fit.</p>
+</section>
+<section id="time-varying-covariates">
+<h2>Time-varying covariates<a class="headerlink" href="#time-varying-covariates" title="Link to this heading"></a></h2>
+<p>A covariate can change <em>during</em> a subject’s follow-up — a dose is raised, a treatment begins, a machine is moved to a harsher environment. Such a covariate path is represented in the <strong>counting-process (start-stop) format</strong>: each subject contributes one row per interval <span class="math notranslate nohighlight">\((x_l, x_r]\)</span> on which its covariate vector is constant, and only the interval ending at the subject’s event carries the terminal status. surpyval writes this with its usual vocabulary — the subject id <code class="docutils literal notranslate"><span class="pre">i</span></code>, the interval bounds <code class="docutils literal notranslate"><span class="pre">xl</span></code> / <code class="docutils literal notranslate"><span class="pre">xr</span></code>, and the censoring flag <code class="docutils literal notranslate"><span class="pre">c</span></code> (<code class="docutils literal notranslate"><span class="pre">0</span></code> event, <code class="docutils literal notranslate"><span class="pre">1</span></code> right-censored interval end). A subject’s rows may not overlap, it may have at most one event, and that event must be on its last interval; gaps between intervals are allowed for the hazard-based families (the subject is simply not at risk in the gap). Equivalently the path can be given as a <strong>timeline</strong> — one row per covariate change, each value holding until the next row, with the first time the entry and the last row carrying the exit time and status — which surpyval expands into the same intervals.</p>
+<p><strong>Fitting.</strong> Whether a subject’s episodes can be fitted as if they were independent observations depends on the family. Where the cumulative hazard is <em>additive over disjoint intervals</em> — proportional hazards, additive hazards, and (semi-parametric) Cox — a subject splits <strong>exactly</strong> into one left-truncated (delayed-entry) observation per constant-covariate interval:</p>
+<div class="math notranslate nohighlight">
+\[H\bigl(x_r \mid Z\bigr) - H\bigl(x_l \mid Z\bigr)\]</div>
+<p>is the interval’s contribution and the subject’s likelihood is the product over its intervals, so the ordinary maximum-likelihood fitter recovers the same estimate from the reshaped rows (the <em>episode-splitting identity</em>). Accelerated failure time is different: the covariate rescales the <em>time axis</em>, so the baseline is evaluated at the subject’s accumulated <strong>accelerated age</strong> <span class="math notranslate nohighlight">\(\psi = \sum_k e^{\beta' z_k}\,(b_k - a_k)\)</span>, and the episode entry ages in that sum depend on <span class="math notranslate nohighlight">\(\beta\)</span>. The episodes therefore do not separate into independent rows, and AFT is fitted with a dedicated accumulated-age likelihood that re-accumulates <span class="math notranslate nohighlight">\(\psi\)</span> per subject on each optimiser step. Proportional odds is not fitted from time-varying data.</p>
+<p>For AFT the subject’s contribution is</p>
+<div class="math notranslate nohighlight">
+\[\bigl[e^{\beta' z_{\text{last}}}\, h_0(\psi)\bigr]^{\delta}\, e^{-H_0(\psi)},
+\qquad \psi = \int_0^{T} e^{\beta' Z(u)}\, du ,\]</div>
+<p>with <span class="math notranslate nohighlight">\(\delta = 1\)</span> for a subject whose last interval ends in failure. The integral runs from time zero, which has a consequence: the accelerated age accumulated <em>before</em> a subject entered observation, or during a gap in its record, depends on covariate values that were never observed. Rather than guess them, surpyval’s AFT time-varying fit requires each subject’s intervals to start at 0 and to be contiguous, and refuses delayed entry and gaps with an error that points to the Cox time-varying fit, whose risk-set likelihood never needs the unobserved history. Information criteria for this fit count subjects, not interval rows.</p>
+<p><strong>Evaluation.</strong> Given an already-fitted model and a covariate path <span class="math notranslate nohighlight">\(Z(t)\)</span>, the survival <span class="math notranslate nohighlight">\(S(t \mid Z(\cdot))\)</span> is exact when the path is <strong>piecewise-constant</strong> (a step function). For proportional and additive hazards (and Cox) it is the sum of the per-segment cumulative-hazard increments; for AFT it is the baseline evaluated at the accumulated accelerated age. A continuously-varying covariate would break the exactness of these segment sums, so the step-valued requirement is a correctness precondition, not a convenience. Unlike some packages, surpyval is willing to evaluate a model along a <em>future</em> covariate path — because that path is <em>supplied</em> as a plan or hypothesis (mission phases, a duty cycle, a scheduled load), making <span class="math notranslate nohighlight">\(S(t \mid Z(\cdot))\)</span> a well-posed conditional question rather than a claim to know the future.</p>
+<p>Two details of the evaluation are worth knowing. For Cox, the baseline hazard jumps at observed event times, and a jump that falls exactly on a covariate change time is weighted by the <em>old</em> covariate — the same <code class="docutils literal notranslate"><span class="pre">(x_l,</span> <span class="pre">x_r]</span></code> convention as the fit, where a unit is still at risk at the end of its interval. And conditional survival — the probability of surviving to <span class="math notranslate nohighlight">\(x\)</span> for a unit already known to have survived to age <span class="math notranslate nohighlight">\(g\)</span> along the same path — is</p>
+<div class="math notranslate nohighlight">
+\[S(x \mid T &gt; g, Z(\cdot)) = \exp\bigl(-[H(x \mid Z(\cdot)) - H(g \mid Z(\cdot))]\bigr), \qquad x \ge g .\]</div>
+<p><strong>Identifiability.</strong> A time-varying covariate’s effect is estimated from contrast between units at the same time: at each failure, did the unit that failed carry a different covariate value from the others still at risk? If every unit follows the same covariate path on the same clock, the covariate is perfectly confounded with time and its coefficient cannot be separated from the baseline. Staggered starts, different schedules and idle periods are what make the effect measurable.</p>
+</section>
+<section id="validating-a-survival-predictor">
+<h2>Validating a survival predictor<a class="headerlink" href="#validating-a-survival-predictor" title="Link to this heading"></a></h2>
+<p>Information criteria (AIC, BIC) compare how well models fit the data they were trained on. To judge how well a model <em>predicts</em>, it must be scored on held-out data, and the metrics must account for censoring. Two right-censored-standard measures are used, both handling censoring by inverse-probability-of-censoring weighting (IPCW):</p>
+<ul class="simple">
+<li><p>The <strong>Brier score</strong> <span class="math notranslate nohighlight">\(BS(t)\)</span> is the weighted mean squared error between the predicted survival <span class="math notranslate nohighlight">\(S(t \mid Z)\)</span> and the survival indicator <span class="math notranslate nohighlight">\(\mathbb{1}(T &gt; t)\)</span>; the <strong>integrated Brier score</strong> averages it over a time grid. Lower is better, and a useful model scores below the marginal Kaplan-Meier reference.</p></li>
+<li><p>The <strong>time-dependent AUC</strong> (Uno’s cumulative/dynamic estimator) measures discrimination as a function of the horizon — the probability that a subject who has failed by <span class="math notranslate nohighlight">\(t\)</span> was assigned a higher risk than one still event-free. 0.5 is chance, 1.0 is perfect.</p></li>
+</ul>
+<p>IPCW works by up-weighting the subjects whose outcome is known at <span class="math notranslate nohighlight">\(t\)</span> by the inverse of their probability of not having been censored yet, estimated by a Kaplan-Meier of the <em>censoring</em> times, so the scored sample stands in for the full one. A subject still event-free at <span class="math notranslate nohighlight">\(t\)</span> gets weight <span class="math notranslate nohighlight">\(1/\hat G(t)\)</span>; an event at <span class="math notranslate nohighlight">\(x_i \le t\)</span> gets <span class="math notranslate nohighlight">\(1/\hat G(x_i-)\)</span>, the probability of being uncensored just before <span class="math notranslate nohighlight">\(x_i\)</span>. An event and a censoring at the same time are recorded as an event, so the censoring Kaplan-Meier takes the event to come first (it is not at risk of being censored at its own time) and a censoring tied with an event does not count against it. The metrics are model-agnostic: they take a matrix of predicted survival probabilities, so parametric, semi-parametric and tree-based predictors can be compared on the same footing (see <a class="reference internal" href="comparison_and_validation.html"><span class="doc">Comparison Tests and Validation Metrics</span></a>).</p>
+<section id="concordance">
+<h3>Concordance<a class="headerlink" href="#concordance" title="Link to this heading"></a></h3>
+<p>The oldest discrimination measure is <strong>Harrell’s concordance index</strong> <a class="reference internal" href="#harrell1982reg" id="id17"><span>[Harrell1982reg]</span></a>. It asks, over every <em>comparable</em> pair of subjects, whether the model ranked them correctly: the one that failed first should have the higher risk score. A pair is comparable when the earlier time is an observed failure — if the earlier subject was censored we do not know who failed first. Then</p>
+<div class="math notranslate nohighlight">
+\[C = \frac{\#\{\text{concordant pairs}\} + \tfrac12\, \#\{\text{pairs with tied scores}\}}{\#\{\text{comparable pairs}\}},\]</div>
+<p>with 0.5 for a random ranking and 1 for a perfect one. Ties in <em>time</em> need conventions. A failure and a censoring at the same time form a fully comparable pair, because the censored subject is known to have outlived the failure (so a lower score for the failure counts 0, not 0.5), and two censorings at the same time are not comparable. Two failures at the same time are where the conventions differ. By default surpyval follows Therneau, as R’s <code class="docutils literal notranslate"><span class="pre">survival::concordance</span></code> and lifelines do (<code class="docutils literal notranslate"><span class="pre">ties=&quot;therneau&quot;</span></code>): neither subject outlived the other, so the pair is not comparable. Harrell’s original definition (<code class="docutils literal notranslate"><span class="pre">ties=&quot;harrell&quot;</span></code>) counts the pair, 1 if the scores tie and 0.5 otherwise. The two agree on data without tied failure times; for a Cox model of the lung data on age, sex and ECOG score, whose 28 pairs of tied deaths make the difference, Therneau’s gives 0.6371 (R and lifelines too) and Harrell’s 0.6369. For a proportional hazards model the linear predictor <span class="math notranslate nohighlight">\(\beta' Z\)</span> is a natural risk score. <span class="math notranslate nohighlight">\(C\)</span> measures ranking only — a model can have an excellent <span class="math notranslate nohighlight">\(C\)</span> and badly miscalibrated survival probabilities, which is what the Brier score is for. A four-subject example shows the counting:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.metrics</span><span class="w"> </span><span class="kn">import</span> <span class="n">concordance_index</span> <span class="k">as</span> <span class="n">score</span>
+
+<span class="n">x_c</span> <span class="o">=</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">]</span>
+<span class="n">c_c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>              <span class="c1"># the second subject is censored at 2</span>
+<span class="n">risk</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">]</span>     <span class="c1"># higher score = expected to fail earlier</span>
+<span class="c1"># comparable pairs: (1,2) (1,3) (1,4) (3,4); (2,*) are not, 2 was censored</span>
+<span class="c1"># all four are ranked correctly</span>
+<span class="n">score</span><span class="p">(</span><span class="n">x_c</span><span class="p">,</span> <span class="n">c_c</span><span class="p">,</span> <span class="n">risk</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>1.0
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><strong>How sure is C, and Uno’s version.</strong> A C computed from a sample is an estimate, and the
+question that follows is how far it could move with another sample. <code class="docutils literal notranslate"><span class="pre">concordance</span></code>
+gives it a standard error and a confidence interval, as R’s <code class="docutils literal notranslate"><span class="pre">survival::concordance</span></code>
+reports its <code class="docutils literal notranslate"><span class="pre">var</span></code>: the <em>infinitesimal jackknife</em> asks how much <span class="math notranslate nohighlight">\(C\)</span> changes when one
+subject’s weight is nudged, and adds up the squares of those changes. With <span class="math notranslate nohighlight">\(N_i\)</span> the
+subject’s share of the concordant pairs (a tied score counting half), <span class="math notranslate nohighlight">\(M_i\)</span> its share of
+the comparable pairs and <span class="math notranslate nohighlight">\(M\)</span> all comparable pairs,</p>
+<div class="math notranslate nohighlight">
+\[d_i = \frac{N_i - C\, M_i}{M}, \qquad \widehat{\operatorname{var}}(C) = \sum_i d_i^2 .\]</div>
+<p>Harrell’s <span class="math notranslate nohighlight">\(C\)</span> has a quieter weakness: censoring decides which pairs are comparable.
+When many subjects are censored early, the comparable pairs are mostly early failures, so
+<span class="math notranslate nohighlight">\(C\)</span> mostly describes how well the score ranks early failures, and two studies with the
+same model but different follow-up get different values. <strong>Uno’s C</strong> (Uno, Cai, Pencina,
+D’Agostino and Wei, 2011) weights each comparable pair by how unlikely it was to survive the
+censoring, <span class="math notranslate nohighlight">\(1 / \hat G(t_i-)^2\)</span>, where <span class="math notranslate nohighlight">\(\hat G\)</span> is the Kaplan-Meier estimate of
+the chance of being still uncensored and <span class="math notranslate nohighlight">\(t_i\)</span> the pair’s failure time. The late pairs
+that censoring thinned out then count as much as they would have without it, and the estimate
+no longer depends on the censoring pattern (if censoring is independent of the score). Because
+<span class="math notranslate nohighlight">\(\hat G\)</span> falls towards 0 at the end of follow-up, the weights blow up there, so Uno’s C is
+used up to a horizon <span class="math notranslate nohighlight">\(\tau\)</span> where enough subjects remain: <code class="docutils literal notranslate"><span class="pre">tau=</span></code> keeps only the pairs
+whose failure is at or before it (R’s <code class="docutils literal notranslate"><span class="pre">ymax</span></code>):</p>
+<div class="math notranslate nohighlight">
+\[C_\tau = \frac{\sum_{i,j} \delta_i\, \hat G(t_i-)^{-2}\, I(t_i &lt; t_j,\ t_i \le \tau)
+    \left[I(r_i &gt; r_j) + \tfrac12 I(r_i = r_j)\right]}
+    {\sum_{i,j} \delta_i\, \hat G(t_i-)^{-2}\, I(t_i &lt; t_j,\ t_i \le \tau)} .\]</div>
+<p>Two models scored on the same subjects have correlated C’s, so their difference cannot be
+tested as if they were independent; <code class="docutils literal notranslate"><span class="pre">compare_concordance</span></code> uses the subjects’ influences on
+both, <span class="math notranslate nohighlight">\(\widehat{\operatorname{var}}(C_a - C_b) = \sum_i (d_{a,i} - d_{b,i})^2\)</span>, and a
+normal test, as <code class="docutils literal notranslate"><span class="pre">survival::concordance(fit_a,</span> <span class="pre">fit_b)</span></code> does. These reproduce R’s estimates
+and standard errors (<code class="docutils literal notranslate"><span class="pre">timewt</span> <span class="pre">=</span> <span class="pre">&quot;n&quot;</span></code> for Harrell, <code class="docutils literal notranslate"><span class="pre">&quot;n/G2&quot;</span></code> for Uno) to rounding:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_lung</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.metrics</span><span class="w"> </span><span class="kn">import</span> <span class="n">compare_concordance</span>
+
+<span class="n">lung</span> <span class="o">=</span> <span class="n">load_lung</span><span class="p">()</span><span class="o">.</span><span class="n">dropna</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="p">[</span><span class="s2">"ph.ecog"</span><span class="p">])</span>
+<span class="n">lung</span><span class="p">[</span><span class="s2">"censored"</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">lung</span><span class="p">[</span><span class="s2">"status"</span><span class="p">]</span>
+<span class="n">cox</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">CoxPH</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span><span class="n">lung</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"time"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span>
+                           <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"age"</span><span class="p">,</span> <span class="s2">"sex"</span><span class="p">,</span> <span class="s2">"ph.ecog"</span><span class="p">])</span>
+<span class="n">harrell</span> <span class="o">=</span> <span class="n">cox</span><span class="o">.</span><span class="n">concordance</span><span class="p">()</span>
+<span class="n">uno</span> <span class="o">=</span> <span class="n">cox</span><span class="o">.</span><span class="n">concordance</span><span class="p">(</span><span class="n">weighting</span><span class="o">=</span><span class="s2">"uno"</span><span class="p">,</span> <span class="n">tau</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Harrell: </span><span class="si">%.4f</span><span class="s2"> (SE </span><span class="si">%.4f</span><span class="s2">)"</span> <span class="o">%</span> <span class="p">(</span><span class="n">harrell</span><span class="o">.</span><span class="n">estimate</span><span class="p">,</span> <span class="n">harrell</span><span class="o">.</span><span class="n">se</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Uno, tau = 500 days: </span><span class="si">%.4f</span><span class="s2"> (SE </span><span class="si">%.4f</span><span class="s2">)"</span> <span class="o">%</span> <span class="p">(</span><span class="n">uno</span><span class="o">.</span><span class="n">estimate</span><span class="p">,</span> <span class="n">uno</span><span class="o">.</span><span class="n">se</span><span class="p">))</span>
+
+<span class="c1"># does the ECOG score alone rank the patients as well as the model?</span>
+<span class="n">lp</span> <span class="o">=</span> <span class="n">lung</span><span class="p">[[</span><span class="s2">"age"</span><span class="p">,</span> <span class="s2">"sex"</span><span class="p">,</span> <span class="s2">"ph.ecog"</span><span class="p">]]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span> <span class="o">@</span> <span class="n">cox</span><span class="o">.</span><span class="n">beta</span>
+<span class="n">compare_concordance</span><span class="p">(</span><span class="n">lung</span><span class="p">[</span><span class="s2">"time"</span><span class="p">],</span> <span class="n">lung</span><span class="p">[</span><span class="s2">"censored"</span><span class="p">],</span> <span class="n">lp</span><span class="p">,</span> <span class="n">lung</span><span class="p">[</span><span class="s2">"ph.ecog"</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Harrell: 0.6371 (SE 0.0251)
+Uno, tau = 500 days: 0.6265 (SE 0.0247)
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Comparison of two Harrell's C
+=============================
+C (a, b)         : 0.637135, 0.604463
+Difference       : 0.032673
+Std. error       : 0.018414
+95% CI           : (-0.00341784, 0.0687638)
+z                : 1.77435
+p-value          : 0.0760048
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="survival-trees-and-forests">
+<h3>Survival trees and forests<a class="headerlink" href="#survival-trees-and-forests" title="Link to this heading"></a></h3>
+<p>All the families above impose a structure — a link function, a linear predictor. A <strong>survival tree</strong> imposes none: it recursively splits the data on one covariate at a time, at the threshold that best separates the survival of the two halves, and fits a survival model in each leaf <a class="reference internal" href="#leblanccrowley1993reg" id="id18"><span>[LeBlancCrowley1993reg]</span></a>. A prediction for a new unit drops it down the tree to a leaf and returns that leaf’s distribution. Trees find interactions and thresholds by themselves (“high temperature matters, but only for the old design”), at the cost of being step functions of the covariates and of being unstable — a slightly different sample can grow a different tree.</p>
+<p>surpyval’s trees couple the split rule with the leaf model (<code class="docutils literal notranslate"><span class="pre">kind=</span></code>):</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;non-parametric&quot;</span></code> scores a candidate split by the standardised <strong>log-rank</strong> statistic between the two children,</p>
+<div class="math notranslate nohighlight">
+\[L = \frac{\sum_j \bigl(d_{j,L} - Y_{j,L}\, d_j / Y_j\bigr)}
+{\sqrt{\sum_j \frac{Y_{j,L}}{Y_j}\Bigl(1 - \frac{Y_{j,L}}{Y_j}\Bigr)\frac{Y_j - d_j}{Y_j - 1}\, d_j}},\]</div>
+<p>summed over the pooled distinct times, with <span class="math notranslate nohighlight">\(d\)</span> deaths and <span class="math notranslate nohighlight">\(Y\)</span> numbers at risk (left child and total). The at-risk counts use the same <code class="docutils literal notranslate"><span class="pre">(entry,</span> <span class="pre">exit]</span></code> convention as everywhere else, so left truncation is handled; the leaves are Nelson-Aalen estimates.</p>
+<p>A risk-set statistic only exists for observed and right-censored data. For left- and interval-censored data the tree uses the score form of the same test instead <a class="reference internal" href="#finkelstein1986reg" id="id19"><span>[Finkelstein1986reg]</span></a>: at each node it fits the pooled Turnbull estimate <span class="math notranslate nohighlight">\(\hat S\)</span> once, gives each unit whose event lies in <span class="math notranslate nohighlight">\((L, R]\)</span> the log-rank score</p>
+<div class="math notranslate nohighlight">
+\[c_i = \frac{\hat S(L)\log \hat S(L) - \hat S(R)\log \hat S(R)}{\hat S(L) - \hat S(R)}\]</div>
+<p>(so <span class="math notranslate nohighlight">\(\log \hat S(L)\)</span> if right censored at <span class="math notranslate nohighlight">\(L\)</span>, <span class="math notranslate nohighlight">\(1 + \log \hat S(t)\)</span> if observed at <span class="math notranslate nohighlight">\(t\)</span>, and the <span class="math notranslate nohighlight">\(L \to 0\)</span> limit if left censored), and scores a split by the standardised sum of the left child’s scores, <span class="math notranslate nohighlight">\(|\sum_{i \in L} c_i - n_L \bar c| / \sqrt{\tfrac{n_L n_R}{n(n-1)}\sum_i (c_i - \bar c)^2}\)</span>, with its permutation variance. <span class="math notranslate nohighlight">\(\hat S\)</span> is taken as <span class="math notranslate nohighlight">\(e^{-\hat H}\)</span>, where <span class="math notranslate nohighlight">\(\hat H\)</span> is the Nelson-Aalen hazard of the Turnbull estimate’s expected risk sets and events; this keeps every score finite (a Kaplan-Meier type estimate reaches zero at a last observed failure, whose score would be <span class="math notranslate nohighlight">\(-\infty\)</span>). On right-censored data the scores are then exactly the log-rank scores <span class="math notranslate nohighlight">\(\delta_i - \hat H(x_i)\)</span>, whose sum over a child is the log-rank numerator, so the two splits agree asymptotically. The leaves are Turnbull estimates. The same split is used for right-truncated data, whose units are seen only because they failed in time and so have no risk sets either. A unit observable only if its event falls in a window <span class="math notranslate nohighlight">\((t_l, t_r]\)</span> contributes the conditional likelihood <span class="math notranslate nohighlight">\(P(L &lt; T \le R)/P(t_l &lt; T \le t_r)\)</span>, and its score is the score of that: with <span class="math notranslate nohighlight">\(g(a, b)\)</span> the score above for an event in <span class="math notranslate nohighlight">\((a, b]\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[c_i = g\bigl(\max(L, t_l), \min(R, t_r)\bigr) - g(t_l, t_r),\]</div>
+<p>with <span class="math notranslate nohighlight">\(\hat S\)</span> from the Turnbull estimate fitted with the truncation. Under left truncation the window term is <span class="math notranslate nohighlight">\(\log \hat S(t_l)\)</span>, so on observed and right-censored data the scores are the delayed-entry martingale residuals <span class="math notranslate nohighlight">\(\delta_i - [\hat H(x_i) - \hat H(t_{l,i})]\)</span> <a class="reference internal" href="#fusimonoff2017reg" id="id20"><span>[FuSimonoff2017reg]</span></a>. Subtracting the window’s score is what keeps the test honest when the truncation depends on a covariate: a score of a conditional likelihood has mean zero given the window, so a covariate that only delays entry, or brings forward the right-truncation time, is not mistaken for one that changes survival (in simulations, without the window term such a covariate was significant at the 5% level in 39% of data sets with delayed entry and 49% with right truncation; with it, in 0.5% and 3%). Under right truncation the data only identify the distribution of failures before the largest truncation time, and that is the distribution whose proportional-hazards alternative the split tests.</p>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;weibull&quot;</span></code> (the default) and <code class="docutils literal notranslate"><span class="pre">&quot;exponential&quot;</span></code> score a split by the gain in the maximised full log-likelihood of a Weibull (or exponential <a class="reference internal" href="#davisanderson1989reg" id="id21"><span>[DavisAnderson1989reg]</span></a>) model in each child. Because it uses the full likelihood of the proportional hazards section, this works for every kind of censoring and truncation; the leaves are the fitted Weibull or exponential models. On observed and right-censored data each child’s maximum is found directly rather than by an optimiser: the exponential rate is <span class="math notranslate nohighlight">\(\hat\lambda = r / \sum_i n_i x_i\)</span> (<span class="math notranslate nohighlight">\(r\)</span> the failures), and at a fixed Weibull shape <span class="math notranslate nohighlight">\(\beta\)</span> the likelihood is maximised by <span class="math notranslate nohighlight">\(\hat\alpha^\beta = \sum_i n_i x_i^\beta / r\)</span>, which leaves the concave one-dimensional profile <span class="math notranslate nohighlight">\(\ell_p(\beta) = r \log\beta - r \log(\sum_i n_i x_i^\beta / r) + (\beta - 1)\sum_{\text{failures}} n_i \log x_i - r\)</span>, maximised by Newton steps. Any split, even of pure noise, raises the in-sample likelihood, so these trees keep splitting until their leaves are too small: what a forest of deep trees wants, but not a single tree. A split adds the working model’s <span class="math notranslate nohighlight">\(k\)</span> parameters (1 for the exponential, 2 for the Weibull), and <code class="docutils literal notranslate"><span class="pre">min_split_gain</span></code> asks for a gain <span class="math notranslate nohighlight">\(\ell_L + \ell_R - \ell\)</span> above a number, above <span class="math notranslate nohighlight">\(k\)</span> (<code class="docutils literal notranslate"><span class="pre">&quot;aic&quot;</span></code>: the split lowers Akaike’s criterion) or above <span class="math notranslate nohighlight">\(k \log(d) / 2\)</span> (<code class="docutils literal notranslate"><span class="pre">&quot;bic&quot;</span></code>, <span class="math notranslate nohighlight">\(d\)</span> the node’s failures). Neither is a test, since the split is the best of many cuts; the conditional-inference stop below is.</p></li>
+</ul>
+<p>Choosing the split by the best cut over every covariate (<code class="docutils literal notranslate"><span class="pre">selection=&quot;greedy&quot;</span></code>, the default) has two known faults. A covariate with many distinct values offers many more cuts than one with a few, so by chance alone its best cut looks better: greedy search prefers continuous covariates whether or not they matter. And it always finds a cut, so the tree has to be stopped by its size. <strong>Conditional inference</strong> (<code class="docutils literal notranslate"><span class="pre">selection=&quot;ctree&quot;</span></code>) separates choosing the covariate from choosing its cut <a class="reference internal" href="#hothorn2006reg" id="id22"><span>[Hothorn2006reg]</span></a>. At each node every unit gets a score from the node’s split statistic, computed once: the log-rank scores above for <code class="docutils literal notranslate"><span class="pre">&quot;non-parametric&quot;</span></code> (with delayed entry <span class="math notranslate nohighlight">\(\delta_i - [\hat H(x_i) - \hat H(t_{l,i})]\)</span>, whose sum over a child is again <span class="math notranslate nohighlight">\(O - E\)</span>), and for <code class="docutils literal notranslate"><span class="pre">&quot;exponential&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;weibull&quot;</span></code> each unit’s contribution to the score <span class="math notranslate nohighlight">\(\partial \ell_i / \partial \theta\)</span> of the working model at the node’s pooled estimate (one score for <span class="math notranslate nohighlight">\(\log \lambda\)</span>, two for <span class="math notranslate nohighlight">\((\log \alpha, \log \beta)\)</span>), as in model-based recursive partitioning <a class="reference internal" href="#zeileis2008reg" id="id23"><span>[Zeileis2008reg]</span></a>. For a cut leaving <span class="math notranslate nohighlight">\(m\)</span> of <span class="math notranslate nohighlight">\(N\)</span> units on the left, the sum <span class="math notranslate nohighlight">\(T_m\)</span> of the left child’s centred scores has permutation covariance <span class="math notranslate nohighlight">\(\frac{m(N-m)}{N(N-1)}\sum_i (h_i - \bar h)(h_i - \bar h)^\top\)</span>, and <span class="math notranslate nohighlight">\(Q_m = T_m^\top \Sigma_m^{+} T_m\)</span> is maximised over the covariate’s allowed cuts: the maximally selected statistic <a class="reference internal" href="#lausenschumacher1992reg" id="id24"><span>[LausenSchumacher1992reg]</span></a>, which, like the tree, depends on a covariate only through the order of its values. Its p-value accounts for the number of cuts: the standardised statistics at successive cuts form, asymptotically, a Gauss-Markov chain with correlation <span class="math notranslate nohighlight">\(\sqrt{m_{k-1}(N - m_k)/(m_k(N - m_{k-1}))}\)</span> between neighbours, and surpyval computes the probability that the chain’s maximum exceeds the observed one exactly for that chain, by quadrature, rather than by the Hunter-Worsley bound of <code class="docutils literal notranslate"><span class="pre">maxstat</span></code> <a class="reference internal" href="#hothornlausen2003reg" id="id25"><span>[HothornLausen2003reg]</span></a>, which is about twice too large for a continuous covariate. One cut gives the plain <span class="math notranslate nohighlight">\(\chi^2\)</span> p-value, many close cuts not much more than a few independent ones. The covariate with the smallest p-value is chosen, and the node is split, at that covariate’s best cut by the kind’s criterion, only if the p-value times the number of covariates tested (Bonferroni) is below <code class="docutils literal notranslate"><span class="pre">alpha_split</span></code> (0.05 by default); otherwise the node is a leaf. On data with no effect the tree then usually stays a single leaf, and a covariate with two values competes on equal terms with continuous noise.</p>
+<p>A <strong>random survival forest</strong> <a class="reference internal" href="#ishwaran2008reg" id="id26"><span>[Ishwaran2008reg]</span></a> averages many trees, each grown on a bootstrap resample of the data and allowed to consider only a random subset of the covariates at each split. The averaging trades the high variance of a single deep tree for a little bias, and usually predicts much better. The forest’s survival curve is the average of the trees’ leaf survival curves (or, optionally, the survival implied by their averaged cumulative hazards), and its risk score for concordance is the leaf cumulative hazard summed over the evaluation times. Because every tree is grown without about a third of the rows, each row can be scored by the trees that never saw it: the forest’s out-of-bag log-likelihood is the mean of those rows’ full likelihoods (density, survival, failure or interval probability, over the truncation probability), an estimate of how well it predicts new data for every kind of censoring, and shuffling one covariate among the out-of-bag rows and measuring the drop gives its permutation importance <a class="reference internal" href="#breiman2001reg" id="id27"><span>[Breiman2001reg]</span></a>. In surpyval both live in <code class="docutils literal notranslate"><span class="pre">surpyval.ml</span></code> (see <a class="reference internal" href="surpyval.ml.html"><span class="doc">Machine Learning</span></a>).</p>
+</section>
+<section id="choosing-a-model">
+<h3>Choosing a model<a class="headerlink" href="#choosing-a-model" title="Link to this heading"></a></h3>
+<p>There is no universally best family, but the questions below settle most cases.</p>
+<ul class="simple">
+<li><p><strong>Is the effect a constant multiple of the risk?</strong> Fit a Cox model and run the Grambsch-Therneau test. If it passes, proportional hazards is a defensible and very interpretable default, and a Cox fit makes no assumption about the baseline.</p></li>
+<li><p><strong>Do you need to extrapolate in time, or predict the full distribution?</strong> Cox cannot predict beyond the observed times. Use a parametric family, and choose the baseline by likelihood (AIC/BIC) and by comparing the fitted curves with non-parametric estimates.</p></li>
+<li><p><strong>Is the mechanism “the covariate speeds the clock up”?</strong> Use AFT — a stress that accelerates a physical process — or, when the covariate is a controlled stress with a known physical law and you must extrapolate to use conditions, accelerated life. Remember that for a Weibull, AFT and PH are the same model.</p></li>
+<li><p><strong>Does the effect fade over time?</strong> Proportional odds represents exactly that; a PH model forced onto such data reports a time-averaged hazard ratio.</p></li>
+<li><p><strong>Is the question about excess risk?</strong> Additive hazards reports risk differences, in units of failures per unit time.</p></li>
+<li><p><strong>Are units grouped?</strong> For honest standard errors, cluster-robust errors; to model and quantify the between-group variation (and to predict for a known group), a shared frailty; for a nuisance grouping that violates PH, stratification.</p></li>
+<li><p><strong>Do covariates change during follow-up?</strong> The start-stop format, with Cox, PH, AH or AFT.</p></li>
+<li><p><strong>Is the covariate structure unknown or strongly non-linear?</strong> A random survival forest, validated on held-out data, and compared against a simpler model on the same metrics.</p></li>
+</ul>
+<p>Whatever the choice, check it: residuals and the PH test for the assumption, information criteria for the fit, and held-out Brier scores, AUC and concordance for prediction. For worked examples on how to do regression analysis — including checking the proportional hazards assumption, robust and stratified fits, and validating predictions — see the <a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Regression Modelling with SurPyval</span></a> page.</p>
+<p class="rubric">References</p>
+<div role="list" class="citation-list">
+<div class="citation" id="cox1972reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">Cox1972reg</a><span class="fn-bracket">]</span></span>
+<p>Cox, D.R., 1972. Regression models and life-tables. <em>Journal of the Royal Statistical Society: Series B</em>, 34(2), pp.187-220.</p>
+</div>
+<div class="citation" id="breslow1974reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">Breslow1974reg</a><span class="fn-bracket">]</span></span>
+<p>Breslow, N., 1974. Covariance analysis of censored survival data. <em>Biometrics</em>, 30(1), pp.89-99.</p>
+</div>
+<div class="citation" id="efron1977reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">Efron1977reg</a><span class="fn-bracket">]</span></span>
+<p>Efron, B., 1977. The efficiency of Cox’s likelihood function for censored data. <em>Journal of the American Statistical Association</em>, 72(359), pp.557-565.</p>
+</div>
+<div class="citation" id="delong1994reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">DeLong1994reg</a><span class="fn-bracket">]</span></span>
+<p>DeLong, D.M., Guirguis, G.H. and So, Y.C., 1994. Efficient computation of subset selection probabilities with application to Cox regression. <em>Biometrika</em>, 81(3), pp.607-611.</p>
+</div>
+<div class="citation" id="gail1981reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id6">Gail1981reg</a><span class="fn-bracket">]</span></span>
+<p>Gail, M.H., Lubin, J.H. and Rubinstein, L.V., 1981. Likelihood calculations for matched case-control studies and survival studies with tied death times. <em>Biometrika</em>, 68(3), pp.703-707.</p>
+</div>
+<div class="citation" id="kalbfleischprentice2002reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id5">KalbfleischPrentice2002reg</a><span class="fn-bracket">]</span></span>
+<p>Kalbfleisch, J.D. and Prentice, R.L., 2002. <em>The Statistical Analysis of Failure Time Data</em>, 2nd ed. Wiley.</p>
+</div>
+<div class="citation" id="bennett1983reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id10">Bennett1983reg</a><span class="fn-bracket">]</span></span>
+<p>Bennett, S., 1983. Analysis of survival data by the proportional odds model. <em>Statistics in Medicine</em>, 2(2), pp.273-277.</p>
+</div>
+<div class="citation" id="linying1994reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id11">LinYing1994reg</a><span class="fn-bracket">]</span></span>
+<p>Lin, D.Y. and Ying, Z., 1994. Semiparametric analysis of the additive risk model. <em>Biometrika</em>, 81(1), pp.61-71.</p>
+</div>
+<div class="citation" id="buckleyjames1979reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id12">BuckleyJames1979reg</a><span class="fn-bracket">]</span></span>
+<p>Buckley, J. and James, I., 1979. Linear regression with censored data. <em>Biometrika</em>, 66(3), pp.429-436.</p>
+</div>
+<div class="citation" id="grambschtherneau1994reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id13">GrambschTherneau1994reg</a><span class="fn-bracket">]</span></span>
+<p>Grambsch, P.M. and Therneau, T.M., 1994. Proportional hazards tests and diagnostics based on weighted residuals. <em>Biometrika</em>, 81(3), pp.515-526.</p>
+</div>
+<div class="citation" id="therneaugrambsch2000reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id14">TherneauGrambsch2000reg</a><span class="fn-bracket">]</span></span>
+<p>Therneau, T.M. and Grambsch, P.M., 2000. <em>Modeling Survival Data: Extending the Cox Model</em>. Springer.</p>
+</div>
+<div class="citation" id="linwei1989reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id15">LinWei1989reg</a><span class="fn-bracket">]</span></span>
+<p>Lin, D.Y. and Wei, L.J., 1989. The robust inference for the Cox proportional hazards model. <em>Journal of the American Statistical Association</em>, 84(408), pp.1074-1078.</p>
+</div>
+<div class="citation" id="hougaard2000reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id16">Hougaard2000reg</a><span class="fn-bracket">]</span></span>
+<p>Hougaard, P., 2000. <em>Analysis of Multivariate Survival Data</em>. Springer.</p>
+</div>
+<div class="citation" id="harrell1982reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id17">Harrell1982reg</a><span class="fn-bracket">]</span></span>
+<p>Harrell, F.E., Califf, R.M., Pryor, D.B., Lee, K.L. and Rosati, R.A., 1982. Evaluating the yield of medical tests. <em>JAMA</em>, 247(18), pp.2543-2546.</p>
+</div>
+<div class="citation" id="leblanccrowley1993reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id18">LeBlancCrowley1993reg</a><span class="fn-bracket">]</span></span>
+<p>LeBlanc, M. and Crowley, J., 1993. Survival trees by goodness of split. <em>Journal of the American Statistical Association</em>, 88(422), pp.457-467.</p>
+</div>
+<div class="citation" id="finkelstein1986reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id19">Finkelstein1986reg</a><span class="fn-bracket">]</span></span>
+<p>Finkelstein, D.M., 1986. A proportional hazards model for interval-censored failure time data. <em>Biometrics</em>, 42(4), pp.845-854.</p>
+</div>
+<div class="citation" id="fusimonoff2017reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id20">FuSimonoff2017reg</a><span class="fn-bracket">]</span></span>
+<p>Fu, W. and Simonoff, J.S., 2017. Survival trees for left-truncated and right-censored data, with application to time-varying covariate data. <em>Biostatistics</em>, 18(2), pp.352-369.</p>
+</div>
+<div class="citation" id="breiman2001reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id27">Breiman2001reg</a><span class="fn-bracket">]</span></span>
+<p>Breiman, L., 2001. Random forests. <em>Machine Learning</em>, 45(1), pp.5-32.</p>
+</div>
+<div class="citation" id="davisanderson1989reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id21">DavisAnderson1989reg</a><span class="fn-bracket">]</span></span>
+<p>Davis, R.B. and Anderson, J.R., 1989. Exponential survival trees. <em>Statistics in Medicine</em>, 8(8), pp.947-961.</p>
+</div>
+<div class="citation" id="ishwaran2008reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id26">Ishwaran2008reg</a><span class="fn-bracket">]</span></span>
+<p>Ishwaran, H., Kogalur, U.B., Blackstone, E.H. and Lauer, M.S., 2008. Random survival forests. <em>The Annals of Applied Statistics</em>, 2(3), pp.841-860.</p>
+</div>
+<div class="citation" id="hothorn2006reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id22">Hothorn2006reg</a><span class="fn-bracket">]</span></span>
+<p>Hothorn, T., Hornik, K. and Zeileis, A., 2006. Unbiased recursive partitioning: a conditional inference framework. <em>Journal of Computational and Graphical Statistics</em>, 15(3), pp.651-674.</p>
+</div>
+<div class="citation" id="zeileis2008reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id23">Zeileis2008reg</a><span class="fn-bracket">]</span></span>
+<p>Zeileis, A., Hothorn, T. and Hornik, K., 2008. Model-based recursive partitioning. <em>Journal of Computational and Graphical Statistics</em>, 17(2), pp.492-514.</p>
+</div>
+<div class="citation" id="lausenschumacher1992reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id24">LausenSchumacher1992reg</a><span class="fn-bracket">]</span></span>
+<p>Lausen, B. and Schumacher, M., 1992. Maximally selected rank statistics. <em>Biometrics</em>, 48(1), pp.73-85.</p>
+</div>
+<div class="citation" id="hothornlausen2003reg" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id25">HothornLausen2003reg</a><span class="fn-bracket">]</span></span>
+<p>Hothorn, T. and Lausen, B., 2003. On the exact distribution of maximally selected rank statistics. <em>Computational Statistics &amp; Data Analysis</em>, 43(2), pp.121-137.</p>
+</div>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Parametric%20Estimation.html" class="btn btn-neutral float-left" title="Parametric Estimation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Competing%20Risks%20Analysis.html" class="btn btn-neutral float-right" title="Competing Risks Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

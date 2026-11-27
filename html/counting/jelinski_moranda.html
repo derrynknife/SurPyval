@@ -1,0 +1,775 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jelinski-Moranda &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Littlewood-Verrall" href="littlewood_verrall.html" />
+    <link rel="prev" title="Testing Effort and Change Points" href="clocks.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#software-reliability-growth-models">Software Reliability Growth Models</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#models-of-the-times-between-failures">Models of the Times Between Failures</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Jelinski-Moranda</a></li>
+<li class="toctree-l4"><a class="reference internal" href="littlewood_verrall.html">Littlewood-Verrall</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#panel-counts">Panel Counts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#trend-tests-and-diagnostics">Trend Tests and Diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#interventions">Interventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">Jelinski-Moranda</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/jelinski_moranda.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="jelinski-moranda">
+<h1>Jelinski-Moranda<a class="headerlink" href="#jelinski-moranda" title="Link to this heading"></a></h1>
+<p>The Jelinski-Moranda software reliability model: a whole number of
+faults <code class="docutils literal notranslate"><span class="pre">N</span></code>, each found at the same rate <code class="docutils literal notranslate"><span class="pre">phi</span></code>, so the failure rate
+steps down by <code class="docutils literal notranslate"><span class="pre">phi</span></code> at every failure. It is fitted to one test
+campaign’s failure times (or the times between them). It is not a
+Poisson process: for the NHPP growth models see
+<a class="reference internal" href="goel_okumoto.html"><span class="doc">Goel-Okumoto</span></a> and its neighbours.</p>
+<p>The estimate of <code class="docutils literal notranslate"><span class="pre">N</span></code> is a whole number, and its bounds are
+likelihood-ratio sets of whole numbers; an upper bound of <code class="docutils literal notranslate"><span class="pre">inf</span></code> says
+the data do not limit the number of faults. Data that show no
+reliability growth have no finite estimate at all, and <code class="docutils literal notranslate"><span class="pre">fit</span></code> refuses
+them, saying what was seen and what to fit instead.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMoranda">
+<span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.software.jelinski_moranda.</span></span><span class="sig-name descname"><span class="pre">JelinskiMoranda</span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMoranda" title="Link to this definition"></a></dt>
+<dd><p>the software holds
+<code class="docutils literal notranslate"><span class="pre">N</span></code> faults, a whole number, and each is found at the same rate
+<code class="docutils literal notranslate"><span class="pre">phi</span></code>, so the time between failure <code class="docutils literal notranslate"><span class="pre">i</span> <span class="pre">-</span> <span class="pre">1</span></code> and failure <code class="docutils literal notranslate"><span class="pre">i</span></code> is
+exponential with rate <code class="docutils literal notranslate"><span class="pre">phi</span> <span class="pre">(N</span> <span class="pre">-</span> <span class="pre">i</span> <span class="pre">+</span> <span class="pre">1)</span></code>. Fitted to one test
+campaign’s failure times it estimates <code class="docutils literal notranslate"><span class="pre">N</span></code> and <code class="docutils literal notranslate"><span class="pre">phi</span></code>, and so the
+faults left, <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">-</span> <span class="pre">n</span></code>, and the failure rate now, <code class="docutils literal notranslate"><span class="pre">phi</span> <span class="pre">(N</span> <span class="pre">-</span> <span class="pre">n)</span></code>.</p>
+<p>It is not a Poisson process: the rate steps down at each failure, and
+<code class="docutils literal notranslate"><span class="pre">N</span></code> is a whole number, estimated as one. Its likelihood is known to
+have no finite maximum for data that show no growth, and to say
+little about how large <code class="docutils literal notranslate"><span class="pre">N</span></code> may be even when it has one, so <code class="docutils literal notranslate"><span class="pre">fit</span></code>
+refuses the first case and the bounds (by the likelihood ratio)
+report an unbounded <code class="docutils literal notranslate"><span class="pre">N</span></code> as <code class="docutils literal notranslate"><span class="pre">inf</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">JelinskiMoranda</span></code> is an instance of this class; <code class="docutils literal notranslate"><span class="pre">fit</span></code> and
+<code class="docutils literal notranslate"><span class="pre">from_params</span></code> return a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">JelinskiMorandaModel</span></code>.</p>
+<p class="rubric">References</p>
+<p>Jelinski, Z. and Moranda, P. B. (1972), “Software reliability
+research”, in Statistical Computer Performance Evaluation (ed. W.
+Freiberger), Academic Press, 465-484.</p>
+<p>Littlewood, B. and Verrall, J. L. (1981), “Likelihood function of a
+debugging model for computer software reliability”, IEEE Transactions
+on Reliability R-30(2), 145-148.</p>
+<p class="rubric">Examples</p>
+<p>Twelve failures of a program under test, at these days:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">81</span><span class="p">,</span> <span class="mi">99</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">N</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">phi</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<span class="go">(15, 0.01511)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">remaining_faults</span><span class="p">()</span>
+<span class="go">3</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">remaining_faults_cb</span><span class="p">(</span><span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<span class="go">array([1., 8.])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">remaining_faults_cb</span><span class="p">(</span><span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+<span class="go">array([ 0., inf])</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The Jelinski-Moranda software reliability model</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMoranda.fit">
+<span class="sig-prename descclassname"><span class="pre">JelinskiMoranda.</span></span><span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">gaps</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel"><span class="pre">JelinskiMorandaModel</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMoranda.fit" title="Link to this definition"></a></dt>
+<dd><p>Fit the model to one test campaign by maximum likelihood.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – The failure times, from the start of testing (in any order);
+or, with <code class="docutils literal notranslate"><span class="pre">gaps=True</span></code>, the times between failures in the
+order they happened. At least two failures.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – 0 for a failure and 1 for the end of testing: one <code class="docutils literal notranslate"><span class="pre">c=1</span></code>
+row, at or after the last failure (with <code class="docutils literal notranslate"><span class="pre">gaps=True</span></code> the
+last value of <code class="docutils literal notranslate"><span class="pre">x</span></code>, the time tested since the last
+failure). Without one the test is taken to end at the last
+failure. Default: every row a failure.</p></li>
+<li><p><strong>gaps</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether <code class="docutils literal notranslate"><span class="pre">x</span></code> is the times between failures. Default False:
+the failure times. Keyword only.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fitted model.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel">JelinskiMorandaModel</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – Where the data show no reliability growth, so that the
+    likelihood rises for ever as <code class="docutils literal notranslate"><span class="pre">N</span></code> grows and there is no
+    estimate; the message gives the condition and says what to
+    fit instead.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>A campaign as times between failures, with 21 more days of
+testing after the twelfth failure and none found:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">gaps</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">21</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">gaps</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">12</span> <span class="o">+</span> <span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">gaps</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">N</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">phi</span><span class="p">,</span> <span class="mi">5</span><span class="p">)</span>
+<span class="go">(12, 0.02414)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMoranda.from_params">
+<span class="sig-prename descclassname"><span class="pre">JelinskiMoranda.</span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel"><span class="pre">JelinskiMorandaModel</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMoranda.from_params" title="Link to this definition"></a></dt>
+<dd><p>The model at given parameters, without data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>params</strong> (<em>array_like</em>) – <code class="docutils literal notranslate"><span class="pre">[N,</span> <span class="pre">phi]</span></code>: the whole number of faults and the rate of
+each.</p></li>
+<li><p><strong>n</strong> (<em>int</em><em>, </em><em>optional</em>) – The failures already found (and removed): the model then
+answers for the software as it is now. Default 0.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mi">20</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">],</span> <span class="n">n</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">remaining_faults</span><span class="p">(),</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">current_rate</span><span class="p">(),</span> <span class="mi">3</span><span class="p">)</span>
+<span class="go">(5, 0.05)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.software.jelinski_moranda.</span></span><span class="sig-name descname"><span class="pre">JelinskiMorandaModel</span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">SerialisableMixin</span></code></p>
+<p>A fitted Jelinski-Moranda model: <code class="docutils literal notranslate"><span class="pre">N</span></code> faults in all, each found at
+the rate <code class="docutils literal notranslate"><span class="pre">phi</span></code>, with <code class="docutils literal notranslate"><span class="pre">n</span></code> of them found so far.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.N">
+<span class="sig-name descname"><span class="pre">N</span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.N" title="Link to this definition"></a></dt>
+<dd><p>The estimated number of faults at the start of testing.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.phi">
+<span class="sig-name descname"><span class="pre">phi</span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.phi" title="Link to this definition"></a></dt>
+<dd><p>The rate at which each fault causes failures.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.params">
+<span class="sig-name descname"><span class="pre">params</span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.params" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">[N,</span> <span class="pre">phi]</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.n">
+<span class="sig-name descname"><span class="pre">n</span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.n" title="Link to this definition"></a></dt>
+<dd><p>The failures found (the data’s, or <code class="docutils literal notranslate"><span class="pre">from_params</span></code>’s <code class="docutils literal notranslate"><span class="pre">n</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.T">
+<span class="sig-name descname"><span class="pre">T</span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.T" title="Link to this definition"></a></dt>
+<dd><p>The length of the test (a fitted model only).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">Bounds</span> <span class="pre">are</span> <span class="pre">by</span> <span class="pre">the</span> <span class="pre">likelihood</span> <span class="pre">ratio</span> <span class="pre">(``method=&quot;lr&quot;``,</span> <span class="pre">the</span> <span class="pre">default</span> <span class="pre">and</span></span></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">the</span> <span class="pre">only</span> <span class="pre">method)</span></span></dt>
+<dd><dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the values whose profile likelihood is within the</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">chi-squared</span> <span class="pre">quantile</span> <span class="pre">of</span> <span class="pre">the</span> <span class="pre">maximum.</span> <span class="pre">The</span> <span class="pre">number</span> <span class="pre">of</span> <span class="pre">faults</span> <span class="pre">is</span> <span class="pre">a</span> <span class="pre">whole</span></span></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">number,</span> <span class="pre">so</span> <span class="pre">its</span> <span class="pre">bounds</span> <span class="pre">are</span> <span class="pre">whole</span> <span class="pre">numbers,</span> <span class="pre">and</span> <span class="pre">an</span> <span class="pre">upper</span> <span class="pre">bound</span> <span class="pre">of</span></span></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">``inf``</span> <span class="pre">says</span> <span class="pre">that</span> <span class="pre">the</span> <span class="pre">data</span> <span class="pre">do</span> <span class="pre">not</span> <span class="pre">rule</span> <span class="pre">out</span> <span class="pre">any</span> <span class="pre">number</span> <span class="pre">of</span> <span class="pre">faults,</span></span></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">however</span> <span class="pre">large</span> <span class="pre">(a</span> <span class="pre">constant</span> <span class="pre">rate</span> <span class="pre">fits</span> <span class="pre">them</span> <span class="pre">nearly</span> <span class="pre">as</span> <span class="pre">well).</span></span></dt>
+<dd></dd></dl>
+
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">81</span><span class="p">,</span> <span class="mi">99</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span>
+<span class="go">Jelinski-Moranda SurPyval Model</span>
+<span class="go">===============================</span>
+<span class="go">Fitted by           : MLE</span>
+<span class="go">Failures            : 12 in a test of 99</span>
+<span class="go">Parameters          :</span>
+<span class="go">         N: 15</span>
+<span class="go">       phi: 0.015113350125944584</span>
+<span class="go">Faults left         : 3</span>
+<span class="go">Rate now            : 0.04534005037783375</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"N"</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<span class="go">array([13., 20.])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">current_rate_cb</span><span class="p">(</span><span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.0175, 0.0804])</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.aic">
+<span class="sig-name descname"><span class="pre">aic</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.aic" title="Link to this definition"></a></dt>
+<dd><p>Akaike’s criterion, <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">2</span> <span class="pre">+</span> <span class="pre">2</span> <span class="pre">neg_ll()</span></code>, comparable with
+the <code class="docutils literal notranslate"><span class="pre">aic()</span></code> of an NHPP model fitted to the same failure times
+(the two likelihoods are densities of the same data).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.aic_c">
+<span class="sig-name descname"><span class="pre">aic_c</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.aic_c" title="Link to this definition"></a></dt>
+<dd><p>The small-sample AIC, with the failures as the sample size:
+<code class="docutils literal notranslate"><span class="pre">aic()</span> <span class="pre">+</span> <span class="pre">12</span> <span class="pre">/</span> <span class="pre">(n</span> <span class="pre">-</span> <span class="pre">3)</span></code> (<code class="docutils literal notranslate"><span class="pre">inf</span></code> with three failures or
+fewer).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.bic">
+<span class="sig-name descname"><span class="pre">bic</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.bic" title="Link to this definition"></a></dt>
+<dd><p>The Bayesian criterion, <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">log(n)</span> <span class="pre">+</span> <span class="pre">2</span> <span class="pre">neg_ll()</span></code>, with the
+failures as the sample size.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.cif">
+<span class="sig-name descname"><span class="pre">cif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.cif" title="Link to this definition"></a></dt>
+<dd><p>The expected number of failures by the test time <code class="docutils literal notranslate"><span class="pre">x</span></code> from the
+start, <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">(1</span> <span class="pre">-</span> <span class="pre">exp(-phi</span> <span class="pre">x))</span></code> (each fault is found by <code class="docutils literal notranslate"><span class="pre">x</span></code> with
+that chance): the same curve as a Goel-Okumoto process with <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">=</span>
+<span class="pre">N</span></code> and <code class="docutils literal notranslate"><span class="pre">b</span> <span class="pre">=</span> <span class="pre">phi</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mi">20</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">])</span><span class="o">.</span><span class="n">cif</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mf">1e6</span><span class="p">])</span>
+<span class="go">array([ 0.        ,  7.86938681, 20.        ])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.current_rate">
+<span class="sig-name descname"><span class="pre">current_rate</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.current_rate" title="Link to this definition"></a></dt>
+<dd><p>The failure rate now, after the <code class="docutils literal notranslate"><span class="pre">n</span></code> failures found: <code class="docutils literal notranslate"><span class="pre">phi</span>
+<span class="pre">(N</span> <span class="pre">-</span> <span class="pre">n)</span></code> (0 when no fault is left).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.current_rate_cb">
+<span class="sig-name descname"><span class="pre">current_rate_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'lr'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.current_rate_cb" title="Link to this definition"></a></dt>
+<dd><p>Likelihood-ratio confidence bounds on the failure rate now,
+<code class="docutils literal notranslate"><span class="pre">phi</span> <span class="pre">(N</span> <span class="pre">-</span> <span class="pre">n)</span></code>: the rates whose profile likelihood (over the
+whole numbers of faults left, and their limit, a constant rate)
+is within the chi-squared quantile of the maximum. The lower
+bound is 0 where <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">=</span> <span class="pre">n</span></code>, no fault left, is inside the bounds
+on <code class="docutils literal notranslate"><span class="pre">N</span></code>. See <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.param_cb" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.param_cb"><code class="xref py py-meth docutils literal notranslate"><span class="pre">param_cb()</span></code></a> for the arguments.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">81</span><span class="p">,</span> <span class="mi">99</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">current_rate_cb</span><span class="p">()</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.    , 0.1709])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.from_dict">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel"><span class="pre">JelinskiMorandaModel</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.from_dict" title="Link to this definition"></a></dt>
+<dd><p>Rebuild a model from a <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_dict" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> dictionary.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_dict" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_dict</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_json" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_json</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.from_json" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.from_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_json</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.from_json">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">PathLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.from_json" title="Link to this definition"></a></dt>
+<dd><p>Load a model from a JSON file written by <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_json" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_json"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_json()</span></code></a>, or
+from the JSON text it returned (a string starting with <code class="docutils literal notranslate"><span class="pre">{</span></code>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.iif">
+<span class="sig-name descname"><span class="pre">iif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.iif" title="Link to this definition"></a></dt>
+<dd><p>The expected failure rate at the test time <code class="docutils literal notranslate"><span class="pre">x</span></code> from the start,
+<code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">phi</span> <span class="pre">exp(-phi</span> <span class="pre">x)</span></code>: the slope of <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.cif" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.cif"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cif()</span></code></a>. (The rate after
+the failures actually found is <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.current_rate" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.current_rate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">current_rate()</span></code></a>.)</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mi">20</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">])</span><span class="o">.</span><span class="n">iif</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">50</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.2   , 0.1213])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.log_likelihood">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">log_likelihood</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.log_likelihood" title="Link to this definition"></a></dt>
+<dd><p>The log-likelihood at the fitted parameters.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">81</span><span class="p">,</span> <span class="mi">99</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">log_likelihood</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">-36.1986</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.maximum">
+<span class="sig-name descname"><span class="pre">maximum</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'not</span> <span class="pre">applicable'</span></em><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.maximum" title="Link to this definition"></a></dt>
+<dd><p>What the fit reached, one of <code class="docutils literal notranslate"><span class="pre">MAXIMUM_STATES</span></code>
+(<code class="docutils literal notranslate"><span class="pre">surpyval.utils.no_maximum</span></code>): a fit is the exact maximum over
+the whole numbers, so <code class="docutils literal notranslate"><span class="pre">&quot;verified&quot;</span></code>; <code class="docutils literal notranslate"><span class="pre">&quot;not</span> <span class="pre">applicable&quot;</span></code> for a
+model built from its parameters.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.mtbf">
+<span class="sig-name descname"><span class="pre">mtbf</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.mtbf" title="Link to this definition"></a></dt>
+<dd><p>The mean time to the next failure, <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">current_rate()</span></code>
+(<code class="docutils literal notranslate"><span class="pre">inf</span></code> when no fault is left).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.mtbf_cb">
+<span class="sig-name descname"><span class="pre">mtbf_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'lr'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.mtbf_cb" title="Link to this definition"></a></dt>
+<dd><p>Likelihood-ratio confidence bounds on the mean time to the next
+failure: the reciprocals of <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.current_rate_cb" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.current_rate_cb"><code class="xref py py-meth docutils literal notranslate"><span class="pre">current_rate_cb()</span></code></a>’s, so a lower
+bound here is an upper bound on the rate, and the upper bound is
+<code class="docutils literal notranslate"><span class="pre">inf</span></code> where no fault left is inside the bounds.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">81</span><span class="p">,</span> <span class="mi">99</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">mtbf_cb</span><span class="p">(</span><span class="n">bound</span><span class="o">=</span><span class="s2">"lower"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">np.float64(6.78)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.neg_ll">
+<span class="sig-name descname"><span class="pre">neg_ll</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.neg_ll" title="Link to this definition"></a></dt>
+<dd><p>The negative log-likelihood at the fitted parameters.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.next_failure_sf">
+<span class="sig-name descname"><span class="pre">next_failure_sf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.next_failure_sf" title="Link to this definition"></a></dt>
+<dd><p>The chance that the software runs a further <code class="docutils literal notranslate"><span class="pre">x</span></code> without a
+failure: <code class="docutils literal notranslate"><span class="pre">exp(-phi</span> <span class="pre">(N</span> <span class="pre">-</span> <span class="pre">n)</span> <span class="pre">x)</span></code>, the survival function of the
+time to the next failure (the name the NHPP models use).</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mi">20</span><span class="p">,</span> <span class="mf">0.01</span><span class="p">],</span> <span class="n">n</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">next_failure_sf</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([1.    , 0.6065])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.param_cb">
+<span class="sig-name descname"><span class="pre">param_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'lr'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.param_cb" title="Link to this definition"></a></dt>
+<dd><p>Likelihood-ratio confidence bounds on <code class="docutils literal notranslate"><span class="pre">N</span></code> or <code class="docutils literal notranslate"><span class="pre">phi</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> (<em>{'N'</em><em>, </em><em>'phi'}</em>) – The parameter.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The total tail probability of the bound(s). Default 0.05.</p></li>
+<li><p><strong>bound</strong> (<em>{'two-sided'</em><em>, </em><em>'lower'</em><em>, </em><em>'upper'}</em><em>, </em><em>optional</em>) – Two-sided bounds are an array <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>; a one-sided
+bound a number.</p></li>
+<li><p><strong>method</strong> (<em>{'lr'}</em><em>, </em><em>optional</em>) – Only the likelihood ratio: <code class="docutils literal notranslate"><span class="pre">&quot;wald&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;bootstrap&quot;</span></code> are
+refused, saying why.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>For <code class="docutils literal notranslate"><span class="pre">N</span></code> whole numbers, the upper one <code class="docutils literal notranslate"><span class="pre">inf</span></code> where the data
+do not bound the number of faults; for <code class="docutils literal notranslate"><span class="pre">phi</span></code> the lower one
+0 where they do not bound it away from 0 (the same case).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray or float</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">81</span><span class="p">,</span> <span class="mi">99</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"N"</span><span class="p">)</span>
+<span class="go">array([12., inf])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"N"</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span> <span class="n">bound</span><span class="o">=</span><span class="s2">"upper"</span><span class="p">)</span>
+<span class="go">20.0</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"phi"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<span class="go">array([0.     , 0.03788])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.profile_likelihood">
+<span class="sig-name descname"><span class="pre">profile_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">N</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ndarray</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.profile_likelihood" title="Link to this definition"></a></dt>
+<dd><p>The log-likelihood at each number of faults <code class="docutils literal notranslate"><span class="pre">N</span></code>, maximised over
+<code class="docutils literal notranslate"><span class="pre">phi</span></code>: the curve the estimate and the bounds on <code class="docutils literal notranslate"><span class="pre">N</span></code> are read
+from. <code class="docutils literal notranslate"><span class="pre">inf</span></code> gives its limit, a constant rate’s log-likelihood.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>N</strong> (<em>array_like</em>) – Whole numbers of faults, each at least the failures found
+(below that the data are impossible: <code class="docutils literal notranslate"><span class="pre">-inf</span></code>).</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">81</span><span class="p">,</span> <span class="mi">99</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">profile_likelihood</span><span class="p">([</span><span class="mi">12</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([-36.697, -36.199, -36.39 , -37.323])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.remaining_faults">
+<span class="sig-name descname"><span class="pre">remaining_faults</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.remaining_faults" title="Link to this definition"></a></dt>
+<dd><p>The faults left in the software, <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">-</span> <span class="pre">n</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.remaining_faults_cb">
+<span class="sig-name descname"><span class="pre">remaining_faults_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'lr'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.remaining_faults_cb" title="Link to this definition"></a></dt>
+<dd><p>Likelihood-ratio confidence bounds on the faults left, <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">-</span> <span class="pre">n</span></code>:
+the bounds on <code class="docutils literal notranslate"><span class="pre">N</span></code> less the failures found. The upper bound is
+<code class="docutils literal notranslate"><span class="pre">inf</span></code> where the data do not bound the number of faults. See
+<a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.param_cb" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.param_cb"><code class="xref py py-meth docutils literal notranslate"><span class="pre">param_cb()</span></code></a> for the arguments.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">JelinskiMoranda</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">58</span><span class="p">,</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">81</span><span class="p">,</span> <span class="mi">99</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">JelinskiMoranda</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">remaining_faults_cb</span><span class="p">()</span>
+<span class="go">array([ 0., inf])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_dict" title="Link to this definition"></a></dt>
+<dd><p>Serialise the model to a plain, JSON-serialisable dict: the
+parameters, the failures found, and for a fitted model the two
+statistics of the campaign that the likelihood (and so every
+bound) is a function of. The failure times are not stored.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.from_dict" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.from_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_dict</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_json" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_json</span></code></a>, <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.from_json" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.from_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_json</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">PathLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">with_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_json" title="Link to this definition"></a></dt>
+<dd><p>Write <a class="reference internal" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_dict" title="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> to <code class="docutils literal notranslate"><span class="pre">fp</span></code> as strict JSON, or return it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fp</strong> (<em>str</em><em> or </em><em>os.PathLike</em><em>, </em><em>optional</em>) – The file to write. Without it the JSON is returned as a
+string (as <code class="docutils literal notranslate"><span class="pre">pandas.DataFrame.to_json</span></code> does), which
+<code class="docutils literal notranslate"><span class="pre">from_json</span></code> also reads.</p></li>
+<li><p><strong>with_data</strong> (<em>bool</em><em>, </em><em>optional</em>) – Write <code class="docutils literal notranslate"><span class="pre">to_dict(with_data=True)</span></code>, which also stores the fitted
+data, for the models whose <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> takes <code class="docutils literal notranslate"><span class="pre">with_data</span></code>
+(the univariate <code class="docutils literal notranslate"><span class="pre">Parametric</span></code> and <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code>); a
+<code class="docutils literal notranslate"><span class="pre">TypeError</span></code> for any other model. Defaults to <code class="code docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#surpyval.recurrent.software.jelinski_moranda.JelinskiMorandaModel.unit" title="Link to this definition"></a></dt>
+<dd><p>a label, set by
+<code class="docutils literal notranslate"><span class="pre">unit=</span></code> on <code class="docutils literal notranslate"><span class="pre">fit</span></code>, <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> and <code class="docutils literal notranslate"><span class="pre">from_params</span></code>, shown
+in the <code class="docutils literal notranslate"><span class="pre">repr</span></code> and on plots and saved by <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>. None is
+unknown. See <code class="xref py py-mod docutils literal notranslate"><span class="pre">surpyval.utils.units</span></code>. (Not <code class="docutils literal notranslate"><span class="pre">units</span></code>, which
+names the items measured: a degradation model’s unit ids.)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The unit of the data the model describes (#845)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="clocks.html" class="btn btn-neutral float-left" title="Testing Effort and Change Points" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="littlewood_verrall.html" class="btn btn-neutral float-right" title="Littlewood-Verrall" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,314 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hazard Ratio &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Bayesian Fitting with SurPyval" href="Bayesian%20Fitting%20with%20SurPyval.html" />
+    <link rel="prev" title="Parametric SurPyval Modelling" href="Parametric%20SurPyval%20Modelling.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Hazard Ratio</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#how-it-applies">How it applies</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fitting-with-a-known-hazard-ratio">Fitting with a known hazard ratio</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#saving">Saving</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Hazard Ratio</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Hazard Ratio.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="hazard-ratio">
+<h1>Hazard Ratio<a class="headerlink" href="#hazard-ratio" title="Link to this heading"></a></h1>
+<p>Every parametric model takes a hazard ratio <code class="docutils literal notranslate"><span class="pre">hr</span></code>, a known number above
+0, beside its offset <code class="docutils literal notranslate"><span class="pre">gamma</span></code>, limited-failure proportion <code class="docutils literal notranslate"><span class="pre">lfp_p</span></code> and
+zero-inflation fraction <code class="docutils literal notranslate"><span class="pre">f0</span></code>. A model with <code class="docutils literal notranslate"><span class="pre">hr</span></code> has <code class="docutils literal notranslate"><span class="pre">hr</span></code> times the
+hazard of the same model without it, at every age:</p>
+<div class="math notranslate nohighlight">
+\[H(t) = hr \cdot H_0(t), \qquad R(t) = R_0(t)^{hr},\]</div>
+<p>where <span class="math notranslate nohighlight">\(H_0\)</span> and <span class="math notranslate nohighlight">\(R_0\)</span> are the model’s cumulative hazard and
+survival without <code class="docutils literal notranslate"><span class="pre">hr</span></code>. Use it for a stress, environment or quality
+factor that multiplies a known hazard (a part run hotter than the fleet it
+was fitted on, a handbook’s environment factor), for derating, or to split
+one life into parts: the models at <code class="docutils literal notranslate"><span class="pre">hr</span> <span class="pre">=</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">b</span></code> and <code class="docutils literal notranslate"><span class="pre">hr</span> <span class="pre">=</span> <span class="pre">b</span></code> together
+make the model, since <span class="math notranslate nohighlight">\(R^{1-b} R^{b} = R\)</span>, which is how a group of
+units sharing a common cause is built.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">base</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">hot</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">hr</span><span class="o">=</span><span class="mf">1.5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">hot</span><span class="p">)</span>
+<span class="go">Parametric SurPyval Model</span>
+<span class="go">=========================</span>
+<span class="go">Distribution        : Weibull</span>
+<span class="go">Fitted by           : given parameters</span>
+<span class="go">Hazard ratio (hr)   : 1.5</span>
+<span class="go">Parameters          :</span>
+<span class="go">     alpha: 1000</span>
+<span class="go">      beta: 2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">float</span><span class="p">(</span><span class="n">hot</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">500</span><span class="p">)),</span> <span class="nb">float</span><span class="p">(</span><span class="n">base</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">500</span><span class="p">)</span> <span class="o">**</span> <span class="mf">1.5</span><span class="p">)</span>
+<span class="go">(0.6872892787909722, 0.6872892787909722)</span>
+</pre></div>
+</div>
+<section id="how-it-applies">
+<h2>How it applies<a class="headerlink" href="#how-it-applies" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Outermost.</strong> <code class="docutils literal notranslate"><span class="pre">hr</span></code> applies over the offset, the limited failure
+population and the zero inflation: the whole model’s survival is raised
+to <code class="docutils literal notranslate"><span class="pre">hr</span></code>. A mass <code class="docutils literal notranslate"><span class="pre">f0</span></code> at 0 becomes <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">(1</span> <span class="pre">-</span> <span class="pre">f0)</span> <span class="pre">**</span> <span class="pre">hr</span></code>, which is
+also <code class="docutils literal notranslate"><span class="pre">df(0)</span></code> and <code class="docutils literal notranslate"><span class="pre">hf(0)</span></code>; the proportion that never fails becomes
+<code class="docutils literal notranslate"><span class="pre">(1</span> <span class="pre">-</span> <span class="pre">lfp_p)</span> <span class="pre">**</span> <span class="pre">hr</span></code>.</p></li>
+<li><p><strong>Every function.</strong> <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code> and <code class="docutils literal notranslate"><span class="pre">df</span></code> follow
+from the cumulative hazard, so each is precise far into both tails
+(<code class="docutils literal notranslate"><span class="pre">ff</span></code> from <code class="docutils literal notranslate"><span class="pre">-expm1(-hr</span> <span class="pre">*</span> <span class="pre">H0)</span></code>). A discrete model’s hazard is
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">(1</span> <span class="pre">-</span> <span class="pre">h0)</span> <span class="pre">**</span> <span class="pre">hr</span></code>. <code class="docutils literal notranslate"><span class="pre">qf(p)</span></code> and <code class="docutils literal notranslate"><span class="pre">isf(s)</span></code> invert through the
+model’s <code class="docutils literal notranslate"><span class="pre">isf</span></code> at <span class="math notranslate nohighlight">\(R_0 = R^{1/hr}\)</span>, computed in log space, and
+<code class="docutils literal notranslate"><span class="pre">random</span></code> draws <code class="docutils literal notranslate"><span class="pre">qf</span></code> of its uniforms, so <code class="docutils literal notranslate"><span class="pre">isf(sf(t))</span></code> gives back
+<code class="docutils literal notranslate"><span class="pre">t</span></code> at a survival of 1e-300.</p></li>
+<li><p><strong>Closed forms stay exact.</strong> A Weibull with <code class="docutils literal notranslate"><span class="pre">hr</span></code> is the Weibull with
+scale <span class="math notranslate nohighlight">\(\alpha\, hr^{-1/\beta}\)</span>, and an exponential’s rate is
+<span class="math notranslate nohighlight">\(hr \cdot \lambda\)</span> (an offset and zero inflation carry across):
+their <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">moment</span></code>, <code class="docutils literal notranslate"><span class="pre">var</span></code>, <code class="docutils literal notranslate"><span class="pre">entropy</span></code>, <code class="docutils literal notranslate"><span class="pre">mrl</span></code> and restricted
+mean are those families’ closed forms. Other distributions integrate
+the survival function numerically for the mean, moments, variance, mean
+residual life and restricted mean, and refuse the entropy (integrate
+<code class="docutils literal notranslate"><span class="pre">-df</span> <span class="pre">*</span> <span class="pre">log(df)</span></code> instead). A discrete model’s moments, and the
+defective moments of a limited failure population, are refused with
+what to use.</p></li>
+<li><p><strong>``hr = 1`` changes nothing.</strong> Every function and every seeded draw is
+the model’s without <code class="docutils literal notranslate"><span class="pre">hr</span></code>, to the last bit.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">hr</span></code> is not a parameter: it is not in <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance_names</span></code>
+or <code class="docutils literal notranslate"><span class="pre">k</span></code>. It is in <code class="docutils literal notranslate"><span class="pre">extras</span></code> (so <code class="docutils literal notranslate"><span class="pre">dist.from_params(params,</span>
+<span class="pre">**model.extras)</span></code> keeps it), <code class="docutils literal notranslate"><span class="pre">with_params(...,</span> <span class="pre">hr=)</span></code> sets it on any
+model, and <code class="docutils literal notranslate"><span class="pre">rescale_time</span></code> keeps it (a hazard ratio has no unit).</p>
+<p>Distributions that are probabilities of an event (<code class="docutils literal notranslate"><span class="pre">Bernoulli</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Binomial</span></code>, <code class="docutils literal notranslate"><span class="pre">FixedEventProbability</span></code>, <code class="docutils literal notranslate"><span class="pre">ExactEventTime</span></code>) refuse it:
+scale the probability itself, <code class="docutils literal notranslate"><span class="pre">q</span></code> becoming <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">(1</span> <span class="pre">-</span> <span class="pre">q)</span> <span class="pre">**</span> <span class="pre">hr</span></code>.</p>
+</section>
+<section id="fitting-with-a-known-hazard-ratio">
+<h2>Fitting with a known hazard ratio<a class="headerlink" href="#fitting-with-a-known-hazard-ratio" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">fit(...,</span> <span class="pre">hr=)</span></code> fits data that come from an environment with a known
+hazard ratio: the likelihood is the hazard-scaled model’s, and the fitted
+model carries <code class="docutils literal notranslate"><span class="pre">hr</span></code>. It is never estimated, since it is confounded with
+the scale (a Weibull fitted with <code class="docutils literal notranslate"><span class="pre">hr</span> <span class="pre">=</span> <span class="pre">2</span></code> is the plain fit with its
+scale multiplied by <span class="math notranslate nohighlight">\(2^{1/\beta}\)</span>). Maximum likelihood only.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">31</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">plain</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">hot</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">hr</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">hot</span><span class="o">.</span><span class="n">hr</span><span class="p">,</span> <span class="n">hot</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">(2.0, array([26.451,  2.931]))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">plain</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">plain</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">1</span><span class="p">])),</span> <span class="mi">3</span><span class="p">)</span>
+<span class="go">26.451</span>
+</pre></div>
+</div>
+<p>The bounds hold <code class="docutils literal notranslate"><span class="pre">hr</span></code> fixed, as a known constant:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">cb</span></code> and <code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code> with <code class="docutils literal notranslate"><span class="pre">method=&quot;wald&quot;</span></code> (every <code class="docutils literal notranslate"><span class="pre">on=</span></code>
+target) and <code class="docutils literal notranslate"><span class="pre">method=&quot;bootstrap&quot;</span></code> (each refit has the same <code class="docutils literal notranslate"><span class="pre">hr</span></code>);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">param_cb</span></code> with every method, the likelihood-ratio bounds included
+(the profile likelihood is the hazard-scaled model’s);</p></li>
+<li><p>refused, naming what to use instead: the likelihood-ratio bounds on a
+function (<code class="docutils literal notranslate"><span class="pre">cb</span></code>/<code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code> with <code class="docutils literal notranslate"><span class="pre">method=&quot;lr&quot;</span></code>), and
+<code class="docutils literal notranslate"><span class="pre">mean_cb</span></code>, <code class="docutils literal notranslate"><span class="pre">mrl_cb</span></code>, <code class="docutils literal notranslate"><span class="pre">rmst_cb</span></code> and <code class="docutils literal notranslate"><span class="pre">rmst</span></code> (bound them from the
+bootstrap refits, <code class="docutils literal notranslate"><span class="pre">model.bootstrap(...).models</span></code>, which carry <code class="docutils literal notranslate"><span class="pre">hr</span></code>).</p></li>
+</ul>
+</section>
+<section id="saving">
+<h2>Saving<a class="headerlink" href="#saving" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">to_dict</span></code> writes <code class="docutils literal notranslate"><span class="pre">&quot;hr&quot;</span></code> only where it is not 1, and such a dict is
+stamped schema 5, which SurPyval 0.28 and older refuse with a request to
+upgrade rather than load the model without its hazard ratio. A model with
+<code class="docutils literal notranslate"><span class="pre">hr</span> <span class="pre">=</span> <span class="pre">1</span></code> saves as before.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Parametric%20SurPyval%20Modelling.html" class="btn btn-neutral float-left" title="Parametric SurPyval Modelling" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Bayesian%20Fitting%20with%20SurPyval.html" class="btn btn-neutral float-right" title="Bayesian Fitting with SurPyval" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

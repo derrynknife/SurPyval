@@ -1,0 +1,938 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fixed Event Probability &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Exact Event Time" href="exact_event_time.html" />
+    <link rel="prev" title="Bernoulli Distribution" href="bernoulli.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.parametric.html#parametric-class">Parametric Class</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.parametric.html#joint-likelihood-contours">Joint Likelihood Contours</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.parametric.html#distribution-classes">Distribution Classes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.parametric.html#discrete-distribution-classes">Discrete Distribution Classes</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.parametric.html#special-distributions">Special Distributions</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="bernoulli.html">Bernoulli Distribution</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Fixed Event Probability</a></li>
+<li class="toctree-l4"><a class="reference internal" href="exact_event_time.html">Exact Event Time</a></li>
+<li class="toctree-l4"><a class="reference internal" href="degenerate.html">Degenerate Distributions</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.parametric.html#flexible-parametric-royston-parmar">Flexible Parametric (Royston-Parmar)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.parametric.html#custom-distributions">Custom Distributions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.parametric.html#zero-failure-analysis-weibayes">Zero-Failure Analysis (Weibayes)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.parametric.html#mixture-modelling">Mixture Modelling</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.parametric.html#equivalent-time-scales">Equivalent Time Scales</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.parametric.html">Parametric</a></li>
+      <li class="breadcrumb-item active">Fixed Event Probability</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/univariate/fixed_event_probability.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="fixed-event-probability">
+<h1>Fixed Event Probability<a class="headerlink" href="#fixed-event-probability" title="Link to this heading"></a></h1>
+<p>A proportion <code class="docutils literal notranslate"><span class="pre">p</span></code> of units experience the event and the rest never do,
+with nothing said about <em>when</em>: <span class="math notranslate nohighlight">\(F(x) = p\)</span> at every <code class="docutils literal notranslate"><span class="pre">x</span></code>. It is
+the mixture of <a class="reference internal" href="degenerate.html"><span class="doc">InstantlyOccurs</span></a> (weight <code class="docutils literal notranslate"><span class="pre">p</span></code>) and
+<a class="reference internal" href="degenerate.html"><span class="doc">NeverOccurs</span></a> (weight <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">p</span></code>). <code class="docutils literal notranslate"><span class="pre">fit</span></code> estimates
+<code class="docutils literal notranslate"><span class="pre">p</span></code> as the proportion of ones in 0/1 outcomes, and <code class="docutils literal notranslate"><span class="pre">from_params</span></code>
+builds the model from a known <code class="docutils literal notranslate"><span class="pre">p</span></code>. It has <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code> and <code class="docutils literal notranslate"><span class="pre">Hf</span></code>
+but no density, hazard rate or quantile, since it has no time axis; its
+<code class="docutils literal notranslate"><span class="pre">moment</span></code> and <code class="docutils literal notranslate"><span class="pre">mean</span></code> are those of the 0/1 event indicator, <code class="docutils literal notranslate"><span class="pre">p</span></code>. For a
+single pass/fail flip whose survival steps at the outcome, see
+<a class="reference internal" href="bernoulli.html"><span class="doc">Bernoulli Distribution</span></a>.</p>
+<p>The uncertainty of a fitted <code class="docutils literal notranslate"><span class="pre">p</span></code> is that of a proportion:
+<code class="docutils literal notranslate"><span class="pre">param_cb(&quot;p&quot;)</span></code> gives the exact (Clopper-Pearson, the default) or
+<code class="docutils literal notranslate"><span class="pre">method=&quot;jeffreys&quot;</span></code> interval, and <code class="docutils literal notranslate"><span class="pre">covariance()</span></code> the variance
+<span class="math notranslate nohighlight">\(\hat p (1 - \hat p) / N\)</span> (<code class="docutils literal notranslate"><span class="pre">nan</span></code> with no events or only events).
+What the intervals mean, why they are preferred to plus or minus two
+standard errors near 0 or 1, the formulas and a coverage study are on the
+<a class="reference internal" href="bernoulli.html#probability-uncertainty"><span class="std std-ref">Bernoulli page</span></a>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">FixedEventProbability</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"p"</span><span class="p">)</span>                     <span class="c1"># [0.0252, 0.5561]</span>
+<span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"p"</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"jeffreys"</span><span class="p">)</span>  <span class="c1"># [0.0441, 0.5028]</span>
+<span class="n">model</span><span class="o">.</span><span class="n">covariance</span><span class="p">()</span>                      <span class="c1"># [[0.016]]</span>
+</pre></div>
+</div>
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.univariate.parametric.distributions.fixed_event_probability.</span></span><span class="sig-name descname"><span class="pre">FixedEventProbability_</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">SingleProbabilityMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">DiscreteParametricFitter</span></code></p>
+<p><code class="docutils literal notranslate"><span class="pre">F(x)</span> <span class="pre">=</span> <span class="pre">p</span></code> at every <code class="docutils literal notranslate"><span class="pre">x</span></code>: a fraction <code class="docutils literal notranslate"><span class="pre">p</span></code> of units fail and the
+rest never do, with nothing said about <em>when</em> (see the module
+docstring). It is fitted from 0/1 event indicators, 1 for a unit that
+failed, and <code class="docutils literal notranslate"><span class="pre">random</span></code> draws them, so a sample from a model refits.</p>
+<p class="rubric">Examples</p>
+<p>Two of ten units failed:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">FixedEventProbability</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">FixedEventProbability</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">params</span>
+<span class="go">array([0.2])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">100</span><span class="p">])</span>
+<span class="go">array([0.2, 0.2])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">refit</span> <span class="o">=</span> <span class="n">FixedEventProbability</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">1000</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">refit</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.2</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.05</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+<p>The uncertainty of <code class="docutils literal notranslate"><span class="pre">p</span></code>: its variance, <span class="math notranslate nohighlight">\(\hat p (1 - \hat p) /
+N\)</span>, and its exact and Jeffreys bounds.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">covariance</span><span class="p">()</span>
+<span class="go">array([[0.016]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"p"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.0252, 0.5561])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"p"</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"jeffreys"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.0441, 0.5028])</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.Hf">
+<span class="sig-name descname"><span class="pre">Hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.Hf" title="Link to this definition"></a></dt>
+<dd><p>Cumulative hazard function for the FixedEventProbability model:</p>
+<div class="math notranslate nohighlight">
+\[H(x) = -\ln R(x) = -\ln (1 - p)\]</div>
+<p>Constant in <code class="docutils literal notranslate"><span class="pre">x</span></code>, like the survival it comes from. There is no
+hazard <em>rate</em> – <code class="docutils literal notranslate"><span class="pre">hf</span></code> is absent because <code class="docutils literal notranslate"><span class="pre">F</span></code> is flat, so the
+mass is an atom rather than a density – but the cumulative
+hazard is still well defined, exactly as for
+<code class="xref py py-class docutils literal notranslate"><span class="pre">ExactEventTime</span></code>, whose <code class="docutils literal notranslate"><span class="pre">Hf</span></code> exists while its <code class="docutils literal notranslate"><span class="pre">hf</span></code>
+does not.</p>
+<p>Without it <code class="docutils literal notranslate"><span class="pre">log_sf</span></code> and <code class="docutils literal notranslate"><span class="pre">log_ff</span></code>, which the base class writes
+in terms of <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, raised <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code> rather than
+returning the constants they should.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>numpy array</em><em> or </em><em>scalar</em>) – The values at which the function will be calculated</p></li>
+<li><p><strong>p</strong> (<em>float</em>) – The probability of failure of the thing</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>Hf</strong> – The value(s) of the cumulative hazard function at x</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">FixedEventProbability</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">FixedEventProbability</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+<span class="go">array([0.69314718, 0.69314718, 0.69314718])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.canonical_name">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">canonical_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.canonical_name" title="Link to this definition"></a></dt>
+<dd><p>its <code class="xref py py-attr docutils literal notranslate"><span class="pre">name</span></code>, except for
+an alias (<code class="docutils literal notranslate"><span class="pre">Gauss</span></code> and <code class="docutils literal notranslate"><span class="pre">Galton</span></code> give <code class="docutils literal notranslate"><span class="pre">&quot;Normal&quot;</span></code> and
+<code class="docutils literal notranslate"><span class="pre">&quot;LogNormal&quot;</span></code>). The package identifies a distribution by it, so
+a model fitted with an alias behaves as one fitted with the
+canonical name (see <code class="xref py py-mod docutils literal notranslate"><span class="pre">surpyval.utils.aliases</span></code>).</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sp</span><span class="o">.</span><span class="n">Gauss</span><span class="o">.</span><span class="n">canonical_name</span><span class="p">,</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">canonical_name</span>
+<span class="go">('Normal', 'Weibull')</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The distribution’s canonical name</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.cs">
+<span class="sig-name descname"><span class="pre">cs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">given</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.cs" title="Link to this definition"></a></dt>
+<dd><p>Conditional survival function: the probability of surviving a
+further <code class="docutils literal notranslate"><span class="pre">x</span></code> given survival to <code class="docutils literal notranslate"><span class="pre">given</span></code> already.</p>
+<div class="math notranslate nohighlight">
+\[R(x, given) = \frac{R(x + given)}{R(given)}
+= e^{-(H(x + given) - H(given))}\]</div>
+<p>It is computed from the cumulative hazard, the second form, so it
+stays exact where <span class="math notranslate nohighlight">\(R(given)\)</span> underflows to 0 far in the
+upper tail (the ratio was <code class="docutils literal notranslate"><span class="pre">nan</span></code> there); it is <code class="docutils literal notranslate"><span class="pre">nan</span></code> only
+where <span class="math notranslate nohighlight">\(H(given)\)</span> is itself infinite. This is the definition
+for every distribution, so it lives here rather than being
+restated on each one. <code class="docutils literal notranslate"><span class="pre">Exponential</span></code> overrides it because the
+exponential is memoryless and <span class="math notranslate nohighlight">\(R(x, given) = R(x)\)</span>, which is
+both cheaper and free of the cancellation the difference suffers
+in the far tail.</p>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.24: </span>From the cumulative hazard, so finite where <code class="docutils literal notranslate"><span class="pre">sf(given)</span></code>
+underflows (#660).</p>
+</div>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.22: </span>The time already survived is <code class="docutils literal notranslate"><span class="pre">given</span></code> (it was <code class="docutils literal notranslate"><span class="pre">X</span></code>), the
+name the regression models’ <code class="docutils literal notranslate"><span class="pre">sf_tvc(...,</span> <span class="pre">given=)</span></code> uses.</p>
+</div>
+<div class="versionchanged">
+<p><span class="versionmodified changed">Changed in version 0.23: </span><code class="docutils literal notranslate"><span class="pre">X</span></code> is removed.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>numpy array</em><em> or </em><em>scalar</em>) – The additional time to survive, measured from <code class="docutils literal notranslate"><span class="pre">given</span></code></p></li>
+<li><p><strong>given</strong> (<em>numpy array</em><em> or </em><em>scalar</em>) – The time already survived</p></li>
+<li><p><strong>*params</strong> (<em>numpy array like</em><em> or </em><em>scalar</em>) – The parameters of the distribution, in the order given by
+its <code class="docutils literal notranslate"><span class="pre">parameter_names</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>cs</strong> – The value(s) of the conditional survival function.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Weibull</span><span class="o">.</span><span class="n">cs</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">array([2.52537548e-04, 3.00394073e-10, 2.45288508e-19, 1.48999440e-32,</span>
+<span class="go">       5.42544000e-51])</span>
+</pre></div>
+</div>
+<p>Far in the tail, where the survival to <code class="docutils literal notranslate"><span class="pre">given</span></code> underflows:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">Weibull</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="go">np.float64(0.0)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">Weibull</span><span class="o">.</span><span class="n">cs</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1000</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">3</span><span class="p">)),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">0.049638</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.entropy">
+<span class="sig-name descname"><span class="pre">entropy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.entropy" title="Link to this definition"></a></dt>
+<dd><p>The (Shannon) entropy of the 0/1 outcome,
+<span class="math notranslate nohighlight">\(-(1 - p)\ln(1 - p) - p\ln p\)</span>, in nats.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.ff">
+<span class="sig-name descname"><span class="pre">ff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.ff" title="Link to this definition"></a></dt>
+<dd><p>Failure (CDF or unreliability) function for the
+FixedEventProbability model:</p>
+<div class="math notranslate nohighlight">
+\[F(x) = p\]</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>numpy array</em><em> or </em><em>scalar</em>) – The values at which the function will be calculated</p></li>
+<li><p><strong>p</strong> (<em>float</em>) – The probability of failure of the thing</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ff</strong> – The value(s) of the failure function at x.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">FixedEventProbability</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">FixedEventProbability</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+<span class="go">array([0.5, 0.5, 0.5, 0.5, 0.5])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit">
+<span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="parametric_class.html#surpyval.univariate.parametric.parametric.Parametric" title="surpyval.univariate.parametric.parametric.Parametric"><span class="pre">Parametric</span></a></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit" title="Link to this definition"></a></dt>
+<dd><p>Estimate <code class="docutils literal notranslate"><span class="pre">p</span></code> as the (count-weighted) proportion of ones.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em>) – The 0/1 outcomes; any other value raises a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p></li>
+<li><p><strong>n</strong> (<em>array like</em><em>, </em><em>optional</em>) – The count of each outcome in <code class="docutils literal notranslate"><span class="pre">x</span></code>. Defaults to one each.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fitted model, with <code class="docutils literal notranslate"><span class="pre">params</span></code> holding <code class="docutils literal notranslate"><span class="pre">p</span></code>. Its
+<code class="docutils literal notranslate"><span class="pre">param_cb(&quot;p&quot;)</span></code> bounds <code class="docutils literal notranslate"><span class="pre">p</span></code> from the number of ones and of
+outcomes: <code class="docutils literal notranslate"><span class="pre">method=&quot;exact&quot;</span></code> (the default, Clopper-Pearson),
+<code class="docutils literal notranslate"><span class="pre">&quot;wald&quot;</span></code> (logit scale), <code class="docutils literal notranslate"><span class="pre">&quot;lr&quot;</span></code> (likelihood ratio) or
+<code class="docutils literal notranslate"><span class="pre">&quot;jeffreys&quot;</span></code>; see <code class="xref py py-func docutils literal notranslate"><span class="pre">probability_bounds()</span></code>. Its
+<code class="docutils literal notranslate"><span class="pre">covariance()</span></code> is the 1 x 1 matrix
+<span class="math notranslate nohighlight">\(\hat p (1 - \hat p) / N\)</span>, <code class="docutils literal notranslate"><span class="pre">nan</span></code> when no outcome or
+every outcome is a one (see <code class="xref py py-func docutils literal notranslate"><span class="pre">probability_covariance()</span></code>).
+<code class="docutils literal notranslate"><span class="pre">cb</span></code>, <code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code> and <code class="docutils literal notranslate"><span class="pre">mean_cb</span></code> are not available: the
+model’s uncertainty is that of <code class="docutils literal notranslate"><span class="pre">p</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="parametric_class.html#surpyval.univariate.parametric.parametric.Parametric" title="surpyval.univariate.parametric.parametric.Parametric">Parametric</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit_bayes">
+<span class="sig-name descname"><span class="pre">fit_bayes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">priors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offset</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zi</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lfp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixed</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'auto'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">points</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit_bayes" title="Link to this definition"></a></dt>
+<dd><p>Fit the distribution by Bayes’ rule: the prior times the
+likelihood of the data, which is the likelihood <code class="docutils literal notranslate"><span class="pre">fit</span></code> uses for
+every kind of censoring and truncation.</p>
+<p>Returns a <a class="reference internal" href="../surpyval.bayes.html#surpyval.bayes.BayesianParametric" title="surpyval.bayes.BayesianParametric"><code class="xref py py-class docutils literal notranslate"><span class="pre">BayesianParametric</span></code></a>, used like
+any model: its <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code> and <code class="docutils literal notranslate"><span class="pre">random</span></code> are those of
+a new unit’s life with the uncertainty in the parameters averaged
+in (the posterior predictive), and <code class="docutils literal notranslate"><span class="pre">cri</span></code>, <code class="docutils literal notranslate"><span class="pre">quantile_cri</span></code>,
+<code class="docutils literal notranslate"><span class="pre">mean_cri</span></code> and <code class="docutils literal notranslate"><span class="pre">param_cri</span></code> give credible intervals. <code class="docutils literal notranslate"><span class="pre">fit</span></code> is
+unchanged; all the work is in <a class="reference internal" href="../surpyval.bayes.html#module-surpyval.bayes" title="surpyval.bayes"><code class="xref py py-mod docutils literal notranslate"><span class="pre">surpyval.bayes</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> – The data, as for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">x</span></code> may be a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code>.</p></li>
+<li><p><strong>c</strong> – The data, as for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">x</span></code> may be a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code>.</p></li>
+<li><p><strong>n</strong> – The data, as for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">x</span></code> may be a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code>.</p></li>
+<li><p><strong>t</strong> – The data, as for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">x</span></code> may be a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code>.</p></li>
+<li><p><strong>tl</strong> – The data, as for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">x</span></code> may be a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code>.</p></li>
+<li><p><strong>tr</strong> – The data, as for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">x</span></code> may be a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code>.</p></li>
+<li><p><strong>xl</strong> – The data, as for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">x</span></code> may be a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code>.</p></li>
+<li><p><strong>xr</strong> – The data, as for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">x</span></code> may be a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code>.</p></li>
+<li><p><strong>priors</strong> (<em>dict</em><em> or </em><em>prior</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">{parameter</span> <span class="pre">name:</span> <span class="pre">prior}</span></code> (<code class="docutils literal notranslate"><span class="pre">surpyval.prior.around</span></code>,
+<code class="docutils literal notranslate"><span class="pre">between</span></code>, <code class="docutils literal notranslate"><span class="pre">uniform</span></code>, <code class="docutils literal notranslate"><span class="pre">flat</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed</span></code> or any SurPyval
+distribution), a joint prior (<code class="docutils literal notranslate"><span class="pre">prior.on_quantities</span></code>,
+<code class="docutils literal notranslate"><span class="pre">prior.from_model</span></code>, <code class="docutils literal notranslate"><span class="pre">prior.from_data</span></code>), or a list of
+these. A parameter given none is flat on its unconstrained
+scale (the log scale for a positive parameter), allowed only
+where the data alone determine it.</p></li>
+<li><p><strong>offset</strong> – As for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">gamma</span></code>, <code class="docutils literal notranslate"><span class="pre">f0</span></code> and <code class="docutils literal notranslate"><span class="pre">lfp_p</span></code> then need a
+prior or are flat.</p></li>
+<li><p><strong>zi</strong> – As for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">gamma</span></code>, <code class="docutils literal notranslate"><span class="pre">f0</span></code> and <code class="docutils literal notranslate"><span class="pre">lfp_p</span></code> then need a
+prior or are flat.</p></li>
+<li><p><strong>lfp</strong> – As for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">gamma</span></code>, <code class="docutils literal notranslate"><span class="pre">f0</span></code> and <code class="docutils literal notranslate"><span class="pre">lfp_p</span></code> then need a
+prior or are flat.</p></li>
+<li><p><strong>fixed</strong> – As for <code class="docutils literal notranslate"><span class="pre">fit</span></code>; <code class="docutils literal notranslate"><span class="pre">gamma</span></code>, <code class="docutils literal notranslate"><span class="pre">f0</span></code> and <code class="docutils literal notranslate"><span class="pre">lfp_p</span></code> then need a
+prior or are flat.</p></li>
+<li><p><strong>method</strong> (<em>{'auto'</em><em>, </em><em>'grid'</em><em>, </em><em>'conjugate'</em><em>, </em><em>'laplace'}</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">'auto'</span></code> (the default) uses the closed form where one
+applies, else the self-checking grid (1 to 3 free
+parameters); <code class="docutils literal notranslate"><span class="pre">'laplace'</span></code> a normal approximation, labelled
+approximate.</p></li>
+<li><p><strong>points</strong> (<em>int</em><em>, </em><em>optional</em>) – The grid’s starting points per parameter.</p></li>
+<li><p><strong>unit</strong> (<em>str</em><em>, </em><em>optional</em>) – The unit of the times, as for <code class="docutils literal notranslate"><span class="pre">fit</span></code>.</p></li>
+<li><p><strong>w</strong> (<em>None</em>) – Weights are not taken: a <code class="docutils literal notranslate"><span class="pre">w</span></code> is refused with a
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code> that says what to use instead (<code class="docutils literal notranslate"><span class="pre">fit</span></code> with
+<code class="docutils literal notranslate"><span class="pre">w</span></code>, or counts <code class="docutils literal notranslate"><span class="pre">n</span></code> for identical units).</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">2100</span><span class="p">,</span> <span class="mi">3400</span><span class="p">,</span> <span class="mi">4050</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">1500</span><span class="p">,</span> <span class="mi">6000</span><span class="p">,</span> <span class="mi">37</span><span class="p">)]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">37</span><span class="p">)]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_bayes</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">priors</span><span class="o">=</span><span class="p">{</span><span class="s2">"beta"</span><span class="p">:</span> <span class="n">sp</span><span class="o">.</span><span class="n">prior</span><span class="o">.</span><span class="n">around</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">between</span><span class="o">=</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mi">3</span><span class="p">))})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([1.441299e+04, 2.090000e+00])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit_bayes_from_df">
+<span class="sig-name descname"><span class="pre">fit_bayes_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">fit_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit_bayes_from_df" title="Link to this definition"></a></dt>
+<dd><p><a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit_bayes" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit_bayes"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit_bayes()</span></code></a> on the columns of a <code class="docutils literal notranslate"><span class="pre">pandas.DataFrame</span></code>, named
+as <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> names them (<code class="docutils literal notranslate"><span class="pre">x_col</span></code>, <code class="docutils literal notranslate"><span class="pre">c_col</span></code>, <code class="docutils literal notranslate"><span class="pre">n_col</span></code>,
+<code class="docutils literal notranslate"><span class="pre">xl_col</span></code>, <code class="docutils literal notranslate"><span class="pre">xr_col</span></code>, <code class="docutils literal notranslate"><span class="pre">tl_col</span></code>, <code class="docutils literal notranslate"><span class="pre">tr_col</span></code>); every other
+option goes to <a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit_bayes" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit_bayes"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit_bayes()</span></code></a>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"hours"</span><span class="p">:</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mi">250</span><span class="p">,</span> <span class="mi">400</span><span class="p">],</span>
+<span class="gp">... </span>                   <span class="s2">"running"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Exponential</span><span class="o">.</span><span class="n">fit_bayes_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"running"</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">priors</span><span class="o">=</span><span class="p">{</span><span class="s2">"failure_rate"</span><span class="p">:</span> <span class="n">sp</span><span class="o">.</span><span class="n">Gamma</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">500.0</span><span class="p">])})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">method</span>
+<span class="go">'conjugate'</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit_from_df">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fit_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pd.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">fit_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit_from_df" title="Link to this definition"></a></dt>
+<dd><p>Fit to data held in the columns of a <code class="xref py py-class docutils literal notranslate"><span class="pre">pandas.DataFrame</span></code>.</p>
+<p>The column names are passed in place of the arrays <a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>
+takes; every other <a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> option can be passed as a keyword.
+The columns are handed to <a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> as they are, so the result,
+and the treatment of a missing value, is that of <a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> on
+the same arrays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>DataFrame</em>) – DataFrame of data to be used to create surpyval model</p></li>
+<li><p><strong>x_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name for the column in df containing the variable data.
+If not provided must provide both xl_col and xr_col.</p></li>
+<li><p><strong>c_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name for the column in df containing the censor flag of x.
+If not provided assumes all values of x are observed.</p></li>
+<li><p><strong>n_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name in for the column in df containing the counts of x.
+If not provided assumes each x is one observation.</p></li>
+<li><p><strong>xl_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name for the column in df containing the left interval for
+interval censored data. If left interval is -Inf, assumes left
+censored. If xl[i] == xr[i] assumes observed. Provided with
+xr_col; provided with x_col too, each row is an exact time in
+x_col or a range in xl_col and xr_col, the other blank (a row
+giving both is left out, with a warning).</p></li>
+<li><p><strong>xr_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name for the column in df containing the right interval
+for interval censored data. If right interval is Inf, assumes
+right censored. If xl[i] == xr[i] assumes observed. Provided
+with xl_col; with x_col, as for xl_col.</p></li>
+<li><p><strong>tl_col</strong> (<em>string</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – If a string, the column of the left truncation of each row. If
+a number, every row is left truncated at that value (a constant
+truncation). If not provided, x is not left truncated.</p></li>
+<li><p><strong>tr_col</strong> (<em>string</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – If a string, the column of the right truncation of each row. If
+a number, every row is right truncated at that value. If not
+provided, x is not right truncated.</p></li>
+<li><p><strong>w_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name for the sampling, propensity or censoring weights,
+passed to <a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> as <code class="docutils literal notranslate"><span class="pre">w</span></code> (for the fitters that take it).</p></li>
+<li><p><strong>fit_options</strong> (<em>dict</em><em>, </em><em>optional</em>) – Every other option of <a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">offset</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">dist</span></code>, …), passed to it unchanged.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The model <a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> returns.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>model</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">df</span></code> is not a DataFrame, a name is not one of its columns,
+    a row has none of <code class="docutils literal notranslate"><span class="pre">x_col</span></code>, <code class="docutils literal notranslate"><span class="pre">xl_col</span></code> and <code class="docutils literal notranslate"><span class="pre">xr_col</span></code>, or a
+    column is given that <a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> has no argument for.</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>Every DataFrame entry point names its columns with a <code class="docutils literal notranslate"><span class="pre">_col</span></code>
+suffix (principle 21).</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_bofors_steel</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_bofors_steel</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s1">'x'</span><span class="p">,</span> <span class="n">n_col</span><span class="o">=</span><span class="s1">'n'</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="go">Parametric SurPyval Model</span>
+<span class="go">=========================</span>
+<span class="go">Distribution        : Weibull</span>
+<span class="go">Fitted by           : MLE</span>
+<span class="go">Data                : 389 units: 389 events at 10 unique times</span>
+<span class="go">Offset (gamma)      : 39.76557772434183</span>
+<span class="go">Parameters          :</span>
+<span class="go">     alpha: 7.141983615103902</span>
+<span class="go">      beta: 2.62047590823775</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s1">'x'</span><span class="p">,</span> <span class="n">n_col</span><span class="o">=</span><span class="s1">'n'</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">45</span><span class="p">,</span> <span class="mi">48</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.5861, 0.2571])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fitter_kind">
+<span class="sig-name descname"><span class="pre">fitter_kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'discrete</span> <span class="pre">parametric</span> <span class="pre">fitter'</span></em><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.fitter_kind" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">Weibull:</span> <span class="pre">parametric</span> <span class="pre">fitter</span></code> (#614).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The <code class="docutils literal notranslate"><span class="pre">repr</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.from_params">
+<span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gamma</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lfp_p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">f0</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="parametric_class.html#surpyval.univariate.parametric.parametric.Parametric" title="surpyval.univariate.parametric.parametric.Parametric"><span class="pre">Parametric</span></a></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.from_params" title="Link to this definition"></a></dt>
+<dd><p>Create a model from its event probability.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>params</strong> (<em>scalar</em>) – The event probability, between 0 and 1.</p></li>
+<li><p><strong>gamma</strong> (<em>None</em>) – Accepted so the signature matches
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">ParametricFitter.from_params()</span></code>, and rejected: neither
+model has an offset, limited failure population or zero
+inflation. The probability is <code class="docutils literal notranslate"><span class="pre">params</span></code>.</p></li>
+<li><p><strong>lfp_p</strong> (<em>None</em>) – Accepted so the signature matches
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">ParametricFitter.from_params()</span></code>, and rejected: neither
+model has an offset, limited failure population or zero
+inflation. The probability is <code class="docutils literal notranslate"><span class="pre">params</span></code>.</p></li>
+<li><p><strong>f0</strong> (<em>None</em>) – Accepted so the signature matches
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">ParametricFitter.from_params()</span></code>, and rejected: neither
+model has an offset, limited failure population or zero
+inflation. The probability is <code class="docutils literal notranslate"><span class="pre">params</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.isf">
+<span class="sig-name descname"><span class="pre">isf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.isf" title="Link to this definition"></a></dt>
+<dd><p>The inverse survival function: the time at which the survival
+function is <code class="docutils literal notranslate"><span class="pre">s</span></code> (scipy’s name), <code class="docutils literal notranslate"><span class="pre">qf(1</span> <span class="pre">-</span> <span class="pre">s)</span></code> without rounding
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">s</span></code>.</p>
+<p>Far in the upper tail <code class="docutils literal notranslate"><span class="pre">qf</span></code> cannot be asked for the time: <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span>
+<span class="pre">s</span></code> rounds to 1 once <code class="docutils literal notranslate"><span class="pre">s</span></code> is below 1.1e-16. <code class="docutils literal notranslate"><span class="pre">isf</span></code> takes <code class="docutils literal notranslate"><span class="pre">s</span></code>
+itself, so <code class="docutils literal notranslate"><span class="pre">isf(sf(t))</span></code> gives back <code class="docutils literal notranslate"><span class="pre">t</span></code> deep in the tail. A
+distribution with a closed form has its own; the others solve
+<code class="docutils literal notranslate"><span class="pre">log_sf(x)</span> <span class="pre">=</span> <span class="pre">log(s)</span></code> (a discrete one: the smallest point of its
+support with <code class="docutils literal notranslate"><span class="pre">sf(k)</span> <span class="pre">&lt;=</span> <span class="pre">s</span></code>). <code class="docutils literal notranslate"><span class="pre">isf(1)</span></code> is the start of the
+support and <code class="docutils literal notranslate"><span class="pre">isf(0)</span></code> its end.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span><span class="p">,</span> <span class="n">Gamma</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Weibull</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="mf">1e-300</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">np.float64(262.8261)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">Gamma</span><span class="o">.</span><span class="n">isf</span><span class="p">(</span><span class="mf">1e-200</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">float</span><span class="p">(</span><span class="n">Gamma</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mf">2.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">))</span>
+<span class="go">1e-200</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.log_df">
+<span class="sig-name descname"><span class="pre">log_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.log_df" title="Link to this definition"></a></dt>
+<dd><p>Log of the density, <span class="math notranslate nohighlight">\(\ln f(x) = \ln h(x) - H(x)\)</span> (the
+log of the mass <span class="math notranslate nohighlight">\(P(T = x)\)</span> for a discrete distribution).</p>
+<p>Used by the likelihood; many distributions override it with a
+closed form that stays finite where <code class="docutils literal notranslate"><span class="pre">df</span></code> itself underflows.</p>
+<p>Where the cumulative hazard is infinite (far in a tail whose
+hazard grows without bound) it is -inf, not <code class="docutils literal notranslate"><span class="pre">inf</span> <span class="pre">-</span> <span class="pre">inf</span></code> (#561).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.log_ff">
+<span class="sig-name descname"><span class="pre">log_ff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.log_ff" title="Link to this definition"></a></dt>
+<dd><p>Log of the CDF, <span class="math notranslate nohighlight">\(\ln F(x) = \ln(1 - e^{-H(x)})\)</span>,
+computed with <code class="docutils literal notranslate"><span class="pre">expm1</span></code> so it stays accurate where <span class="math notranslate nohighlight">\(F\)</span> is
+small.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.log_sf">
+<span class="sig-name descname"><span class="pre">log_sf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.log_sf" title="Link to this definition"></a></dt>
+<dd><p>Log of the survival function, <span class="math notranslate nohighlight">\(\ln R(x) = -H(x)\)</span>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.mean">
+<span class="sig-name descname"><span class="pre">mean</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.mean" title="Link to this definition"></a></dt>
+<dd><p>Mean of the event indicator, <span class="math notranslate nohighlight">\(E = p\)</span> – the first
+<a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.moment" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.moment"><code class="xref py py-meth docutils literal notranslate"><span class="pre">moment()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">mean</span></code> used to be missing while <code class="docutils literal notranslate"><span class="pre">moment</span></code>
+existed, so a model’s <code class="docutils literal notranslate"><span class="pre">mean()</span></code> raised AttributeError).</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">FixedEventProbability</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">FixedEventProbability</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mf">0.3</span><span class="p">)</span>
+<span class="go">0.3</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.moment">
+<span class="sig-name descname"><span class="pre">moment</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">m</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.moment" title="Link to this definition"></a></dt>
+<dd><p>m-th moment of the FixedEventProbability model</p>
+<div class="math notranslate nohighlight">
+\[M(m) = p\]</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>m</strong> (<em>integer</em>) – The ordinal of the moment to calculate</p></li>
+<li><p><strong>p</strong> (<em>float</em>) – The probability of failure of the thing</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>mean</strong> – The moment(s) of the FixedEventProbability model</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">FixedEventProbability</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">FixedEventProbability</span><span class="o">.</span><span class="n">moment</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+<span class="go">0.5</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.mrl">
+<span class="sig-name descname"><span class="pre">mrl</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.mrl" title="Link to this definition"></a></dt>
+<dd><p>Mean residual life: the expected remaining life of a unit that
+has survived to <code class="docutils literal notranslate"><span class="pre">x</span></code>,</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{MRL}(x) = E[T - x \mid T &gt; x]
+= \frac{1}{R(x)} \int_x^\infty R(u)\, du ,\]</div>
+<p>so <code class="docutils literal notranslate"><span class="pre">mrl(0)</span></code> of a lifetime is its mean, and below the support’s
+start <code class="docutils literal notranslate"><span class="pre">mrl(x)</span> <span class="pre">=</span> <span class="pre">mean</span> <span class="pre">-</span> <span class="pre">x</span></code>. It is in closed form for the
+Exponential (<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">/</span> <span class="pre">failure_rate</span></code>, memoryless) and the Weibull
+(an upper incomplete gamma function); otherwise it is the
+integral of the conditional survival <a class="reference internal" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.cs" title="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.cs"><code class="xref py py-meth docutils literal notranslate"><span class="pre">cs()</span></code></a>, finite far in
+the tail where <code class="docutils literal notranslate"><span class="pre">R(x)</span></code> underflows, or for a discrete
+distribution the sum over the integers. Infinite where the mean
+is; <code class="docutils literal notranslate"><span class="pre">nan</span></code> at or past a finite end of the support (no unit
+survives to it) and for a missing <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>numpy array</em><em> or </em><em>scalar</em>) – The ages survived to</p></li>
+<li><p><strong>*params</strong> (<em>numpy array like</em><em> or </em><em>scalar</em>) – The parameters of the distribution, in the order given by
+its <code class="docutils literal notranslate"><span class="pre">parameter_names</span></code></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>mrl</strong> – The mean residual life at each <code class="docutils literal notranslate"><span class="pre">x</span></code>, shaped as <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Weibull</span><span class="o">.</span><span class="n">mrl</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([8.8623, 5.4564, 3.7894, 2.2634])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Weibull</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">np.float64(8.8623)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.parameter_roles">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">parameter_roles</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.parameter_roles" title="Link to this definition"></a></dt>
+<dd><p>What each parameter does, by name, in the order of
+<code class="docutils literal notranslate"><span class="pre">parameter_names</span></code>: <code class="docutils literal notranslate"><span class="pre">&quot;shape&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;scale&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;rate&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;location&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;probability&quot;</span></code>, … The same letter can mean
+different things: Gamma’s <code class="docutils literal notranslate"><span class="pre">beta</span></code> is a rate (its mean is
+<code class="docutils literal notranslate"><span class="pre">alpha</span> <span class="pre">/</span> <span class="pre">beta</span></code>), Weibull’s <code class="docutils literal notranslate"><span class="pre">beta</span></code> a shape. A distribution
+without a recorded role (a custom one) gives <code class="docutils literal notranslate"><span class="pre">&quot;parameter&quot;</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sp</span><span class="o">.</span><span class="n">Gamma</span><span class="o">.</span><span class="n">parameter_roles</span>
+<span class="go">{'alpha': 'shape', 'beta': 'rate'}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">parameter_roles</span>
+<span class="go">{'alpha': 'scale', 'beta': 'shape'}</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.qf">
+<span class="sig-name descname"><span class="pre">qf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">u</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.qf" title="Link to this definition"></a></dt>
+<dd><p>Quantile function for the FixedEventProbability model:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}q(u) = \begin{cases}
+    0 &amp; u \leq p \\
+    \infty &amp; u &gt; p
+\end{cases}\end{split}\]</div>
+<p>The smallest <code class="docutils literal notranslate"><span class="pre">x</span></code> with <span class="math notranslate nohighlight">\(F(x) \geq u\)</span>: the model is the
+mixture of <code class="xref py py-class docutils literal notranslate"><span class="pre">InstantlyOccurs</span></code> (weight <code class="docutils literal notranslate"><span class="pre">p</span></code>, all its mass at
+0) and <code class="xref py py-class docutils literal notranslate"><span class="pre">NeverOccurs</span></code> (weight <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">p</span></code>, at infinity), so a
+fraction up to <code class="docutils literal notranslate"><span class="pre">p</span></code> has failed from the start and no more ever
+does. A probability outside [0, 1] gives NaN, with one warning, as
+every model’s <code class="docutils literal notranslate"><span class="pre">qf</span></code> (#611).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>u</strong> (<em>numpy array</em><em> or </em><em>scalar</em>) – The probability or probabilities at which the quantile will
+be calculated</p></li>
+<li><p><strong>p</strong> (<em>float</em>) – The probability of failure of the thing</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>qf</strong> – The quantile(s) at the given probabilities: 0 or <code class="docutils literal notranslate"><span class="pre">inf</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">FixedEventProbability</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">FixedEventProbability</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">]),</span> <span class="mf">0.2</span><span class="p">)</span>
+<span class="go">array([ 0.,  0.,  0., inf])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.random">
+<span class="sig-name descname"><span class="pre">random</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">size</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.random" title="Link to this definition"></a></dt>
+<dd><p>Draws random samples from the distribution in shape <cite>size</cite></p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>size</strong> (<em>integer</em><em> or </em><em>tuple</em><em> of </em><em>positive integers</em>) – Shape or size of the random draw</p></li>
+<li><p><strong>p</strong> (<em>float</em>) – The probability of the <code class="docutils literal notranslate"><span class="pre">1</span></code> outcome</p></li>
+<li><p><strong>random_state</strong> (<em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – Seed or generator for a draw of its own; <code class="docutils literal notranslate"><span class="pre">None</span></code> (the
+default) draws from numpy’s global stream (see
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">ParametricFitter.random()</span></code>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>random</strong> – Random values drawn from the distribution in shape <cite>size</cite></p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.sf">
+<span class="sig-name descname"><span class="pre">sf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.univariate.parametric.distributions.fixed_event_probability.FixedEventProbability_.sf" title="Link to this definition"></a></dt>
+<dd><p>Survival (or reliability) function for the
+FixedEventProbability model:</p>
+<div class="math notranslate nohighlight">
+\[R(x) = 1 - p\]</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>numpy array</em><em> or </em><em>scalar</em>) – The values at which the function will be calculated</p></li>
+<li><p><strong>p</strong> (<em>float</em>) – The probability of failure of the thing</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>sf</strong> – The value(s) of the reliability function at x. Which for this
+distribution is constant</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>scalar or numpy array</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">FixedEventProbability</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">FixedEventProbability</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+<span class="go">array([0.5, 0.5, 0.5, 0.5, 0.5])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="bernoulli.html" class="btn btn-neutral float-left" title="Bernoulli Distribution" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="exact_event_time.html" class="btn btn-neutral float-right" title="Exact Event Time" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,787 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Torch with SurPyval &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API" href="surpyval.html" />
+    <link rel="prev" title="PyMC with SurPyval" href="PyMC%20with%20SurPyval.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Torch with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-surpyval-does-not-do">What SurPyval does not do</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-mixture-network-trained-and-scored">A mixture network, trained and scored</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#data-and-batches">Data and batches</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-loss">The loss</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api">API</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.torch.targets"><code class="docutils literal notranslate"><span class="pre">targets()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.torch.constrain"><code class="docutils literal notranslate"><span class="pre">constrain()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.torch.nll"><code class="docutils literal notranslate"><span class="pre">nll()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.torch.sf"><code class="docutils literal notranslate"><span class="pre">sf()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.torch.to_surpyval"><code class="docutils literal notranslate"><span class="pre">to_surpyval()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Torch with SurPyval</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Torch with SurPyval.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="torch-with-surpyval">
+<h1>Torch with SurPyval<a class="headerlink" href="#torch-with-surpyval" title="Link to this heading"></a></h1>
+<p>If you already train neural networks in <a class="reference external" href="https://pytorch.org">PyTorch</a>,
+<code class="docutils literal notranslate"><span class="pre">surpyval.torch</span></code> gives your network SurPyval’s likelihood for lifetime
+data, and gives you SurPyval’s tools for what it predicts. You keep your
+own network, training loop, optimiser and device; SurPyval supplies the
+loss and the glue at both ends.</p>
+<p>In plain words: a censored or truncated lifetime cannot go into an
+ordinary regression loss. A unit still running at 3,000 hours tells you
+only that its life is longer than 3,000 hours; a unit found failed at an
+inspection, only that it failed between two inspections; a unit you only
+heard of because it survived to 1,000 hours, that it comes from a
+population cut off at 1,000 hours. Each needs its own term in the
+likelihood. <code class="docutils literal notranslate"><span class="pre">surpyval.torch</span></code> writes those terms as a differentiable
+torch loss, exactly as SurPyval’s <code class="docutils literal notranslate"><span class="pre">fit</span></code> counts them, for one
+distribution per row or a mixture of several (the model of <em>Deep
+Survival Machines</em>, Nagpal, Li and Dubrawski, 2021).</p>
+<p>SurPyval does not install PyTorch and does not depend on it, not even as
+an optional extra. <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">surpyval</span></code> and <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">surpyval.torch</span></code> never
+import it; the helpers import it when you call them, and if it is not
+installed they stop with a message saying to install it (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span>
+<span class="pre">torch</span></code>, or the build for your machine from pytorch.org).</p>
+<p>The helpers are:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#surpyval.torch.targets" title="surpyval.torch.targets"><code class="xref py py-func docutils literal notranslate"><span class="pre">targets()</span></code></a>: lifetime data (failures, right, left and
+interval censoring, left and right truncation, counts), checked as
+<code class="docutils literal notranslate"><span class="pre">fit</span></code> checks it, as the tensors of a <code class="docutils literal notranslate"><span class="pre">Targets</span></code>, one row per unit in
+the order given;</p></li>
+<li><p><a class="reference internal" href="#surpyval.torch.constrain" title="surpyval.torch.constrain"><code class="xref py py-func docutils literal notranslate"><span class="pre">constrain()</span></code></a>: a network’s raw outputs as a
+distribution’s parameters, each inside its range;</p></li>
+<li><p><a class="reference internal" href="#surpyval.torch.nll" title="surpyval.torch.nll"><code class="xref py py-func docutils literal notranslate"><span class="pre">nll()</span></code></a>: the exact negative log-likelihood, of one
+distribution or a mixture (<code class="docutils literal notranslate"><span class="pre">mixture=</span></code>), and <code class="docutils literal notranslate"><span class="pre">NLLLoss</span></code>, the same as a
+<code class="docutils literal notranslate"><span class="pre">torch.nn.Module</span></code>;</p></li>
+<li><p><a class="reference internal" href="#surpyval.torch.sf" title="surpyval.torch.sf"><code class="xref py py-func docutils literal notranslate"><span class="pre">sf()</span></code></a>: each row’s survival curve as an <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">T)</span></code>
+tensor, what <code class="xref py py-func docutils literal notranslate"><span class="pre">score_predictions()</span></code> scores;</p></li>
+<li><p><a class="reference internal" href="#surpyval.torch.to_surpyval" title="surpyval.torch.to_surpyval"><code class="xref py py-func docutils literal notranslate"><span class="pre">to_surpyval()</span></code></a>: any row as an ordinary SurPyval
+model.</p></li>
+</ul>
+<p>They support the Weibull, Exponential, LogNormal, Gamma, LogLogistic,
+Normal, Gumbel, Logistic and Rayleigh distributions
+(<code class="docutils literal notranslate"><span class="pre">surpyval.torch.SUPPORTED</span></code>, the same as the PyMC helpers’); any other is
+refused with that list.</p>
+<section id="what-surpyval-does-not-do">
+<h2>What SurPyval does not do<a class="headerlink" href="#what-surpyval-does-not-do" title="Link to this heading"></a></h2>
+<p>There are no training loops, network architectures, hyperparameter
+searches, early stopping or GPU management here: those are yours, and
+torch already has them. Nothing in the loss keeps a mixture’s component
+from collapsing (its weight going to 0, or its scale to a point):
+mixtures train slowly and can do so, and how to train them (the learning
+rate, the number of components, a prior or penalty of your own, where to
+start) is your choice. Train in double precision (<code class="docutils literal notranslate"><span class="pre">.double()</span></code>) when you
+want the loss to equal <code class="docutils literal notranslate"><span class="pre">fit</span></code>’s likelihood: it does to 1e-10 there.
+Single precision works, and is not held to that: a window far in a tail
+can round to probability 0 in it, an infinite loss.</p>
+</section>
+<section id="a-mixture-network-trained-and-scored">
+<h2>A mixture network, trained and scored<a class="headerlink" href="#a-mixture-network-trained-and-scored" title="Link to this heading"></a></h2>
+<p>Two thousand units with two covariates fail in one of two ways: an early
+mode, more common the larger the first covariate, whose scale also
+depends on the second, and a wear-out mode. Each is censored at a random
+time. A small network gives each unit a mixture of three Weibulls (one
+more than the truth, as in practice you do not know how many), trained on
+1,500 units with Adam, and scored on the other 500.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval.torch</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">spt</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.metrics</span><span class="w"> </span><span class="kn">import</span> <span class="n">concordance_index</span><span class="p">,</span> <span class="n">score_predictions</span>
+
+<span class="c1"># Simulated data: two failure modes, whose mix depends on the first</span>
+<span class="c1"># covariate, and an early mode whose scale depends on the second.</span>
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">2026</span><span class="p">)</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">2000</span>
+<span class="n">X</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+<span class="n">early</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="n">n</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">1.5</span> <span class="o">*</span> <span class="n">X</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]))</span>
+<span class="n">life</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span>
+    <span class="n">early</span><span class="p">,</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.8</span> <span class="o">+</span> <span class="mf">0.4</span> <span class="o">*</span> <span class="n">X</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">n</span><span class="p">),</span>
+    <span class="mf">40.0</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">3.0</span><span class="p">,</span> <span class="n">n</span><span class="p">),</span>
+<span class="p">)</span>
+<span class="n">censor</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">80</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">life</span><span class="p">,</span> <span class="n">censor</span><span class="p">),</span> <span class="p">(</span><span class="n">life</span> <span class="o">&gt;</span> <span class="n">censor</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="n">train</span><span class="p">,</span> <span class="n">test</span> <span class="o">=</span> <span class="nb">slice</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1500</span><span class="p">),</span> <span class="nb">slice</span><span class="p">(</span><span class="mi">1500</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+<span class="c1"># Your network: K = 3 weights and K Weibulls' two parameters per row.</span>
+<span class="n">K</span> <span class="o">=</span> <span class="mi">3</span>
+<span class="n">torch</span><span class="o">.</span><span class="n">manual_seed</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">net</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span><span class="p">(</span>
+    <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">32</span><span class="p">),</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">ReLU</span><span class="p">(),</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="mi">32</span><span class="p">,</span> <span class="n">K</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>
+<span class="p">)</span><span class="o">.</span><span class="n">double</span><span class="p">()</span>
+<span class="c1"># Start the components apart: scales at the quartiles of the times,</span>
+<span class="c1"># shapes at 1.5 (the bias is the inverse of constrain's softplus).</span>
+<span class="n">start</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">quantile</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">train</span><span class="p">],</span> <span class="n">q</span><span class="p">)</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.75</span><span class="p">)]</span>
+<span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+    <span class="n">net</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">bias</span><span class="p">[</span><span class="n">K</span><span class="p">:]</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">expm1</span><span class="p">([</span><span class="n">v</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">start</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">)]))</span>
+    <span class="p">)</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">predict</span><span class="p">(</span><span class="n">features</span><span class="p">):</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">net</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">as_tensor</span><span class="p">(</span><span class="n">features</span><span class="p">))</span>
+    <span class="n">logits</span><span class="p">,</span> <span class="n">raw</span> <span class="o">=</span> <span class="n">out</span><span class="p">[:,</span> <span class="p">:</span><span class="n">K</span><span class="p">],</span> <span class="n">out</span><span class="p">[:,</span> <span class="n">K</span><span class="p">:]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">K</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">spt</span><span class="o">.</span><span class="n">constrain</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">raw</span><span class="p">),</span> <span class="n">logits</span>
+
+<span class="n">y</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">targets</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">[</span><span class="n">train</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">[</span><span class="n">train</span><span class="p">])</span>
+<span class="n">loss_fn</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">NLLLoss</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">)</span>
+<span class="n">optimiser</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">net</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="mf">0.01</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1000</span><span class="p">):</span>
+    <span class="n">optimiser</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+    <span class="n">params</span><span class="p">,</span> <span class="n">logits</span> <span class="o">=</span> <span class="n">predict</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">train</span><span class="p">])</span>
+    <span class="n">loss</span> <span class="o">=</span> <span class="n">loss_fn</span><span class="p">(</span><span class="n">y</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">mixture</span><span class="o">=</span><span class="n">logits</span><span class="p">)</span>
+    <span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+    <span class="n">optimiser</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">"loss per unit: </span><span class="si">{</span><span class="n">loss</span><span class="o">.</span><span class="n">item</span><span class="p">()</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+
+<span class="c1"># Score the held-out rows with SurPyval's metrics.</span>
+<span class="n">times</span> <span class="o">=</span> <span class="p">[</span><span class="mf">5.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="mf">40.0</span><span class="p">]</span>
+<span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+    <span class="n">params</span><span class="p">,</span> <span class="n">logits</span> <span class="o">=</span> <span class="n">predict</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">test</span><span class="p">])</span>
+    <span class="n">S</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">times</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">mixture</span><span class="o">=</span><span class="n">logits</span><span class="p">)</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+<span class="n">scores</span> <span class="o">=</span> <span class="n">score_predictions</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">test</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="n">test</span><span class="p">],</span> <span class="n">S</span><span class="p">,</span> <span class="n">times</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">scores</span><span class="o">.</span><span class="n">scores</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">to_string</span><span class="p">(</span><span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">concordance_index</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">test</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="n">test</span><span class="p">],</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">S</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">])</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+
+<span class="c1"># Any row as an ordinary SurPyval model.</span>
+<span class="n">unit</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">to_surpyval</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">mixture</span><span class="o">=</span><span class="n">logits</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">unit</span><span class="o">.</span><span class="n">w</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="n">unit</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">unit</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">times</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">),</span> <span class="n">S</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>Its output, from one run with PyTorch 2.15 on a CPU (PyTorch is not
+installed when this documentation is built, so the code on this page is
+not run there; another version or machine can differ in the last digits):</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>loss per unit: 2.9315
+metric model  time  estimate    se  lower  upper
+ brier model   5.0     0.163 0.010  0.144  0.182
+ brier model  10.0     0.195 0.009  0.177  0.212
+ brier model  20.0     0.197 0.009  0.180  0.214
+ brier model  40.0     0.146 0.011  0.124  0.168
+   auc model   5.0     0.752 0.024  0.706  0.799
+   auc model  10.0     0.763 0.021  0.721  0.805
+   auc model  20.0     0.769 0.022  0.726  0.812
+   auc model  40.0     0.657 0.038  0.582  0.731
+   ibs model   NaN     0.180 0.006  0.167  0.192
+Harrell's C
+===========
+C                : 0.673536
+Std. error       : 0.014431
+95% CI           : (0.645252, 0.70182)
+Horizon tau      : none
+Subjects         : 500
+[0.162 0.06  0.777] [[4.93, 2.71], [21.08, 6.05], [39.95, 2.77]]
+[0.8928 0.8207 0.7001 0.2851] [0.8928 0.8207 0.7001 0.2851]
+</pre></div>
+</div>
+<p>The first held-out unit’s mixture puts 0.78 of its weight on a wear-out
+mode (scale 40, shape 2.8; the truth’s are 40 and 3) and 0.16 on an early
+one (scale 4.9, shape 2.7); the third component is small, and its
+survival function as a SurPyval model is the row of <code class="docutils literal notranslate"><span class="pre">S</span></code>. The start
+matters: from the network’s random bias instead of the quartiles, the
+same loop ended at 3.12 per unit, with two of that unit’s three
+components collapsed (weights below 1e-6, shapes near 0.03). That is for
+the training to deal with, not the loss.</p>
+<p>What each step does:</p>
+<ul class="simple">
+<li><p>The network ends in <code class="docutils literal notranslate"><span class="pre">K</span> <span class="pre">*</span> <span class="pre">3</span></code> outputs per unit: <code class="docutils literal notranslate"><span class="pre">K</span></code> logits, whose
+softmax is the mixture’s weights, and two raw values for each of the
+<code class="docutils literal notranslate"><span class="pre">K</span></code> Weibulls, reshaped to <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K,</span> <span class="pre">2)</span></code>. <a class="reference internal" href="#surpyval.torch.constrain" title="surpyval.torch.constrain"><code class="xref py py-func docutils literal notranslate"><span class="pre">constrain()</span></code></a>
+maps those into each parameter’s range (a softplus for a positive one),
+giving <code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code> of shape <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K)</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">NLLLoss(sp.Weibull)(y,</span> <span class="pre">params,</span> <span class="pre">mixture=logits)</span></code> is the negative
+log-likelihood per unit (<code class="docutils literal notranslate"><span class="pre">reduction=&quot;mean&quot;</span></code>, divided by the total
+count). Each unit’s term is the log of the weighted sum of the
+components’ likelihoods of what was seen of it: a density for a
+failure, a survival probability for a unit still running, and the
+mixture’s probability of a window for an interval. A truncation window
+divides by the mixture’s probability of it.</p></li>
+<li><p><a class="reference internal" href="#surpyval.torch.sf" title="surpyval.torch.sf"><code class="xref py py-func docutils literal notranslate"><span class="pre">sf()</span></code></a> gives the held-out units’ survival curves at
+the scoring times, an <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">T)</span></code> array once detached:
+<code class="xref py py-func docutils literal notranslate"><span class="pre">score_predictions()</span></code> gives the Brier score at
+each time, the integrated Brier score and the time-dependent AUC, each
+with its standard error and interval, and
+<code class="xref py py-func docutils literal notranslate"><span class="pre">concordance_index()</span></code> Harrell’s C of the risk
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">S(t)</span></code> at a horizon, with its interval.</p></li>
+<li><p><a class="reference internal" href="#surpyval.torch.to_surpyval" title="surpyval.torch.to_surpyval"><code class="xref py py-func docutils literal notranslate"><span class="pre">to_surpyval()</span></code></a> turns the first held-out unit’s
+prediction into a <code class="xref py py-class docutils literal notranslate"><span class="pre">MixtureModel</span></code> (for a single
+distribution, <code class="docutils literal notranslate"><span class="pre">dist.from_params(...)</span></code>): its <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>,
+<code class="docutils literal notranslate"><span class="pre">qf</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code> and <code class="docutils literal notranslate"><span class="pre">random</span></code> are SurPyval’s, and its survival function
+equals that row of <code class="docutils literal notranslate"><span class="pre">sf</span></code>.</p></li>
+</ul>
+<p>To draw one unit’s curve:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">80</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">unit</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">xlabel</span><span class="p">(</span><span class="s2">"time"</span><span class="p">)</span>
+<span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">"probability of surviving"</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="data-and-batches">
+<h2>Data and batches<a class="headerlink" href="#data-and-batches" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">targets</span></code> takes the data in any form <code class="docutils literal notranslate"><span class="pre">fit</span></code> does: <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>,
+<code class="docutils literal notranslate"><span class="pre">t</span></code> or <code class="docutils literal notranslate"><span class="pre">tl</span></code>/<code class="docutils literal notranslate"><span class="pre">tr</span></code>, <code class="docutils literal notranslate"><span class="pre">xl</span></code>/<code class="docutils literal notranslate"><span class="pre">xr</span></code>, or a <code class="xref py py-class docutils literal notranslate"><span class="pre">SurpyvalData</span></code>
+(whose rows are its own, grouped and sorted unless built with
+<code class="docutils literal notranslate"><span class="pre">group_and_sort=False</span></code>). Row <code class="docutils literal notranslate"><span class="pre">i</span></code> of the result is row <code class="docutils literal notranslate"><span class="pre">i</span></code> of your
+features. A <code class="docutils literal notranslate"><span class="pre">Targets</span></code> is a named tuple, so it batches as a tuple does:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">loader</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">DataLoader</span><span class="p">(</span>
+    <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">TensorDataset</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">as_tensor</span><span class="p">(</span><span class="n">X</span><span class="p">),</span> <span class="o">*</span><span class="n">y</span><span class="p">),</span>
+    <span class="n">batch_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="k">for</span> <span class="n">features</span><span class="p">,</span> <span class="o">*</span><span class="n">fields</span> <span class="ow">in</span> <span class="n">loader</span><span class="p">:</span>
+    <span class="n">params</span><span class="p">,</span> <span class="n">logits</span> <span class="o">=</span> <span class="n">predict</span><span class="p">(</span><span class="n">features</span><span class="p">)</span>
+    <span class="n">loss</span> <span class="o">=</span> <span class="n">loss_fn</span><span class="p">(</span><span class="n">spt</span><span class="o">.</span><span class="n">Targets</span><span class="p">(</span><span class="o">*</span><span class="n">fields</span><span class="p">),</span> <span class="n">params</span><span class="p">,</span> <span class="n">mixture</span><span class="o">=</span><span class="n">logits</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>A parameter can be one value per row (<code class="docutils literal notranslate"><span class="pre">(N,)</span></code>, or <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K)</span></code> in a
+mixture), one value shared by every row (a scalar, or <code class="docutils literal notranslate"><span class="pre">(K,)</span></code> per
+component in a mixture), or a mix: a shared shape and a scale per unit
+is <code class="docutils literal notranslate"><span class="pre">{&quot;alpha&quot;:</span> <span class="pre">scale_per_row,</span> <span class="pre">&quot;beta&quot;:</span> <span class="pre">shape_parameter}</span></code>. The loss’s type
+and device are those of the parameters.</p>
+<p>One distribution per row is the same without <code class="docutils literal notranslate"><span class="pre">mixture=</span></code>: <code class="docutils literal notranslate"><span class="pre">raw</span></code> of
+shape <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">k)</span></code>, <code class="docutils literal notranslate"><span class="pre">constrain</span></code> gives <code class="docutils literal notranslate"><span class="pre">(N,)</span></code> parameters, and <code class="docutils literal notranslate"><span class="pre">sf</span></code> and
+<code class="docutils literal notranslate"><span class="pre">to_surpyval</span></code> take no logits. A mixture of one component is exactly
+that.</p>
+</section>
+<section id="the-loss">
+<h2>The loss<a class="headerlink" href="#the-loss" title="Link to this heading"></a></h2>
+<p>Each row adds one term, times its count <code class="docutils literal notranslate"><span class="pre">n</span></code>: <code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">f(x)</span></code> for a failure,
+<code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">S(x)</span></code> right censored, <code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">F(x)</span></code> left censored and <code class="docutils literal notranslate"><span class="pre">log[F(xr)</span> <span class="pre">-</span>
+<span class="pre">F(xl)]</span></code> for an interval; a row observed only inside the window <code class="docutils literal notranslate"><span class="pre">(tl,</span>
+<span class="pre">tr]</span></code> subtracts <code class="docutils literal notranslate"><span class="pre">log[F(tr)</span> <span class="pre">-</span> <span class="pre">F(tl)]</span></code>. For a mixture, each is the log of
+the weighted sum of the components’ (worked out in log space), so a
+window is the mixture’s <code class="docutils literal notranslate"><span class="pre">F(b)</span> <span class="pre">-</span> <span class="pre">F(a)</span></code>. Every term is written in a form
+that is stable in both tails, and each row is given only the formula of
+its own kind: the loss and its gradient are finite wherever the
+likelihood is, including where one component of a mixture gives a row
+probability 0 and another explains it. The tests hold the loss to
+SurPyval’s own likelihood (<code class="docutils literal notranslate"><span class="pre">fit</span></code>’s, and <code class="docutils literal notranslate"><span class="pre">MixtureModel</span></code>’s) to 1e-10 in
+double precision, for every family, kind of row and truncation.</p>
+<p>The gradient is first-order; for the Gamma distribution, whose
+derivative in its shape is numerical, it cannot be differentiated again.
+Because each kind of row is gathered on its own, the loss is for eager
+torch, not <code class="docutils literal notranslate"><span class="pre">torch.vmap</span></code> or tracing.</p>
+</section>
+<section id="api">
+<h2>API<a class="headerlink" href="#api" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.torch.targets">
+<span class="sig-prename descclassname"><span class="pre">surpyval.torch.</span></span><span class="sig-name descname"><span class="pre">targets</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Targets</span></span></span><a class="headerlink" href="#surpyval.torch.targets" title="Link to this definition"></a></dt>
+<dd><p>Lifetime data as tensors for <a class="reference internal" href="#surpyval.torch.nll" title="surpyval.torch.nll"><code class="xref py py-func docutils literal notranslate"><span class="pre">nll()</span></code></a>.</p>
+<p>The data are checked as every <code class="docutils literal notranslate"><span class="pre">fit</span></code> checks them and kept in the
+order given, so row <code class="docutils literal notranslate"><span class="pre">i</span></code> of the result is row <code class="docutils literal notranslate"><span class="pre">i</span></code> of your features.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data</strong> (<a class="reference internal" href="surpyval.utilities.html#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData"><em>SurpyvalData</em></a><em> or </em><em>array-like</em><em>, </em><em>optional</em>) – The data; an array is taken as <code class="docutils literal notranslate"><span class="pre">x</span></code>. A <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> gives its
+own rows, in its own order (it groups and sorts what it is given
+unless built with <code class="docutils literal notranslate"><span class="pre">group_and_sort=False</span></code>).</p></li>
+<li><p><strong>x</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>).</p></li>
+<li><p><strong>c</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>).</p></li>
+<li><p><strong>n</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>).</p></li>
+<li><p><strong>t</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>).</p></li>
+<li><p><strong>xl</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>).</p></li>
+<li><p><strong>xr</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>).</p></li>
+<li><p><strong>tl</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>).</p></li>
+<li><p><strong>tr</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>).</p></li>
+<li><p><strong>dtype</strong> (<em>torch.dtype</em><em>, </em><em>optional</em>) – The floating type of the tensors; <code class="docutils literal notranslate"><span class="pre">torch.float64</span></code> if not given.
+<a class="reference internal" href="#surpyval.torch.nll" title="surpyval.torch.nll"><code class="xref py py-func docutils literal notranslate"><span class="pre">nll()</span></code></a> converts the target to its parameters’ type, so this
+only matters for what you store.</p></li>
+<li><p><strong>device</strong> (<em>torch.device</em><em> or </em><em>str</em><em>, </em><em>optional</em>) – Where to put the tensors.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">(xl,</span> <span class="pre">xr,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">tl,</span> <span class="pre">tr)</span></code>, each a 1-D tensor of one value per
+row.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Targets</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span><span class="p">;</span> <span class="n">torch</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s2">"torch"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval.torch</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">spt</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">y</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">targets</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="mi">5</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+<span class="gp">... </span>                <span class="n">n</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">y</span><span class="o">.</span><span class="n">xl</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span> <span class="n">y</span><span class="o">.</span><span class="n">xr</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+<span class="go">([1.0, 3.0, 2.0, -inf], [1.0, inf, 4.0, 5.0])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">y</span><span class="o">.</span><span class="n">c</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span> <span class="n">y</span><span class="o">.</span><span class="n">n</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+<span class="go">([0, 1, 2, -1], [1.0, 2.0, 1.0, 1.0])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.torch.constrain">
+<span class="sig-prename descclassname"><span class="pre">surpyval.torch.</span></span><span class="sig-name descname"><span class="pre">constrain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raw</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.torch.constrain" title="Link to this definition"></a></dt>
+<dd><p>Unconstrained values, such as a network’s outputs, as the parameters
+of <code class="docutils literal notranslate"><span class="pre">dist</span></code>, each inside its range.</p>
+<p>Column <code class="docutils literal notranslate"><span class="pre">j</span></code> of <code class="docutils literal notranslate"><span class="pre">raw</span></code> becomes the <code class="docutils literal notranslate"><span class="pre">j</span></code>-th parameter of <code class="docutils literal notranslate"><span class="pre">dist</span></code>
+(<code class="docutils literal notranslate"><span class="pre">dist.parameter_names</span></code>), through the map its range
+(<code class="docutils literal notranslate"><span class="pre">dist.bounds</span></code>) calls for: <code class="docutils literal notranslate"><span class="pre">softplus</span></code> for a positive parameter,
+the identity for an unbounded one, and a scaled sigmoid for one
+between two finite bounds. Every map is smooth and increasing, so a
+gradient reaches the network through it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dist</strong> (<em>distribution</em>) – One of <code class="xref py py-data docutils literal notranslate"><span class="pre">SUPPORTED</span></code>, such as <code class="docutils literal notranslate"><span class="pre">surpyval.Weibull</span></code>.</p></li>
+<li><p><strong>raw</strong> (<em>Tensor</em>) – Shape <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">k)</span></code> for <code class="docutils literal notranslate"><span class="pre">N</span></code> rows, or <code class="docutils literal notranslate"><span class="pre">(k,)</span></code> for one set of
+parameters shared by every row, where <code class="docutils literal notranslate"><span class="pre">k</span></code> is the number of
+parameters of <code class="docutils literal notranslate"><span class="pre">dist</span></code>; <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K,</span> <span class="pre">k)</span></code> (or <code class="docutils literal notranslate"><span class="pre">(K,</span> <span class="pre">k)</span></code>) for the
+<code class="docutils literal notranslate"><span class="pre">K</span></code> components of a mixture.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Each parameter’s tensor by name, of shape <code class="docutils literal notranslate"><span class="pre">(N,)</span></code> (or a scalar
+tensor from a <code class="docutils literal notranslate"><span class="pre">(k,)</span></code> input; <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K)</span></code> or <code class="docutils literal notranslate"><span class="pre">(K,)</span></code> for a
+mixture): what <a class="reference internal" href="#surpyval.torch.nll" title="surpyval.torch.nll"><code class="xref py py-func docutils literal notranslate"><span class="pre">nll()</span></code></a> takes.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p><code class="docutils literal notranslate"><span class="pre">softplus</span></code> of a very negative value rounds to 0, which is not
+inside a positive range: a value that rounds onto a bound is kept
+one step of its type inside it. For a network that should start at
+a sensible model, set its last layer’s bias to the inverse map of a
+fit’s estimates
+(<code class="docutils literal notranslate"><span class="pre">log(expm1(value))</span></code> for a positive parameter).</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span><span class="p">;</span> <span class="n">torch</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s2">"torch"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval.torch</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">spt</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">raw</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">],</span> <span class="p">[</span><span class="o">-</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">]],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">params</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">constrain</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">raw</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
+<span class="go">['alpha', 'beta']</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">[</span><span class="nb">round</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">params</span><span class="p">[</span><span class="s2">"alpha"</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()]</span>
+<span class="go">[0.693147, 0.126928]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">spt</span><span class="o">.</span><span class="n">constrain</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">LogNormal</span><span class="p">,</span> <span class="n">raw</span><span class="p">)[</span><span class="s2">"mu"</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span>
+<span class="go">[0.0, -2.0]</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.torch.nll">
+<span class="sig-prename descclassname"><span class="pre">surpyval.torch.</span></span><span class="sig-name descname"><span class="pre">nll</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">mixture</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reduction</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'mean'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.torch.nll" title="Link to this definition"></a></dt>
+<dd><p>The negative log-likelihood of censored and truncated data as a torch
+loss: the likelihood <code class="docutils literal notranslate"><span class="pre">fit</span></code> maximises, differentiable in the
+parameters.</p>
+<p>Each row contributes its own term, times its count <code class="docutils literal notranslate"><span class="pre">n</span></code>: <code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">f(x)</span></code>
+for a failure (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>), <code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">S(x)</span></code> right censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>),
+<code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">F(x)</span></code> left censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code>) and <code class="docutils literal notranslate"><span class="pre">log[F(xr)</span> <span class="pre">-</span> <span class="pre">F(xl)]</span></code>
+interval censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>); a row observed only inside the window
+<code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">tr]</span></code> subtracts <code class="docutils literal notranslate"><span class="pre">log[F(tr)</span> <span class="pre">-</span> <span class="pre">F(tl)]</span></code>. A censored row with a
+finite truncation bound on its censored side is an interval ending at
+that bound, as in <code class="docutils literal notranslate"><span class="pre">fit</span></code>. In double precision the sum equals the
+distribution’s own log-likelihood to 1e-10.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dist</strong> (<em>distribution</em>) – One of <code class="xref py py-data docutils literal notranslate"><span class="pre">SUPPORTED</span></code>, such as <code class="docutils literal notranslate"><span class="pre">surpyval.Weibull</span></code>.</p></li>
+<li><p><strong>target</strong> (<em>Targets</em>) – The data, from <a class="reference internal" href="#surpyval.torch.targets" title="surpyval.torch.targets"><code class="xref py py-func docutils literal notranslate"><span class="pre">targets()</span></code></a> (or a batch of its rows: the six
+tensors indexed alike).</p></li>
+<li><p><strong>params</strong> (<em>dict</em>) – Every parameter of <code class="docutils literal notranslate"><span class="pre">dist</span></code> by name, as <a class="reference internal" href="#surpyval.torch.constrain" title="surpyval.torch.constrain"><code class="xref py py-func docutils literal notranslate"><span class="pre">constrain()</span></code></a> returns:
+each a scalar (a tensor or a number), shared by every row, or a
+tensor of one value per row, in the target’s row order. Each must
+be inside its range. With <code class="docutils literal notranslate"><span class="pre">mixture</span></code>, the components’ parameters:
+each of shape <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K)</span></code>, one value per row and component,
+<code class="docutils literal notranslate"><span class="pre">(K,)</span></code> for one value per component shared by every row, or a
+scalar shared by all.</p></li>
+<li><p><strong>mixture</strong> (<em>Tensor</em><em>, </em><em>optional</em>) – For a mixture of <code class="docutils literal notranslate"><span class="pre">K</span></code> components of <code class="docutils literal notranslate"><span class="pre">dist</span></code> (the model of Deep
+Survival Machines): the logits of the components’ weights, shape
+<code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K)</span></code>, or <code class="docutils literal notranslate"><span class="pre">(K,)</span></code> for weights shared by every row; the
+weights are their softmax over the last axis. Each row’s term is
+then the log of the weighted sum of the components’ likelihoods of
+the row, less the log of the weighted sum of their probabilities
+of its truncation window: an interval’s probability is the
+mixture’s <code class="docutils literal notranslate"><span class="pre">F(xr)</span> <span class="pre">-</span> <span class="pre">F(xl)</span></code>. With <code class="docutils literal notranslate"><span class="pre">K</span> <span class="pre">=</span> <span class="pre">1</span></code> the loss is that
+without a mixture.</p></li>
+<li><p><strong>reduction</strong> (<em>{&quot;mean&quot;</em><em>, </em><em>&quot;sum&quot;</em><em>, </em><em>&quot;none&quot;}</em><em>, </em><em>default &quot;mean&quot;</em>) – <code class="docutils literal notranslate"><span class="pre">&quot;sum&quot;</span></code> is the negative log-likelihood; <code class="docutils literal notranslate"><span class="pre">&quot;mean&quot;</span></code> divides it by
+the total count <code class="docutils literal notranslate"><span class="pre">sum(n)</span></code>, the loss per unit, which does not
+change with the batch size; <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> gives each row’s term
+(times its count), of shape <code class="docutils literal notranslate"><span class="pre">(N,)</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The loss, of the parameters’ floating type and on their device
+(the target is converted to both). With no tensor among the
+parameters it is <code class="docutils literal notranslate"><span class="pre">torch.float64</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tensor</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>The value is finite, with a finite gradient, wherever the likelihood
+is: each row is given only the formula of its own kind, in a form
+that is stable in both tails. Double precision is what the 1e-10
+agreement with <code class="docutils literal notranslate"><span class="pre">fit</span></code> holds for; single precision works and is not
+held to it (a window far in a tail can round to probability 0 there,
+an infinite loss). The gradient is of the first order: the Gamma
+distribution’s derivative in its shape cannot be differentiated
+again.</p>
+<p>In a mixture, a component can give a row probability 0 in double
+precision (the row is far in its tail) while another explains it:
+the loss and its gradient stay finite, that component taking no part
+in the row’s gradient. Nothing in the loss keeps a component from
+collapsing (a weight going to 0, or a scale to a point): mixtures
+train slowly and can do so, and how to train them is yours to
+choose.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span><span class="p">;</span> <span class="n">torch</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s2">"torch"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval.torch</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">spt</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">y</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">targets</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">]],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="mf">3.0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+<span class="gp">... </span>          <span class="s2">"beta"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">)}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">spt</span><span class="o">.</span><span class="n">nll</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">reduction</span><span class="o">=</span><span class="s2">"sum"</span><span class="p">)),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">3.440673</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">SurpyvalData</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">]],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ll</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">_log_likelihood</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="o">-</span><span class="n">ll</span><span class="p">),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">3.440673</span>
+</pre></div>
+</div>
+<p>A network’s raw outputs become parameters through <a class="reference internal" href="#surpyval.torch.constrain" title="surpyval.torch.constrain"><code class="xref py py-func docutils literal notranslate"><span class="pre">constrain()</span></code></a>:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">raw</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">,</span> <span class="n">requires_grad</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">nll</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">spt</span><span class="o">.</span><span class="n">constrain</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">raw</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">raw</span><span class="o">.</span><span class="n">grad</span><span class="o">.</span><span class="n">shape</span>
+<span class="go">torch.Size([3, 2])</span>
+</pre></div>
+</div>
+<p>A mixture of two Weibull components, from a network’s <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K,</span> <span class="pre">k)</span></code>
+outputs and its <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K)</span></code> logits:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">raw</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">params</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">constrain</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">raw</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">params</span><span class="p">[</span><span class="s2">"alpha"</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span>
+<span class="go">torch.Size([3, 2])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">logits</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">loss</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">nll</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">mixture</span><span class="o">=</span><span class="n">logits</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">loss</span><span class="p">),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">2.190203</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.torch.sf">
+<span class="sig-prename descclassname"><span class="pre">surpyval.torch.</span></span><span class="sig-name descname"><span class="pre">sf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">times</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">mixture</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.torch.sf" title="Link to this definition"></a></dt>
+<dd><p>The survival function of each row at each of <code class="docutils literal notranslate"><span class="pre">times</span></code>, as a tensor:
+the predictions <code class="docutils literal notranslate"><span class="pre">score_predictions</span></code> takes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dist</strong> (<em>distribution</em>) – One of <code class="xref py py-data docutils literal notranslate"><span class="pre">SUPPORTED</span></code>, such as <code class="docutils literal notranslate"><span class="pre">surpyval.Weibull</span></code>.</p></li>
+<li><p><strong>times</strong> (<em>array-like</em><em> or </em><em>Tensor</em>) – The <code class="docutils literal notranslate"><span class="pre">T</span></code> times to evaluate at, shape <code class="docutils literal notranslate"><span class="pre">(T,)</span></code> (or one number).
+Every row is evaluated at all of them.</p></li>
+<li><p><strong>params</strong> (<em>dict</em>) – Every parameter of <code class="docutils literal notranslate"><span class="pre">dist</span></code> by name, as <a class="reference internal" href="#surpyval.torch.constrain" title="surpyval.torch.constrain"><code class="xref py py-func docutils literal notranslate"><span class="pre">constrain()</span></code></a> returns
+and <a class="reference internal" href="#surpyval.torch.nll" title="surpyval.torch.nll"><code class="xref py py-func docutils literal notranslate"><span class="pre">nll()</span></code></a> takes: each a scalar or one value per row (with
+<code class="docutils literal notranslate"><span class="pre">mixture</span></code>, <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K)</span></code>, <code class="docutils literal notranslate"><span class="pre">(K,)</span></code> or a scalar).</p></li>
+<li><p><strong>mixture</strong> (<em>Tensor</em><em>, </em><em>optional</em>) – The logits of a mixture’s weights, <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">K)</span></code> or <code class="docutils literal notranslate"><span class="pre">(K,)</span></code>, as
+<a class="reference internal" href="#surpyval.torch.nll" title="surpyval.torch.nll"><code class="xref py py-func docutils literal notranslate"><span class="pre">nll()</span></code></a> takes them: each row’s survival function is then
+<code class="docutils literal notranslate"><span class="pre">sum_k</span> <span class="pre">w_k</span> <span class="pre">S_k(t)</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Shape <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">T)</span></code>, one row per row of the parameters (<code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">=</span> <span class="pre">1</span></code>
+where every parameter is shared), of the parameters’ floating
+type and on their device. It is differentiable in the parameters
+(and the logits); for <code class="docutils literal notranslate"><span class="pre">score_predictions</span></code> and other NumPy code
+use <code class="docutils literal notranslate"><span class="pre">.detach().cpu().numpy()</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>Tensor</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>A time at or below the start of the distribution’s support has
+survival 1, and one at or past its end 0, as for SurPyval’s models.
+Row <code class="docutils literal notranslate"><span class="pre">i</span></code> equals <code class="docutils literal notranslate"><span class="pre">to_surpyval(dist,</span> <span class="pre">params,</span> <span class="pre">row=i).sf(times)</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span><span class="p">;</span> <span class="n">torch</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s2">"torch"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval.torch</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">spt</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+<span class="gp">... </span>          <span class="s2">"beta"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">)}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">spt</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">],</span> <span class="n">params</span><span class="p">)</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([[1.    , 0.3679, 0.0183],</span>
+<span class="go">       [1.    , 0.7788, 0.3679]])</span>
+</pre></div>
+</div>
+<p>A mixture’s, row by row:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">params</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">constrain</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">spt</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="n">params</span><span class="p">,</span>
+<span class="gp">... </span>       <span class="n">mixture</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span><span class="o">.</span><span class="n">shape</span>
+<span class="go">torch.Size([2, 2])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.torch.to_surpyval">
+<span class="sig-prename descclassname"><span class="pre">surpyval.torch.</span></span><span class="sig-name descname"><span class="pre">to_surpyval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">row</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mixture</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.torch.to_surpyval" title="Link to this definition"></a></dt>
+<dd><p>One row’s prediction as an ordinary SurPyval model: its <code class="docutils literal notranslate"><span class="pre">sf</span></code>,
+<code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">random</span></code> and plots.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dist</strong> (<em>distribution</em>) – One of <code class="xref py py-data docutils literal notranslate"><span class="pre">SUPPORTED</span></code>, such as <code class="docutils literal notranslate"><span class="pre">surpyval.Weibull</span></code>.</p></li>
+<li><p><strong>params</strong> (<em>dict</em>) – Every parameter of <code class="docutils literal notranslate"><span class="pre">dist</span></code> by name, as <a class="reference internal" href="#surpyval.torch.nll" title="surpyval.torch.nll"><code class="xref py py-func docutils literal notranslate"><span class="pre">nll()</span></code></a> takes them
+(with <code class="docutils literal notranslate"><span class="pre">mixture</span></code>, the components’).</p></li>
+<li><p><strong>row</strong> (<em>int</em><em>, </em><em>optional</em>) – The row to turn into a model, from 0 to <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">-</span> <span class="pre">1</span></code> (negative counts
+from the end). It may be left out only where the parameters have
+one row (each is shared).</p></li>
+<li><p><strong>mixture</strong> (<em>Tensor</em><em>, </em><em>optional</em>) – The logits of a mixture’s weights, as <a class="reference internal" href="#surpyval.torch.nll" title="surpyval.torch.nll"><code class="xref py py-func docutils literal notranslate"><span class="pre">nll()</span></code></a> takes them.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">dist.from_params(...)</span></code> of the row’s parameters, or, with
+<code class="docutils literal notranslate"><span class="pre">mixture</span></code>, <code class="docutils literal notranslate"><span class="pre">MixtureModel.from_params(dist,</span> <span class="pre">...)</span></code> of its
+components’ parameters and weights. The values are taken out of
+the graph as double-precision numbers; the model knows nothing of
+torch.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="univariate/parametric_class.html#surpyval.univariate.parametric.parametric.Parametric" title="surpyval.univariate.parametric.parametric.Parametric">Parametric</a> or <a class="reference internal" href="univariate/mixture.html#surpyval.univariate.parametric.mixture_model.MixtureModel" title="surpyval.univariate.parametric.mixture_model.MixtureModel">MixtureModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span><span class="p">;</span> <span class="n">torch</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s2">"torch"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval.torch</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">spt</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+<span class="gp">... </span>          <span class="s2">"beta"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">)}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">to_surpyval</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mf">20.0</span><span class="p">)),</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">(array([20.,  2.]), 0.3679)</span>
+</pre></div>
+</div>
+<p>A mixture’s row is a <code class="docutils literal notranslate"><span class="pre">MixtureModel</span></code>:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">params</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">50.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">),</span>
+<span class="gp">... </span>          <span class="s2">"beta"</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">)}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">logits</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([</span><span class="mf">0.3</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float64</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mm</span> <span class="o">=</span> <span class="n">spt</span><span class="o">.</span><span class="n">to_surpyval</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">mixture</span><span class="o">=</span><span class="n">logits</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mm</span><span class="o">.</span><span class="n">w</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">6</span><span class="p">),</span> <span class="n">mm</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">40</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">(array([0.3, 0.7]), array([0.9336, 0.4647]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<p><code class="docutils literal notranslate"><span class="pre">NLLLoss(dist,</span> <span class="pre">reduction=&quot;mean&quot;)</span></code> is <a class="reference internal" href="#surpyval.torch.nll" title="surpyval.torch.nll"><code class="xref py py-func docutils literal notranslate"><span class="pre">nll()</span></code></a> as a
+<code class="docutils literal notranslate"><span class="pre">torch.nn.Module</span></code>: <code class="docutils literal notranslate"><span class="pre">NLLLoss(dist)(target,</span> <span class="pre">params,</span> <span class="pre">mixture=None)</span></code> is
+<code class="docutils literal notranslate"><span class="pre">nll(dist,</span> <span class="pre">target,</span> <span class="pre">params,</span> <span class="pre">mixture=mixture)</span></code>. It is built when first
+used, so that <code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">surpyval.torch</span></code> does not import torch.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="PyMC%20with%20SurPyval.html" class="btn btn-neutral float-left" title="PyMC with SurPyval" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="surpyval.html" class="btn btn-neutral float-right" title="API" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

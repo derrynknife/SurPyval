@@ -1,0 +1,757 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zero-Inflated Regression &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Interval-Censored Cox Regression" href="Interval-Censored%20Cox%20Regression.html" />
+    <link rel="prev" title="Equivalent Time Scales" href="Equivalent%20Time%20Scales.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Zero-Inflated Regression</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#an-example-power-supplies-from-two-suppliers">An example: power supplies from two suppliers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#choosing-what-acts-on-what">Choosing what acts on what</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#when-a-failure-might-have-been-on-arrival">When a failure might have been on arrival</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-the-model-is-fitted">How the model is fitted</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-model">The model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-is-not-built">What is not built</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Zero-Inflated Regression</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Zero-Inflated Regression.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="zero-inflated-regression">
+<h1>Zero-Inflated Regression<a class="headerlink" href="#zero-inflated-regression" title="Link to this heading"></a></h1>
+<p>Some units fail the moment they are used. They are <em>dead on arrival</em>:</p>
+<ul class="simple">
+<li><p>a power supply that does not start when it is commissioned;</p></li>
+<li><p>a part found broken when its box is opened;</p></li>
+<li><p>a seedling that never germinates, a device rejected at its first
+check, a transplant that fails on the table.</p></li>
+</ul>
+<p>In the data these are failures at time <strong>zero</strong>. An ordinary lifetime
+distribution cannot place a share of its failures at exactly 0, so a
+fit either refuses them or bends its whole shape to accommodate them,
+and gets the life of every other unit wrong.</p>
+<p>A zero-inflated model treats the population as two groups. A unit is
+dead on arrival with some probability, <span class="math notranslate nohighlight">\(f_0\)</span>; a unit that works
+has a time to failure with an ordinary lifetime distribution. A
+zero-inflated <em>regression</em> lets covariates act on both parts, and so
+answers two different questions at once:</p>
+<ul class="simple">
+<li><p><strong>Which units arrive dead?</strong> Which suppliers, routes or batches have a
+higher chance of failing at time 0.</p></li>
+<li><p><strong>How long do the rest last?</strong> Among the units that work, what makes
+failure come sooner.</p></li>
+</ul>
+<p>A covariate can matter for one and not the other. Rough shipping may
+break more units in transit without shortening the life of those that
+survive it; a cheaper supplier may make units that both arrive dead more
+often and wear out sooner. An ordinary regression, with one effect per
+covariate, cannot tell these apart.</p>
+<p>Without covariates this is the zero-inflated model that the
+distributions already fit (<code class="docutils literal notranslate"><span class="pre">Weibull.fit(x,</span> <span class="pre">c,</span> <span class="pre">zi=True)</span></code>, see
+<a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a>). <code class="docutils literal notranslate"><span class="pre">ZeroInflated</span></code> is that model
+with covariates. It is the mirror image of the
+<a class="reference internal" href="Mixture-Cure%20Regression.html"><span class="doc">mixture-cure regression</span></a>, whose extra
+group never fails rather than failing at once. The API reference is
+<a class="reference internal" href="regression/zero_inflated.html"><span class="doc">Zero-Inflated Regression</span></a>.</p>
+<section id="an-example-power-supplies-from-two-suppliers">
+<h2>An example: power supplies from two suppliers<a class="headerlink" href="#an-example-power-supplies-from-two-suppliers" title="Link to this heading"></a></h2>
+<p>A fleet of 1,200 power supplies came from two suppliers (<code class="docutils literal notranslate"><span class="pre">supplier_b</span></code>
+is 1 for the second) and travelled different distances to their sites
+(<code class="docutils literal notranslate"><span class="pre">distance</span></code>, in thousands of kilometres). Some failed at commissioning
+(recorded as 0 days); the rest have been in service for 500 to 1,500
+days. The data are simulated, so the truth is known: the chance of
+arriving dead rises with distance and is higher for supplier B, and
+supplier B’s working units also fail sooner. Distance does nothing to
+the life of a unit that arrived working.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">7</span><span class="p">)</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">1200</span>
+<span class="n">supplier_b</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">distance</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">p_doa</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="o">-</span><span class="mf">3.0</span> <span class="o">+</span> <span class="mf">0.8</span> <span class="o">*</span> <span class="n">supplier_b</span> <span class="o">+</span> <span class="mf">0.9</span> <span class="o">*</span> <span class="n">distance</span><span class="p">)))</span>
+<span class="n">doa</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">p_doa</span>
+<span class="n">life</span> <span class="o">=</span> <span class="mi">2000</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.3</span> <span class="o">*</span> <span class="n">supplier_b</span><span class="p">)</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">in_service</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="mi">1500</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">failed</span> <span class="o">=</span> <span class="o">~</span><span class="n">doa</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">life</span> <span class="o">&lt;</span> <span class="n">in_service</span><span class="p">)</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">"days"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">doa</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">failed</span><span class="p">,</span> <span class="n">life</span><span class="p">,</span> <span class="n">in_service</span><span class="p">)),</span>
+        <span class="s2">"c"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">doa</span> <span class="o">|</span> <span class="n">failed</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="s2">"supplier_b"</span><span class="p">:</span> <span class="n">supplier_b</span><span class="p">,</span>
+        <span class="s2">"distance"</span><span class="p">:</span> <span class="n">distance</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"failed at commissioning:"</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"days"</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>failed at commissioning: 193
+</pre></div>
+</div>
+</div>
+</div>
+<p>A failure at commissioning is <code class="docutils literal notranslate"><span class="pre">days</span> <span class="pre">=</span> <span class="pre">0</span></code> with <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>. Fit the
+model. <code class="docutils literal notranslate"><span class="pre">WeibullZeroInflated</span></code> is <code class="docutils literal notranslate"><span class="pre">ZeroInflated(Weibull)</span></code>: a Weibull
+life for the units that work and a logistic regression for the chance of
+arriving dead.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullZeroInflated</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"days"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"supplier_b"</span><span class="p">,</span> <span class="s2">"distance"</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Zero-Inflated Regression SurPyval Model
+=======================================
+Kind                : Distributional
+Distribution        : WeibullZeroInflated
+Parameters          : log(alpha) ~ 1 - supplier_b - distance; log(beta) ~ 1; logit(f0) ~ 1 + supplier_b + distance
+Fitted by           : MLE
+Data                : 1200 units: 579 events at 387 unique times, 621 right censored
+Baseline            : WeibullZeroInflated parameters; Wald 95% intervals
+           estimate      se  lower 95%  upper 95%
+    alpha      1852   152.2       1577       2176
+    beta      1.542 0.06932      1.412      1.684
+    f0      0.04837 0.01021    0.03187    0.07278
+Coefficients        : Wald 95% intervals
+                        coef  se(coef)  lower 95%  upper 95%      z         p
+    alpha_supplier_b  0.2627   0.06713     0.1311     0.3942  3.913 9.117e-05
+    alpha_distance   0.02276   0.05878   -0.09244      0.138 0.3872    0.6986
+    f0_supplier_b     0.8006    0.1663     0.4747      1.127  4.814 1.477e-06
+    f0_distance       0.7973    0.1458     0.5116      1.083   5.47 4.502e-08
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>How to read it:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code> are the Weibull scale and shape of a working
+unit’s life at the reference row (supplier A, no distance), and <code class="docutils literal notranslate"><span class="pre">f0</span></code>
+is the probability there of arriving dead: about 5%. It is the same
+name as the univariate fit’s zero-inflation share.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">f0_supplier_b</span></code> and <code class="docutils literal notranslate"><span class="pre">f0_distance</span></code> are the coefficients of the
+dead-on-arrival chance, on the logit scale, so <code class="docutils literal notranslate"><span class="pre">exp</span></code> of one is an
+odds ratio. A supplier B unit has <code class="docutils literal notranslate"><span class="pre">exp(0.80)</span> <span class="pre">=</span> <span class="pre">2.2</span></code> times the odds of
+arriving dead, and each thousand kilometres multiplies the odds by
+about the same again.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">alpha_supplier_b</span></code> and <code class="docutils literal notranslate"><span class="pre">alpha_distance</span></code> are the coefficients of the
+life of the units that work, with the sign of SurPyval’s AFT models:
+positive means shorter. A working supplier B unit has
+<code class="docutils literal notranslate"><span class="pre">exp(-0.26)</span> <span class="pre">=</span> <span class="pre">0.77</span></code> times the life of a supplier A unit. Distance
+shows no effect on the life of a unit that arrived working
+(<code class="docutils literal notranslate"><span class="pre">alpha_distance</span></code> is near 0, as simulated): it only breaks units on
+the way.</p></li>
+</ul>
+<p>Every coefficient has the same sign convention: <strong>positive is worse</strong>, a
+higher chance of arriving dead or an earlier failure.</p>
+<p>The two parts for a given unit:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rows</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"supplier_b"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="s2">"distance"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]})</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"dead on arrival:"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">doa_probability</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span>
+    <span class="s2">"median life of a unit that works:"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">rows</span><span class="p">,</span> <span class="n">susceptible</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>dead on arrival: [0.101 0.201]
+median life of a unit that works: [1428. 1098.]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code> and the rest are the <em>population’s</em>: the survival
+of a unit about to be commissioned, which drops to <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">f0</span></code> at time 0.
+With <code class="docutils literal notranslate"><span class="pre">susceptible=True</span></code> they are those of a unit that worked at
+commissioning.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">b</span> <span class="o">=</span> <span class="n">rows</span><span class="o">.</span><span class="n">iloc</span><span class="p">[[</span><span class="mi">1</span><span class="p">]]</span>
+<span class="n">t</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">365</span><span class="p">,</span> <span class="mi">1000</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"a unit to be commissioned:"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"a unit that started      :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">susceptible</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"95% bounds at 365 days   :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="mi">365</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>a unit to be commissioned: [0.799 0.704 0.439]
+a unit that started      : [1.    0.881 0.549]
+95% bounds at 365 days   : [0.67  0.736]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The difference is the spares question. To cover a site for a year, plan
+for the units that will arrive dead <em>and</em> for the working ones that will
+fail in service; once a unit is running, only the second applies.</p>
+<section id="choosing-what-acts-on-what">
+<h3>Choosing what acts on what<a class="headerlink" href="#choosing-what-acts-on-what" title="Link to this heading"></a></h3>
+<p>By default every covariate acts on <code class="docutils literal notranslate"><span class="pre">f0</span></code> and on the latency’s life
+parameter (the scale of a Weibull or log-logistic, <code class="docutils literal notranslate"><span class="pre">mu</span></code> of a
+log-normal, the rate of a gamma or exponential). <code class="docutils literal notranslate"><span class="pre">covariates</span></code> chooses,
+by parameter; with a data frame, <code class="docutils literal notranslate"><span class="pre">formulas</span></code> gives each part its own
+formula:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">chosen</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullZeroInflated</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span>
+    <span class="n">x_col</span><span class="o">=</span><span class="s2">"days"</span><span class="p">,</span>
+    <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span><span class="p">,</span>
+    <span class="n">formulas</span><span class="o">=</span><span class="p">{</span><span class="s2">"f0"</span><span class="p">:</span> <span class="s2">"supplier_b + distance"</span><span class="p">,</span> <span class="s2">"alpha"</span><span class="p">:</span> <span class="s2">"supplier_b"</span><span class="p">},</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">chosen</span><span class="o">.</span><span class="n">parameter_names</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"AIC, distance on both parts:"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">aic</span><span class="p">(),</span> <span class="mi">1</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"AIC, distance on f0 only   :"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">chosen</span><span class="o">.</span><span class="n">aic</span><span class="p">(),</span> <span class="mi">1</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>['alpha', 'beta', 'f0', 'alpha_supplier_b', 'f0_supplier_b', 'f0_distance']
+AIC, distance on both parts: 7613.9
+AIC, distance on f0 only   : 7612.1
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Dropping distance from the life lowers the AIC: the data agree that it
+does not change how long a working unit lasts. A covariate on the shape
+is possible too (<code class="docutils literal notranslate"><span class="pre">covariates={&quot;beta&quot;:</span> <span class="pre">[...]}</span></code>), as in a
+<a class="reference internal" href="Distributional%20Regression.html"><span class="doc">distributional regression</span></a>, of which
+this model is a member: the fits, checks, bounds (<code class="docutils literal notranslate"><span class="pre">cb</span></code>, <code class="docutils literal notranslate"><span class="pre">param_cb</span></code>
+and <code class="docutils literal notranslate"><span class="pre">parameter_cb</span></code> with Wald, likelihood-ratio and bootstrap methods),
+weights, <code class="docutils literal notranslate"><span class="pre">fit_penalised</span></code>, <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> and <code class="docutils literal notranslate"><span class="pre">from_dict</span></code> are that
+family’s. <code class="docutils literal notranslate"><span class="pre">ZeroInflated(Weibull,</span> <span class="pre">incidence=&quot;probit&quot;)</span></code> (or
+<code class="docutils literal notranslate"><span class="pre">&quot;cloglog&quot;</span></code>) changes the link of <code class="docutils literal notranslate"><span class="pre">f0</span></code>.</p>
+</section>
+</section>
+<section id="when-a-failure-might-have-been-on-arrival">
+<h2>When a failure might have been on arrival<a class="headerlink" href="#when-a-failure-might-have-been-on-arrival" title="Link to this heading"></a></h2>
+<p>Sometimes the data do not say whether a unit was dead on arrival. A site
+that is only visited at day 30 finds a failed unit, but cannot tell
+whether it failed at commissioning or on day 12. That unit’s time is
+recorded as an interval from 0 to 30 (or as left censored at 30: “failed
+by day 30”). Such a row is evidence for both parts at once, and the
+model uses it that way: it contributes
+<span class="math notranslate nohighlight">\(f_0 + (1 - f_0) F_u(30)\)</span>, the chance of arriving dead <em>or</em>
+failing by day 30.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">visited</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.3</span>
+<span class="n">early</span> <span class="o">=</span> <span class="n">visited</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"days"</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="mi">30</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"c"</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+<span class="n">inspected</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span>
+    <span class="n">lo</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">early</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">df</span><span class="p">[</span><span class="s2">"days"</span><span class="p">]),</span>
+    <span class="n">hi</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">early</span><span class="p">,</span> <span class="mf">30.0</span><span class="p">,</span> <span class="n">df</span><span class="p">[</span><span class="s2">"days"</span><span class="p">]),</span>
+    <span class="n">c</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">early</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">df</span><span class="p">[</span><span class="s2">"c"</span><span class="p">]),</span>
+<span class="p">)</span>
+<span class="n">joint</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullZeroInflated</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">inspected</span><span class="p">,</span>
+    <span class="n">xl_col</span><span class="o">=</span><span class="s2">"lo"</span><span class="p">,</span>
+    <span class="n">xr_col</span><span class="o">=</span><span class="s2">"hi"</span><span class="p">,</span>
+    <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span><span class="p">,</span>
+    <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"supplier_b"</span><span class="p">,</span> <span class="s2">"distance"</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">early</span><span class="o">.</span><span class="n">sum</span><span class="p">()),</span> <span class="s2">"units found failed at the day-30 visit"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"route:"</span><span class="p">,</span> <span class="n">joint</span><span class="o">.</span><span class="n">fit_route</span><span class="p">)</span>
+<span class="n">joint</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>53 units found failed at the day-30 visit
+route: joint
+</pre></div>
+</div>
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th></th>
+      <th>coef</th>
+      <th>exp(coef)</th>
+      <th>se(coef)</th>
+      <th>coef lower 95%</th>
+      <th>coef upper 95%</th>
+      <th>exp(coef) lower 95%</th>
+      <th>exp(coef) upper 95%</th>
+      <th>z</th>
+      <th>p</th>
+    </tr>
+    <tr>
+      <th>part</th>
+      <th>name</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th rowspan="3" valign="top">baseline</th>
+      <th>alpha</th>
+      <td>1858.047</td>
+      <td>NaN</td>
+      <td>153.931</td>
+      <td>1579.568</td>
+      <td>2185.621</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>beta</th>
+      <td>1.531</td>
+      <td>NaN</td>
+      <td>0.070</td>
+      <td>1.400</td>
+      <td>1.675</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>f0</th>
+      <td>0.048</td>
+      <td>NaN</td>
+      <td>0.010</td>
+      <td>0.031</td>
+      <td>0.072</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th rowspan="4" valign="top">coefficients</th>
+      <th>alpha_supplier_b</th>
+      <td>0.264</td>
+      <td>NaN</td>
+      <td>0.068</td>
+      <td>0.131</td>
+      <td>0.397</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>3.904</td>
+      <td>0.000</td>
+    </tr>
+    <tr>
+      <th>alpha_distance</th>
+      <td>0.023</td>
+      <td>NaN</td>
+      <td>0.059</td>
+      <td>-0.093</td>
+      <td>0.139</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>0.383</td>
+      <td>0.702</td>
+    </tr>
+    <tr>
+      <th>f0_supplier_b</th>
+      <td>0.803</td>
+      <td>NaN</td>
+      <td>0.167</td>
+      <td>0.475</td>
+      <td>1.130</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>4.807</td>
+      <td>0.000</td>
+    </tr>
+    <tr>
+      <th>f0_distance</th>
+      <td>0.801</td>
+      <td>NaN</td>
+      <td>0.146</td>
+      <td>0.514</td>
+      <td>1.088</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>5.469</td>
+      <td>0.000</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The estimates barely move: losing the exact times of a few early
+failures costs little. The fit is a different route to the same kind of
+answer, as the next section explains.</p>
+</section>
+<section id="how-the-model-is-fitted">
+<h2>How the model is fitted<a class="headerlink" href="#how-the-model-is-fitted" title="Link to this heading"></a></h2>
+<p><strong>When every row says whether its unit was dead on arrival</strong> (a failure
+at 0 was; a failure or a censoring after 0 was not), the likelihood
+splits into two pieces with no parameter in common:</p>
+<ul class="simple">
+<li><p>a <strong>binary regression</strong>, dead on arrival or not, over every unit; and</p></li>
+<li><p>the <strong>latency’s regression</strong>, over the units that worked, with all
+their censoring and truncation.</p></li>
+</ul>
+<p>Each is fitted on its own, and together they are exactly the joint
+maximum, with a covariance that has no terms between the two parts.
+This is the <em>two-stage</em> route, the usual one, and it is fast and
+reliable: neither piece can pull the other off course.</p>
+<p><strong>When some rows do not say</strong> (left censoring, an interval that starts
+at 0, or right truncation without late entry), those rows tie the two
+parts together, and both are searched together from the zero-inflated
+fit without covariates. This is the <em>joint</em> route.</p>
+<p><code class="docutils literal notranslate"><span class="pre">fit</span></code> chooses the route (<code class="docutils literal notranslate"><span class="pre">method=&quot;auto&quot;</span></code>); <code class="docutils literal notranslate"><span class="pre">method=&quot;joint&quot;</span></code> forces
+the joint search, and <code class="docutils literal notranslate"><span class="pre">method=&quot;two-stage&quot;</span></code> refuses data that do not
+allow it. <code class="docutils literal notranslate"><span class="pre">model.fit_route</span></code> says which was used. A fit with <code class="docutils literal notranslate"><span class="pre">fixed</span></code>
+parameters or an <code class="docutils literal notranslate"><span class="pre">init</span></code> is searched jointly.</p>
+<p><strong>Late entry.</strong> A unit that entered observation at an age above 0 (left
+truncation, <code class="docutils literal notranslate"><span class="pre">tl</span> <span class="pre">&gt;</span> <span class="pre">0</span></code>) was known to be working then, so it says nothing
+about <code class="docutils literal notranslate"><span class="pre">f0</span></code>: it is left out of the binary regression and enters only
+the latency’s, divided by its survival to the entry age. A left
+truncation at 0 is no truncation.</p>
+</section>
+<section id="the-model">
+<h2>The model<a class="headerlink" href="#the-model" title="Link to this heading"></a></h2>
+<p>A unit with covariates <span class="math notranslate nohighlight">\(z\)</span> is dead on arrival with probability
+<span class="math notranslate nohighlight">\(f_0(z)\)</span>, and a unit that works has a life with distribution
+function <span class="math notranslate nohighlight">\(F_u(t \mid z)\)</span>. The population’s distribution function
+is</p>
+<div class="math notranslate nohighlight">
+\[F(t \mid z) = f_0(z) + \bigl(1 - f_0(z)\bigr)\, F_u(t \mid z),\]</div>
+<p>which jumps to <span class="math notranslate nohighlight">\(f_0(z)\)</span> at time 0.</p>
+<p><strong>Dead on arrival.</strong> <span class="math notranslate nohighlight">\(g(f_0(z)) = g(f_0) + x_{f_0}(z)' b_{f_0}\)</span>,
+with <span class="math notranslate nohighlight">\(g\)</span> the logit (the default; logistic regression), the probit
+or the complementary log-log link, chosen by <code class="docutils literal notranslate"><span class="pre">ZeroInflated(latency,</span>
+<span class="pre">incidence=...)</span></code>. <code class="docutils literal notranslate"><span class="pre">f0</span></code> is <span class="math notranslate nohighlight">\(f_0\)</span> at the reference row.</p>
+<p><strong>Latency.</strong> A Weibull, log-normal, log-logistic, gamma or exponential
+distribution whose parameters depend on the covariates through their own
+links, as in a <a class="reference internal" href="Distributional%20Regression.html"><span class="doc">distributional regression</span></a>: a scale as <span class="math notranslate nohighlight">\(\alpha(z) = \alpha\, e^{-x' b}\)</span> (the AFT
+model), a location as <span class="math notranslate nohighlight">\(\mu(z) = \mu - x' b\)</span>, a rate as
+<span class="math notranslate nohighlight">\(\lambda(z) = \lambda\, e^{x' b}\)</span>.</p>
+<p><strong>Likelihood.</strong> Each kind of observation contributes what the population
+model says of it:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 45.0%" />
+<col style="width: 55.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Observation</p></th>
+<th class="head"><p>Contribution</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Failed at 0 (dead on arrival)</p></td>
+<td><p><span class="math notranslate nohighlight">\(f_0\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>Failed at <span class="math notranslate nohighlight">\(t &gt; 0\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\((1 - f_0)\, f_u(t)\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>Still working at <span class="math notranslate nohighlight">\(t\)</span> (right censored)</p></td>
+<td><p><span class="math notranslate nohighlight">\((1 - f_0)\, S_u(t)\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>Failed by <span class="math notranslate nohighlight">\(t\)</span> (left censored, or an interval from 0 to
+<span class="math notranslate nohighlight">\(t\)</span>)</p></td>
+<td><p><span class="math notranslate nohighlight">\(f_0 + (1 - f_0)\, F_u(t)\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>Failed between <span class="math notranslate nohighlight">\(l &gt; 0\)</span> and <span class="math notranslate nohighlight">\(r\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\((1 - f_0)\, (F_u(r) - F_u(l))\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>Entered observation at age <span class="math notranslate nohighlight">\(a &gt; 0\)</span> (left truncated)</p></td>
+<td><p>divided by <span class="math notranslate nohighlight">\((1 - f_0)\, S_u(a)\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<p>Counts <code class="docutils literal notranslate"><span class="pre">n</span></code> and weights <code class="docutils literal notranslate"><span class="pre">w</span></code> multiply each row’s term. The covariance
+is the inverse of the observed information (the robust one for a
+weighted fit), and the fit reports whether it reached a verified maximum
+(<code class="docutils literal notranslate"><span class="pre">model.maximum</span></code>). With no covariates on either part the fit is the
+distribution’s own zero-inflated fit, <code class="docutils literal notranslate"><span class="pre">latency.fit(x,</span> <span class="pre">c,</span> <span class="pre">zi=True)</span></code>, to
+the last digit of the likelihood.</p>
+<p>An interval starting at 0 includes the units dead on arrival, because
+an inspection that finds a unit failed cannot tell when, and the unit
+may never have worked; the univariate fits (<code class="docutils literal notranslate"><span class="pre">fit(zi=True)</span></code>) read it
+the same way. Record a failure known to be after 0 with a lower bound
+above 0. This is the likelihood of Moulton and Halsey (1995) and of
+Braekers and Grouwels (2016), whose rows “failed by <span class="math notranslate nohighlight">\(t\)</span>” include
+the mass at 0.</p>
+<p><strong>Refusals.</strong> If no unit failed at 0 and every row says its unit worked,
+<code class="docutils literal notranslate"><span class="pre">f0</span></code> is estimated as 0 and the model is the latency’s regression
+alone: the fit refuses and says to fit that instead. If every unit that
+could have been dead on arrival was, there is no life left to fit, and
+the fit refuses too. Where the joint route’s <code class="docutils literal notranslate"><span class="pre">f0</span></code> runs towards 0, the
+fit warns “No finite maximum”, naming <code class="docutils literal notranslate"><span class="pre">f0</span></code>.</p>
+</section>
+<section id="what-is-not-built">
+<h2>What is not built<a class="headerlink" href="#what-is-not-built" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>A semi-parametric (Cox) latency</strong>: the latency here is parametric.</p></li>
+<li><p><strong>Zero inflation and a cure fraction together</strong> (<code class="docutils literal notranslate"><span class="pre">zi=True</span></code> with
+<code class="docutils literal notranslate"><span class="pre">lfp=True</span></code>).</p></li>
+<li><p><strong>Latencies on the whole line</strong> (normal, Gumbel, logistic): a time to
+failure is positive.</p></li>
+<li><p><strong>Covariate paths</strong> (<code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code>), as for every distributional
+regression.</p></li>
+</ul>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Lambert, D. (1992). Zero-inflated Poisson regression, with an
+application to defects in manufacturing. <em>Technometrics</em> 34, 1-14.</p></li>
+<li><p>Moulton, L. H. and Halsey, N. A. (1995). A mixture model with
+detection limits for regression analyses of antibody response to
+vaccine. <em>Biometrics</em> 51(4).</p></li>
+<li><p>Grouwels, Y. (2015). PhD thesis, chapter 2, section 2.1 (the
+likelihood of zero-inflated left-censored data, p. 11).</p></li>
+<li><p>Braekers, R. and Grouwels, Y. (2016). <em>Communications in Statistics -
+Theory and Methods</em> 45(7).</p></li>
+<li><p>Farewell, V. T. (1982). The use of mixture models for the analysis of
+survival data with long-term survivors. <em>Biometrics</em> 38, 1041-1046.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Equivalent%20Time%20Scales.html" class="btn btn-neutral float-left" title="Equivalent Time Scales" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Interval-Censored%20Cox%20Regression.html" class="btn btn-neutral float-right" title="Interval-Censored Cox Regression" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

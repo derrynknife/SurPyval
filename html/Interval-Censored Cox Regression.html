@@ -1,0 +1,440 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Interval-Censored Cox Regression &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Pseudo-Observations" href="Pseudo-Observations.html" />
+    <link rel="prev" title="Zero-Inflated Regression" href="Zero-Inflated%20Regression.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Interval-Censored Cox Regression</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#in-plain-words">In plain words</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-model">The model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#an-example-a-condition-found-at-check-ups">An example: a condition found at check-ups</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#exact-and-right-censored-data">Exact and right-censored data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-it-does-not-do">What it does not do</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Interval-Censored Cox Regression</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Interval-Censored Cox Regression.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="interval-censored-cox-regression">
+<h1>Interval-Censored Cox Regression<a class="headerlink" href="#interval-censored-cox-regression" title="Link to this heading"></a></h1>
+<p>Often a failure is not seen when it happens, only found at the next
+look:</p>
+<ul class="simple">
+<li><p>a crack found at an inspection was not there at the one before;</p></li>
+<li><p>a patient’s test is negative at one visit and positive at the next;</p></li>
+<li><p>a buried pipe is found leaking at a survey, years after it was laid.</p></li>
+</ul>
+<p>The time of the event is then known only to lie <em>between</em> two
+inspections. These are interval-censored data (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>, with <code class="docutils literal notranslate"><span class="pre">x</span></code>
+given as <code class="docutils literal notranslate"><span class="pre">[left,</span> <span class="pre">right]</span></code> pairs; see <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>). An event
+before the first look is left censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code>), and a unit still
+fine at its last look is right censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>).</p>
+<p>The Cox model (<a class="reference internal" href="regression/cox_ph.html"><span class="doc">Cox Proportional Hazards</span></a>) cannot use such rows: its
+partial likelihood compares, at each event time, the unit that failed
+with the units still at risk, and with intervals nobody knows when the
+event happened or who was at risk then. <code class="docutils literal notranslate"><span class="pre">IntervalCoxPH</span></code> keeps what
+makes the Cox model attractive – the covariates multiply the hazard,
+and the shape of the baseline is left to the data – and fits the full
+likelihood instead.</p>
+<section id="in-plain-words">
+<h2>In plain words<a class="headerlink" href="#in-plain-words" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>What it estimates.</strong> One hazard ratio per covariate, as in Cox
+regression: <code class="docutils literal notranslate"><span class="pre">exp(coef)</span> <span class="pre">=</span> <span class="pre">2</span></code> means the event comes at twice the rate,
+at every age.</p></li>
+<li><p><strong>The baseline.</strong> The survival curve of a unit with all covariates at
+0 is estimated without a formula, the way the Turnbull estimator
+estimates one group’s curve from intervals: it can only drop inside
+the <em>Turnbull intervals</em>, the stretches of time where the data say
+failures happened. Where exactly inside such an interval the drop
+happens, the data cannot say; the curve is shown dropping at the
+interval’s end.</p></li>
+<li><p><strong>How sure it is.</strong> The standard errors come from the <em>profile
+likelihood</em>: how fast the fit’s likelihood falls as a coefficient moves
+away from its estimate, with the baseline re-fitted at each value.
+<code class="docutils literal notranslate"><span class="pre">param_cb</span></code> gives Wald intervals from them, profile likelihood-ratio
+intervals (<code class="docutils literal notranslate"><span class="pre">method=&quot;lr&quot;</span></code>) or bootstrap intervals
+(<code class="docutils literal notranslate"><span class="pre">method=&quot;bootstrap&quot;</span></code>).</p></li>
+</ul>
+</section>
+<section id="the-model">
+<h2>The model<a class="headerlink" href="#the-model" title="Link to this heading"></a></h2>
+<div class="math notranslate nohighlight">
+\[S(x \mid Z) = S_0(x)^{\exp(\beta' Z)}\]</div>
+<p>Row <span class="math notranslate nohighlight">\(i\)</span> adds the log of the probability of what was seen: for an
+interval <span class="math notranslate nohighlight">\((l_i, r_i]\)</span>, <span class="math notranslate nohighlight">\(S(l_i \mid Z_i) - S(r_i \mid Z_i)\)</span>;
+for a left-censored row <span class="math notranslate nohighlight">\(1 - S(r_i \mid Z_i)\)</span>; for a right-censored
+row <span class="math notranslate nohighlight">\(S(l_i \mid Z_i)\)</span>; for an exact time the drop of the curve
+there. With an entry time <span class="math notranslate nohighlight">\(t_{l,i}\)</span> (left truncation) the
+probability is divided by <span class="math notranslate nohighlight">\(S(t_{l,i} \mid Z_i)\)</span>. <span class="math notranslate nohighlight">\(S_0\)</span> puts
+mass only on the Turnbull intervals of all the rows pooled, and is
+maximised together with <span class="math notranslate nohighlight">\(\beta\)</span> (Finkelstein 1986; Huang 1996). It
+is the model of R’s <code class="docutils literal notranslate"><span class="pre">icenReg::ic_sp(model</span> <span class="pre">=</span> <span class="pre">&quot;ph&quot;)</span></code>, and SurPyval’s fits
+agree with it.</p>
+<p>The standard errors are the profile likelihood’s (Murphy and van der
+Vaart 2000): the curvature of
+<span class="math notranslate nohighlight">\(p\ell(\beta) = \max_{S_0} \ell(\beta, S_0)\)</span> by second
+differences, with a step of <span class="math notranslate nohighlight">\(1/\sqrt{N}\)</span> standard deviations of
+each covariate. With interval censoring the baseline is estimated more
+slowly than the coefficients, so the curvature of the likelihood in the
+baseline’s masses is not a valid variance; the profile likelihood’s is.</p>
+</section>
+<section id="an-example-a-condition-found-at-check-ups">
+<h2>An example: a condition found at check-ups<a class="headerlink" href="#an-example-a-condition-found-at-check-ups" title="Link to this heading"></a></h2>
+<p>Two hundred units, half of them treated (<code class="docutils literal notranslate"><span class="pre">treated</span></code>), with an age at
+the start (<code class="docutils literal notranslate"><span class="pre">age</span></code>, centred), are checked every one to three months;
+each check says only whether a condition has appeared yet. The data are
+simulated, so the truth is known: treatment halves the hazard
+(<span class="math notranslate nohighlight">\(\beta = \log 0.5 \approx -0.69\)</span>) and each year of age raises it
+by 5% (<span class="math notranslate nohighlight">\(\beta \approx 0.049\)</span>).</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">11</span><span class="p">)</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">200</span>
+<span class="n">treated</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">age</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">life</span> <span class="o">=</span> <span class="mi">12</span> <span class="o">*</span> <span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+             <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">treated</span> <span class="o">+</span> <span class="mf">0.049</span> <span class="o">*</span> <span class="n">age</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mf">1.3</span><span class="p">)</span>
+<span class="n">x</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">2</span><span class="p">)),</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="n">visits</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">r_</span><span class="p">[</span><span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">40</span><span class="p">)])</span>
+    <span class="n">visits</span> <span class="o">=</span> <span class="n">visits</span><span class="p">[</span><span class="n">visits</span> <span class="o">&lt;=</span> <span class="mi">36</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">life</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">visits</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+        <span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">visits</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="o">-</span><span class="mi">1</span>        <span class="c1"># before the first check</span>
+    <span class="k">elif</span> <span class="n">life</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">visits</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
+        <span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">visits</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="mi">1</span>        <span class="c1"># still fine at the last</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">searchsorted</span><span class="p">(</span><span class="n">visits</span><span class="p">,</span> <span class="n">life</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">c</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">visits</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">visits</span><span class="p">[</span><span class="n">k</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]),</span> <span class="mi">2</span>
+<span class="n">Z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">treated</span><span class="p">,</span> <span class="n">age</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">c</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>  <span class="c1"># left, (exact), right, interval</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[  7   0  18 175]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">IntervalCoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Semi-Parametric Regression SurPyval Model
+=========================================
+Type                : Proportional Hazards
+Kind                : NPMLE for interval-censored data (Turnbull intervals)
+Parameterization    : Semi-Parametric
+Data                : 200 units: 182 events (0 exact, 7 left censored, 175 interval censored), 18 right censored
+Coefficients        : exp(coef) is the hazard ratio; Wald 95% intervals from the profile likelihood
+              coef  exp(coef)  se(coef)  lower 95%  upper 95%      z         p
+    coef_0 -0.5627     0.5697     0.157    -0.8704     -0.255 -3.584 0.0003379
+    coef_1  0.0508      1.052   0.00802    0.03508    0.06652  6.334 2.384e-10
+</pre></div>
+</div>
+</div>
+</div>
+<p>The hazard ratios with their 95% intervals, by each method:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"coef_0"</span><span class="p">)))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"coef_0"</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"lr"</span><span class="p">)))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"coef_0"</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s2">"bootstrap"</span><span class="p">,</span>
+                            <span class="n">n_boot</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.41876692 0.77489702]
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.41787946 0.77383427]
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.4091234  0.77952043]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The predicted survival of an untreated and a treated unit of average
+age, at one and two years:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">12</span><span class="p">,</span> <span class="mi">24</span><span class="p">],</span> <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]],</span> <span class="n">grid</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([[0.383, 0.094],
+       [0.579, 0.261]])
+</pre></div>
+</div>
+</div>
+</div>
+<p>A parametric PH model of the same data assumes a Weibull baseline. Where
+it fits, its coefficients are close, and it has bounds on the curves and
+<code class="docutils literal notranslate"><span class="pre">diagnose()</span></code>; the semi-parametric model makes no assumption about the
+baseline’s shape.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">weibull</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">weibull</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">:]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="n">model</span><span class="o">.</span><span class="n">beta</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[-0.551  0.05 ] [-0.563  0.051]
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="exact-and-right-censored-data">
+<h2>Exact and right-censored data<a class="headerlink" href="#exact-and-right-censored-data" title="Link to this heading"></a></h2>
+<p>The model takes exact times too (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>). With only exact and
+right-censored rows, it is the grouped-data proportional hazards model
+(Prentice and Gloeckler 1978): each event time is a drop of a discrete
+survival curve, where <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>’s partial likelihood treats the baseline
+as a continuous hazard. The coefficients are close and draw together as
+the data grow, but are not equal; for such data <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code> is the usual
+choice, with its residuals, strata, time-varying covariates and
+diagnostics.</p>
+</section>
+<section id="what-it-does-not-do">
+<h2>What it does not do<a class="headerlink" href="#what-it-does-not-do" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Bounds on the curves.</strong> <code class="docutils literal notranslate"><span class="pre">cb</span></code> refuses: no variance of the
+interval-censored baseline is offered. Bound the coefficients with
+<code class="docutils literal notranslate"><span class="pre">param_cb</span></code>, or use a parametric PH model (<code class="docutils literal notranslate"><span class="pre">WeibullPH</span></code>), whose
+<code class="docutils literal notranslate"><span class="pre">cb</span></code> bounds the curves.</p></li>
+<li><p><strong>Right truncation.</strong> Refused; a parametric PH model takes
+<code class="docutils literal notranslate"><span class="pre">t=[tl,</span> <span class="pre">tr]</span></code>.</p></li>
+<li><p><strong>Proportional odds.</strong> The semi-parametric proportional odds model
+(<code class="docutils literal notranslate"><span class="pre">ProportionalOdds</span></code>) takes exact and right-censored data only; for
+interval-censored data use a parametric PO model (<code class="docutils literal notranslate"><span class="pre">PO(LogLogistic)</span></code>,
+<code class="docutils literal notranslate"><span class="pre">WeibullPO</span></code>).</p></li>
+<li><p><strong>Diagnostics.</strong> <code class="docutils literal notranslate"><span class="pre">diagnose()</span></code> refuses and says what to check
+instead: a parametric PH fit’s <code class="docutils literal notranslate"><span class="pre">diagnose()</span></code>, and each group’s
+predicted curve against its Turnbull estimate.</p></li>
+</ul>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<p>Finkelstein, D. M. (1986), “A proportional hazards model for
+interval-censored failure time data”, <em>Biometrics</em> 42, 845-854.</p>
+<p>Huang, J. (1996), “Efficient estimation for the proportional hazards
+model with interval censoring”, <em>Annals of Statistics</em> 24, 540-568.</p>
+<p>Murphy, S. A. and van der Vaart, A. W. (2000), “On profile likelihood”,
+<em>Journal of the American Statistical Association</em> 95, 449-465.</p>
+<p>Prentice, R. L. and Gloeckler, L. A. (1978), “Regression analysis of
+grouped survival data with application to breast cancer data”,
+<em>Biometrics</em> 34, 57-67.</p>
+<p>Anderson-Bergman, C. (2017), “icenReg: regression models for interval
+censored data in R”, <em>Journal of Statistical Software</em> 81(12).</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Zero-Inflated%20Regression.html" class="btn btn-neutral float-left" title="Zero-Inflated Regression" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Pseudo-Observations.html" class="btn btn-neutral float-right" title="Pseudo-Observations" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

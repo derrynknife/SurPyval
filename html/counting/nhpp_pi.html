@@ -1,0 +1,663 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NHPP Regression &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Semi-Parametric Recurrent-Event Regression" href="recurrent_cox.html" />
+    <link rel="prev" title="HPP Regression" href="hpp_pi.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#software-reliability-growth-models">Software Reliability Growth Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#models-of-the-times-between-failures">Models of the Times Between Failures</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#panel-counts">Panel Counts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="proportional_intensity_models.html">Proportional Intensity Regression Model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="hpp_pi.html">HPP Regression</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">NHPP Regression</a></li>
+<li class="toctree-l4"><a class="reference internal" href="recurrent_cox.html">Semi-Parametric Recurrent-Event Regression</a></li>
+<li class="toctree-l4"><a class="reference internal" href="joint_frailty.html">Joint Frailty Model (Recurrent and Terminal Events)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="shared_frailty.html">Shared Frailty (Poisson Processes Whose Units Differ)</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#trend-tests-and-diagnostics">Trend Tests and Diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#interventions">Interventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">NHPP Regression</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/nhpp_pi.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="nhpp-regression">
+<h1>NHPP Regression<a class="headerlink" href="#nhpp-regression" title="Link to this heading"></a></h1>
+<p>Proportional-intensity NHPP regression: a time-varying baseline intensity
+(Duane by default, or Crow-AMSAA, Cox-Lewis or the constant-rate HPP via
+<code class="docutils literal notranslate"><span class="pre">dist</span></code>) scaled by the covariate factor <code class="docutils literal notranslate"><span class="pre">exp(Z</span> <span class="pre">&#64;</span> <span class="pre">beta)</span></code>. The fit returns a
+<a class="reference internal" href="proportional_intensity_models.html"><span class="doc">ProportionalIntensityModel</span></a>, which
+carries the prediction methods (<code class="docutils literal notranslate"><span class="pre">cif</span></code>, <code class="docutils literal notranslate"><span class="pre">iif</span></code>, <code class="docutils literal notranslate"><span class="pre">inv_cif</span></code>, each
+taking the covariates alongside the time).</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP">
+<span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.regression.nhpp_proportional_intensity.</span></span><span class="sig-name descname"><span class="pre">ProportionalIntensityNHPP</span></span><a class="headerlink" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP" title="Link to this definition"></a></dt>
+<dd><p>Proportional-intensity regression on a non-homogeneous Poisson
+process: each item’s intensity is a parametric baseline intensity
+scaled by its covariates,</p>
+<div class="math notranslate nohighlight">
+\[\lambda(t \mid Z) = \lambda_0(t)\, e^{\beta' Z},\]</div>
+<p>with the baseline any NHPP model – <code class="docutils literal notranslate"><span class="pre">Duane</span></code> (the default),
+<code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code> or <code class="docutils literal notranslate"><span class="pre">CoxLewis</span></code> – chosen with <code class="docutils literal notranslate"><span class="pre">baseline</span></code>, as for
+<code class="docutils literal notranslate"><span class="pre">ARI</span></code> (<code class="docutils literal notranslate"><span class="pre">dist</span></code>, its name before v0.24, was removed in v0.25).</p>
+<p><code class="docutils literal notranslate"><span class="pre">ProportionalIntensityNHPP</span></code> is an instance of this class. Its
+<code class="docutils literal notranslate"><span class="pre">fit</span></code> returns a
+<a class="reference internal" href="proportional_intensity_models.html#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">ProportionalIntensityModel</span></code></a>,
+which carries the prediction methods (<code class="docutils literal notranslate"><span class="pre">cif</span></code>, <code class="docutils literal notranslate"><span class="pre">iif</span></code>, <code class="docutils literal notranslate"><span class="pre">inv_cif</span></code>,
+<code class="docutils literal notranslate"><span class="pre">mcf</span></code>), simulation and inference.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProportionalIntensityNHPP</span>
+<span class="gp">&gt;&gt;&gt;</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># Four repairable systems observed until t=20; failures get more</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># frequent over time and the Z=1 group fails faster than the Z=0 group.</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">9</span><span class="p">,</span> <span class="mi">14</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span>
+<span class="gp">... </span>     <span class="mi">7</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span>
+<span class="gp">... </span>     <span class="mi">5</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span>
+<span class="gp">... </span>     <span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">20</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span>
+<span class="gp">... </span>     <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span>
+<span class="gp">... </span>     <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span>
+<span class="gp">... </span>     <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">4</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="c1"># c = 0 is an observed failure, c = 1 the right-censored window close</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span>
+<span class="gp">... </span>     <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span>
+<span class="gp">... </span>     <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span>
+<span class="gp">... </span>     <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span>
+<span class="gp">... </span>              <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span>
+<span class="gp">... </span>              <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span>
+<span class="gp">... </span>              <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">ProportionalIntensityNHPP</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span>
+<span class="go">Proportional Intensity Recurrence Model</span>
+<span class="go">=======================================</span>
+<span class="go">Type                : Proportional Intensity</span>
+<span class="go">Kind                : NHPP</span>
+<span class="go">Parameterization    : Parametric</span>
+<span class="go">Hazard Rate Model   : Duane</span>
+<span class="go">Base Rate Parameters:</span>
+<span class="go">    alpha  :  2.0294701249769567</span>
+<span class="go">    b  :  0.008010947012813689</span>
+
+<span class="go">Covariate Coefficients:</span>
+<span class="go">   coef_0  :  0.45194475814452534</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit">
+<span class="sig-prename descclassname"><span class="pre">ProportionalIntensityNHPP.</span></span><span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x:</span> <span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z:</span> <span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i:</span> <span class="pre">ArrayLike</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c:</span> <span class="pre">ArrayLike</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n:</span> <span class="pre">ArrayLike</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t:</span> <span class="pre">ArrayLike</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl:</span> <span class="pre">ArrayLike</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr:</span> <span class="pre">ArrayLike</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">baseline:</span> <span class="pre">~typing.Any</span> <span class="pre">=</span> <span class="pre">Duane:</span> <span class="pre">non-homogeneous</span> <span class="pre">Poisson</span> <span class="pre">process</span> <span class="pre">fitter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init:</span> <span class="pre">ArrayLike</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty:</span> <span class="pre">str</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cluster:</span> <span class="pre">~typing.Any</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit=None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit" title="Link to this definition"></a></dt>
+<dd><p>Fit the model using the provided data and initial parameters.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – The event times, pooled over items (each row belongs to the item
+named in <code class="docutils literal notranslate"><span class="pre">i</span></code>).
+Or a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> with each row’s unit <code class="docutils literal notranslate"><span class="pre">i</span></code>, which
+holds the data: <code class="docutils literal notranslate"><span class="pre">fit(data)</span></code>, with the other data
+arguments left out. Its rows are read as each unit’s
+history (gaps as <code class="docutils literal notranslate"><span class="pre">windows</span></code>, covariates that change
+within a unit by <code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code> where the model has one),
+and the model’s <code class="docutils literal notranslate"><span class="pre">notes</span></code> say what was made of the
+terminal flags <code class="docutils literal notranslate"><span class="pre">a</span></code>.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em><em> or </em><em>dict</em>) – Covariates: a matrix with one row per row of <code class="docutils literal notranslate"><span class="pre">x</span></code> (a 1-D array
+is a single covariate), or a <code class="docutils literal notranslate"><span class="pre">{item:</span> <span class="pre">covariates}</span></code> dict. They
+describe the item (they are static), so they must be the same
+on every row of an item; values that change within an item
+raise a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p></li>
+<li><p><strong>i</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Identity of the item each row belongs to. Defaults to all rows
+belonging to one item.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Censoring indicators: 0 an observed event, 1 the right-censored
+end of an item’s observation, -1 left-censored and 2
+interval-censored counts (with <code class="docutils literal notranslate"><span class="pre">n</span></code>). Defaults to all observed.</p></li>
+<li><p><strong>n</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Number of events in each row: a count on a left- or
+interval-censored row (<code class="docutils literal notranslate"><span class="pre">c=-1</span></code> or <code class="docutils literal notranslate"><span class="pre">c=2</span></code>). An exact event
+(<code class="docutils literal notranslate"><span class="pre">c=0</span></code>) and an end-of-observation row (<code class="docutils literal notranslate"><span class="pre">c=1</span></code>) stand for one,
+so <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">&gt;</span> <span class="pre">1</span></code> there is refused: repeat the row for simultaneous
+events. Defaults to 1.</p></li>
+<li><p><strong>t</strong> (<em>array_like</em><em>, </em><em>optional</em>) – (N, 2) array of [left, right] truncation bounds per observation.</p></li>
+<li><p><strong>tl</strong> (<em>array_like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Left truncation (delayed entry) time of each item; the
+observation of each item begins here. A scalar applies to every
+item; an array has one value per row (the same on every row of
+an item) or one value per item, in the sorted order of the item
+ids (<code class="docutils literal notranslate"><span class="pre">np.unique(i)</span></code>; read per row when there are as many rows
+as items).</p></li>
+<li><p><strong>tr</strong> (<em>array_like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Right truncation time of each item, given like <code class="docutils literal notranslate"><span class="pre">tl</span></code>; the
+observation window closes here,
+so the baseline intensity is integrated out to <code class="docutils literal notranslate"><span class="pre">tr</span></code> even without
+an explicit right-censoring (<code class="docutils literal notranslate"><span class="pre">c=1</span></code>) row.</p></li>
+<li><p><strong>baseline</strong> (<a class="reference internal" href="parametric_recurrence_model.html#surpyval.recurrent.parametric.counting_process.CountingProcess" title="surpyval.recurrent.parametric.counting_process.CountingProcess"><em>CountingProcess</em></a><em>, </em><em>optional</em>) – The baseline intensity model: <code class="docutils literal notranslate"><span class="pre">Duane</span></code> (the default),
+<code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code> or <code class="docutils literal notranslate"><span class="pre">CoxLewis</span></code> from <code class="docutils literal notranslate"><span class="pre">surpyval.recurrent</span></code>. With
+<code class="docutils literal notranslate"><span class="pre">HPP</span></code> the model is the same as <code class="docutils literal notranslate"><span class="pre">ProportionalIntensityHPP</span></code>.
+Named as <code class="docutils literal notranslate"><span class="pre">ARI</span></code>’s baseline is (#653); its name before v0.24,
+<code class="docutils literal notranslate"><span class="pre">dist</span></code>, was removed in v0.25.</p></li>
+<li><p><strong>init</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Initial parameter estimates: the baseline parameters followed by
+the covariate coefficients (with <code class="docutils literal notranslate"><span class="pre">frailty</span></code>: the baseline
+parameters, <code class="docutils literal notranslate"><span class="pre">theta</span></code>, then the coefficients).</p></li>
+<li><p><strong>frailty</strong> (<em>{'gamma'</em><em>, </em><em>'lognormal'}</em><em>, </em><em>optional</em>) – Give each cluster of items an unobserved frailty that
+multiplies its intensity, for items that differ by more than
+their covariates explain: gamma with mean 1 and variance
+<code class="docutils literal notranslate"><span class="pre">theta</span></code>, or log-normal with <code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">u</span> <span class="pre">~</span> <span class="pre">N(0,</span> <span class="pre">theta)</span></code>.
+<code class="docutils literal notranslate"><span class="pre">theta</span></code> is estimated with the other parameters, and the fit
+is a <code class="xref py py-class docutils literal notranslate"><span class="pre">SharedFrailtyModel</span></code>. It
+needs at least two clusters and each event’s time (no
+<code class="docutils literal notranslate"><span class="pre">c=-1</span></code> or <code class="docutils literal notranslate"><span class="pre">c=2</span></code> counts, no right truncation). Default
+<code class="docutils literal notranslate"><span class="pre">None</span></code>: no frailty.</p></li>
+<li><p><strong>cluster</strong> (<em>mapping</em><em> or </em><em>array_like</em><em>, </em><em>optional</em>) – With <code class="docutils literal notranslate"><span class="pre">frailty</span></code>, the items that share one: <code class="docutils literal notranslate"><span class="pre">{item:</span>
+<span class="pre">cluster}</span></code>, or one label per row of <code class="docutils literal notranslate"><span class="pre">x</span></code> (the same on every
+row of an item). By default each item has its own.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An object containing the results of the fitting process, including
+parameter estimates (a <code class="docutils literal notranslate"><span class="pre">SharedFrailtyModel</span></code> with
+<code class="docutils literal notranslate"><span class="pre">frailty</span></code>).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="proportional_intensity_models.html#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel">ProportionalIntensityModel</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_from_df">
+<span class="sig-prename descclassname"><span class="pre">ProportionalIntensityNHPP.</span></span><span class="sig-name descname"><span class="pre">fit_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pd.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z_cols</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_col</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">fit_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_from_df" title="Link to this definition"></a></dt>
+<dd><p>Fit to an event log held in the columns of a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">pandas.DataFrame</span></code>.</p>
+<p>The column names are passed in place of the arrays <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>
+takes, with the names every recurrent and regression
+<code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> uses; every other <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> option is passed to
+it unchanged. The columns are handed to <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> as they are,
+so the result, and the refusal of a missing value in a unit’s
+history, is that of <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> on the same arrays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pandas.DataFrame</em>) – The event log.</p></li>
+<li><p><strong>x_col</strong> (<em>str</em>) – Column of event (and end-of-observation) times.</p></li>
+<li><p><strong>Z_cols</strong> (<em>str</em><em> or </em><em>list</em><em> of </em><em>str</em>) – Column(s) of the covariates, constant within a unit, in the
+order of the fitted coefficients.</p></li>
+<li><p><strong>i_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Column of item / unit ids. Defaults to a single item.</p></li>
+<li><p><strong>c_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Column of censoring flags (0 an event, 1 the end of a unit’s
+observation).</p></li>
+<li><p><strong>n_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Column of event counts per row.</p></li>
+<li><p><strong>tl_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Columns of per-row left / right truncation.</p></li>
+<li><p><strong>tr_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Columns of per-row left / right truncation.</p></li>
+<li><p><strong>a_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Column of terminal flags: 1 where the row’s event ended the
+unit’s history for good, 0 or blank elsewhere (a blank event
+on a unit’s last row is read as 1). It does not change the
+fit: the model’s <code class="docutils literal notranslate"><span class="pre">notes</span></code> say that each terminal event is
+fitted as an event followed by the end of that unit’s
+observation.</p></li>
+<li><p><strong>**fit_options</strong> – Every other option of <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">dist</span></code>, <code class="docutils literal notranslate"><span class="pre">init</span></code>, …).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The model <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> returns.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="proportional_intensity_models.html#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel">ProportionalIntensityModel</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">df</span></code> is not a DataFrame or a name is not one of its
+    columns.</p></li>
+<li><p><strong>TypeError</strong> – If a column is named with <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>’s argument (<code class="docutils literal notranslate"><span class="pre">c=</span></code> for
+    <code class="docutils literal notranslate"><span class="pre">c_col=</span></code>, <code class="docutils literal notranslate"><span class="pre">Z=</span></code> for <code class="docutils literal notranslate"><span class="pre">Z_cols=</span></code>, …).</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProportionalIntensityHPP</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">log</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="gp">... </span>    <span class="s2">"hours"</span><span class="p">:</span> <span class="p">[</span><span class="mi">120</span><span class="p">,</span> <span class="mi">380</span><span class="p">,</span> <span class="mi">610</span><span class="p">,</span> <span class="mi">700</span><span class="p">,</span> <span class="mi">90</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">330</span><span class="p">,</span> <span class="mi">400</span><span class="p">,</span> <span class="mi">520</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"truck"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"c"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"load"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">ProportionalIntensityHPP</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">log</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="s2">"load"</span><span class="p">,</span> <span class="n">i_col</span><span class="o">=</span><span class="s2">"truck"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">coeffs</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.5849])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc">
+<span class="sig-prename descclassname"><span class="pre">ProportionalIntensityNHPP.</span></span><span class="sig-name descname"><span class="pre">fit_tvc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">i:</span> <span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl:</span> <span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr:</span> <span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c:</span> <span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z:</span> <span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n:</span> <span class="pre">ArrayLike</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">baseline:</span> <span class="pre">~typing.Any</span> <span class="pre">=</span> <span class="pre">Duane:</span> <span class="pre">non-homogeneous</span> <span class="pre">Poisson</span> <span class="pre">process</span> <span class="pre">fitter</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init:</span> <span class="pre">ArrayLike</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit=None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc" title="Link to this definition"></a></dt>
+<dd><p>Fit the model to covariates that change over time, in start-stop
+format.</p>
+<p>Each row is one interval <code class="docutils literal notranslate"><span class="pre">(xl,</span> <span class="pre">xr]</span></code> of item <code class="docutils literal notranslate"><span class="pre">i</span></code>’s history
+over which its covariate row <code class="docutils literal notranslate"><span class="pre">Z</span></code> is constant. The item’s
+intensity at time <code class="docutils literal notranslate"><span class="pre">t</span></code> is the baseline’s at <code class="docutils literal notranslate"><span class="pre">t</span></code> times
+<span class="math notranslate nohighlight">\(e^{\beta' Z}\)</span> for the covariates in force at <code class="docutils literal notranslate"><span class="pre">t</span></code>: the
+value a covariate has now multiplies the intensity now, with no
+memory of its earlier values. So the expected number of failures
+over a row is the baseline’s expected number over <code class="docutils literal notranslate"><span class="pre">(xl,</span> <span class="pre">xr]</span></code>
+times that factor. The arguments are those of the life
+regressions’ <code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code>; an item here may fail many times, so
+any of its rows may end in a failure. With one covariate value
+per item the fit is that of <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p>
+<p>An item’s rows must not overlap. They may leave gaps (the item
+is not at risk in a gap), and a first <code class="docutils literal notranslate"><span class="pre">xl</span></code> above 0 is delayed
+entry. Cutting a row in two with the same covariates changes
+nothing. Left-censored counts (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code>) and right truncation
+(<code class="docutils literal notranslate"><span class="pre">tr</span></code>) are not taken: give a count as a <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code> row.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>i</strong> (<em>array_like</em>) – The item of each interval row.</p></li>
+<li><p><strong>xl</strong> (<em>array_like</em>) – The open-closed interval <code class="docutils literal notranslate"><span class="pre">(xl,</span> <span class="pre">xr]</span></code> of each row, in the
+item’s own time (its age), which the baseline’s trend is
+measured in.</p></li>
+<li><p><strong>xr</strong> (<em>array_like</em>) – The open-closed interval <code class="docutils literal notranslate"><span class="pre">(xl,</span> <span class="pre">xr]</span></code> of each row, in the
+item’s own time (its age), which the baseline’s trend is
+measured in.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em>) – What ends the row at <code class="docutils literal notranslate"><span class="pre">xr</span></code>: <code class="docutils literal notranslate"><span class="pre">0</span></code> a failure, <code class="docutils literal notranslate"><span class="pre">1</span></code> no
+failure (a covariate change or the end of the item’s
+record), <code class="docutils literal notranslate"><span class="pre">2</span></code> a count <code class="docutils literal notranslate"><span class="pre">n</span></code> of failures somewhere within
+the row (failures counted between inspections).</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em>) – The covariate row in force on each interval (a 1-D array is
+a single covariate). A missing value raises a
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code>: the row is part of an item’s history.</p></li>
+<li><p><strong>n</strong> (<em>array_like</em><em>, </em><em>optional</em>) – The number of failures on a <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code> row; 1 (the default)
+on the others.</p></li>
+<li><p><strong>baseline</strong> (<a class="reference internal" href="parametric_recurrence_model.html#surpyval.recurrent.parametric.counting_process.CountingProcess" title="surpyval.recurrent.parametric.counting_process.CountingProcess"><em>CountingProcess</em></a><em>, </em><em>optional</em>) – The baseline intensity model, as for <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>: <code class="docutils literal notranslate"><span class="pre">Duane</span></code>
+(the default), <code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code> or <code class="docutils literal notranslate"><span class="pre">CoxLewis</span></code>.</p></li>
+<li><p><strong>init</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Initial parameter estimates: the baseline parameters
+followed by the covariate coefficients.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fitted model, with <code class="docutils literal notranslate"><span class="pre">is_tvc</span></code> set. <code class="docutils literal notranslate"><span class="pre">cif_tvc</span></code>,
+<code class="docutils literal notranslate"><span class="pre">iif_tvc</span></code> and <code class="docutils literal notranslate"><span class="pre">cb_tvc</span></code> predict along a covariate
+schedule; the methods that read one covariate row per item
+(<code class="docutils literal notranslate"><span class="pre">residuals</span></code>, <code class="docutils literal notranslate"><span class="pre">cramer_von_mises</span></code>, <code class="docutils literal notranslate"><span class="pre">trend_test</span></code>,
+<code class="docutils literal notranslate"><span class="pre">diagnose</span></code>, <code class="docutils literal notranslate"><span class="pre">plot</span></code>) refuse, saying so.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="proportional_intensity_models.html#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel">ProportionalIntensityModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Three machines watched to 30 months, each overhauled part of the
+way through (<code class="docutils literal notranslate"><span class="pre">overhauled</span></code> steps from 0 to 1). Each row is the
+time from one event to the next:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">CrowAMSAA</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProportionalIntensityNHPP</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">xl</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">26</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">27</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span>
+<span class="gp">... </span>      <span class="mi">17</span><span class="p">,</span> <span class="mi">22</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">xr</span> <span class="o">=</span> <span class="p">[</span><span class="mi">8</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">26</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">27</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span>
+<span class="gp">... </span>      <span class="mi">17</span><span class="p">,</span> <span class="mi">22</span><span class="p">,</span> <span class="mi">30</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">overhauled</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span>
+<span class="gp">... </span>              <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">ProportionalIntensityNHPP</span><span class="o">.</span><span class="n">fit_tvc</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">i</span><span class="p">,</span> <span class="n">xl</span><span class="p">,</span> <span class="n">xr</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">overhauled</span><span class="p">,</span> <span class="n">baseline</span><span class="o">=</span><span class="n">CrowAMSAA</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">is_tvc</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">coeffs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">)</span>  <span class="c1"># fewer failures after an overhaul</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+<p>The expected number of failures by months 12 and 24 of a machine
+overhauled at month 12, and of one never overhauled:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">plan</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">with_overhaul</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">cif_tvc</span><span class="p">([</span><span class="mi">12</span><span class="p">,</span> <span class="mi">24</span><span class="p">],</span> <span class="n">plan</span><span class="p">,</span> <span class="n">xl</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">12</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">without</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">cif</span><span class="p">([</span><span class="mi">12</span><span class="p">,</span> <span class="mi">24</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">with_overhaul</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">without</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">bool</span><span class="p">(</span><span class="n">with_overhaul</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">without</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc_from_df">
+<span class="sig-prename descclassname"><span class="pre">ProportionalIntensityNHPP.</span></span><span class="sig-name descname"><span class="pre">fit_tvc_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pd.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z_cols</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">fit_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc_from_df" title="Link to this definition"></a></dt>
+<dd><p>Fit start-stop time-varying-covariate rows from a DataFrame.</p>
+<p><code class="docutils literal notranslate"><span class="pre">i_col</span></code>, <code class="docutils literal notranslate"><span class="pre">xl_col</span></code>, <code class="docutils literal notranslate"><span class="pre">xr_col</span></code>, <code class="docutils literal notranslate"><span class="pre">c_col</span></code> and <code class="docutils literal notranslate"><span class="pre">n_col</span></code> name
+the columns passed to <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit_tvc()</span></code></a> as <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">xl</span></code>, <code class="docutils literal notranslate"><span class="pre">xr</span></code>,
+<code class="docutils literal notranslate"><span class="pre">c</span></code> and <code class="docutils literal notranslate"><span class="pre">n</span></code>, and <code class="docutils literal notranslate"><span class="pre">Z_cols</span></code> (a column name or a list of them)
+the covariates, whose names then name the coefficients and are
+kept as the model’s <code class="docutils literal notranslate"><span class="pre">feature_names</span></code>. Other keyword arguments go
+to <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit_tvc()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">unit</span></code>, and <code class="docutils literal notranslate"><span class="pre">baseline</span></code> for the
+NHPP fitter). Returns the fitted <code class="docutils literal notranslate"><span class="pre">ProportionalIntensityModel</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProportionalIntensityHPP</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="gp">... </span>    <span class="s2">"pump"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"start"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">16</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"stop"</span><span class="p">:</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"c"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"high_load"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">ProportionalIntensityHPP</span><span class="o">.</span><span class="n">fit_tvc_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">df</span><span class="p">,</span> <span class="s2">"pump"</span><span class="p">,</span> <span class="s2">"start"</span><span class="p">,</span> <span class="s2">"stop"</span><span class="p">,</span> <span class="s2">"c"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="s2">"high_load"</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">parameter_names</span>
+<span class="go">['lambda', 'high_load']</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">coeffs</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.6931])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc_timeline">
+<span class="sig-prename descclassname"><span class="pre">ProportionalIntensityNHPP.</span></span><span class="sig-name descname"><span class="pre">fit_tvc_timeline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">i</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">fit_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc_timeline" title="Link to this definition"></a></dt>
+<dd><p>Fit the model from each item’s covariate <em>timeline</em>: a log with
+one row each time something happens to an item.</p>
+<p>The timeline is expanded to start-stop intervals and fitted as
+<a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit_tvc()</span></code></a>, so the fit is identical to that of the
+equivalent start-stop rows. The arguments are those of the life
+regressions’ <code class="docutils literal notranslate"><span class="pre">fit_tvc_timeline</span></code>; an item here may fail many
+times, so <code class="docutils literal notranslate"><span class="pre">c</span></code> is read on every row, not only an item’s last.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>i</strong> (<em>array_like</em>) – The item of each timeline row.</p></li>
+<li><p><strong>x</strong> (<em>array_like</em>) – The time of each row, strictly increasing within an item: the
+first is the item’s entry (the start of its record), the last
+the end of its record.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em>) – The covariate row in force from <code class="docutils literal notranslate"><span class="pre">x</span></code> until the item’s next
+row (a 1-D array is a single covariate); the value on an
+item’s last row is ignored. A missing value on any other row
+raises a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em>) – What happened at <code class="docutils literal notranslate"><span class="pre">x</span></code>: <code class="docutils literal notranslate"><span class="pre">0</span></code> a failure, <code class="docutils literal notranslate"><span class="pre">1</span></code> no failure (the
+entry, a change of covariates or the end of the record), <code class="docutils literal notranslate"><span class="pre">2</span></code>
+a count <code class="docutils literal notranslate"><span class="pre">n</span></code> of failures since the item’s previous row. An
+item’s first row is its entry and must be <code class="docutils literal notranslate"><span class="pre">1</span></code>.</p></li>
+<li><p><strong>n</strong> (<em>array_like</em><em>, </em><em>optional</em>) – The number of failures on a <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code> row; 1 (the default) on
+the others.</p></li>
+<li><p><strong>**fit_options</strong> – Passed to <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit_tvc()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">unit</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">baseline</span></code> for the NHPP fitter).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fitted model, with <code class="docutils literal notranslate"><span class="pre">is_tvc</span></code> set.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="proportional_intensity_models.html#surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel" title="surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel">ProportionalIntensityModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Two pumps. The first runs at low load until month 10 and at high
+load after it; the second the other way round. Each row is an
+entry, a failure, a change of load or the end of the record:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProportionalIntensityHPP</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">20</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">load</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">ProportionalIntensityHPP</span><span class="o">.</span><span class="n">fit_tvc_timeline</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">load</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">),</span> <span class="n">model</span><span class="o">.</span><span class="n">coeffs</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">(array([0.1]), array([0.6931]))</span>
+</pre></div>
+</div>
+<p>Two failures in 20 pump-months at low load and four in 20 at high
+load: a rate of 0.1 a month, doubled (<code class="docutils literal notranslate"><span class="pre">exp(0.6931)</span></code>) by high
+load.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc_timeline_from_df">
+<span class="sig-prename descclassname"><span class="pre">ProportionalIntensityNHPP.</span></span><span class="sig-name descname"><span class="pre">fit_tvc_timeline_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pd.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z_cols</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">fit_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc_timeline_from_df" title="Link to this definition"></a></dt>
+<dd><p>Fit a covariate timeline from a DataFrame.</p>
+<p><code class="docutils literal notranslate"><span class="pre">i_col</span></code>, <code class="docutils literal notranslate"><span class="pre">x_col</span></code>, <code class="docutils literal notranslate"><span class="pre">c_col</span></code> and <code class="docutils literal notranslate"><span class="pre">n_col</span></code> name the columns
+passed to <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc_timeline" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc_timeline"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit_tvc_timeline()</span></code></a> as <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code> and
+<code class="docutils literal notranslate"><span class="pre">n</span></code>, and <code class="docutils literal notranslate"><span class="pre">Z_cols</span></code> (a column name or a list of them) the
+covariates in force from each row, whose names then name the
+coefficients and are kept as the model’s <code class="docutils literal notranslate"><span class="pre">feature_names</span></code>. Other
+keyword arguments go to <a class="reference internal" href="#surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc" title="surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_tvc"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit_tvc()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">unit</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">baseline</span></code> for the NHPP fitter). Returns the fitted
+<code class="docutils literal notranslate"><span class="pre">ProportionalIntensityModel</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProportionalIntensityHPP</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">log</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="gp">... </span>    <span class="s2">"pump"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"month"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">16</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"c"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"high_load"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">ProportionalIntensityHPP</span><span class="o">.</span><span class="n">fit_tvc_timeline_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">log</span><span class="p">,</span> <span class="s2">"pump"</span><span class="p">,</span> <span class="s2">"month"</span><span class="p">,</span> <span class="s2">"high_load"</span><span class="p">,</span> <span class="s2">"c"</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">coeffs</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.6931])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="hpp_pi.html" class="btn btn-neutral float-left" title="HPP Regression" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="recurrent_cox.html" class="btn btn-neutral float-right" title="Semi-Parametric Recurrent-Event Regression" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

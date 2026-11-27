@@ -1,0 +1,754 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Equivalent Time Scales &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Zero-Inflated Regression" href="Zero-Inflated%20Regression.html" />
+    <link rel="prev" title="Mixture-Cure Regression" href="Mixture-Cure%20Regression.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Equivalent Time Scales</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#where-the-information-about-k-comes-from">Where the information about k comes from</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-worked-example-starts-on-a-fleet-of-turbines">A worked example: starts on a fleet of turbines</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-data-arrays-or-a-secondaryclock">The data: arrays, or a <code class="docutils literal notranslate"><span class="pre">SecondaryClock</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#units-inspected-rather-than-watched">Units inspected rather than watched</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#lives-along-a-duty">Lives along a duty</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-life-at-one-duty-as-a-plain-life-model">The life at one duty, as a plain life model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-model-assumes-and-its-limits">What the model assumes, and its limits</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#why-the-factor-1-k-rate-matters">Why the factor (1 + k rate) matters</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Equivalent Time Scales</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Equivalent Time Scales.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="equivalent-time-scales">
+<h1>Equivalent Time Scales<a class="headerlink" href="#equivalent-time-scales" title="Link to this heading"></a></h1>
+<p>Many things age on more than one clock at once. A gas turbine runs for
+hours, and it is also started and stopped; every start heats and cools
+the hot parts, and wears them as many hours of steady running would. A
+pump runs for hours and is cycled; an aircraft flies hours and makes
+landings; a vehicle covers kilometres and runs engine hours. Which clock
+should a life be measured on?</p>
+<p>Often neither alone. Two machines with the same running hours are not
+equally worn if one was started ten times as often. An <strong>equivalent time
+scale</strong> combines the clocks into one age,</p>
+<div class="math notranslate nohighlight">
+\[T = h + k\,s ,\]</div>
+<p>with <span class="math notranslate nohighlight">\(h\)</span> the hours, <span class="math notranslate nohighlight">\(s\)</span> the starts and <span class="math notranslate nohighlight">\(k\)</span> what one
+start is worth in hours. Gas-turbine makers call <span class="math notranslate nohighlight">\(T\)</span> the
+<em>equivalent operating hours</em> and quote a fixed <span class="math notranslate nohighlight">\(k\)</span> (one start
+counts as some number of hours). <code class="docutils literal notranslate"><span class="pre">Equivalence(Weibull)</span></code> <strong>learns</strong>
+<span class="math notranslate nohighlight">\(k\)</span> from your failure data, together with the life distribution on
+<span class="math notranslate nohighlight">\(T\)</span>, so you can tell how much a start really costs your fleet, with
+a confidence interval, and test whether starts matter at all. The
+statistics literature calls the best such combination the <em>ideal time
+scale</em> (Kordonsky and Gertsbakh, 1993; Duchesne and Lawless, 2000).</p>
+<p>The API reference is <a class="reference internal" href="univariate/equivalence.html"><span class="doc">Equivalent Time Scales</span></a>.</p>
+<section id="where-the-information-about-k-comes-from">
+<h2>Where the information about k comes from<a class="headerlink" href="#where-the-information-about-k-comes-from" title="Link to this heading"></a></h2>
+<p><span class="math notranslate nohighlight">\(k\)</span> is learned by comparing units that use the two clocks at
+<strong>different rates</strong>. If a peaking unit (many starts per hour) fails after
+fewer hours than a base-load unit (few starts per hour), the difference
+is what the starts cost. If every unit made the same number of starts per
+hour, there would be nothing to compare: <span class="math notranslate nohighlight">\(h + k s\)</span> would be the
+hours times the same factor for every unit, and that factor cannot be
+told apart from the life distribution’s scale. The fit refuses such data
+and says so.</p>
+</section>
+<section id="a-worked-example-starts-on-a-fleet-of-turbines">
+<h2>A worked example: starts on a fleet of turbines<a class="headerlink" href="#a-worked-example-starts-on-a-fleet-of-turbines" title="Link to this heading"></a></h2>
+<p>240 units run in three duties: base load (about one start per 100
+hours), cycling (one per 20 hours) and peaking (about one start every
+three hours). Each has been followed for between 5,000 and 25,000 hours;
+40% have had the failure being studied, the rest are still running. The
+data are simulated, so the truth is known: one start is worth 20 hours,
+and the life on the combined clock is Weibull with scale 30,000
+equivalent hours and shape 2.5.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">240</span>
+<span class="n">duty</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">([</span><span class="s2">"base load"</span><span class="p">,</span> <span class="s2">"cycling"</span><span class="p">,</span> <span class="s2">"peaking"</span><span class="p">],</span> <span class="n">n</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="p">[</span><span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.35</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">])</span>
+<span class="n">rate</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">(</span><span class="n">duty</span><span class="p">)</span><span class="o">.</span><span class="n">map</span><span class="p">(</span>
+    <span class="p">{</span><span class="s2">"base load"</span><span class="p">:</span> <span class="mf">0.01</span><span class="p">,</span> <span class="s2">"cycling"</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span> <span class="s2">"peaking"</span><span class="p">:</span> <span class="mf">0.3</span><span class="p">}</span>
+<span class="p">)</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
+<span class="n">life_in_hours</span> <span class="o">=</span> <span class="mi">30000</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">2.5</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="mi">20</span> <span class="o">*</span> <span class="n">rate</span><span class="p">)</span>
+<span class="n">followed</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">5000</span><span class="p">,</span> <span class="mi">25000</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">failed</span> <span class="o">=</span> <span class="n">life_in_hours</span> <span class="o">&lt;</span> <span class="n">followed</span>
+<span class="n">hours</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">failed</span><span class="p">,</span> <span class="n">life_in_hours</span><span class="p">,</span> <span class="n">followed</span><span class="p">)</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">"hours"</span><span class="p">:</span> <span class="n">hours</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+        <span class="s2">"starts"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">rate</span> <span class="o">*</span> <span class="n">hours</span><span class="p">),</span>
+        <span class="s2">"c"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">failed</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="s2">"duty"</span><span class="p">:</span> <span class="n">duty</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+<span class="n">df</span><span class="o">.</span><span class="n">head</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>hours</th>
+      <th>starts</th>
+      <th>c</th>
+      <th>duty</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>5490.0</td>
+      <td>1647.0</td>
+      <td>0</td>
+      <td>peaking</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>12590.0</td>
+      <td>629.0</td>
+      <td>0</td>
+      <td>cycling</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>3508.0</td>
+      <td>1052.0</td>
+      <td>0</td>
+      <td>peaking</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>16449.0</td>
+      <td>822.0</td>
+      <td>1</td>
+      <td>cycling</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>16315.0</td>
+      <td>163.0</td>
+      <td>1</td>
+      <td>base load</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+<p>Each row is one unit: its hours and starts at its failure (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>) or
+now, if it is still running (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>). This is ordinary univariate
+data on the main clock, hours (<code class="docutils literal notranslate"><span class="pre">x_col</span></code>, <code class="docutils literal notranslate"><span class="pre">c_col</span></code>), with the second
+clock, starts, read at the same moments (<code class="docutils literal notranslate"><span class="pre">x2_col</span></code>). The censoring is the
+unit’s: the starts have none of their own. Fit the combined clock;
+<span class="math notranslate nohighlight">\(k\)</span> is measured in the main clock’s units.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullEquivalence</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">x2_col</span><span class="o">=</span><span class="s2">"starts"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span>
+<span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Equivalence SurPyval Model
+==========================
+Distribution        : Weibull on hours + k starts
+Fitted by           : MLE
+k                   : one unit of 'starts' is worth 18.37 units of 'hours' (95% CI 14.23 to 23.73)
+Test of k = 0       : LR 241.4, p = 9.56e-55
+Parameters          :
+     alpha: 28384.9
+      beta: 2.63326
+         k: 18.3739
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>How to read it:</p>
+<ul class="simple">
+<li><p><strong>k = 18.4</strong>: one start is worth about 18 hours of running (the truth
+is 20). The 95% confidence interval, 14.2 to 23.7 hours, is the range
+of values the data are consistent with. The interval’s level is the
+library’s <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code> (0.05 by default); <code class="docutils literal notranslate"><span class="pre">model.reading(0.1)</span></code> gives
+the 90% one.</p></li>
+<li><p><strong>Test of k = 0</strong>: the likelihood-ratio test that starts do not matter.
+Here it is overwhelming (p about 1e-55). A large p-value would mean the
+data cannot tell starts from no effect, and hours alone may do.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code> are the Weibull scale (in equivalent hours) and
+shape on the combined clock.</p></li>
+</ul>
+<p>The combined age of a unit with 10,000 hours and 400 starts:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">equivalent</span><span class="p">(</span><span class="mi">10000</span><span class="p">,</span> <span class="mi">400</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>np.float64(17349.56275956633)
+</pre></div>
+</div>
+</div>
+</div>
+<p>Fitted to hours alone, the same data give a shape of about 1.5, not 2.6:
+mixing units that wear at different speeds blurs the wear-out, so the
+hours-only model makes failures look more random than they are.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"hours"</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="s2">"c"</span><span class="p">])</span><span class="o">.</span><span class="n">params</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([1.58271676e+04, 1.46435986e+00])
+</pre></div>
+</div>
+</div>
+</div>
+<section id="the-data-arrays-or-a-secondaryclock">
+<h3>The data: arrays, or a <code class="docutils literal notranslate"><span class="pre">SecondaryClock</span></code><a class="headerlink" href="#the-data-arrays-or-a-secondaryclock" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">fit</span></code> takes the data as any univariate fit does, on the main clock
+(<code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, and <code class="docutils literal notranslate"><span class="pre">tl</span></code> or <code class="docutils literal notranslate"><span class="pre">t</span></code> for late entry), plus <code class="docutils literal notranslate"><span class="pre">x2</span></code>, the
+second clock’s reading at each row’s <code class="docutils literal notranslate"><span class="pre">x</span></code>. <code class="docutils literal notranslate"><span class="pre">x2</span></code> is an array, or a
+<a class="reference internal" href="univariate/equivalence.html#surpyval.univariate.equivalence.SecondaryClock" title="surpyval.univariate.equivalence.SecondaryClock"><code class="xref py py-class docutils literal notranslate"><span class="pre">SecondaryClock</span></code></a>, which also
+carries the second clock’s name (it becomes the model’s name for the
+clock) and its readings when units entered observation. The three give
+the same numbers:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">hours</span><span class="p">,</span> <span class="n">starts</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"hours"</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="s2">"starts"</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="s2">"c"</span><span class="p">]</span>
+<span class="n">by_array</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullEquivalence</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">hours</span><span class="p">,</span> <span class="n">starts</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">by_clock</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullEquivalence</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">hours</span><span class="p">,</span> <span class="n">sp</span><span class="o">.</span><span class="n">SecondaryClock</span><span class="p">(</span><span class="n">starts</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"starts"</span><span class="p">),</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span>
+<span class="p">)</span>
+<span class="n">by_clock</span><span class="o">.</span><span class="n">clocks</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">by_clock</span><span class="o">.</span><span class="n">params</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>(('x1', 'starts'), True)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Late entry is given per clock: <code class="docutils literal notranslate"><span class="pre">tl</span></code> the hours when a unit came under
+observation, and <code class="docutils literal notranslate"><span class="pre">SecondaryClock(...,</span> <span class="pre">tl=...)</span></code> its starts then. A
+unit’s entry needs both, and the fit says so if one is missing. Here,
+units bought second hand, with a fifth of their hours and starts already
+on them:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">entered</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullEquivalence</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">hours</span><span class="p">,</span>
+    <span class="n">sp</span><span class="o">.</span><span class="n">SecondaryClock</span><span class="p">(</span><span class="n">starts</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="mf">0.2</span> <span class="o">*</span> <span class="n">starts</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"starts"</span><span class="p">),</span>
+    <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span>
+    <span class="n">tl</span><span class="o">=</span><span class="mf">0.2</span> <span class="o">*</span> <span class="n">hours</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">entered</span><span class="o">.</span><span class="n">k</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>18.99774598449531
+</pre></div>
+</div>
+</div>
+</div>
+<p>From a DataFrame, <code class="docutils literal notranslate"><span class="pre">tl_col</span></code> and <code class="docutils literal notranslate"><span class="pre">tl2_col</span></code> name the entry columns and
+<code class="docutils literal notranslate"><span class="pre">x2_name</span></code> names the second clock (by default its column’s name).</p>
+</section>
+<section id="units-inspected-rather-than-watched">
+<h3>Units inspected rather than watched<a class="headerlink" href="#units-inspected-rather-than-watched" title="Link to this heading"></a></h3>
+<p>A failure found at an inspection happened some time after the previous
+one: an interval row (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>). Give each clock’s reading at both
+inspections, as <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">x</span> <span class="pre">2</span></code> arrays (equal columns on the rows that are not
+intervals), or from a DataFrame with <code class="docutils literal notranslate"><span class="pre">xl_col</span></code> / <code class="docutils literal notranslate"><span class="pre">xr_col</span></code> and
+<code class="docutils literal notranslate"><span class="pre">x2l_col</span></code> / <code class="docutils literal notranslate"><span class="pre">x2r_col</span></code>. The unit’s combined clock passed its failure age
+between <span class="math notranslate nohighlight">\(h_a + k s_a\)</span> and <span class="math notranslate nohighlight">\(h_b + k s_b\)</span>, so the row contributes
+<span class="math notranslate nohighlight">\(S(h_a + k s_a) - S(h_b + k s_b)\)</span>, whatever the unit did between
+the two inspections. The same fleet, inspected every 500 hours:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">inspect</span> <span class="o">=</span> <span class="mf">500.0</span>
+<span class="n">found</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"c"</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span>  <span class="c1"># found failed at the first inspection after it</span>
+<span class="n">next_inspection</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"hours"</span><span class="p">]</span> <span class="o">/</span> <span class="n">inspect</span><span class="p">)</span> <span class="o">*</span> <span class="n">inspect</span>
+<span class="n">upper</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">found</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">next_inspection</span><span class="p">,</span> <span class="n">followed</span><span class="o">.</span><span class="n">round</span><span class="p">()),</span> <span class="n">df</span><span class="p">[</span><span class="s2">"hours"</span><span class="p">])</span>
+<span class="n">lower</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">found</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">upper</span> <span class="o">-</span> <span class="n">inspect</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">),</span> <span class="n">df</span><span class="p">[</span><span class="s2">"hours"</span><span class="p">])</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">lower</span><span class="p">,</span> <span class="n">upper</span><span class="p">])</span>  <span class="c1"># hours at the two inspections</span>
+<span class="n">x2</span> <span class="o">=</span> <span class="n">rate</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">x</span>  <span class="c1"># starts at the same two inspections</span>
+<span class="n">inspected</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullEquivalence</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">x</span><span class="p">,</span> <span class="n">sp</span><span class="o">.</span><span class="n">SecondaryClock</span><span class="p">(</span><span class="n">x2</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"starts"</span><span class="p">),</span> <span class="n">c</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">found</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="n">inspected</span><span class="o">.</span><span class="n">k</span><span class="p">,</span> <span class="n">inspected</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"k"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>(18.640945440717356, array([14.41713958, 24.10220453]))
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+</section>
+<section id="lives-along-a-duty">
+<h2>Lives along a duty<a class="headerlink" href="#lives-along-a-duty" title="Link to this heading"></a></h2>
+<p>The questions that matter are usually about a duty: how long will a
+peaking unit last? A unit making <code class="docutils literal notranslate"><span class="pre">rate</span></code> starts per hour ages
+<span class="math notranslate nohighlight">\(1 + k \cdot rate\)</span> equivalent hours per hour, so its life in hours
+is the combined life divided by that. The <code class="docutils literal notranslate"><span class="pre">*_at_usage</span></code> methods answer
+in hours, with bounds that include the uncertainty in <span class="math notranslate nohighlight">\(k\)</span>. The
+B10 life (the hours by which 10% have failed) of each duty:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">])</span>
+<span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">"starts per hour"</span><span class="p">:</span> <span class="n">rates</span><span class="p">,</span>
+        <span class="s2">"B10 (hours)"</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">qf_at_usage</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">rates</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+        <span class="s2">"lower"</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">quantile_cb_at_usage</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">rates</span><span class="p">)[:,</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+        <span class="s2">"upper"</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">quantile_cb_at_usage</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">rates</span><span class="p">)[:,</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>starts per hour</th>
+      <th>B10 (hours)</th>
+      <th>lower</th>
+      <th>upper</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>0.01</td>
+      <td>10202.0</td>
+      <td>8898.0</td>
+      <td>11697.0</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>0.05</td>
+      <td>6294.0</td>
+      <td>5572.0</td>
+      <td>7109.0</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>0.30</td>
+      <td>1854.0</td>
+      <td>1573.0</td>
+      <td>2186.0</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>A peaking unit reaches its B10 life after about 1,900 hours, a base-load
+unit after about 10,200. The starts made in that time are <code class="docutils literal notranslate"><span class="pre">rate</span></code> times
+the hours. And the chance a unit survives 8,000 hours in each duty:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">sf_at_usage</span><span class="p">(</span><span class="mi">8000</span><span class="p">,</span> <span class="n">rates</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span> <span class="n">model</span><span class="o">.</span><span class="n">cb_at_usage</span><span class="p">(</span><span class="mi">8000</span><span class="p">,</span> <span class="n">rates</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>(array([0.946, 0.82 , 0.007]),
+ array([[0.92 , 0.964],
+        [0.774, 0.858],
+        [0.001, 0.023]]))
+</pre></div>
+</div>
+</div>
+</div>
+<p>The usual functions (<code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code> and <code class="docutils literal notranslate"><span class="pre">cb</span></code>)
+are those of the distribution on the combined clock, in equivalent hours.</p>
+</section>
+<section id="the-life-at-one-duty-as-a-plain-life-model">
+<h2>The life at one duty, as a plain life model<a class="headerlink" href="#the-life-at-one-duty-as-a-plain-life-model" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">model.at_usage(rate)</span></code> binds one rate and gives the life of a unit used
+at it as an ordinary life model in hours: its <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code>,
+<code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code>, <code class="docutils literal notranslate"><span class="pre">random</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">rmst</span></code>, <code class="docutils literal notranslate"><span class="pre">cb</span></code> and
+<code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code> take hours only, each the model’s <code class="docutils literal notranslate"><span class="pre">*_at_usage</span></code> at that
+rate. <code class="docutils literal notranslate"><span class="pre">rate</span></code> is in the model’s own units: the second clock’s units per
+unit of the first, here starts per hour. A unit at that rate ages
+<code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">+</span> <span class="pre">k</span> <span class="pre">rate</span></code> equivalent hours per hour (<code class="docutils literal notranslate"><span class="pre">life.acceleration</span></code>). Hand it
+to code that expects a univariate model, such as a block of a reliability
+block diagram (“this pump, peaking”). The model’s unit label goes with
+it, as typed.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">peaking</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">at_usage</span><span class="p">(</span><span class="mf">0.3</span><span class="p">)</span>
+<span class="n">peaking</span><span class="p">,</span> <span class="n">peaking</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">peaking</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">8000</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>(LifeAtUsage(WeibullEquivalence, clocks=('hours', 'starts'), rate=0.3),
+ np.float64(1854.0),
+ np.float64(0.007))
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Its draws are <code class="docutils literal notranslate"><span class="pre">qf(U)</span></code> for uniform <code class="docutils literal notranslate"><span class="pre">U</span></code>, so a seed gives common random
+numbers across models, and its bounds carry the uncertainty in
+<span class="math notranslate nohighlight">\(k\)</span>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">peaking</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span> <span class="n">peaking</span><span class="o">.</span><span class="n">rmst</span><span class="p">(</span><span class="mi">2000</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>(array([3842., 6620., 2151.]),
+ {'rmst': 1931.7946837617942,
+  'se': 16.529870657981704,
+  'lower': 1890.8341497580664,
+  'upper': 1957.7298376066421,
+  'tau': 2000.0})
+</pre></div>
+</div>
+</div>
+</div>
+<p>It is a view on the model: save the model (<code class="docutils literal notranslate"><span class="pre">model.to_dict()</span></code>) and the
+rate.</p>
+</section>
+<section id="what-the-model-assumes-and-its-limits">
+<h2>What the model assumes, and its limits<a class="headerlink" href="#what-the-model-assumes-and-its-limits" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Constant usage per unit.</strong> Between installation and the time it is
+seen, each unit is assumed to have used its clocks at a steady ratio
+(its starts divided by its hours). A unit that ran base load for years
+and then switched to peaking has the right totals, but the model
+places its starts evenly over its life. If duties change a lot over a
+unit’s life, the estimate of <span class="math notranslate nohighlight">\(k\)</span> is an average.</p></li>
+<li><p><strong>The two clocks add.</strong> Wear from a start is the same whatever the
+unit’s age, and does not interact with the running hours.</p></li>
+<li><p><strong>The clocks’ order.</strong> <span class="math notranslate nohighlight">\(k\)</span> is measured in units of the first
+clock. <code class="docutils literal notranslate"><span class="pre">fit(starts,</span> <span class="pre">hours)</span></code> instead gives hours measured in starts,
+<span class="math notranslate nohighlight">\(k' = 1/k\)</span>, with the same fit; choose the order that reads best
+(“one start is worth k hours”).</p></li>
+<li><p><strong>k on its edge.</strong> <span class="math notranslate nohighlight">\(k\)</span> cannot be negative. Where the best fit is
+<span class="math notranslate nohighlight">\(k = 0\)</span> (starts do not matter), the fit is exactly the
+distribution fitted to hours alone, the Wald interval on <span class="math notranslate nohighlight">\(k\)</span> does
+not exist (it is <code class="docutils literal notranslate"><span class="pre">nan</span></code>, with a warning), and
+<code class="docutils literal notranslate"><span class="pre">param_cb(&quot;k&quot;,</span> <span class="pre">method=&quot;lr&quot;)</span></code>, the profile-likelihood interval,
+gives one that starts at 0. The test of <span class="math notranslate nohighlight">\(k = 0\)</span> allows for the
+edge: its p-value is half the usual chi-square one (Self and Liang,
+1987).</p></li>
+<li><p><strong>Units with no hours.</strong> A unit that failed with starts but no running
+hours is fine: its age is <span class="math notranslate nohighlight">\(k s\)</span>. Such a failure is impossible
+if starts did not matter, so it rules out <span class="math notranslate nohighlight">\(k = 0\)</span>.</p></li>
+<li><p><strong>Data.</strong> Univariate data on the main clock, with the second clock
+read at the same moments: failures (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>), units still running
+(<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>), units that failed before they were inspected
+(<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code>), units that failed between two inspections (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>,
+with both clocks’ readings at each), counts <code class="docutils literal notranslate"><span class="pre">n</span></code> and late entry
+(<code class="docutils literal notranslate"><span class="pre">tl</span></code> the main clock’s, <code class="docutils literal notranslate"><span class="pre">SecondaryClock(...,</span> <span class="pre">tl=...)</span></code> the second’s)
+are taken. Right truncation is not. The constant-usage assumption
+above is used only for exact failures (it gives the factor below); an
+interval, a censored unit and a late entry need only the clocks’
+readings.</p></li>
+</ul>
+</section>
+<section id="why-the-factor-1-k-rate-matters">
+<h2>Why the factor (1 + k rate) matters<a class="headerlink" href="#why-the-factor-1-k-rate-matters" title="Link to this heading"></a></h2>
+<p>It is tempting to compute <span class="math notranslate nohighlight">\(T = h + k s\)</span> for each unit and fit a
+Weibull to the <span class="math notranslate nohighlight">\(T\)</span> values, choosing the <span class="math notranslate nohighlight">\(k\)</span> that fits best.
+That is wrong. A larger <span class="math notranslate nohighlight">\(k\)</span> stretches every <span class="math notranslate nohighlight">\(T\)</span>, and a
+density on a stretched clock is lower by the stretch, so that likelihood
+falls as <span class="math notranslate nohighlight">\(k\)</span> grows for a reason that has nothing to do with the
+data; its best <span class="math notranslate nohighlight">\(k\)</span> is pulled towards 0. The correct likelihood is
+the one on the hours clock each unit was actually observed on. A unit
+running at <code class="docutils literal notranslate"><span class="pre">rate</span></code> starts per hour ages <span class="math notranslate nohighlight">\(1 + k \cdot rate\)</span> times
+faster than one with no starts, so in hours its failure density is</p>
+<div class="math notranslate nohighlight">
+\[f(h_i + k s_i;\ \theta)\,(1 + k \rho_i), \qquad
+\rho_i = s_i / h_i ,\]</div>
+<p>and a unit still running contributes <span class="math notranslate nohighlight">\(S(h_i + k s_i; \theta)\)</span>. The
+factor <span class="math notranslate nohighlight">\(1 + k\rho_i\)</span> corrects the stretch. This is an accelerated
+failure time model on hours, with acceleration <span class="math notranslate nohighlight">\(1 + k\rho_i\)</span>
+(Duchesne and Lawless, 2000), and SurPyval’s tests check that at a fixed
+<span class="math notranslate nohighlight">\(k\)</span> it is exactly <code class="docutils literal notranslate"><span class="pre">WeibullAFT</span></code> with the covariate
+<span class="math notranslate nohighlight">\(\log(1 + k\rho_i)\)</span> and its coefficient fixed at 1. In simulations
+with <span class="math notranslate nohighlight">\(k = 10\)</span>, the naive fit’s estimate collapsed towards 0 while
+this one’s was unbiased.</p>
+<p>The <em>minimum coefficient of variation</em> method of Kordonsky and Gertsbakh
+(choose <span class="math notranslate nohighlight">\(k\)</span> to make the failures’ <span class="math notranslate nohighlight">\(T\)</span> as alike as possible)
+is not used: it has no likelihood, so it cannot take units still
+running, and gives no intervals or tests.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<p>Duchesne, T. and Lawless, J. (2000). Alternative time scales and failure
+time models. <em>Lifetime Data Analysis</em> 6, 157-179.</p>
+<p>Kordonsky, K. B. and Gertsbakh, I. B. (1993). Choice of the best time
+scale for system reliability analysis. <em>European Journal of Operational
+Research</em> 65, 235-246.</p>
+<p>Self, S. G. and Liang, K.-Y. (1987). Asymptotic properties of maximum
+likelihood estimators and likelihood ratio tests under nonstandard
+conditions. <em>Journal of the American Statistical Association</em> 82,
+605-610.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Mixture-Cure%20Regression.html" class="btn btn-neutral float-left" title="Mixture-Cure Regression" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Zero-Inflated%20Regression.html" class="btn btn-neutral float-right" title="Zero-Inflated Regression" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,895 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Censored Quantile Regression &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Parametric Regression Models" href="parametric.html" />
+    <link rel="prev" title="Buckley-James" href="buckley_james.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.regression.html#semi-parametric-models">Semi-Parametric Models</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="cox_ph.html">Cox Proportional Hazards</a></li>
+<li class="toctree-l4"><a class="reference internal" href="interval_cox.html">Interval-Censored Cox (Semi-Parametric PH)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="additive_hazards.html">Semi-Parametric Additive Hazards</a></li>
+<li class="toctree-l4"><a class="reference internal" href="aalen_additive.html">Non-Parametric Additive Hazards (Aalen)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="proportional_odds.html">Semi-Parametric Proportional Odds</a></li>
+<li class="toctree-l4"><a class="reference internal" href="buckley_james.html">Buckley-James</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Censored Quantile Regression</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#parametric-models">Parametric Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#which-family-a-model-is">Which Family a Model Is</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#covariates-on-every-parameter">Covariates on Every Parameter</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#correlated-observations">Correlated Observations</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#regression-on-a-probability-or-a-mean">Regression on a Probability or a Mean</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.regression.html#plotting">Plotting</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.regression.html">Regression Modelling</a></li>
+      <li class="breadcrumb-item active">Censored Quantile Regression</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/regression/quantile_regression.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="censored-quantile-regression">
+<h1>Censored Quantile Regression<a class="headerlink" href="#censored-quantile-regression" title="Link to this heading"></a></h1>
+<p>A semi-parametric model of the <em>quantiles</em> of the time to an event. For each
+level <span class="math notranslate nohighlight">\(\tau\)</span> the <span class="math notranslate nohighlight">\(\tau\)</span> quantile of the log time is linear in the
+covariates,</p>
+<div class="math notranslate nohighlight">
+\[\log Q_T(\tau \mid Z) = \beta_0(\tau) + \beta(\tau)' Z,\]</div>
+<p>with a coefficient vector of its own at every level. A covariate can
+therefore shorten the early failures (the B10 life, <span class="math notranslate nohighlight">\(\tau = 0.1\)</span>) a
+great deal and the median hardly at all. Neither proportional hazards nor an
+accelerated failure time is assumed: an AFT model is the special case where
+every slope is the same at every level. <span class="math notranslate nohighlight">\(e^{\beta_k(\tau)}\)</span> is the
+factor by which a unit of covariate <span class="math notranslate nohighlight">\(k\)</span> multiplies the <span class="math notranslate nohighlight">\(\tau\)</span>
+quantile.</p>
+<p>Right-censored data are taken by one of two estimators, chosen with
+<code class="docutils literal notranslate"><span class="pre">method=</span></code>, each fitted on a grid of levels (<code class="docutils literal notranslate"><span class="pre">step=0.01</span></code> by default) from
+the bottom up, as R’s <code class="docutils literal notranslate"><span class="pre">quantreg::crq</span></code> fits them:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;peng-huang&quot;</span></code> (the default): Peng and Huang’s (2008) martingale
+estimating equations. With no covariates it is the quantile of the
+Nelson-Aalen (Fleming-Harrington) survival curve.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;portnoy&quot;</span></code>: Portnoy’s (2003) recursively reweighted quantile
+regression, which moves each censored unit’s weight to the right once
+the quantile has passed it. With no censoring it is ordinary quantile
+regression; with no covariates it is the Kaplan-Meier quantile.</p></li>
+</ul>
+<p>The process stops at the last level the data determine,
+<code class="docutils literal notranslate"><span class="pre">model.tau_max</span></code>: past the last events the censoring leaves nothing to fit.
+Each unit’s predicted distribution (<code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code>) is read
+from its quantiles at the fitted levels, rearranged into order where they
+cross; <code class="docutils literal notranslate"><span class="pre">ff</span></code> rises in steps to <code class="docutils literal notranslate"><span class="pre">tau_max</span></code> and holds it, and <code class="docutils literal notranslate"><span class="pre">qf</span></code> is
+<code class="docutils literal notranslate"><span class="pre">nan</span></code> above it. There is no closed-form standard error: <code class="docutils literal notranslate"><span class="pre">bootstrap_ci</span></code>,
+<code class="docutils literal notranslate"><span class="pre">summary(n_boot=...)</span></code>, <code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code> and <code class="docutils literal notranslate"><span class="pre">cb</span></code> give percentile bootstrap
+intervals, resampling the units. Only observed and right-censored data with
+positive times are accepted.</p>
+<p>Usage:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">coefficients</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span>          <span class="c1"># intercept and slopes at the B10</span>
+<span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">Z_new</span><span class="p">)</span>             <span class="c1"># the B10 life of each new unit</span>
+<span class="n">model</span><span class="o">.</span><span class="n">quantile_cb</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">Z_new</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">bound</span><span class="o">=</span><span class="s2">"lower"</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>See “Semi-Parametric — Censored Quantile Regression” in
+<a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Regression Modelling with SurPyval</span></a> for a worked example.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.univariate.regression.quantile.quantile_regression.</span></span><span class="sig-name descname"><span class="pre">QuantileRegression_</span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">FitterRepr</span></code></p>
+<p>Censored quantile regression: the quantiles of the time to an event,
+<span class="math notranslate nohighlight">\(Q_T(\tau \mid Z) = e^{\beta_0(\tau) + \beta(\tau)' Z}\)</span>, with a
+coefficient vector for every level <span class="math notranslate nohighlight">\(\tau\)</span> and no proportional
+hazards or accelerated failure time assumption, from right-censored
+data, by Peng and Huang’s (2008) or Portnoy’s (2003) estimator (R’s
+<code class="docutils literal notranslate"><span class="pre">quantreg::crq</span></code>). <code class="docutils literal notranslate"><span class="pre">QuantileRegression</span></code> is an instance of this
+class; its <code class="docutils literal notranslate"><span class="pre">fit</span></code> returns a
+<a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel"><code class="xref py py-class docutils literal notranslate"><span class="pre">QuantileRegressionModel</span></code></a>.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit">
+<span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'peng-huang'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.01</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel"><span class="pre">QuantileRegressionModel</span></a></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit" title="Link to this definition"></a></dt>
+<dd><p>Fit a censored quantile regression.</p>
+<p>The quantile process is fitted on the grid of levels <code class="docutils literal notranslate"><span class="pre">step,</span>
+<span class="pre">2</span> <span class="pre">step,</span> <span class="pre">...</span></code>, from the bottom up, and stops at the last level the
+data determine (<a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max"><code class="xref py py-attr docutils literal notranslate"><span class="pre">QuantileRegressionModel.tau_max</span></code></a>): past the
+last event the censoring leaves nothing to fit. Rows with a missing
+or infinite covariate are dropped, with a warning. A covariate
+column that is constant (the intercept already is one), or a linear
+combination of the others, is aliased: its coefficients are
+<code class="docutils literal notranslate"><span class="pre">nan</span></code>, the others those of the fit without it, and one warning
+names it. The rows are fitted sorted, with identical rows merged,
+so the fit is the same whatever order they are given in, and a
+count <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">k</span></code> is the same as <code class="docutils literal notranslate"><span class="pre">k</span></code> repeated rows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – The (positive, finite) times.</p></li>
+<li><p><strong>Z</strong> (<em>array_like</em>) – The covariate matrix, one row per observation.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Censoring flags: 0 observed, 1 right censored. Left and
+interval censoring are not supported. Defaults to all
+observed.</p></li>
+<li><p><strong>n</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Counts per row. Defaults to 1.</p></li>
+<li><p><strong>method</strong> (<em>(</em><em>'peng-huang'</em><em>, </em><em>'portnoy'</em><em>)</em><em>, </em><em>optional</em>) – The estimator: Peng and Huang’s (2008) martingale estimating
+equations (the default), or Portnoy’s (2003) recursively
+reweighted quantile regression. With no censoring Portnoy’s is
+ordinary quantile regression at each level; with no covariates
+it is the Kaplan-Meier quantile, and Peng and Huang’s the
+quantile of the Nelson-Aalen survival, each up to the grid’s
+resolution.</p></li>
+<li><p><strong>step</strong> (<em>float</em><em>, </em><em>optional</em>) – The spacing of the grid of levels, in (0, 0.5]. Default 0.01,
+which fits 0.01, 0.02, …, 0.99. A finer grid follows the
+estimator more closely (both are defined as the grid shrinks)
+and costs a linear programme per level.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fitted model.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel">QuantileRegressionModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>The times have a log-normal spread that grows with the covariate,
+so its effect on the early failures (the B10 life) is weaker than
+on the median; follow-up ends at 20:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">500</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">z</span> <span class="o">+</span> <span class="p">(</span><span class="mf">0.2</span> <span class="o">+</span> <span class="mf">0.2</span> <span class="o">*</span> <span class="n">z</span><span class="p">)</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">500</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">coefficients</span><span class="p">([</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([[0.73, 0.28],</span>
+<span class="go">       [1.01, 0.46]])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="p">[[</span><span class="mf">0.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">2.0</span><span class="p">]])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([2.07, 3.64])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit_from_df">
+<span class="sig-name descname"><span class="pre">fit_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z_cols</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">formula</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'peng-huang'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.01</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel"><span class="pre">QuantileRegressionModel</span></a></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit_from_df" title="Link to this definition"></a></dt>
+<dd><p>Fit a censored quantile regression from a pandas DataFrame. See
+<a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> for the estimator; <code class="docutils literal notranslate"><span class="pre">Z_cols</span></code> or <code class="docutils literal notranslate"><span class="pre">formula</span></code> selects
+the covariates.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>DataFrame</em>) – The data.</p></li>
+<li><p><strong>x_col</strong> (<em>str</em>) – The column of times.</p></li>
+<li><p><strong>Z_cols</strong> (<em>str</em><em> or </em><em>list</em><em> of </em><em>str</em><em>, </em><em>optional</em>) – The covariate columns. Give either this or <code class="docutils literal notranslate"><span class="pre">formula</span></code>.</p></li>
+<li><p><strong>c_col</strong> (<em>str</em><em>, </em><em>optional</em>) – The censoring-flag and count columns.</p></li>
+<li><p><strong>n_col</strong> (<em>str</em><em>, </em><em>optional</em>) – The censoring-flag and count columns.</p></li>
+<li><p><strong>formula</strong> (<em>str</em><em>, </em><em>optional</em>) – A formula (formulaic syntax) for the covariates.</p></li>
+<li><p><strong>method</strong> (<em>optional</em>) – As for <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p></li>
+<li><p><strong>step</strong> (<em>optional</em>) – As for <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fitted model, which keeps the covariate names (or formula)
+so it predicts from DataFrame rows.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel">QuantileRegressionModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_rossi_static</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_rossi_static</span><span class="p">()</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">c</span><span class="o">=</span><span class="k">lambda</span> <span class="n">d</span><span class="p">:</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">d</span><span class="p">[</span><span class="s2">"arrest"</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"week"</span><span class="p">,</span> <span class="n">formula</span><span class="o">=</span><span class="s2">"fin + age + prio"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">summary</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)[</span><span class="s2">"coef"</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">covariate</span>
+<span class="go">Intercept    2.834</span>
+<span class="go">fin          0.320</span>
+<span class="go">age          0.018</span>
+<span class="go">prio        -0.071</span>
+<span class="go">Name: coef, dtype: float64</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fitter_kind">
+<span class="sig-name descname"><span class="pre">fitter_kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'semi-parametric</span> <span class="pre">censored</span> <span class="pre">quantile</span> <span class="pre">regression</span> <span class="pre">fitter'</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fitter_kind" title="Link to this definition"></a></dt>
+<dd><p>The <code class="docutils literal notranslate"><span class="pre">repr</span></code>.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.univariate.regression.quantile.quantile_regression.</span></span><span class="sig-name descname"><span class="pre">QuantileRegressionModel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">taus</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intercepts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">coefs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">step</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodMixin</span></code>, <code class="xref py py-class docutils literal notranslate"><span class="pre">SerialisableMixin</span></code></p>
+<p>A fitted censored quantile regression: the coefficient process
+<span class="math notranslate nohighlight">\(\beta_0(\tau), \beta(\tau)\)</span> at the levels of a grid, from
+<a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegression_.fit"><code class="xref py py-func docutils literal notranslate"><span class="pre">QuantileRegression.fit</span></code></a>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">taus</span></code> are the levels fitted, <code class="docutils literal notranslate"><span class="pre">intercepts</span></code> the intercept at each and
+<code class="docutils literal notranslate"><span class="pre">coefs</span></code> the covariate coefficients, one row per level and one column
+per covariate. <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.coefficients" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.coefficients"><code class="xref py py-meth docutils literal notranslate"><span class="pre">coefficients()</span></code></a> reads them at any level, and
+<a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.summary" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.summary"><code class="xref py py-meth docutils literal notranslate"><span class="pre">summary()</span></code></a> tabulates them with bootstrap intervals. A coefficient
+is the change in the log of that quantile per unit of the covariate:
+<code class="docutils literal notranslate"><span class="pre">exp(coef)</span></code> is the factor by which a unit multiplies the quantile.</p>
+<p class="rubric">Examples</p>
+<p>On the Rossi recidivism data (<code class="docutils literal notranslate"><span class="pre">arrest</span></code> is 1 for an arrest, so the
+censoring flag is <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">arrest</span></code>), the tenth percentile of the time to
+arrest – the B10 life – by financial aid (<code class="docutils literal notranslate"><span class="pre">fin</span></code>), age and prior
+convictions (<code class="docutils literal notranslate"><span class="pre">prio</span></code>):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_rossi_static</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_rossi_static</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="s2">"week"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">df</span><span class="p">[</span><span class="s2">"arrest"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Z</span> <span class="o">=</span> <span class="n">df</span><span class="p">[[</span><span class="s2">"fin"</span><span class="p">,</span> <span class="s2">"age"</span><span class="p">,</span> <span class="s2">"prio"</span><span class="p">]]</span><span class="o">.</span><span class="n">values</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">coefficients</span><span class="p">(</span><span class="mf">0.1</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([ 2.834,  0.32 ,  0.018, -0.071])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">3</span><span class="p">]])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="go">array([21.4, 29.5])</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.Hf">
+<span class="sig-name descname"><span class="pre">Hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.Hf" title="Link to this definition"></a></dt>
+<dd><p>The cumulative hazard <code class="docutils literal notranslate"><span class="pre">-log</span> <span class="pre">sf(x,</span> <span class="pre">Z)</span></code>; <code class="docutils literal notranslate"><span class="pre">Z</span></code> as for
+<a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.ff" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.ff"><code class="xref py py-meth docutils literal notranslate"><span class="pre">ff()</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.aic">
+<span class="sig-name descname"><span class="pre">aic</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.aic" title="Link to this definition"></a></dt>
+<dd><p>Raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodError</span></code>: there is no likelihood to
+penalise.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.aic_c">
+<span class="sig-name descname"><span class="pre">aic_c</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.aic_c" title="Link to this definition"></a></dt>
+<dd><p>Raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodError</span></code>: there is no likelihood to
+penalise.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.aliased">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">aliased</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.aliased" title="Link to this definition"></a></dt>
+<dd><p>The covariate columns whose coefficients the data cannot
+determine – a constant column, which the intercept already is, or
+one that is a linear combination of the others – and which the
+fit left out (their <code class="docutils literal notranslate"><span class="pre">coefs</span></code> are <code class="docutils literal notranslate"><span class="pre">nan</span></code>; predictions take them as
+0).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.bic">
+<span class="sig-name descname"><span class="pre">bic</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.bic" title="Link to this definition"></a></dt>
+<dd><p>Raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodError</span></code>: there is no likelihood to
+penalise.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.bootstrap_ci">
+<span class="sig-name descname"><span class="pre">bootstrap_ci</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tau</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_boot</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.bootstrap_ci" title="Link to this definition"></a></dt>
+<dd><p>Percentile bootstrap confidence intervals for the intercept and
+the coefficients at level <code class="docutils literal notranslate"><span class="pre">tau</span></code>.</p>
+<p>The units are resampled with replacement (a row with count <code class="docutils literal notranslate"><span class="pre">n</span></code>
+is <code class="docutils literal notranslate"><span class="pre">n</span></code> units), the process refitted on the grid up to <code class="docutils literal notranslate"><span class="pre">tau</span></code>,
+and the intervals are the percentiles of the refitted
+coefficients. A resample whose process stops below <code class="docutils literal notranslate"><span class="pre">tau</span></code>, or
+in which a covariate is constant, is left out, with a warning
+counting them.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tau</strong> (<em>float</em>) – The level, at most <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max"><code class="xref py py-attr docutils literal notranslate"><span class="pre">tau_max</span></code></a>.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The intervals’ total tail probability: 0.05 (the default) for
+95% two-sided intervals, 0.1 for 90%.</p></li>
+<li><p><strong>n_boot</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of resamples. Default 200.</p></li>
+<li><p><strong>random_state</strong> (<em>None</em><em>, </em><em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – The seed of the resampling. <code class="docutils literal notranslate"><span class="pre">None</span></code> (the default) draws from
+numpy’s global generator, so <code class="docutils literal notranslate"><span class="pre">np.random.seed</span></code> reproduces it.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An <code class="docutils literal notranslate"><span class="pre">(1</span> <span class="pre">+</span> <span class="pre">n_covariates,</span> <span class="pre">2)</span></code> array of <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>, the
+intercept first.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">300</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">z</span> <span class="o">+</span> <span class="mf">0.3</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">300</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ci</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">bootstrap_ci</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="n">n_boot</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ci</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([[0.92, 1.05],</span>
+<span class="go">       [0.45, 0.57]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.cb">
+<span class="sig-name descname"><span class="pre">cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'sf'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_boot</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.cb" title="Link to this definition"></a></dt>
+<dd><p>Percentile bootstrap bounds on <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code> or <code class="docutils literal notranslate"><span class="pre">Hf</span></code> at <code class="docutils literal notranslate"><span class="pre">x</span></code>
+for covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code>.</p>
+<p>The units are resampled as for <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.bootstrap_ci" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.bootstrap_ci"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bootstrap_ci()</span></code></a> and the whole
+process refitted; the bounds on <code class="docutils literal notranslate"><span class="pre">sf</span></code> are the percentiles of the
+refits’ survival, and those on <code class="docutils literal notranslate"><span class="pre">ff</span></code> and <code class="docutils literal notranslate"><span class="pre">Hf</span></code> the same bounds
+transformed. Calls with the same <code class="docutils literal notranslate"><span class="pre">n_boot</span></code> and integer
+<code class="docutils literal notranslate"><span class="pre">random_state</span></code> share one set of refits.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>float</em><em> or </em><em>array like</em>) – The times.</p></li>
+<li><p><strong>Z</strong> (<em>array like</em><em> or </em><em>DataFrame</em>) – The covariates, paired with <code class="docutils literal notranslate"><span class="pre">x</span></code> as <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.ff" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.ff"><code class="xref py py-meth docutils literal notranslate"><span class="pre">ff()</span></code></a> pairs them.</p></li>
+<li><p><strong>on</strong> (<em>(</em><em>'sf'</em><em>, </em><em>'ff'</em><em>, </em><em>'Hf'</em><em>)</em><em>, </em><em>optional</em>) – The function to bound (<code class="docutils literal notranslate"><span class="pre">'R'</span></code> and <code class="docutils literal notranslate"><span class="pre">'F'</span></code> are aliases of
+<code class="docutils literal notranslate"><span class="pre">'sf'</span></code> and <code class="docutils literal notranslate"><span class="pre">'ff'</span></code>). Default <code class="docutils literal notranslate"><span class="pre">'sf'</span></code>.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The total tail probability of a two-sided interval, or the one
+tail of a one-sided bound. Default 0.05.</p></li>
+<li><p><strong>bound</strong> (<em>(</em><em>'two-sided'</em><em>, </em><em>'lower'</em><em>, </em><em>'upper'</em><em>)</em><em>, </em><em>optional</em>) – Two-sided bounds put <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code> on a last axis.</p></li>
+<li><p><strong>n_boot</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of resamples. Default 200.</p></li>
+<li><p><strong>random_state</strong> (<em>None</em><em>, </em><em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – The seed of the resampling.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The bounds, with the shape of <code class="docutils literal notranslate"><span class="pre">x</span></code> (and a last axis of 2 for
+two-sided bounds).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">300</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">z</span> <span class="o">+</span> <span class="mf">0.3</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">300</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mf">4.0</span><span class="p">,</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">np.float64(0.68)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="mf">4.0</span><span class="p">,</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">],</span> <span class="n">n_boot</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([0.633, 0.752])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.coefficients">
+<span class="sig-name descname"><span class="pre">coefficients</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tau</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.coefficients" title="Link to this definition"></a></dt>
+<dd><p>The intercept and the covariate coefficients at level <code class="docutils literal notranslate"><span class="pre">tau</span></code>: the
+fitted process at the first grid level at or above it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>tau</strong> (<em>float</em><em> or </em><em>array like</em>) – The level(s), in (0, 1) and at most <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max"><code class="xref py py-attr docutils literal notranslate"><span class="pre">tau_max</span></code></a>.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">[intercept,</span> <span class="pre">coef_0,</span> <span class="pre">coef_1,</span> <span class="pre">...]</span></code> for one level, or one such
+row per level.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">500</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">z</span> <span class="o">+</span> <span class="p">(</span><span class="mf">0.2</span> <span class="o">+</span> <span class="mf">0.2</span> <span class="o">*</span> <span class="n">z</span><span class="p">)</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">500</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">coefficients</span><span class="p">([</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([[0.73, 0.28],</span>
+<span class="go">       [1.01, 0.46],</span>
+<span class="go">       [1.17, 0.81]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.coefs">
+<span class="sig-name descname"><span class="pre">coefs</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.coefs" title="Link to this definition"></a></dt>
+<dd><p>The covariate coefficients, one row per level and one column per
+covariate (<code class="docutils literal notranslate"><span class="pre">nan</span></code> for an aliased column).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.ff">
+<span class="sig-name descname"><span class="pre">ff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.ff" title="Link to this definition"></a></dt>
+<dd><p>The probability of the event by <code class="docutils literal notranslate"><span class="pre">x</span></code> for covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code> (one
+row for every time, or one row per time): the share of the levels
+whose quantile for that row is at or below <code class="docutils literal notranslate"><span class="pre">x</span></code>. It rises in
+steps to <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max"><code class="xref py py-attr docutils literal notranslate"><span class="pre">tau_max</span></code></a> and holds it after the last.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">500</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">z</span> <span class="o">+</span> <span class="p">(</span><span class="mf">0.2</span> <span class="o">+</span> <span class="mf">0.2</span> <span class="o">*</span> <span class="n">z</span><span class="p">)</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">500</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">([</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([0.03, 0.71, 0.98])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.from_dict">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel"><span class="pre">QuantileRegressionModel</span></a></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.from_dict" title="Link to this definition"></a></dt>
+<dd><p>Rebuild a censored quantile regression from a <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_dict" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a>
+dictionary.</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_dict" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_dict</span></code></a>, <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_json" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_json</span></code></a>, <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.from_json" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.from_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_json</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.from_json">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">PathLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.from_json" title="Link to this definition"></a></dt>
+<dd><p>Load a model from a JSON file written by <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_json" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_json"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_json()</span></code></a>, or
+from the JSON text it returned (a string starting with <code class="docutils literal notranslate"><span class="pre">{</span></code>).</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.intercepts">
+<span class="sig-name descname"><span class="pre">intercepts</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.intercepts" title="Link to this definition"></a></dt>
+<dd><p>The intercept at each level.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.log_likelihood">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">log_likelihood</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.log_likelihood" title="Link to this definition"></a></dt>
+<dd><p>Raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodError</span></code> (an <code class="docutils literal notranslate"><span class="pre">AttributeError</span></code>, so
+<code class="docutils literal notranslate"><span class="pre">hasattr</span></code> is <code class="docutils literal notranslate"><span class="pre">False</span></code>): the model has no likelihood.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.maximum">
+<span class="sig-name descname"><span class="pre">maximum</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'not</span> <span class="pre">applicable'</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.maximum" title="Link to this definition"></a></dt>
+<dd><p>Censored quantile regression solves estimating equations (a linear
+programme at each level) rather than maximising a likelihood:
+<code class="docutils literal notranslate"><span class="pre">&quot;not</span> <span class="pre">applicable&quot;</span></code> (one of <code class="docutils literal notranslate"><span class="pre">MAXIMUM_STATES</span></code>,
+<code class="docutils literal notranslate"><span class="pre">surpyval.utils.no_maximum</span></code>).</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.method">
+<span class="sig-name descname"><span class="pre">method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.method" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">&quot;peng-huang&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;portnoy&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The estimator</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.neg_ll">
+<span class="sig-name descname"><span class="pre">neg_ll</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">float</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.neg_ll" title="Link to this definition"></a></dt>
+<dd><p>Raises <code class="xref py py-class docutils literal notranslate"><span class="pre">NoLikelihoodError</span></code>: the model has no
+likelihood.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.qf">
+<span class="sig-name descname"><span class="pre">qf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.qf" title="Link to this definition"></a></dt>
+<dd><p>The time by which a share <code class="docutils literal notranslate"><span class="pre">p</span></code> of units with covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code>
+have had the event: <code class="docutils literal notranslate"><span class="pre">qf(0.1,</span> <span class="pre">Z)</span></code> is their B10 life. It is
+<span class="math notranslate nohighlight">\(e^{\beta_0(p) + \beta(p)' Z}\)</span> where the quantiles at
+the grid levels are in order, and the rearranged quantile where
+they cross; <code class="docutils literal notranslate"><span class="pre">nan</span></code> past <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max"><code class="xref py py-attr docutils literal notranslate"><span class="pre">tau_max</span></code></a>. <code class="docutils literal notranslate"><span class="pre">Z</span></code> is paired with
+<code class="docutils literal notranslate"><span class="pre">p</span></code> as <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.ff" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.ff"><code class="xref py py-meth docutils literal notranslate"><span class="pre">ff()</span></code></a> pairs it with <code class="docutils literal notranslate"><span class="pre">x</span></code>. A probability outside
+[0, 1] gives <code class="docutils literal notranslate"><span class="pre">nan</span></code>, with a warning.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">500</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">z</span> <span class="o">+</span> <span class="p">(</span><span class="mf">0.2</span> <span class="o">+</span> <span class="mf">0.2</span> <span class="o">*</span> <span class="n">z</span><span class="p">)</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">500</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">([</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">array([2.38, 3.44])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.quantile_cb">
+<span class="sig-name descname"><span class="pre">quantile_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">p</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_boot</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.quantile_cb" title="Link to this definition"></a></dt>
+<dd><p>Percentile bootstrap bounds on the quantile <code class="docutils literal notranslate"><span class="pre">qf(p,</span> <span class="pre">Z)</span></code>: on the
+B10 life of units with covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code>, say, with
+<code class="docutils literal notranslate"><span class="pre">p</span> <span class="pre">=</span> <span class="pre">0.1</span></code>.</p>
+<p>The units are resampled as for <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.bootstrap_ci" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.bootstrap_ci"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bootstrap_ci()</span></code></a>, the whole
+process refitted, and each refit’s quantile read as <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.qf" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.qf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">qf()</span></code></a>
+reads the model’s; a resample whose process stops below a <code class="docutils literal notranslate"><span class="pre">p</span></code>
+gives no quantile there and is left out of that bound, with a
+warning counting them. Calls with the same <code class="docutils literal notranslate"><span class="pre">n_boot</span></code> and integer
+<code class="docutils literal notranslate"><span class="pre">random_state</span></code> share one set of refits.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>p</strong> (<em>float</em><em> or </em><em>array like</em>) – The probabilities.</p></li>
+<li><p><strong>Z</strong> (<em>array like</em><em> or </em><em>DataFrame</em>) – The covariates, paired with <code class="docutils literal notranslate"><span class="pre">p</span></code> as <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.qf" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.qf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">qf()</span></code></a> pairs them.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The total tail probability of a two-sided interval, or the one
+tail of a one-sided bound. Default 0.05; a one-sided 90% lower
+bound on a B-life is <code class="docutils literal notranslate"><span class="pre">alpha_ci=0.1,</span> <span class="pre">bound=&quot;lower&quot;</span></code>.</p></li>
+<li><p><strong>bound</strong> (<em>(</em><em>'two-sided'</em><em>, </em><em>'lower'</em><em>, </em><em>'upper'</em><em>)</em><em>, </em><em>optional</em>) – Two-sided bounds put <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code> on a last axis.</p></li>
+<li><p><strong>n_boot</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of resamples. Default 200.</p></li>
+<li><p><strong>random_state</strong> (<em>None</em><em>, </em><em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – The seed of the resampling.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The bounds, with the shape of <code class="docutils literal notranslate"><span class="pre">p</span></code> (and a last axis of 2 for
+two-sided bounds).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">300</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">z</span> <span class="o">+</span> <span class="mf">0.3</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">300</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">np.float64(3.17)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">quantile_cb</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">],</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">bound</span><span class="o">=</span><span class="s2">"lower"</span><span class="p">,</span>
+<span class="gp">... </span>                  <span class="n">n_boot</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="go">np.float64(3.03)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.sf">
+<span class="sig-name descname"><span class="pre">sf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.sf" title="Link to this definition"></a></dt>
+<dd><p>The survival <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">ff(x,</span> <span class="pre">Z)</span></code>; <code class="docutils literal notranslate"><span class="pre">Z</span></code> as for <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.ff" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.ff"><code class="xref py py-meth docutils literal notranslate"><span class="pre">ff()</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.step">
+<span class="sig-name descname"><span class="pre">step</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.step" title="Link to this definition"></a></dt>
+<dd><p>The spacing of the grid of levels.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.summary">
+<span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tau</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_boot</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">random_state</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pd.DataFrame</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.summary" title="Link to this definition"></a></dt>
+<dd><p>The coefficient table at level <code class="docutils literal notranslate"><span class="pre">tau</span></code>, in the layout of the other
+regression models’ <code class="docutils literal notranslate"><span class="pre">summary</span></code>: the intercept and each covariate’s
+coefficient, and <code class="docutils literal notranslate"><span class="pre">exp(coef)</span></code>, the factor by which a unit of the
+covariate multiplies the <code class="docutils literal notranslate"><span class="pre">tau</span></code> quantile (for the intercept, the
+quantile at <code class="docutils literal notranslate"><span class="pre">Z</span> <span class="pre">=</span> <span class="pre">0</span></code>). There is no closed-form standard error, so
+<code class="docutils literal notranslate"><span class="pre">se(coef)</span></code>, <code class="docutils literal notranslate"><span class="pre">z</span></code> and <code class="docutils literal notranslate"><span class="pre">p</span></code> are <code class="docutils literal notranslate"><span class="pre">nan</span></code>; with <code class="docutils literal notranslate"><span class="pre">n_boot</span></code> the
+intervals are those of <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.bootstrap_ci" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.bootstrap_ci"><code class="xref py py-meth docutils literal notranslate"><span class="pre">bootstrap_ci()</span></code></a>, else <code class="docutils literal notranslate"><span class="pre">nan</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tau</strong> (<em>float</em><em>, </em><em>optional</em>) – The level. Default 0.5, the median.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The intervals’ total tail probability. Default 0.05.</p></li>
+<li><p><strong>n_boot</strong> (<em>int</em><em>, </em><em>optional</em>) – The number of resamples for the intervals; <code class="docutils literal notranslate"><span class="pre">None</span></code> (the
+default) gives none.</p></li>
+<li><p><strong>random_state</strong> (<em>None</em><em>, </em><em>int</em><em> or </em><em>numpy.random.Generator</em><em>, </em><em>optional</em>) – The seed of the bootstrap.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>One row for the intercept and one per covariate.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantileRegression</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">300</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">z</span> <span class="o">+</span> <span class="mf">0.3</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">300</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">20</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">QuantileRegression</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">20</span><span class="p">),</span> <span class="n">z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">summary</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">n_boot</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">list</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">index</span><span class="p">)</span>
+<span class="go">['Intercept', 'coef_0']</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span><span class="p">[</span><span class="s2">"coef"</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+<span class="go">[0.62, 0.53]</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">tau_max</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.tau_max" title="Link to this definition"></a></dt>
+<dd><p>the highest quantile the data
+determine on the grid.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The last level fitted</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.taus">
+<span class="sig-name descname"><span class="pre">taus</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.taus" title="Link to this definition"></a></dt>
+<dd><p>The levels fitted, from the grid’s first to the last the data
+determine.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_dict" title="Link to this definition"></a></dt>
+<dd><p>Serialise this model to a plain, JSON-serialisable dict: the
+coefficient process, the estimator and its grid, and the fit data
+(so the restored model still bootstraps).</p>
+<div class="admonition seealso">
+<p class="admonition-title">See also</p>
+<p><a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.from_dict" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.from_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_dict</span></code></a>, <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_json" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_json</span></code></a>, <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.from_json" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.from_json"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_json</span></code></a></p>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">PathLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">with_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_json" title="Link to this definition"></a></dt>
+<dd><p>Write <a class="reference internal" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_dict" title="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> to <code class="docutils literal notranslate"><span class="pre">fp</span></code> as strict JSON, or return it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fp</strong> (<em>str</em><em> or </em><em>os.PathLike</em><em>, </em><em>optional</em>) – The file to write. Without it the JSON is returned as a
+string (as <code class="docutils literal notranslate"><span class="pre">pandas.DataFrame.to_json</span></code> does), which
+<code class="docutils literal notranslate"><span class="pre">from_json</span></code> also reads.</p></li>
+<li><p><strong>with_data</strong> (<em>bool</em><em>, </em><em>optional</em>) – Write <code class="docutils literal notranslate"><span class="pre">to_dict(with_data=True)</span></code>, which also stores the fitted
+data, for the models whose <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> takes <code class="docutils literal notranslate"><span class="pre">with_data</span></code>
+(the univariate <code class="docutils literal notranslate"><span class="pre">Parametric</span></code> and <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code>); a
+<code class="docutils literal notranslate"><span class="pre">TypeError</span></code> for any other model. Defaults to <code class="code docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#surpyval.univariate.regression.quantile.quantile_regression.QuantileRegressionModel.unit" title="Link to this definition"></a></dt>
+<dd><p>a label, set by
+<code class="docutils literal notranslate"><span class="pre">unit=</span></code> on <code class="docutils literal notranslate"><span class="pre">fit</span></code>, <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> and <code class="docutils literal notranslate"><span class="pre">from_params</span></code>, shown
+in the <code class="docutils literal notranslate"><span class="pre">repr</span></code> and on plots and saved by <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>. None is
+unknown. See <code class="xref py py-mod docutils literal notranslate"><span class="pre">surpyval.utils.units</span></code>. (Not <code class="docutils literal notranslate"><span class="pre">units</span></code>, which
+names the items measured: a degradation model’s unit ids.)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The unit of the data the model describes (#845)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="buckley_james.html" class="btn btn-neutral float-left" title="Buckley-James" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="parametric.html" class="btn btn-neutral float-right" title="Parametric Regression Models" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

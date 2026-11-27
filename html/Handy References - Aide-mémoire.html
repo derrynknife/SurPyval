@@ -1,0 +1,422 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Handy References - Aide-mémoire &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Data Wrangling Examples" href="Data%20Wrangler%20Examples.html" />
+    <link rel="prev" title="Design Principles" href="Design%20Principles.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Handy References - Aide-mémoire</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#relationship-between-functions-of-a-probability-distribution">Relationship between functions of a probability distribution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#aft-al-or-ph">AFT, AL, or PH?</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-weibull-is-both-aft-and-ph">The Weibull is both AFT and PH</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#how-an-aft-and-ph-model-relate-to-a-regular-distribution">How an AFT and PH Model Relate to a regular distribution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Handy References - Aide-mémoire</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Handy References - Aide-mémoire.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="handy-references-aide-memoire">
+<h1>Handy References - Aide-mémoire<a class="headerlink" href="#handy-references-aide-memoire" title="Link to this heading"></a></h1>
+<section id="relationship-between-functions-of-a-probability-distribution">
+<h2>Relationship between functions of a probability distribution<a class="headerlink" href="#relationship-between-functions-of-a-probability-distribution" title="Link to this heading"></a></h2>
+<p>Each of the functions of a distribution can be computed from any of the others. This is very useful to keep in mind when understanding how SurPyval works. For example, the Nelson-Aalen estimator estimates the cumulative hazard function (<code class="docutils literal notranslate"><span class="pre">Hf</span></code>), and the relationships below turn that estimate into a survival function or a CDF.</p>
+<img alt="_images/relationships.png" class="align-center" src="_images/relationships.png" />
+<p>The above table shows how the function on the left, can be described by the function along the top row (I leave out the function describing itself as it is simply itself…). So, an interesting one is that the reliability or survival function, R(t), is simply the exponentiated negative of the cumulative hazard function! This relationship holds for <strong>every</strong> continuous distribution.</p>
+<p>The five functions, their names in SurPyval, and their meanings:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.0%" />
+<col style="width: 12.0%" />
+<col style="width: 76.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Symbol</p></th>
+<th class="head"><p>Method</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(f(t)\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">df</span></code></p></td>
+<td><p>the density: the probability of the event (a failure, a death) in a small interval around <span class="math notranslate nohighlight">\(t\)</span>, per unit time</p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(F(t)\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ff</span></code></p></td>
+<td><p>the CDF, or unreliability: the probability that the event has happened (the item has failed) by <span class="math notranslate nohighlight">\(t\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(R(t)\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sf</span></code></p></td>
+<td><p>the survival, or reliability, function: the probability of surviving past <span class="math notranslate nohighlight">\(t\)</span>; <span class="math notranslate nohighlight">\(R = 1 - F\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(h(t)\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">hf</span></code></p></td>
+<td><p>the hazard, or failure rate: the rate of events at <span class="math notranslate nohighlight">\(t\)</span> <em>among the units that have survived to</em> <span class="math notranslate nohighlight">\(t\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(H(t)\)</span></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">Hf</span></code></p></td>
+<td><p>the cumulative hazard: the hazard accumulated up to <span class="math notranslate nohighlight">\(t\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<p>The identities in the table, written out:</p>
+<div class="math notranslate nohighlight">
+\[F(t) = 1 - R(t), \qquad
+f(t) = \frac{dF(t)}{dt} = -\frac{dR(t)}{dt}, \qquad
+h(t) = \frac{f(t)}{R(t)}\]</div>
+<div class="math notranslate nohighlight">
+\[H(t) = \int_0^t h(s)\, ds = -\ln R(t), \qquad
+R(t) = e^{-H(t)}, \qquad
+f(t) = h(t)\, e^{-H(t)}\]</div>
+<p>The hazard is the one that most often causes confusion. It is not a probability: it is a <em>conditional rate</em>, and it can be greater than one. Its shape is what distinguishes infant mortality (decreasing hazard), random failures (constant hazard) and wear-out (increasing hazard); it is also the quantity that proportional hazards models act on.</p>
+<p>Every fitted univariate distribution and non-parametric estimate in SurPyval has all five methods, a <code class="docutils literal notranslate"><span class="pre">MixtureModel</span></code> included, so the identities can be checked directly. A non-parametric estimate is a step function, so its <code class="docutils literal notranslate"><span class="pre">hf</span></code> and <code class="docutils literal notranslate"><span class="pre">df</span></code> are the sizes of the jumps between the points you ask for, not rates; <code class="docutils literal notranslate"><span class="pre">smoothed_hf</span></code> gives a smoothed hazard rate (see <a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html"><span class="doc">Non-Parametric SurPyval Modelling</span></a>).</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">10.0</span><span class="p">])</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"R(t)             :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"exp(-H(t))       :"</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">model</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="n">t</span><span class="p">)))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"h(t)             :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">hf</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"f(t) / R(t)      :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">df</span><span class="p">(</span><span class="n">t</span><span class="p">)</span> <span class="o">/</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>R(t)             : [0.96078944 0.77880078 0.36787944]
+exp(-H(t))       : [0.96078944 0.77880078 0.36787944]
+h(t)             : [0.04 0.1  0.2 ]
+f(t) / R(t)      : [0.04 0.1  0.2 ]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Two more quantities follow from these and come up constantly in reliability work:</p>
+<ul class="simple">
+<li><p><strong>B-lives, or quantiles.</strong> The <span class="math notranslate nohighlight">\(B_q\)</span> life is the time by which a fraction <span class="math notranslate nohighlight">\(q\)</span> has failed, <span class="math notranslate nohighlight">\(F^{-1}(q)\)</span>, given by <code class="docutils literal notranslate"><span class="pre">qf(q)</span></code>. The B10 life is <code class="docutils literal notranslate"><span class="pre">qf(0.1)</span></code>, the median is <code class="docutils literal notranslate"><span class="pre">qf(0.5)</span></code>.</p></li>
+<li><p><strong>Conditional survival.</strong> The probability that an item that has already survived to <span class="math notranslate nohighlight">\(T\)</span> survives a further <span class="math notranslate nohighlight">\(t\)</span> is <span class="math notranslate nohighlight">\(R(t + T) / R(T)\)</span>, given by <code class="docutils literal notranslate"><span class="pre">cs(t,</span> <span class="pre">given=T)</span></code>. This is the basis of remaining life calculations.</p></li>
+</ul>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"B10 life                        :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"P(survive 5 more | alive at 10) :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">cs</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>B10 life                        : 3.245928459745013
+P(survive 5 more | alive at 10) : 0.2865047968601901
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="aft-al-or-ph">
+<h2>AFT, AL, or PH?<a class="headerlink" href="#aft-al-or-ph" title="Link to this heading"></a></h2>
+<p>What is the difference, if any, between an Accelerated Failure Time model, an Accelerated Life model, and a Proportional Hazard model? SurPyval uses the distinctions defined in <a class="reference internal" href="#bagdonavicius" id="id1"><span>[Bagdonavicius]</span></a>. The explanation of these are, for a baseline distribution (with subscript 0) and covariates <span class="math notranslate nohighlight">\(x\)</span> acting through a positive function <span class="math notranslate nohighlight">\(\phi(x)\)</span>:</p>
+<ul class="simple">
+<li><p>AL is an accelerated life model. That is, a model where the ‘characteristic life’ (or other life parameter) of the distribution is a function of the stress or stresses applied to the system. For example, a Weibull whose scale is <span class="math notranslate nohighlight">\(\alpha = \phi(x)\)</span>, with <span class="math notranslate nohighlight">\(\phi\)</span> a life-stress relationship such as the Arrhenius or inverse power law. This is the model traditionally used in accelerated life testing.</p></li>
+<li><p>AFT is an Accelerated Failure Time model. This is simply a distribution where the time is multiplied by a function of covariates. This has the effect of ‘accelerating’ the time. Concretely, for a survival function <span class="math notranslate nohighlight">\(R_0(t)\)</span> it can be accelerated with a function to give <span class="math notranslate nohighlight">\(R(t \mid x) = R_0 \left ( \phi \left ( x \right ) t \right )\)</span>. A <span class="math notranslate nohighlight">\(\phi(x)\)</span> of 2 means the item ages twice as fast, so every quantile of its life is halved.</p></li>
+<li><p>PH is a proportional hazard model. In a proportional hazard model, the hazard function is multiplied by some function of covariates. Hence if a function has a hazard rate of <span class="math notranslate nohighlight">\(h_0(t)\)</span> then the proportional hazard model will give simply <span class="math notranslate nohighlight">\(h(t \mid x) = \phi \left ( x \right ) h_0(t)\)</span>.</p></li>
+</ul>
+<p>Two more families are in SurPyval: the proportional odds (PO) model multiplies the odds of failure, <span class="math notranslate nohighlight">\(F/R\)</span>, by <span class="math notranslate nohighlight">\(\phi(x)\)</span>, and the additive hazards (AH) model adds a function of the covariates to the hazard. The full theory is in <a class="reference internal" href="regression%20analysis.html"><span class="doc">Regression Analysis</span></a>.</p>
+<p>When the life parameter is a scale parameter of time, as the <span class="math notranslate nohighlight">\(\alpha\)</span> of the Weibull or LogLogistic is, an AL model with <span class="math notranslate nohighlight">\(\alpha(x) = \alpha_0 / \phi(x)\)</span> is exactly the AFT model <span class="math notranslate nohighlight">\(R_0(\phi(x) t)\)</span>, which is why the two terms are often used interchangeably. They differ when the life parameter enters the distribution differently, for example the mean of a Normal distribution, where changing the mean shifts the distribution rather than stretching it.</p>
+<p>SurPyval has implementations, and even a general constructor, for each of these families: <code class="docutils literal notranslate"><span class="pre">surv.AFT(dist)</span></code>, <code class="docutils literal notranslate"><span class="pre">surv.AcceleratedLife(dist,</span> <span class="pre">life_model)</span></code>, <code class="docutils literal notranslate"><span class="pre">surv.PH(dist)</span></code>, <code class="docutils literal notranslate"><span class="pre">surv.PO(dist)</span></code> and <code class="docutils literal notranslate"><span class="pre">surv.AH(dist)</span></code> build a model from any suitable distribution, and common combinations are ready-made (<code class="docutils literal notranslate"><span class="pre">surv.WeibullAFT</span></code>, <code class="docutils literal notranslate"><span class="pre">surv.WeibullPH</span></code>, <code class="docutils literal notranslate"><span class="pre">surv.WeibullPO</span></code>, …). Each of them can handle arbitrary censoring, and accepts truncation through <code class="docutils literal notranslate"><span class="pre">t</span></code>.</p>
+<section id="the-weibull-is-both-aft-and-ph">
+<h3>The Weibull is both AFT and PH<a class="headerlink" href="#the-weibull-is-both-aft-and-ph" title="Link to this heading"></a></h3>
+<p>The Weibull distribution is special: it is the only continuous distribution for which an AFT model is also a PH model. Accelerating the time of a Weibull with shape <span class="math notranslate nohighlight">\(\beta\)</span> by a factor <span class="math notranslate nohighlight">\(\phi\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[R_0(\phi t) = \exp\left(-\left(\frac{\phi t}{\alpha}\right)^{\beta}\right)
+            = \exp\left(-\phi^{\beta}\left(\frac{t}{\alpha}\right)^{\beta}\right),\]</div>
+<p>multiplies the cumulative hazard, and so the hazard, by <span class="math notranslate nohighlight">\(\phi^{\beta}\)</span>. With <span class="math notranslate nohighlight">\(\phi(x) = e^{b x}\)</span>, an AFT coefficient <span class="math notranslate nohighlight">\(b_{AFT}\)</span> corresponds to a PH coefficient <span class="math notranslate nohighlight">\(b_{PH} = \beta\, b_{AFT}\)</span>. Fitting both to the same data shows it:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">Z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+<span class="n">x</span> <span class="o">=</span> <span class="mi">50</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.7</span> <span class="o">*</span> <span class="n">Z</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">])</span>
+
+<span class="n">aft</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullAFT</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">)</span>
+<span class="n">ph</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">Z</span><span class="p">)</span>
+
+<span class="n">shape</span> <span class="o">=</span> <span class="n">aft</span><span class="o">.</span><span class="n">dist_params</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"AFT coefficient            :"</span><span class="p">,</span> <span class="n">aft</span><span class="o">.</span><span class="n">phi_params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"shape x AFT coefficient    :"</span><span class="p">,</span> <span class="n">shape</span> <span class="o">*</span> <span class="n">aft</span><span class="o">.</span><span class="n">phi_params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"PH coefficient             :"</span><span class="p">,</span> <span class="n">ph</span><span class="o">.</span><span class="n">phi_params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>AFT coefficient            : [-0.6638547]
+shape x AFT coefficient    : [-1.00768893]
+PH coefficient             : [-1.00768931]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The two fits are the same model, parameterised differently. For any other distribution, AFT and PH are genuinely different assumptions, and choosing between them is a modelling decision.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+</section>
+<section id="how-an-aft-and-ph-model-relate-to-a-regular-distribution">
+<h2>How an AFT and PH Model Relate to a regular distribution<a class="headerlink" href="#how-an-aft-and-ph-model-relate-to-a-regular-distribution" title="Link to this heading"></a></h2>
+<p>An AFT, or accelerated failure time, model does exactly that. It ‘accelerates’ the actual time by multiplying the time in the hazard function by a function of factors, <span class="math notranslate nohighlight">\(\phi \left( x \right )\)</span>. This factor can be any function. A Proportional Hazard model also does exactly what it says, if changes the hazard rate by a particular proportion.</p>
+<img alt="_images/aft-ph-regular.png" class="align-center" src="_images/aft-ph-regular.png" />
+<p>Given the relationship between variables and a distribution with either the PH or AFT models, you can see, using the above relationships that the survival, failure, and density functions can all be determined. This relationship is good to know to understand how AFT and PH models work. Written out:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 16.0%" />
+<col style="width: 42.0%" />
+<col style="width: 42.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Function</p></th>
+<th class="head"><p>AFT, <span class="math notranslate nohighlight">\(R(t \mid x) = R_0(\phi(x) t)\)</span></p></th>
+<th class="head"><p>PH, <span class="math notranslate nohighlight">\(h(t \mid x) = \phi(x) h_0(t)\)</span></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(H(t \mid x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(H_0(\phi(x) t)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\phi(x) H_0(t)\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(h(t \mid x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\phi(x)\, h_0(\phi(x) t)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\phi(x)\, h_0(t)\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(R(t \mid x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(R_0(\phi(x) t)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(R_0(t)^{\phi(x)}\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(F(t \mid x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(F_0(\phi(x) t)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(1 - R_0(t)^{\phi(x)}\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(f(t \mid x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\phi(x)\, f_0(\phi(x) t)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\phi(x)\, h_0(t)\, R_0(t)^{\phi(x)}\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<p>Note the factor <span class="math notranslate nohighlight">\(\phi(x)\)</span> in the AFT density and hazard: it is the Jacobian of the change of time scale, and forgetting it is a common mistake when writing these models out by hand.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<div role="list" class="citation-list">
+<div class="citation" id="bagdonavicius" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">Bagdonavicius</a><span class="fn-bracket">]</span></span>
+<p>Bagdonavicius, V., &amp; Nikulin, M. (2001). Accelerated life models: modeling and statistical analysis. CRC press.</p>
+</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Design%20Principles.html" class="btn btn-neutral float-left" title="Design Principles" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Data%20Wrangler%20Examples.html" class="btn btn-neutral float-right" title="Data Wrangling Examples" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

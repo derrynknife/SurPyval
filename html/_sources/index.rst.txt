@@ -1,0 +1,395 @@
+.. surpyval documentation master file, created by
+   sphinx-quickstart on Thu Mar 19 20:15:57 2020.
+   You can adapt this file completely to your liking, but it should at least
+   contain the root `toctree` directive.
+
+
+
+SurPyval - Survival Analysis in Python
+======================================
+
+*SurPyval* is a Python package for survival analysis: the statistics of how
+long things last. The "thing" can be a bearing, a patient, a loan, a
+recession or a marathon runner, and the "time" can be hours, cycles,
+kilometres or dollars. What makes these problems different from ordinary
+statistics is that the data is almost never complete. Some units (items,
+subjects) have not had the event (have not failed, died or relapsed) when
+the study ends (*censoring*), some were only inspected now and then, and some never reached your data set at all because of how it was
+collected (*truncation*). SurPyval is built around handling every one of
+those situations correctly, in any combination, with one consistent
+interface.
+
+The package grew out of reliability engineering, so it has the tools an
+engineer expects (probability plots, offsets, B-lives, accelerated life
+tests, burn-in and warranty calculations, repairable systems, degradation),
+alongside the tools of biostatistics and econometrics (Kaplan-Meier, Cox
+regression, competing risks, frailty, predictive metrics).
+
+Installation
+------------
+
+*SurPyval* needs Python 3.11 or later and installs with pip:
+
+.. code-block:: bash
+
+    $ pip install surpyval
+
+To work on SurPyval itself, see :doc:`Contributing`.
+
+`Reliafy <https://reliafy.com>`__ is a hosted, browser-based app built on
+SurPyval, for fitting life distributions, regression and recurrent-event
+models to censored data without writing code.
+
+Where to start
+--------------
+
+- New to survival analysis? Start with :doc:`Survival Analysis from Scratch`.
+  It assumes no background and explains censoring, the survival and hazard
+  functions, the Kaplan-Meier estimate by hand, a Weibull fit, comparing
+  groups and regression, with one engineering and one medical example.
+- New to SurPyval? Read the :doc:`Quickstart`. In ten minutes it fits a
+  first model, shows why censoring matters, and gives a small example of
+  every area of the package.
+- Not sure which model your data needs? :doc:`Choosing a Model` asks one
+  yes-or-no question at a time: the shape of the problem, how to write each
+  unit's record, and what you want to know, ending at the call to make.
+- New to survival data, or not sure whether your data is censored or
+  truncated? Read :doc:`Types of Data`. Getting this right matters more than
+  any choice of model. :doc:`Data Model` then lists every letter a row of
+  data can carry (time, censoring, counts, entry, unit, event type, state,
+  terminal flag, measurements, covariates, weights) and which models take
+  which.
+- Have data in a spreadsheet, a list of failures and survivors, or a
+  maintenance log? :doc:`Data Wrangler Examples` shows how to turn it into
+  the ``x``, ``c``, ``n``, ``t`` arrays every fitter takes, and
+  :doc:`Conventions` defines those arrays exactly.
+- Used to other words for these ideas (event or failure, subject or unit,
+  survival or reliability, right censored or suspended)? The
+  :doc:`Glossary` maps the engineering, medical and statistical
+  vocabularies to each other and to SurPyval's names.
+
+How the documentation is organised
+----------------------------------
+
+The pages are in five groups, in the menu on the left:
+
+- **Quickstart & Intro**: the pages above, plus
+  :doc:`Handy References - Aide-mémoire`, a one-page summary of the
+  functions of a distribution and how they relate.
+- **Survival Analysis**: the *theory* pages. Each explains a family of
+  methods from first principles: the problem it solves, the mathematics, how
+  to read the results, what can go wrong and when to use something else.
+  They are written so that you can learn the methods from them.
+- **SurPyval Modelling**: the *how-to* pages. Each shows how to do that
+  analysis in SurPyval, with worked examples whose output is computed when
+  the documentation is built, so it always matches the current version. It
+  also includes :doc:`applications`, complete examples from several fields.
+  Each theory page links to its how-to page and the other way round.
+- **SurPyval**: the API reference (:doc:`surpyval`), with every class,
+  function and argument, the :doc:`changelog` and the
+  :doc:`Deprecation Policy`.
+- **Community Guidelines**: where to get help, how to report a problem and
+  how to contribute.
+
+What SurPyval covers
+--------------------
+
+Every model is created the same way: a *fitter* (``surv.Weibull``,
+``surv.KaplanMeier``, ``surv.CoxPH``, ...) has a ``fit()`` method that
+takes your data and returns a fitted *model*, which you then ask for
+survival probabilities, hazards, quantiles, confidence bounds, plots and
+so on.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 58 20
+
+   * - Area
+     - What is in it
+     - Theory / how-to
+   * - Non-parametric estimation
+     - Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull
+       estimators with confidence bounds and bands; the log-rank test;
+       restricted mean survival time; success-run (zero-failure) testing.
+     - :doc:`Non-Parametric Estimation` /
+       :doc:`Non-Parametric SurPyval Modelling`
+   * - Parametric distributions
+     - Continuous lifetime distributions (Weibull, Exponential, Gamma,
+       LogNormal, LogLogistic, Gumbel, Normal, Logistic, Exponentiated
+       Weibull, Beta, Rayleigh, Uniform, ...) and discrete ones (Geometric,
+       Poisson, Binomial, Negative Binomial, Beta-Geometric, discrete
+       Weibull), fitted by any of the five estimation methods in the table
+       below. Offsets (the three-parameter Weibull), limited failure
+       populations and zero-inflation; mixture models; your own
+       distribution from a cumulative hazard; the Royston-Parmar flexible
+       spline model; automatic choice of distribution with ``fit_best``.
+     - :doc:`Parametric Estimation` /
+       :doc:`Parametric SurPyval Modelling`
+   * - Regression
+     - Proportional hazards (Cox, with strata and time-varying covariates,
+       and parametric), accelerated failure time, accelerated life with
+       life-stress relationships (power law, Eyring, exponential/Arrhenius
+       and others), proportional odds, additive hazards, Buckley-James,
+       shared frailty; Brier score and time-dependent AUC for validating
+       predictions.
+     - :doc:`regression analysis` /
+       :doc:`Regression Modelling with SurPyval`
+   * - Competing risks
+     - Units that can fail, or subjects that can have an event, from one
+       of several causes (failure modes, causes of death): cumulative
+       incidence (Aalen-Johansen), parametric cause-specific models,
+       cause-specific Cox regression, Fine-Gray subdistribution regression
+       and Gray's test.
+     - :doc:`Competing Risks Analysis` /
+       :doc:`Competing Risks SurPyval Modelling`
+   * - Multi-state models
+     - Units that move between several states (healthy, ill, dead;
+       working, degraded, failed): Aalen-Johansen transition and state
+       occupation probabilities with delayed entry, and a Cox model of
+       each transition with the probabilities it predicts.
+     - :doc:`Multi-State Models`
+   * - Recurrent events
+     - Events that happen again and again to the same unit (a repairable
+       item that keeps failing, a patient with repeated admissions): the
+       mean cumulative
+       function, homogeneous and non-homogeneous Poisson processes
+       (Crow-AMSAA, Duane, Cox-Lewis), software reliability growth
+       (Goel-Okumoto, the S-shaped models, Musa-Okumoto), imperfect repair (Kijima, G1, ARA,
+       ARI), trend tests, proportional-intensity regression (parametric,
+       and the Andersen-Gill, Prentice-Williams-Peterson and
+       Wei-Lin-Weissfeld models with robust standard errors), and whether
+       a corrective action changed the failure rate.
+     - :doc:`Recurrent Event Analysis` /
+       :doc:`Recurrent Event Modelling with SurPyval`;
+       :doc:`Recurrent Event Regression Analysis` /
+       :doc:`Recurrent Event Regression Modelling with SurPyval`;
+       :doc:`Intervention Analysis with SurPyval`
+   * - Degradation
+     - Measurements that drift towards a failure threshold: general path
+       models, Wiener and Gamma processes, destructive degradation,
+       remaining useful life of a monitored unit, and accelerated and
+       step-stress degradation tests.
+     - :doc:`Degradation Analysis` /
+       :doc:`Degradation Modelling with SurPyval`
+   * - Multivariate
+     - Dependent lifetimes joined by a copula (Clayton, Frank, Gumbel,
+       Gaussian, independence), with censored and truncated margins.
+     - :doc:`Multivariate Analysis` /
+       :doc:`Multivariate Modelling with SurPyval`
+   * - Test planning
+     - Planning tests before they are run: reliability and MTBF
+       demonstration tests (fixed-length and sequential), the units and
+       test length to estimate a B-life to a given precision, optimum and
+       compromise accelerated life test plans, the sample size and power
+       of a log-rank comparison, and the power of a comparison of failure
+       rates before and after a change.
+     - :doc:`Test Planning with SurPyval`
+
+Almost every fitted model can be saved to a dictionary or a JSON file and
+restored with ``surv.from_dict`` or ``surv.from_json`` (see :doc:`Conventions`
+for what a restored model keeps, and the few models that cannot be saved). A
+survival tree and a random survival forest are in ``surpyval.ml`` (see
+:doc:`surpyval.ml`).
+
+Estimating a single distribution
+--------------------------------
+
+SurPyval is unusual in how many ways it can estimate the parameters of a
+distribution. Most packages offer maximum likelihood, and perhaps
+probability plotting; SurPyval grew out of reproducing the probability
+plotting of engineering practice and found along the way that there are
+many ways to estimate parameters, each with its own strengths. The methods,
+and the data each can use, are:
+
+.. list-table:: SurPyval Modelling Methods
+   :header-rows: 1
+   :widths: 24 14 10 26 26
+
+   * - Method
+     - Para/Non-Para
+     - Observed
+     - Censored
+     - Truncated
+   * - Maximum Likelihood (MLE)
+     - Parametric
+     - Yes
+     - Yes: left, right and interval
+     - Yes: left and right, a different value for each observation if
+       needed
+   * - Maximum Product Spacing (MPS)
+     - Parametric
+     - Yes
+     - Left and right; not interval
+     - Yes, but one common ``tl`` and/or ``tr`` for all observations
+   * - Probability Plotting (MPP)
+     - Parametric
+     - Yes
+     - Right; left and interval only with ``heuristic="Turnbull"``
+     - Left (with the Kaplan-Meier, Nelson-Aalen, Fleming-Harrington or
+       Turnbull heuristic); right only with ``heuristic="Turnbull"``
+   * - Mean Square Error (MSE)
+     - Parametric
+     - Yes
+     - Yes: left, right and interval
+     - No
+   * - Method of Moments (MOM)
+     - Parametric
+     - Yes
+     - No
+     - No
+   * - Kaplan-Meier
+     - Non-Parametric
+     - Yes
+     - Right only
+     - Left only
+   * - Nelson-Aalen
+     - Non-Parametric
+     - Yes
+     - Right only
+     - Left only
+   * - Fleming-Harrington
+     - Non-Parametric
+     - Yes
+     - Right only
+     - Left only
+   * - Turnbull
+     - Non-Parametric
+     - Yes
+     - Yes: left, right and interval
+     - Yes: left and right
+
+Maximum likelihood is the default (``how="MLE"``) and, with Turnbull for a
+non-parametric view, handles every combination of data. The other methods
+have their own uses: probability plotting is the traditional engineering
+method and gives the familiar straight-line plot; maximum product spacing
+is particularly good for offset distributions and distributions with a
+finite bound, where the likelihood can be unbounded; and the method of
+moments is quick for complete data. Some distributions do not support every
+method (probability plotting needs a distribution that can be drawn as a
+straight line, and discrete distributions cannot use MPS). Whenever a
+method cannot use your data, SurPyval raises an error saying so rather than
+silently ignoring part of it. The methods are explained in
+:doc:`Parametric Estimation` and :doc:`Non-Parametric Estimation`, and
+:doc:`Types of Data` has the same table split by type of censoring and
+truncation.
+
+Stability and deprecation
+-------------------------
+
+A public name is never removed without warning. When one is renamed or
+removed, the old name keeps working for at least one release with a
+warning that names its replacement and the release that removes it; after
+that, using it raises an error that still names the replacement. Names
+starting with an underscore and the ``surpyval.beta`` tier may change
+without notice, and every deprecation and removal is listed in the
+:doc:`changelog`. SurPyval is not yet at 1.0, so releases come often and a
+result can change in any release when it is corrected (always under
+**Changed** or **Fixed** in the changelog). The details are in the
+:doc:`Deprecation Policy`.
+
+A word of encouragement
+-----------------------
+
+Becoming a competent survival analyst depends on a strong understanding of
+censoring, truncation and observations, together with a solid understanding
+of the distributions used to describe lifetimes. Recognising that a real
+situation is censored or truncated is what keeps an analysis from going
+wrong, and it can be surprisingly difficult; :doc:`Types of Data` is the
+place to build that skill. A good understanding of the distributions lets
+you reason about the process that generated your data, and so choose an
+appropriate model, if any, for your problem. Survival analysis is an
+extremely powerful, and thoroughly interesting, tool, so don't give up; or
+if you do give up, do the survival statistics on it.
+
+
+Contents:
+=========
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Quickstart & Intro
+
+   Quickstart
+   Choosing a Model
+   Survival Analysis from Scratch
+   Types of Data
+   Data Model
+   Conventions
+   Glossary
+   Design Principles
+   Handy References - Aide-mémoire
+   Data Wrangler Examples
+   Weighted Data
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Survival Analysis
+
+   Non-Parametric Estimation
+   Parametric Estimation
+   regression analysis
+   Competing Risks Analysis
+   Recurrent Event Analysis
+   Recurrent Event Regression Analysis
+   Degradation Analysis
+   Joint Models
+   Landmark Analysis
+   Multivariate Analysis
+
+.. toctree::
+   :maxdepth: 2
+   :caption: SurPyval Modelling
+
+   Non-Parametric SurPyval Modelling
+   Parametric SurPyval Modelling
+   Hazard Ratio
+   Bayesian Fitting with SurPyval
+   Pooling Rates Across Sources
+   Regression Modelling with SurPyval
+   Distributional Regression
+   Mixture-Cure Regression
+   Equivalent Time Scales
+   Zero-Inflated Regression
+   Interval-Censored Cox Regression
+   Pseudo-Observations
+   Adjusted Survival Curves
+   Relative Survival
+   Model Diagnostics
+   applications
+   Competing Risks SurPyval Modelling
+   Multi-State Models
+   Recurrent Event Modelling with SurPyval
+   Recurrent Event Regression Modelling with SurPyval
+   Intervention Analysis with SurPyval
+   Software Reliability Growth
+   Degradation Modelling with SurPyval
+   Multivariate Modelling with SurPyval
+   Test Planning with SurPyval
+   PyMC with SurPyval
+   Torch with SurPyval
+
+.. toctree::
+   :maxdepth: 2
+   :caption: SurPyval
+
+   surpyval
+   changelog
+   Deprecation Policy
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Community Guidelines
+
+   Support
+   Report an Issue <https://github.com/derrynknife/SurPyval/issues>
+   Contributing
+   acknowledgements
+
+
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`

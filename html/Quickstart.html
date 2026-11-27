@@ -1,0 +1,673 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quickstart &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Choosing a Model" href="Choosing%20a%20Model.html" />
+    <link rel="prev" title="SurPyval - Survival Analysis in Python" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quickstart</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#your-first-fit">Your first fit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#censored-data-one-extra-argument">Censored data: one extra argument</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-tour-of-the-model-families">A tour of the model families</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#non-parametric-estimation">Non-parametric estimation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#parametric-estimation">Parametric estimation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#regression">Regression</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#competing-risks">Competing risks</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#recurrent-events">Recurrent events</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#degradation">Degradation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#multivariate">Multivariate</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#saving-a-model">Saving a model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-to-go-next">Where to go next</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Quickstart</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Quickstart.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="quickstart">
+<h1>Quickstart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
+<p>So, you know what survival analysis is and you just want to see what this can do.
+If you do not, or censoring is a new word, read
+<a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html"><span class="doc">Survival Analysis from Scratch</span></a> first: it teaches the subject from the
+beginning, and this page will then make sense.
+(If you have not installed it yet: <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">surpyval</span></code>; it needs Python
+3.11 or later.)</p>
+<p>Everything in <em>SurPyval</em> follows one pattern. A <strong>fitter</strong> (<code class="docutils literal notranslate"><span class="pre">surv.Weibull</span></code>,
+<code class="docutils literal notranslate"><span class="pre">surv.KaplanMeier</span></code>, <code class="docutils literal notranslate"><span class="pre">surv.CoxPH</span></code>, …) has a <code class="docutils literal notranslate"><span class="pre">fit()</span></code> method that takes
+your data and returns a fitted <strong>model</strong>. You then ask the model questions:
+what fraction survives to time <span class="math notranslate nohighlight">\(t\)</span>, what is the median life (the median
+time to the event), what is the
+hazard, and so on. Once you know that pattern, and the way data is passed in
+(the <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">t</span></code> arrays described in <a class="reference internal" href="Types%20of%20Data.html"><span class="doc">Types of Data</span></a>, and
+the other letters of <a class="reference internal" href="Data%20Model.html"><span class="doc">The data model</span></a>), every family of models in the package works the same way.
+Not sure which model you need? <a class="reference internal" href="Choosing%20a%20Model.html"><span class="doc">Choosing a Model</span></a> takes you there one
+yes-or-no question at a time.</p>
+<section id="your-first-fit">
+<h2>Your first fit<a class="headerlink" href="#your-first-fit" title="Link to this heading"></a></h2>
+<p>Here are 23 failure times (the classic ball-bearing data, in millions of
+revolutions). We fit a Weibull distribution to them:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mf">17.88</span><span class="p">,</span> <span class="mf">28.92</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span> <span class="mf">41.52</span><span class="p">,</span> <span class="mf">42.12</span><span class="p">,</span> <span class="mf">45.6</span><span class="p">,</span> <span class="mf">48.4</span><span class="p">,</span> <span class="mf">51.84</span><span class="p">,</span>
+ <span class="mf">51.96</span><span class="p">,</span> <span class="mf">54.12</span><span class="p">,</span> <span class="mf">55.56</span><span class="p">,</span> <span class="mf">67.8</span><span class="p">,</span> <span class="mf">68.64</span><span class="p">,</span> <span class="mf">68.64</span><span class="p">,</span> <span class="mf">68.88</span><span class="p">,</span> <span class="mf">84.12</span><span class="p">,</span>
+ <span class="mf">93.12</span><span class="p">,</span> <span class="mf">98.64</span><span class="p">,</span> <span class="mf">105.12</span><span class="p">,</span> <span class="mf">105.84</span><span class="p">,</span> <span class="mf">127.92</span><span class="p">,</span> <span class="mf">128.04</span><span class="p">,</span> <span class="mf">173.4</span><span class="p">]</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>&lt;Axes: title={'center': 'Weibull Probability Plot'}, xlabel='Time', ylabel='Fraction failed'&gt;
+</pre></div>
+</div>
+<img alt="_images/Quickstart_0_1.png" src="_images/Quickstart_0_1.png" />
+</div>
+</div>
+<p>This gives us the Weibull plot, which was created when the documentation
+was built, so it is guaranteed to reflect the current version of <em>SurPyval</em>.
+The points are a non-parametric estimate of the CDF made directly from the
+data; the line is the fitted Weibull, with its confidence bounds. The axes are
+scaled so that a Weibull distribution is a straight line, so points that
+follow the line are evidence that the Weibull is a reasonable choice.</p>
+<p>The fitted model can now be interrogated. <code class="docutils literal notranslate"><span class="pre">params</span></code> holds the parameters (for
+the Weibull, the scale <span class="math notranslate nohighlight">\(\alpha\)</span> and the shape <span class="math notranslate nohighlight">\(\beta\)</span>), and every
+model has the same set of functions of time:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Parameters                 :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Survival to 50, R(50)      :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">50</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Probability failed by 50   :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">ff</span><span class="p">(</span><span class="mi">50</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"B10 life (10</span><span class="si">% f</span><span class="s2">ailed)      :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.1</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Mean life                  :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">mean</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"95% bounds on R(50)        :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="mi">50</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 23 units: 23 events at 22 unique times
+Parameters          :
+     alpha: 81.87456057371712
+      beta: 2.101846884259568
+Parameters                 : [81.87456057  2.10184688]
+Survival to 50, R(50)      : 0.7014025041049966
+Probability failed by 50   : 0.2985974958950034
+B10 life (10% failed)      : 28.06508988993738
+Mean life                  : 72.51535687411435
+95% bounds on R(50)        : [0.51879796 0.82556476]
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">sf</span></code> is the survival (reliability) function, <code class="docutils literal notranslate"><span class="pre">ff</span></code> the CDF (the
+probability of having failed, or of having had the event, by that time), <code class="docutils literal notranslate"><span class="pre">qf</span></code> the quantile function (its inverse), and
+<code class="docutils literal notranslate"><span class="pre">cb</span></code> gives confidence bounds; by default two-sided 95% bounds on the survival
+function. The shape <span class="math notranslate nohighlight">\(\beta \approx 2.1\)</span> is greater than one, which says
+the hazard is increasing: these bearings wear out. The full list of functions
+every model shares is in <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="censored-data-one-extra-argument">
+<h2>Censored data: one extra argument<a class="headerlink" href="#censored-data-one-extra-argument" title="Link to this heading"></a></h2>
+<p>Real data is rarely this complete. Suppose the test had been stopped at 100
+million revolutions: the five bearings still running at that point have not
+failed, all we know is that their lives are <em>longer than</em> 100. These are
+<strong>right censored</strong> observations, flagged with <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code> (an observed failure
+is <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">(</span><span class="n">x</span> <span class="o">&gt;</span> <span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>       <span class="c1"># 1 = still running when the test stopped</span>
+<span class="n">x_test</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span>     <span class="c1"># all we saw of those units was 100</span>
+
+<span class="n">censored_model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_test</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="n">naive_model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_test</span><span class="p">)</span>   <span class="c1"># WRONG: treats 100 as a failure</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"using the censoring flags :"</span><span class="p">,</span> <span class="n">censored_model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"ignoring them             :"</span><span class="p">,</span> <span class="n">naive_model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>using the censoring flags : [80.31251346  2.23940991]
+ignoring them             : [74.39707327  2.85221619]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The censored fit recovers parameters close to the fit on the complete data.
+The naive fit, which pretends the five survivors failed at exactly 100,
+underestimates the scale <span class="math notranslate nohighlight">\(\alpha\)</span> (the characteristic life) and
+overstates the shape <span class="math notranslate nohighlight">\(\beta\)</span>: it concludes that the bearings wear out
+sooner and more abruptly than they do. Throwing away information about
+survivors systematically biases a life estimate downwards, which is why getting
+censoring right is the heart of survival analysis. <a class="reference internal" href="Types%20of%20Data.html"><span class="doc">Types of Data</span></a> explains
+every kind of censoring and truncation SurPyval supports.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="a-tour-of-the-model-families">
+<h2>A tour of the model families<a class="headerlink" href="#a-tour-of-the-model-families" title="Link to this heading"></a></h2>
+<p>The same pattern carries across every area of the package. Each example below
+is deliberately small; follow the links for the theory (“Analysis” pages) and
+the practical how-to (“Modelling” pages) of each area.</p>
+<section id="non-parametric-estimation">
+<h3>Non-parametric estimation<a class="headerlink" href="#non-parametric-estimation" title="Link to this heading"></a></h3>
+<p>Non-parametric estimators make no assumption about the shape of the
+distribution: they describe the data exactly as it is. They are the natural
+first look at a data set and the yardstick for checking a parametric fit, but
+they cannot extrapolate beyond the data. Kaplan-Meier handles observed and
+right censored data (with left truncation); Turnbull handles every combination
+of censoring and truncation.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">km</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_test</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Kaplan-Meier R(50), R(90):"</span><span class="p">,</span> <span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">50</span><span class="p">,</span> <span class="mi">90</span><span class="p">]))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Kaplan-Meier R(50), R(90): [0.69565217 0.30434783]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Theory: <a class="reference internal" href="Non-Parametric%20Estimation.html"><span class="doc">Non-Parametric Estimation</span></a>. How-to:
+<a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html"><span class="doc">Non-Parametric SurPyval Modelling</span></a>.</p>
+</section>
+<section id="parametric-estimation">
+<h3>Parametric estimation<a class="headerlink" href="#parametric-estimation" title="Link to this heading"></a></h3>
+<p>Parametric models summarise the data with a few parameters and, unlike the
+non-parametric estimators, can extrapolate: a B1 life or a warranty-period
+failure fraction usually sits in the tail where there is little data. If you
+are unsure which distribution to use, <code class="docutils literal notranslate"><span class="pre">fit_best</span></code> fits a set of candidates and
+returns the one with the best information criterion (AIC by default):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">best</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">fit_best</span><span class="p">(</span><span class="n">x_test</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span>
+                     <span class="n">include</span><span class="o">=</span><span class="p">[</span><span class="s2">"Weibull"</span><span class="p">,</span> <span class="s2">"LogNormal"</span><span class="p">,</span> <span class="s2">"Gamma"</span><span class="p">,</span>
+                              <span class="s2">"LogLogistic"</span><span class="p">,</span> <span class="s2">"Exponential"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">best</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : LogNormal
+Fitted by           : MLE
+Data                : 23 units: 18 events at 17 unique times, 5 right censored
+Parameters          :
+        mu: 4.169022330327939
+     sigma: 0.5538935620844343
+</pre></div>
+</div>
+</div>
+</div>
+<p>An information criterion ranks candidates; it does not prove that any of them
+is right, so always look at the probability plot of the winner as well. Beyond
+the choice of distribution, parametric fits can add a failure-free offset
+(<code class="docutils literal notranslate"><span class="pre">offset=True</span></code>), a sub-population that never fails (<code class="docutils literal notranslate"><span class="pre">lfp=True</span></code>) or a
+fraction that fails at time zero (<code class="docutils literal notranslate"><span class="pre">zi=True</span></code>); these are defined in
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>. Theory and estimation methods (MLE, MPS, MPP, MSE, MOM):
+<a class="reference internal" href="Parametric%20Estimation.html"><span class="doc">Parametric Estimation</span></a>. How-to: <a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a>.
+The available distributions are listed in the API reference,
+<a class="reference internal" href="surpyval.parametric.html"><span class="doc">Parametric</span></a>.</p>
+</section>
+<section id="regression">
+<h3>Regression<a class="headerlink" href="#regression" title="Link to this heading"></a></h3>
+<p>Regression models let the life (the time to the event) depend on covariates
+<code class="docutils literal notranslate"><span class="pre">Z</span></code> (a stress, a treatment, a design option). Each row of <code class="docutils literal notranslate"><span class="pre">Z</span></code> holds the covariates of the
+matching row of <code class="docutils literal notranslate"><span class="pre">x</span></code>. Here about half the units run in condition <code class="docutils literal notranslate"><span class="pre">Z</span> <span class="pre">=</span> <span class="pre">1</span></code>, which
+lengthens life by a factor of <span class="math notranslate nohighlight">\(e^{0.7} \approx 2\)</span>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">Z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+<span class="n">t</span> <span class="o">=</span> <span class="mi">50</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mi">100</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.7</span> <span class="o">*</span> <span class="n">Z</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="n">c_reg</span> <span class="o">=</span> <span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">80</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>          <span class="c1"># test stopped at 80</span>
+<span class="n">t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">80</span><span class="p">)</span>
+
+<span class="n">aft</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullAFT</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c_reg</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">aft</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"R(40) for Z=0 and Z=1:"</span><span class="p">,</span> <span class="n">aft</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">40</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">0.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]])))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Regression SurPyval Model
+====================================
+Kind                : Accelerated Failure Time
+Distribution        : Weibull
+Regression Model    : Log Linear [exp(beta'Z)]
+Fitted by           : MLE
+Data                : 100 units: 69 events at 69 unique times, 31 right censored
+Baseline            : Weibull parameters; Wald 95% intervals
+           estimate     se  lower 95%  upper 95%
+    alpha     51.48   5.15      42.31      62.63
+    beta      1.551 0.1623      1.264      1.904
+Coefficients        : exp(coef) is the acceleration factor; Wald 95% intervals
+              coef  exp(coef)  se(coef)  lower 95%  upper 95%      z         p
+    coef_0 -0.6102     0.5432    0.1648    -0.9332    -0.2873 -3.704 0.0002123
+R(40) for Z=0 and Z=1: [0.50856708 0.76922125]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The accelerated failure time (AFT) model multiplies <em>time</em> by
+<span class="math notranslate nohighlight">\(e^{\beta' Z}\)</span>, so the fitted coefficient <code class="docutils literal notranslate"><span class="pre">coef_0</span></code> of about <span class="math notranslate nohighlight">\(-0.6\)</span> says that
+condition 1 runs the clock at about <span class="math notranslate nohighlight">\(e^{-0.6} \approx 0.55\)</span> of the speed
+of condition 0. Other families act on the hazard (<code class="docutils literal notranslate"><span class="pre">WeibullPH</span></code>,
+<code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>), on the odds (<code class="docutils literal notranslate"><span class="pre">WeibullPO</span></code>) or add to the hazard
+(<code class="docutils literal notranslate"><span class="pre">AdditiveHazards</span></code>), and <code class="docutils literal notranslate"><span class="pre">AcceleratedLife</span></code> makes a life parameter
+follow an engineering life-stress relationship such as the Arrhenius or
+power law. Theory: <a class="reference internal" href="regression%20analysis.html"><span class="doc">Regression Analysis</span></a>. How-to:
+<a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Regression Modelling with SurPyval</span></a>.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="competing-risks">
+<h3>Competing risks<a class="headerlink" href="#competing-risks" title="Link to this heading"></a></h3>
+<p>When an item can fail from one of several causes and the first one ends its
+life (a part that fails by wear or by shock; a patient who can die of one of
+several causes), pass the cause of each failure as <code class="docutils literal notranslate"><span class="pre">e</span></code> (use <code class="docutils literal notranslate"><span class="pre">None</span></code> for
+censored rows). The cumulative incidence function (CIF) gives the probability of
+having failed from each cause by time <span class="math notranslate nohighlight">\(t\)</span>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.univariate.competing_risks</span><span class="w"> </span><span class="kn">import</span> <span class="n">CompetingRisks</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="n">t_wear</span> <span class="o">=</span> <span class="mi">60</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">3.0</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>       <span class="c1"># when wear-out would occur</span>
+<span class="n">t_shock</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="mi">120</span><span class="p">,</span> <span class="mi">200</span><span class="p">)</span>       <span class="c1"># when a random shock would occur</span>
+<span class="n">x_cr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t_wear</span><span class="p">,</span> <span class="n">t_shock</span><span class="p">)</span>        <span class="c1"># whichever comes first</span>
+<span class="n">e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">t_wear</span> <span class="o">&lt;</span> <span class="n">t_shock</span><span class="p">,</span> <span class="s2">"wear"</span><span class="p">,</span> <span class="s2">"shock"</span><span class="p">)</span>
+<span class="n">c_cr</span> <span class="o">=</span> <span class="p">(</span><span class="n">x_cr</span> <span class="o">&gt;</span> <span class="mi">70</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>            <span class="c1"># test stopped at 70</span>
+<span class="n">x_cr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">x_cr</span><span class="p">,</span> <span class="mi">70</span><span class="p">)</span>
+<span class="n">e</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">c_cr</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>          <span class="c1"># censored rows have no cause</span>
+
+<span class="n">cr</span> <span class="o">=</span> <span class="n">CompetingRisks</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_cr</span><span class="p">,</span> <span class="n">e</span><span class="o">=</span><span class="n">e</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c_cr</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"P(failed from wear by 50)  :"</span><span class="p">,</span> <span class="n">cr</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="n">event</span><span class="o">=</span><span class="s2">"wear"</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"P(failed from shock by 50) :"</span><span class="p">,</span> <span class="n">cr</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="n">event</span><span class="o">=</span><span class="s2">"shock"</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>P(failed from wear by 50)  : 0.28500000000000014
+P(failed from shock by 50) : 0.3650000000000002
+</pre></div>
+</div>
+</div>
+</div>
+<p>Theory, including why a Kaplan-Meier fit to one cause (censoring the others)
+does not estimate that cause’s incidence: <a class="reference internal" href="Competing%20Risks%20Analysis.html"><span class="doc">Competing Risks Analysis</span></a>. How-to, including Fine-Gray
+regression: <a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html"><span class="doc">Competing Risks SurPyval Modelling</span></a>.</p>
+</section>
+<section id="recurrent-events">
+<h3>Recurrent events<a class="headerlink" href="#recurrent-events" title="Link to this heading"></a></h3>
+<p>Repairable items fail, are repaired and fail again; a patient can be admitted
+to hospital more than once. Recurrent event data adds
+an item identifier <code class="docutils literal notranslate"><span class="pre">i</span></code> to each row; <code class="docutils literal notranslate"><span class="pre">x</span></code> is the <em>cumulative</em> time of each
+event on that item, and the last row of an item is usually the end of its
+observation, flagged right censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span><span class="p">,</span> <span class="n">CrowAMSAA</span>
+
+<span class="n">x_rec</span> <span class="o">=</span> <span class="p">[</span><span class="mi">11</span><span class="p">,</span> <span class="mi">24</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span>  <span class="mi">9</span><span class="p">,</span> <span class="mi">33</span><span class="p">,</span>  <span class="mi">5</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">41</span><span class="p">]</span>
+<span class="n">i_rec</span> <span class="o">=</span> <span class="p">[</span> <span class="mi">1</span><span class="p">,</span>  <span class="mi">1</span><span class="p">,</span>  <span class="mi">1</span><span class="p">,</span>  <span class="mi">2</span><span class="p">,</span>  <span class="mi">2</span><span class="p">,</span>  <span class="mi">3</span><span class="p">,</span>  <span class="mi">3</span><span class="p">,</span>  <span class="mi">3</span><span class="p">]</span>   <span class="c1"># which item each row is from</span>
+<span class="n">c_rec</span> <span class="o">=</span> <span class="p">[</span> <span class="mi">0</span><span class="p">,</span>  <span class="mi">0</span><span class="p">,</span>  <span class="mi">1</span><span class="p">,</span>  <span class="mi">0</span><span class="p">,</span>  <span class="mi">1</span><span class="p">,</span>  <span class="mi">0</span><span class="p">,</span>  <span class="mi">0</span><span class="p">,</span>  <span class="mi">1</span><span class="p">]</span>   <span class="c1"># 1 = end of observation</span>
+
+<span class="n">mcf</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x_rec</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="n">i_rec</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c_rec</span><span class="p">)</span>
+<span class="n">crow</span> <span class="o">=</span> <span class="n">CrowAMSAA</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x_rec</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="n">i_rec</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c_rec</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"MCF at 30 (non-parametric)       :"</span><span class="p">,</span> <span class="n">mcf</span><span class="o">.</span><span class="n">mcf</span><span class="p">(</span><span class="mi">30</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Expected events by 50 (Crow-AMSAA):"</span><span class="p">,</span> <span class="n">crow</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="mi">50</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>MCF at 30 (non-parametric)       : 1.6666666666666665
+Expected events by 50 (Crow-AMSAA): 2.1018119380101834
+</pre></div>
+</div>
+</div>
+</div>
+<p>The mean cumulative function (MCF) is the expected number of events per item
+by time <span class="math notranslate nohighlight">\(t\)</span>; the Crow-AMSAA model is a parametric non-homogeneous
+Poisson process whose <code class="docutils literal notranslate"><span class="pre">cif</span></code> is the same quantity. Theory:
+<a class="reference internal" href="Recurrent%20Event%20Analysis.html"><span class="doc">Recurrent Event Analysis</span></a> and <a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html"><span class="doc">Recurrent Event Regression Analysis</span></a>.
+How-to: <a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Modelling with SurPyval</span></a> and
+<a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Regression Modelling with SurPyval</span></a>.</p>
+</section>
+<section id="degradation">
+<h3>Degradation<a class="headerlink" href="#degradation" title="Link to this heading"></a></h3>
+<p>Sometimes nothing has failed yet, but a measurement (wear, crack length, loss
+of capacity) is drifting towards a failure threshold. Degradation analysis
+fits a path to each unit (<code class="docutils literal notranslate"><span class="pre">x</span></code> the time, <code class="docutils literal notranslate"><span class="pre">y</span></code> the measurement, <code class="docutils literal notranslate"><span class="pre">i</span></code> the
+unit), turns the paths into a life distribution, and predicts the remaining
+useful life of a unit from its own measurements:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.degradation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DegradationAnalysis</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">times</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span>
+<span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">ids</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">unit</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">15</span><span class="p">):</span>
+    <span class="n">start</span><span class="p">,</span> <span class="n">rate</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">),</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">)</span>
+    <span class="n">xs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">times</span><span class="p">)</span>
+    <span class="n">ys</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">start</span> <span class="o">+</span> <span class="n">rate</span> <span class="o">*</span> <span class="n">times</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="n">times</span><span class="o">.</span><span class="n">size</span><span class="p">))</span>
+    <span class="n">ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">times</span><span class="o">.</span><span class="n">size</span><span class="p">,</span> <span class="n">unit</span><span class="p">))</span>
+<span class="n">x_deg</span><span class="p">,</span> <span class="n">y_deg</span><span class="p">,</span> <span class="n">i_deg</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">ids</span><span class="p">))</span>
+
+<span class="n">deg</span> <span class="o">=</span> <span class="n">DegradationAnalysis</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_deg</span><span class="p">,</span> <span class="n">y_deg</span><span class="p">,</span> <span class="n">i_deg</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span>
+                              <span class="n">path</span><span class="o">=</span><span class="s2">"linear"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"median life :"</span><span class="p">,</span> <span class="n">deg</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">))</span>
+
+<span class="n">rul</span> <span class="o">=</span> <span class="n">deg</span><span class="o">.</span><span class="n">predict_rul</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.3</span><span class="p">,</span> <span class="mf">2.9</span><span class="p">,</span> <span class="mf">5.2</span><span class="p">,</span> <span class="mf">8.1</span><span class="p">],</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"remaining useful life of the monitored unit:"</span><span class="p">,</span> <span class="n">rul</span><span class="o">.</span><span class="n">rul</span><span class="p">,</span> <span class="n">rul</span><span class="o">.</span><span class="n">rul_interval</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>median life : 17.612466040003543
+remaining useful life of the monitored unit: 5.467621893200185 (4.9493781779154, 6.067928376009231)
+</pre></div>
+</div>
+</div>
+</div>
+<p>Theory: <a class="reference internal" href="Degradation%20Analysis.html"><span class="doc">Degradation Analysis</span></a>. How-to, including stochastic process
+models and accelerated tests: <a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html"><span class="doc">Degradation Modelling with SurPyval</span></a>.</p>
+</section>
+<section id="multivariate">
+<h3>Multivariate<a class="headerlink" href="#multivariate" title="Link to this heading"></a></h3>
+<p>When two lifetimes are dependent (two components sharing a load, two
+failure modes on the same item), a copula joins two univariate distributions
+into one joint distribution, with a parameter that measures the dependence:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.multivariate</span><span class="w"> </span><span class="kn">import</span> <span class="n">Clayton</span>
+
+<span class="n">truth</span> <span class="o">=</span> <span class="n">Clayton</span><span class="o">.</span><span class="n">from_params</span><span class="p">(</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">margins</span><span class="o">=</span><span class="p">[</span><span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">]),</span>
+                                          <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">20.0</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">])])</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">truth</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="n">cop</span> <span class="o">=</span> <span class="n">Clayton</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="n">data</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">data</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]],</span>
+                  <span class="n">margins</span><span class="o">=</span><span class="p">[</span><span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"theta        :"</span><span class="p">,</span> <span class="n">cop</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Kendall's tau:"</span><span class="p">,</span> <span class="n">cop</span><span class="o">.</span><span class="n">kendall_tau</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>theta        : [1.92907622]
+Kendall's tau: 0.49097449660490655
+</pre></div>
+</div>
+</div>
+</div>
+<p>Theory: <a class="reference internal" href="Multivariate%20Analysis.html"><span class="doc">Multivariate Analysis</span></a>. How-to:
+<a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html"><span class="doc">Multivariate Modelling with SurPyval</span></a>.</p>
+</section>
+</section>
+<section id="saving-a-model">
+<h2>Saving a model<a class="headerlink" href="#saving-a-model" title="Link to this heading"></a></h2>
+<p>Almost every fitted model can be written to a plain dictionary or a JSON file
+and restored later, without having to remember which class wrote it:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">restored</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">restored</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[81.87456057  2.10184688]
+</pre></div>
+</div>
+</div>
+</div>
+<p>See the “Saving and Loading Models” section of <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a> for the
+details, including what a restored model can and cannot do.</p>
+</section>
+<section id="where-to-go-next">
+<h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="Choosing%20a%20Model.html"><span class="doc">Choosing a Model</span></a> goes from your data to a model and its call, one
+yes-or-no question at a time.</p></li>
+<li><p><a class="reference internal" href="Types%20of%20Data.html"><span class="doc">Types of Data</span></a> explains observed, censored and truncated data, and why
+each needs different treatment.</p></li>
+<li><p><a class="reference internal" href="Data%20Model.html"><span class="doc">The data model</span></a> is the reference for every letter of a row of data
+(<code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">t</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">e</span></code>, <code class="docutils literal notranslate"><span class="pre">s</span></code>, <code class="docutils literal notranslate"><span class="pre">a</span></code>, <code class="docutils literal notranslate"><span class="pre">m</span></code>, <code class="docutils literal notranslate"><span class="pre">Z</span></code>,
+<code class="docutils literal notranslate"><span class="pre">w</span></code>), with an example of each shape of data (recurrent events,
+multi-state, measurements, changing covariates) and which models take
+what.</p></li>
+<li><p><a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a> is the reference for the input arrays, the censoring flags
+and the functions every model has.</p></li>
+<li><p><a class="reference internal" href="Glossary.html"><span class="doc">Glossary</span></a> maps the engineering, medical and statistical words for the
+same ideas (failure and event, reliability and survival) to each other.</p></li>
+<li><p><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html"><span class="doc">Handy References - Aide-mémoire</span></a> collects the identities between
+<span class="math notranslate nohighlight">\(f\)</span>, <span class="math notranslate nohighlight">\(F\)</span>, <span class="math notranslate nohighlight">\(R\)</span>, <span class="math notranslate nohighlight">\(h\)</span> and <span class="math notranslate nohighlight">\(H\)</span>.</p></li>
+<li><p><a class="reference internal" href="Data%20Wrangler%20Examples.html"><span class="doc">Data Wrangling Examples</span></a> shows how to get data from the format you have
+into the format SurPyval takes.</p></li>
+<li><p><a class="reference internal" href="applications.html"><span class="doc">Example Applications</span></a> works through complete examples from several fields.</p></li>
+<li><p><a class="reference internal" href="comparison_and_validation.html"><span class="doc">Comparison Tests and Validation Metrics</span></a> covers comparing groups and validating
+models.</p></li>
+<li><p><a class="reference internal" href="surpyval.html"><span class="doc">API</span></a> is the full API reference.</p></li>
+</ul>
+<p>Much of this also runs in the browser in
+<a class="reference external" href="https://reliafy.com/guides">Reliafy</a>, a hosted app built on SurPyval.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="SurPyval - Survival Analysis in Python" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Choosing%20a%20Model.html" class="btn btn-neutral float-right" title="Choosing a Model" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

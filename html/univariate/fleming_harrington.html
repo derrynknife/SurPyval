@@ -1,0 +1,602 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fleming-Harrington &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Turnbull" href="turnbull.html" />
+    <link rel="prev" title="Nelson-Aalen" href="nelson_aalen.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#non-parametric-class">Non-Parametric Class</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.nonparametric.html#non-parametric-estimators">Non-Parametric Estimators</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="kaplan_meier.html">Kaplan-Meier</a></li>
+<li class="toctree-l4"><a class="reference internal" href="nelson_aalen.html">Nelson-Aalen</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Fleming-Harrington</a></li>
+<li class="toctree-l4"><a class="reference internal" href="turnbull.html">Turnbull</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#relative-survival">Relative Survival</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#plotting">Plotting</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#other-non-parametric-functions">Other Non-Parametric Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+      <li class="breadcrumb-item active">Fleming-Harrington</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/univariate/fleming_harrington.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="fleming-harrington">
+<h1>Fleming-Harrington<a class="headerlink" href="#fleming-harrington" title="Link to this heading"></a></h1>
+<p>The Fleming-Harrington (tie-corrected Nelson-Aalen) estimator: tied
+deaths are treated as happening one after another, so each removes one
+unit from the risk set before the next is counted. It lies between
+Nelson-Aalen and Kaplan-Meier. <code class="docutils literal notranslate"><span class="pre">FlemingHarrington</span></code> is an instance of
+the class below; <code class="docutils literal notranslate"><span class="pre">FlemingHarrington.fit</span></code> returns a
+<a class="reference internal" href="non_parametric_class.html"><span class="doc">NonParametric</span></a> model. Theory:
+<a class="reference internal" href="../Non-Parametric%20Estimation.html"><span class="doc">Non-Parametric Estimation</span></a>.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.univariate.nonparametric.fleming_harrington.</span></span><span class="sig-name descname"><span class="pre">FlemingHarrington_</span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">NonParametricFitter</span></code></p>
+<p>Fleming-Harrington estimation of survival distribution.
+Returns a <cite>NonParametric</cite> object from method <code class="code docutils literal notranslate"><span class="pre">fit()</span></code>
+calculates the Non-Parametric estimate of the survival function using:</p>
+<div class="math notranslate nohighlight">
+\[R(x) = e^{-\sum_{i:x_{i} \leq x} \sum_{j=0}^{d_i-1}
+    \frac{1}{r_i - j}}\]</div>
+<p>That is, the <code class="docutils literal notranslate"><span class="pre">d_i</span></code> deaths tied at <code class="docutils literal notranslate"><span class="pre">x_i</span></code> are counted one after
+another, each removing one unit from the risk set before the next
+(a fractional expected count, from the Turnbull EM, contributes its
+remainder pro rata). With no ties this is the Nelson-Aalen estimate.</p>
+<p>The variance of the cumulative hazard used for confidence bounds is
+estimated with the same tie correction as the estimator itself
+(as used by R’s <code class="docutils literal notranslate"><span class="pre">survfit</span></code> with <code class="docutils literal notranslate"><span class="pre">ctype=2</span></code>):</p>
+<div class="math notranslate nohighlight">
+\[\widehat{Var}(H(x)) = \sum_{i:x_{i} \leq x}
+    \sum_{j=0}^{d_i-1} \frac{1}{\left ( r_i - j \right )^{2}}\]</div>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">FlemingHarrington</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">FlemingHarrington</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">R</span>
+<span class="go">array([0.81873075, 0.63762815, 0.45688054, 0.27711205, 0.10194383])</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit">
+<span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Number</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Number</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">turnbull_estimator</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Fleming-Harrington'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">set_lower_limit</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">turnbull_algorithm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'auto'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Number</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="non_parametric_class.html#surpyval.univariate.nonparametric.nonparametric.NonParametric" title="surpyval.univariate.nonparametric.nonparametric.NonParametric"><span class="pre">NonParametric</span></a></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit" title="Link to this definition"></a></dt>
+<dd><p>Estimate the survival function of the data non-parametrically.</p>
+<p>The estimator is the one this instance was created for
+(<code class="docutils literal notranslate"><span class="pre">KaplanMeier</span></code>, <code class="docutils literal notranslate"><span class="pre">NelsonAalen</span></code>, <code class="docutils literal notranslate"><span class="pre">FlemingHarrington</span></code> or
+<code class="docutils literal notranslate"><span class="pre">Turnbull</span></code>). Pass as many or as few of the arguments as the data
+needs; only <code class="docutils literal notranslate"><span class="pre">x</span></code> (or <code class="docutils literal notranslate"><span class="pre">xl</span></code> and <code class="docutils literal notranslate"><span class="pre">xr</span></code>) is required.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em><em>, </em><em>optional</em>) – Array of observations of the random variables, or (Turnbull
+only) a 2-D array of <code class="docutils literal notranslate"><span class="pre">[left,</span> <span class="pre">right]</span></code> intervals. If x is
+<code class="code docutils literal notranslate"><span class="pre">None</span></code>, xl and xr must be provided.</p></li>
+<li><p><strong>c</strong> (<em>array like</em><em>, </em><em>optional</em>) – Array of censoring flags. 0 is observed (the event, such as a
+failure, a death or a relapse, happened at <code class="docutils literal notranslate"><span class="pre">x</span></code>), 1 is right
+censored (no event by <code class="docutils literal notranslate"><span class="pre">x</span></code>), -1 is left censored (the event was
+before <code class="docutils literal notranslate"><span class="pre">x</span></code>) and 2 is interval censored. A status column in which
+1 marks the event is the reverse: pass <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">status</span></code>. If not
+provided will assume all values are observed.</p></li>
+<li><p><strong>n</strong> (<em>array like</em><em>, </em><em>optional</em>) – Array of counts for each x. If data is provided as counts, then
+this can be provided. If <code class="code docutils literal notranslate"><span class="pre">None</span></code> will assume each
+observation is 1.</p></li>
+<li><p><strong>t</strong> (<em>2D-array like</em><em>, </em><em>optional</em>) – 2D array like of the left and right values at which the
+respective observation was truncated. If not provided it assumes
+that no truncation occurs.</p></li>
+<li><p><strong>xl</strong> (<em>array like</em><em>, </em><em>optional</em>) – Array like of the left array for 2-dimensional input of x. This is
+useful for data that is all intervally censored. Must be used with
+the <code class="code docutils literal notranslate"><span class="pre">xr</span></code> input.</p></li>
+<li><p><strong>xr</strong> (<em>array like</em><em>, </em><em>optional</em>) – Array like of the right array for 2-dimensional input of x. This is
+useful for data that is all intervally censored. Must be used with
+the <code class="code docutils literal notranslate"><span class="pre">xl</span></code> input.</p></li>
+<li><p><strong>tl</strong> (<em>array like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Values of left truncation for observations. If it is a scalar
+value assumes each observation is left truncated at the value.
+If an array, it is the respective ‘late entry’ of the observation.
+An item is at risk at times in <code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">x]</span></code>, so each <code class="docutils literal notranslate"><span class="pre">tl</span></code> must be
+strictly less than its value.</p></li>
+<li><p><strong>tr</strong> (<em>array like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Values of right truncation for observations. If it is a scalar
+value assumes each observation is right truncated at the value.
+If an array, it is the respective right truncation value for each
+observation. Turnbull only.</p></li>
+<li><p><strong>turnbull_estimator</strong> (<em>str</em><em>, </em><em>optional</em>) – <p>Turnbull only: one of <code class="docutils literal notranslate"><span class="pre">'Fleming-Harrington'</span></code> (the default),
+<code class="docutils literal notranslate"><span class="pre">'Nelson-Aalen'</span></code> or <code class="docutils literal notranslate"><span class="pre">'Kaplan-Meier'</span></code>, the estimator used with
+the Turnbull estimates of r and d; any other value raises a
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code>. Ignored by the other estimators.</p>
+<p><strong>This default is why a Turnbull fit does not equal a
+KaplanMeier fit on data both can handle.</strong> Where the option
+acts depends on whether the data are truncated:</p>
+<ul>
+<li><p>Without truncation it is used inside the EM as well as at the
+end: each self-consistency step redistributes the uncertain
+observations with the chosen estimator’s survival curve, so
+the expected <code class="docutils literal notranslate"><span class="pre">r</span></code> and <code class="docutils literal notranslate"><span class="pre">d</span></code> the EM converges to depend on
+the option too. A Turnbull fit with the NA or FH option is
+therefore <em>not</em> the same as <code class="docutils literal notranslate"><span class="pre">NelsonAalen</span></code> or
+<code class="docutils literal notranslate"><span class="pre">FlemingHarrington</span></code> on right-censored data: on
+<code class="docutils literal notranslate"><span class="pre">x=[2,3,3,4,5,6],</span> <span class="pre">c=[0,1,0,0,1,0]</span></code> the survival at 4 is
+0.501 with the NA option against 0.497 from <code class="docutils literal notranslate"><span class="pre">NelsonAalen</span></code>.</p></li>
+<li><p>With truncation the EM always iterates with the Kaplan-Meier
+(self-consistency) update, whatever the option, and the
+chosen estimator is applied only to the converged <code class="docutils literal notranslate"><span class="pre">r</span></code> and
+<code class="docutils literal notranslate"><span class="pre">d</span></code>. On <code class="docutils literal notranslate"><span class="pre">x=[2,3,3,4,5,6],</span> <span class="pre">tl=[0,0,1,1,2,2]</span></code> the survival
+at 2 is 0.750 under KM, 0.765 under FH and 0.779 under NA.</p></li>
+</ul>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">turnbull_estimator='Kaplan-Meier'</span></code> to compare like with
+like – it then agrees with <code class="code docutils literal notranslate"><span class="pre">KaplanMeier</span></code> to around 1e-9
+on both <code class="docutils literal notranslate"><span class="pre">sf</span></code> and <code class="docutils literal notranslate"><span class="pre">cb</span></code>, on right-censored and left-truncated
+data alike. (The agreement is to the EM’s tolerance, not to the
+last digit.)</p>
+<p>Only the KM option is the non-parametric MLE. NA and FH are
+<code class="docutils literal notranslate"><span class="pre">exp(-H)</span></code> constructions and are not trying to maximise the
+likelihood: on the data above the direct NPMLE of the truncated
+likelihood is 0.750, and FH’s 0.765 scores worse on it by
+design. FH is the default because it behaves better than KM in
+the far tails and on zero-inflated data (see the v0.8.0 notes),
+not because it is the maximum likelihood answer.</p>
+</p></li>
+<li><p><strong>set_lower_limit</strong> (<em>float</em><em>, </em><em>optional</em>) – Not used by Turnbull. If given, a point is prepended at this
+value with no deaths (and the risk set of the first time), so
+the estimate starts at <code class="docutils literal notranslate"><span class="pre">R</span> <span class="pre">=</span> <span class="pre">1</span></code> from this value, typically 0,
+rather than from the first observed time. It must be below
+the smallest observed value (a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> otherwise).</p></li>
+<li><p><strong>tol</strong> (<em>float</em><em>, </em><em>optional</em>) – Turnbull only. The EM stops once the largest change in any
+interval’s probability mass falls below this; the EM-ICM
+(<code class="docutils literal notranslate"><span class="pre">turnbull_algorithm='EMICM'</span></code>) once the Karush-Kuhn-Tucker
+conditions of the maximum hold to it (see
+<code class="docutils literal notranslate"><span class="pre">turnbull_algorithm</span></code>). Defaults to 1e-10.</p></li>
+<li><p><strong>max_iter</strong> (<em>int</em><em>, </em><em>optional</em>) – Turnbull only. Cap on iterations; a warning is raised if it
+is reached before <code class="docutils literal notranslate"><span class="pre">tol</span></code> is. Defaults to 1000. <code class="docutils literal notranslate"><span class="pre">tol</span></code>,
+<code class="docutils literal notranslate"><span class="pre">max_iter</span></code> and <code class="docutils literal notranslate"><span class="pre">turnbull_algorithm</span></code> are kept with the model,
+and <code class="docutils literal notranslate"><span class="pre">bootstrap_cb</span></code> refits every resample with them.</p></li>
+<li><p><strong>turnbull_algorithm</strong> (<em>str</em><em>, </em><em>optional</em>) – <p>Turnbull only: <code class="docutils literal notranslate"><span class="pre">'auto'</span></code> (the default), <code class="docutils literal notranslate"><span class="pre">'EMICM'</span></code> for data
+without truncation and <code class="docutils literal notranslate"><span class="pre">'EM'</span></code> with it; <code class="docutils literal notranslate"><span class="pre">'EM'</span></code>, the
+self-consistency EM of Turnbull (1976); or <code class="docutils literal notranslate"><span class="pre">'EMICM'</span></code>, the
+hybrid EM and iterative convex minorant algorithm of Wellner
+and Zhan (1997), as R’s <code class="docutils literal notranslate"><span class="pre">Icens::EMICM</span></code> and
+<code class="docutils literal notranslate"><span class="pre">icenReg::ic_np</span></code>, for data without truncation (a
+<code class="docutils literal notranslate"><span class="pre">ValueError</span></code> otherwise). Ignored by the other estimators.
+The model keeps the algorithm the fit ran.</p>
+<p>On interval-censored data the EM can need tens of thousands
+of iterations, each moving the masses less than <code class="docutils literal notranslate"><span class="pre">tol</span></code> long
+before they settle: on 1,000 random intervals it stops at the
+default <code class="docutils literal notranslate"><span class="pre">max_iter</span></code> with a warning, 7e-3 from the maximum,
+and needs 23,516 iterations (and 57,000 with the default
+<code class="docutils literal notranslate"><span class="pre">turnbull_estimator</span></code>) to reach <code class="docutils literal notranslate"><span class="pre">tol</span></code>, still 3e-7 from it.
+The EM-ICM reaches the maximum in tens of iterations, and stops
+when it is there: when the Karush-Kuhn-Tucker conditions hold
+to <code class="docutils literal notranslate"><span class="pre">tol</span></code> (the derivative of the log-likelihood in the mass
+of each innermost interval is at most <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">(1</span> <span class="pre">+</span> <span class="pre">tol)</span></code>, <code class="docutils literal notranslate"><span class="pre">N</span></code>
+the number of units), which puts the log-likelihood within
+<code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">tol</span></code> of its maximum. It computes the non-parametric MLE,
+the Kaplan-Meier (self-consistent) estimate: with
+<code class="docutils literal notranslate"><span class="pre">turnbull_estimator='Kaplan-Meier'</span></code> it is the EM’s answer,
+converged; with the Nelson-Aalen or Fleming-Harrington option
+that estimator is applied to the MLE’s expected numbers at
+risk and of failures, as it is under truncation (see
+<code class="docutils literal notranslate"><span class="pre">turnbull_estimator</span></code>), which differs slightly from iterating
+the EM with it.</p>
+</p></li>
+<li><p><strong>w</strong> (<em>array like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Sampling, propensity or censoring weights, one positive number
+per row (beside its count <code class="docutils literal notranslate"><span class="pre">n</span></code>): how many units of the
+population each unit stands for. The estimate is then the
+weighted one, and its variance (behind <code class="docutils literal notranslate"><span class="pre">cb</span></code>,
+<code class="docutils literal notranslate"><span class="pre">quantile_cb</span></code>, <code class="docutils literal notranslate"><span class="pre">rmst</span></code> and <code class="docutils literal notranslate"><span class="pre">mean_cb</span></code>) the robust,
+infinitesimal-jackknife variance (R’s <code class="docutils literal notranslate"><span class="pre">survfit(...,</span>
+<span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w,</span> <span class="pre">robust</span> <span class="pre">=</span> <span class="pre">TRUE)</span></code>); <code class="docutils literal notranslate"><span class="pre">band</span></code> and <code class="docutils literal notranslate"><span class="pre">bootstrap_cb</span></code>
+refuse. A <code class="docutils literal notranslate"><span class="pre">Turnbull</span></code> fit is the weighted NPMLE (each row
+counting <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">w</span></code> in the EM; R’s <code class="docutils literal notranslate"><span class="pre">icenReg::ic_np(...,</span>
+<span class="pre">weights</span> <span class="pre">=</span> <span class="pre">w)</span></code>), which has no variance formula: <code class="docutils literal notranslate"><span class="pre">cb</span></code> and
+the bounds built on the variance refuse, and its bounds are
+<code class="docutils literal notranslate"><span class="pre">bootstrap_cb</span></code>’s, the weighted case bootstrap (see
+<a class="reference internal" href="../Weighted%20Data.html"><span class="doc">Weighted Data</span></a>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>model</strong> – The fitted non-parametric model, with the survival, hazard and
+quantile functions, confidence bounds and plotting. A Turnbull
+model also carries <code class="docutils literal notranslate"><span class="pre">bounds</span></code>, <code class="docutils literal notranslate"><span class="pre">R_upper</span></code>, <code class="docutils literal notranslate"><span class="pre">R_lower</span></code>,
+<code class="docutils literal notranslate"><span class="pre">turnbull_estimator</span></code>, <code class="docutils literal notranslate"><span class="pre">converged</span></code>, <code class="docutils literal notranslate"><span class="pre">iters</span></code>, <code class="docutils literal notranslate"><span class="pre">degenerate</span></code>,
+<code class="docutils literal notranslate"><span class="pre">npmle</span></code> and <code class="docutils literal notranslate"><span class="pre">exploitable_mass</span></code> (see
+<a class="reference internal" href="turnbull.html#surpyval.univariate.nonparametric.turnbull.Turnbull_" title="surpyval.univariate.nonparametric.turnbull.Turnbull_"><code class="xref py py-class docutils literal notranslate"><span class="pre">Turnbull_</span></code></a>).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="non_parametric_class.html#surpyval.univariate.nonparametric.nonparametric.NonParametric" title="surpyval.univariate.nonparametric.nonparametric.NonParametric">NonParametric</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the data has left- (<code class="docutils literal notranslate"><span class="pre">c=-1</span></code>) or interval- (<code class="docutils literal notranslate"><span class="pre">c=2</span></code>) censored
+    or right truncated observations and the estimator is not
+    <code class="docutils literal notranslate"><span class="pre">Turnbull</span></code>, if a <code class="docutils literal notranslate"><span class="pre">Turnbull</span></code> fit is given an unknown
+    <code class="docutils literal notranslate"><span class="pre">turnbull_estimator</span></code>, if an exactly observed value is
+    infinite, or if <code class="docutils literal notranslate"><span class="pre">set_lower_limit</span></code> is not below the data.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">KaplanMeier</span><span class="p">,</span> <span class="n">NelsonAalen</span><span class="p">,</span> <span class="n">Turnbull</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">r</span>
+<span class="go">array([6, 5, 3, 2, 1])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">d</span>
+<span class="go">array([1, 1, 1, 0, 1])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">R</span>
+<span class="go">array([0.83333333, 0.66666667, 0.44444444, 0.44444444, 0.        ])</span>
+</pre></div>
+</div>
+<p>With delayed entry the risk set can grow:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="n">tl</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">r</span>
+<span class="go">array([4, 5, 3, 2, 1])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">])</span>
+<span class="go">array([0.75, 0.3 ])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">NelsonAalen</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]))</span>
+<span class="go">Non-Parametric SurPyval Model</span>
+<span class="go">=============================</span>
+<span class="go">Model            : Nelson-Aalen</span>
+<span class="go">Data             : 6 units: 6 events at 5 unique times</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">Turnbull</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="n">turnbull_estimator</span><span class="o">=</span><span class="s1">'Kaplan-Meier'</span><span class="p">)</span>
+<span class="go">Non-Parametric SurPyval Model</span>
+<span class="go">=============================</span>
+<span class="go">Model            : Turnbull</span>
+<span class="go">Curve            : Kaplan-Meier on Turnbull's expected counts</span>
+<span class="go">Data             : 6 units: 6 events at 5 unique times</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit_from_df">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fit_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pd.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">w_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">fit_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit_from_df" title="Link to this definition"></a></dt>
+<dd><p>Fit to data held in the columns of a <code class="xref py py-class docutils literal notranslate"><span class="pre">pandas.DataFrame</span></code>.</p>
+<p>The column names are passed in place of the arrays <a class="reference internal" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit" title="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>
+takes; every other <a class="reference internal" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit" title="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> option can be passed as a keyword.
+The columns are handed to <a class="reference internal" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit" title="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> as they are, so the result,
+and the treatment of a missing value, is that of <a class="reference internal" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit" title="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> on
+the same arrays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>DataFrame</em>) – DataFrame of data to be used to create surpyval model</p></li>
+<li><p><strong>x_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name for the column in df containing the variable data.
+If not provided must provide both xl_col and xr_col.</p></li>
+<li><p><strong>c_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name for the column in df containing the censor flag of x.
+If not provided assumes all values of x are observed.</p></li>
+<li><p><strong>n_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name in for the column in df containing the counts of x.
+If not provided assumes each x is one observation.</p></li>
+<li><p><strong>xl_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name for the column in df containing the left interval for
+interval censored data. If left interval is -Inf, assumes left
+censored. If xl[i] == xr[i] assumes observed. Provided with
+xr_col; provided with x_col too, each row is an exact time in
+x_col or a range in xl_col and xr_col, the other blank (a row
+giving both is left out, with a warning).</p></li>
+<li><p><strong>xr_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name for the column in df containing the right interval
+for interval censored data. If right interval is Inf, assumes
+right censored. If xl[i] == xr[i] assumes observed. Provided
+with xl_col; with x_col, as for xl_col.</p></li>
+<li><p><strong>tl_col</strong> (<em>string</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – If a string, the column of the left truncation of each row. If
+a number, every row is left truncated at that value (a constant
+truncation). If not provided, x is not left truncated.</p></li>
+<li><p><strong>tr_col</strong> (<em>string</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – If a string, the column of the right truncation of each row. If
+a number, every row is right truncated at that value. If not
+provided, x is not right truncated.</p></li>
+<li><p><strong>w_col</strong> (<em>string</em><em>, </em><em>optional</em>) – column name for the sampling, propensity or censoring weights,
+passed to <a class="reference internal" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit" title="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> as <code class="docutils literal notranslate"><span class="pre">w</span></code> (for the fitters that take it).</p></li>
+<li><p><strong>fit_options</strong> (<em>dict</em><em>, </em><em>optional</em>) – Every other option of <a class="reference internal" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit" title="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> (<code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">offset</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">dist</span></code>, …), passed to it unchanged.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The model <a class="reference internal" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit" title="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> returns.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>model</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">df</span></code> is not a DataFrame, a name is not one of its columns,
+    a row has none of <code class="docutils literal notranslate"><span class="pre">x_col</span></code>, <code class="docutils literal notranslate"><span class="pre">xl_col</span></code> and <code class="docutils literal notranslate"><span class="pre">xr_col</span></code>, or a
+    column is given that <a class="reference internal" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit" title="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> has no argument for.</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>Every DataFrame entry point names its columns with a <code class="docutils literal notranslate"><span class="pre">_col</span></code>
+suffix (principle 21).</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_bofors_steel</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">df</span> <span class="o">=</span> <span class="n">load_bofors_steel</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s1">'x'</span><span class="p">,</span> <span class="n">n_col</span><span class="o">=</span><span class="s1">'n'</span><span class="p">,</span> <span class="n">offset</span><span class="o">=</span><span class="kc">True</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="go">Parametric SurPyval Model</span>
+<span class="go">=========================</span>
+<span class="go">Distribution        : Weibull</span>
+<span class="go">Fitted by           : MLE</span>
+<span class="go">Data                : 389 units: 389 events at 10 unique times</span>
+<span class="go">Offset (gamma)      : 39.76557772434183</span>
+<span class="go">Parameters          :</span>
+<span class="go">     alpha: 7.141983615103902</span>
+<span class="go">      beta: 2.62047590823775</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s1">'x'</span><span class="p">,</span> <span class="n">n_col</span><span class="o">=</span><span class="s1">'n'</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">45</span><span class="p">,</span> <span class="mi">48</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([0.5861, 0.2571])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fitter_kind">
+<span class="sig-name descname"><span class="pre">fitter_kind</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'non-parametric</span> <span class="pre">fitter'</span></em><a class="headerlink" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.fitter_kind" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">KaplanMeier:</span> <span class="pre">non-parametric</span> <span class="pre">fitter</span></code> (#614).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The <code class="docutils literal notranslate"><span class="pre">repr</span></code></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.from_xrd">
+<span class="sig-name descname"><span class="pre">from_xrd</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">d</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="non_parametric_class.html#surpyval.univariate.nonparametric.nonparametric.NonParametric" title="surpyval.univariate.nonparametric.nonparametric.NonParametric"><span class="pre">NonParametric</span></a></span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.fleming_harrington.FlemingHarrington_.from_xrd" title="Link to this definition"></a></dt>
+<dd><p>Build the estimate from data already reduced to risk and death
+sets, the <code class="docutils literal notranslate"><span class="pre">xrd</span></code> format: the distinct times, the number at risk
+just before each and the number of deaths at each.</p>
+<p>Not available for <code class="docutils literal notranslate"><span class="pre">Turnbull</span></code>, which needs the full <code class="docutils literal notranslate"><span class="pre">xcnt</span></code> data
+to redistribute censored observations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em>) – The distinct event times. Rows given out of order are sorted
+by <code class="docutils literal notranslate"><span class="pre">x</span></code>, carrying their <code class="docutils literal notranslate"><span class="pre">r</span></code> and <code class="docutils literal notranslate"><span class="pre">d</span></code> with them (see
+<a class="reference internal" href="../surpyval.utilities.html#surpyval.utils.xrd_handler" title="surpyval.utils.xrd_handler"><code class="xref py py-func docutils literal notranslate"><span class="pre">xrd_handler()</span></code></a>, which also refuses a
+repeated time).</p></li>
+<li><p><strong>r</strong> (<em>array like</em>) – Array of at risk items. For each value of x the r array is
+the number of at risk items immediately prior to the failures
+at x.</p></li>
+<li><p><strong>d</strong> (<em>array like</em>) – Array of counts of deaths/failures at each x. For each value of x
+the d array is the number of deaths at x (can be zero).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>model</strong> – A non-parametric model with the survival curve estimated
+using the selected method.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="non_parametric_class.html#surpyval.univariate.nonparametric.nonparametric.NonParametric" title="surpyval.univariate.nonparametric.nonparametric.NonParametric">NonParametric</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">NelsonAalen</span><span class="p">,</span> <span class="n">Weibull</span><span class="p">,</span> <span class="n">Turnbull</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">r</span> <span class="o">=</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">NelsonAalen</span><span class="o">.</span><span class="n">from_xrd</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">r</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="go">Non-Parametric SurPyval Model</span>
+<span class="go">=============================</span>
+<span class="go">Model            : Nelson-Aalen</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">R</span>
+<span class="go">array([0.81873075, 0.72252735, 0.6116062 , 0.47631939, 0.34129776,</span>
+<span class="go">       0.20700755])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="nelson_aalen.html" class="btn btn-neutral float-left" title="Nelson-Aalen" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="turnbull.html" class="btn btn-neutral float-right" title="Turnbull" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,775 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contributing &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Acknowledgements" href="acknowledgements.html" />
+    <link rel="prev" title="Support" href="Support.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Contributing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#setting-up">Setting up</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#where-a-test-goes">Where a test goes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-conformance-suite">The conformance suite</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#practitioner-scenario-cards">Practitioner scenario cards</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#proving-a-refactor-changed-nothing">Proving a refactor changed nothing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mutation-testing">Mutation testing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#reviewing-a-module-by-bug-class">Reviewing a module by bug class</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#branching-and-releases">Branching and releases</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#deprecating-and-removing-a-name">Deprecating and removing a name</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#documentation">Documentation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#checking-the-numbers-quoted-in-the-text">Checking the numbers quoted in the text</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Contributing</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Contributing.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="contributing">
+<h1>Contributing<a class="headerlink" href="#contributing" title="Link to this heading"></a></h1>
+<p>If you want to contribute to SurPyval, please do! Please review the current open <a class="reference external" href="https://github.com/derrynknife/SurPyval/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement">feature requests</a> to see if your desired feature is in the requests. If not, please raise a new one to notify the community. We can assign the feature to you to branch and develop.</p>
+<section id="setting-up">
+<h2>Setting up<a class="headerlink" href="#setting-up" title="Link to this heading"></a></h2>
+<p>SurPyval supports Python 3.11, 3.12 and 3.13. From a clone of the repository,
+install the package in editable mode with the test and development tools, and
+the pre-commit hooks:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements_dev.txt<span class="w">   </span><span class="c1"># installs -e .[tests] plus the tools</span>
+pre-commit<span class="w"> </span>install
+</pre></div>
+</div>
+<p>Code style is enforced rather than requested. The pre-commit hooks
+(<code class="docutils literal notranslate"><span class="pre">.pre-commit-config.yaml</span></code>) run isort, pyupgrade (Python 3.11+ syntax),
+black (line length 79), flake8 and mypy on every commit, and the lint job in
+continuous integration runs <code class="docutils literal notranslate"><span class="pre">flake8</span></code>, <code class="docutils literal notranslate"><span class="pre">isort</span> <span class="pre">--check-only</span></code> and <code class="docutils literal notranslate"><span class="pre">black</span>
+<span class="pre">--check</span></code> on the <code class="docutils literal notranslate"><span class="pre">surpyval</span></code> package, <code class="docutils literal notranslate"><span class="pre">conftest.py</span></code> and <code class="docutils literal notranslate"><span class="pre">scripts/</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">mypy</span></code> on the package. flake8 also caps each function’s McCabe complexity
+at 25 (<code class="docutils literal notranslate"><span class="pre">max-complexity</span></code> in <code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>): a function over it is split
+into named steps. mypy reports a <code class="docutils literal notranslate"><span class="pre">type:</span>
+<span class="pre">ignore</span></code> that silences nothing, a redundant cast and an <code class="docutils literal notranslate"><span class="pre">==</span></code> between types
+that cannot be equal; an ignore needed under one Python’s numpy stubs but not
+another’s carries the <code class="docutils literal notranslate"><span class="pre">unused-ignore</span></code> code as well. mypy is strict about
+annotations: every function in the package must be type annotated
+(<code class="docutils literal notranslate"><span class="pre">disallow_untyped_defs</span></code>); only the tests, <code class="docutils literal notranslate"><span class="pre">conftest.py</span></code> and <code class="docutils literal notranslate"><span class="pre">scripts/</span></code>
+are exempt.</p>
+<p>To run the tests as continuous integration does:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>-n<span class="w"> </span>auto<span class="w"> </span>--run-ml
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>--doctest-modules<span class="w"> </span>surpyval<span class="w"> </span>--ignore<span class="o">=</span>surpyval/tests
+</pre></div>
+</div>
+<p>The first line is the test suite (<code class="docutils literal notranslate"><span class="pre">-n</span> <span class="pre">auto</span></code> spreads it over your cores, and
+<code class="docutils literal notranslate"><span class="pre">--run-ml</span></code> includes the slow survival tree and forest tests, which are
+skipped by default). The second executes the <code class="docutils literal notranslate"><span class="pre">&gt;&gt;&gt;</span></code> examples in the
+docstrings and checks their printed output, so a docstring example is a
+tested promise like any other.</p>
+<p>A distribution’s methods repeat their parameter entries, literally, in
+every docstring, so the source reads the same as <code class="docutils literal notranslate"><span class="pre">help()</span></code>. The class
+states them once more in <code class="docutils literal notranslate"><span class="pre">_param_docs</span></code>, and that is the copy to edit:
+<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">scripts/sync_docstrings.py</span> <span class="pre">--write</span></code> rewrites the methods’ copies
+from it, and <code class="docutils literal notranslate"><span class="pre">surpyval/tests/utils/test_shared_docstrings.py</span></code> fails,
+naming the class, method and difference, when a copy has drifted.
+<code class="docutils literal notranslate"><span class="pre">--run-invariants</span></code> opts in to a slower
+combinatorial sweep of the parametric fitting paths, worth running after
+changing a likelihood, an initial guess or an optimiser.
+<code class="docutils literal notranslate"><span class="pre">--run-scenarios</span></code> runs the practitioner scenario cards (see below).
+<code class="docutils literal notranslate"><span class="pre">--run-torch</span></code> runs the tests of the torch helpers (<code class="docutils literal notranslate"><span class="pre">surpyval.torch</span></code>),
+where PyTorch is installed: it is not a dependency nor in
+<code class="docutils literal notranslate"><span class="pre">requirements_dev.txt</span></code>, so these run in the release run’s <code class="docutils literal notranslate"><span class="pre">torch</span></code> job
+and nowhere else unless you install it and ask.
+<code class="docutils literal notranslate"><span class="pre">--run-calibration</span></code> runs the statistical calibration studies (confidence
+interval coverage, test size and power, estimator bias; about 20 minutes on
+four cores), which the release pull request’s full run also runs, on
+3.12. Each coverage check prints one line per cell (<code class="docutils literal notranslate"><span class="pre">-rP</span></code> shows them for
+passing tests), and the run ends with a “pooled calibration coverage”
+section: for every study and level, the mean coverage over its cells, the
+gap from nominal in points and how many cells fall below. A shortfall of a
+point or two in every cell passes each cell’s check at a few hundred
+replicates, and shows only there. It is a report; nothing fails on it.
+They include <code class="docutils literal notranslate"><span class="pre">test_refit_registry.py</span></code>, which draws data from every model in the conformance registry that can
+simulate from itself and checks that the refits recover it (#397); a newly
+registered model must be added to its <code class="docutils literal notranslate"><span class="pre">PLANS</span></code> or <code class="docutils literal notranslate"><span class="pre">EXCLUDED</span></code>.
+The property-based tests in <code class="docutils literal notranslate"><span class="pre">surpyval/tests/properties</span></code> run a short
+derandomized search by default (under a minute);
+<code class="docutils literal notranslate"><span class="pre">SURPYVAL_HYPOTHESIS_PROFILE=nightly</span></code> makes it thorough (400 examples a
+test). When one finds a failure, it prints a minimal example: pin it in
+<code class="docutils literal notranslate"><span class="pre">surpyval/tests/properties/test_known_failures.py</span></code> with the issue number.</p>
+<p>Describe any change a user would notice in <code class="docutils literal notranslate"><span class="pre">docs/changelog.rst</span></code>, under the
+unreleased version at the top.</p>
+</section>
+<section id="where-a-test-goes">
+<h2>Where a test goes<a class="headerlink" href="#where-a-test-goes" title="Link to this heading"></a></h2>
+<p>The tests are organised by feature. <code class="docutils literal notranslate"><span class="pre">surpyval/tests</span></code> follows the package
+(<code class="docutils literal notranslate"><span class="pre">univariate/parametric</span></code>, <code class="docutils literal notranslate"><span class="pre">univariate/regression</span></code>, <code class="docutils literal notranslate"><span class="pre">recurrent</span></code>,
+<code class="docutils literal notranslate"><span class="pre">degradation</span></code> and so on), and each module in it covers one model,
+estimator or behaviour: <code class="docutils literal notranslate"><span class="pre">test_turnbull.py</span></code>, <code class="docutils literal notranslate"><span class="pre">test_mcf.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">test_information_criteria.py</span></code>. <strong>A fix’s regression test goes in the
+test module of the feature it fixes, with the issue number in the test’s
+name</strong> (<code class="docutils literal notranslate"><span class="pre">test_issue_310_lognormal_no_longer_runs_away</span></code>), so that the next
+person to change the feature finds it beside the others. Do not start a
+module for a round of fixes or a piece of work (<code class="docutils literal notranslate"><span class="pre">test_parametric_fixes3.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">test_serialisation_round4.py</span></code>, <code class="docutils literal notranslate"><span class="pre">test_tvc_phase2.py</span></code>): record the round
+in the commit message and the changelog instead. Start a new module only for
+a feature that has none yet. A data maker or helper that more than one
+module needs goes in <code class="docutils literal notranslate"><span class="pre">surpyval/tests/_helpers.py</span></code> rather than being
+copied. <code class="docutils literal notranslate"><span class="pre">surpyval/tests/review</span></code> and <code class="docutils literal notranslate"><span class="pre">surpyval/tests/mutation</span></code> keep the
+per-module layout described below.</p>
+</section>
+<section id="the-conformance-suite">
+<h2>The conformance suite<a class="headerlink" href="#the-conformance-suite" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">surpyval/tests/conformance</span></code> checks every public model against the same
+battery of general properties. The models are listed once, in
+<code class="docutils literal notranslate"><span class="pre">registry.py</span></code>; the property modules beside it run each registered model
+through each property that applies to it:</p>
+<ul class="simple">
+<li><p>identities between its functions: <code class="docutils literal notranslate"><span class="pre">sf</span> <span class="pre">+</span> <span class="pre">ff</span> <span class="pre">=</span> <span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span> <span class="pre">=</span> <span class="pre">-log</span> <span class="pre">sf</span></code>,
+<code class="docutils literal notranslate"><span class="pre">df</span> <span class="pre">=</span> <span class="pre">hf</span> <span class="pre">sf</span></code> (and the discrete analogue), <code class="docutils literal notranslate"><span class="pre">qf(ff(x))</span> <span class="pre">=</span> <span class="pre">x</span></code>, and the
+cumulative incidences of the causes summing to the all-cause <code class="docutils literal notranslate"><span class="pre">ff</span></code>;</p></li>
+<li><p>vectorisation: a scalar, a 2-D and an empty query, a permuted query, and
+covariate rows evaluated together or one at a time;</p></li>
+<li><p>invariances of the fit: a change of time unit, a permutation of the data
+rows, counts <code class="docutils literal notranslate"><span class="pre">n</span></code> against the same rows repeated, and a covariate
+column multiplied by a constant (by <code class="docutils literal notranslate"><span class="pre">fit</span></code> and <code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code>, at scales
+from 1e-6 to 731: the likelihood reached must not change);</p></li>
+<li><p>valid values: probabilities in [0, 1] and monotone in time, no NaN at a
+valid time;</p></li>
+<li><p>that the derivatives a fit or its inference takes – the gradient and
+Hessian of its likelihood in its search space, by autograd or the
+model’s own, and the delta-method gradients behind a parametric <code class="docutils literal notranslate"><span class="pre">cb</span></code>
+– agree with finite differences at the fit (<code class="docutils literal notranslate"><span class="pre">test_derivatives.py</span></code>;
+the model classes that differentiate are listed in <code class="docutils literal notranslate"><span class="pre">DIFFERENTIATED</span></code>,
+and the cases of those that do not in <code class="docutils literal notranslate"><span class="pre">NOT_DIFFERENTIATED</span></code>);</p></li>
+<li><p>the missing-value rule (see <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>), seed reproducibility of
+the random draws, a strict-JSON <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> / <code class="docutils literal notranslate"><span class="pre">from_dict</span></code> round trip
+that keeps every prediction, and a <code class="docutils literal notranslate"><span class="pre">pickle</span></code> round trip of the fitted
+model and of each alternate fit path’s (<code class="docutils literal notranslate"><span class="pre">test_pickle.py</span></code>);</p></li>
+<li><p>that the alternate ways of fitting a model (<code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code>, a formula,
+<code class="docutils literal notranslate"><span class="pre">from_params</span></code>, <code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code> …) agree with <code class="docutils literal notranslate"><span class="pre">fit</span></code>, and, for a model
+class that declares its attributes (<code class="docutils literal notranslate"><span class="pre">DECLARED_ATTRIBUTES</span></code>), that every
+way of building it gives it the same attributes, each declared on the
+class (<code class="docutils literal notranslate"><span class="pre">test_attributes.py</span></code>);</p></li>
+<li><p>every option of every confidence bound, <code class="docutils literal notranslate"><span class="pre">interp=</span></code> value and estimation
+option (<code class="docutils literal notranslate"><span class="pre">test_options.py</span></code>), behaviour outside the data
+(<code class="docutils literal notranslate"><span class="pre">test_outside_data.py</span></code>), that a fit which cannot converge says
+so (<code class="docutils literal notranslate"><span class="pre">test_convergence.py</span></code>), and that a covariate column the data
+cannot determine is aliased, not given an arbitrary coefficient
+(<code class="docutils literal notranslate"><span class="pre">test_aliasing.py</span></code>; a model with covariates declares its
+<code class="docutils literal notranslate"><span class="pre">coefficients</span></code>);</p></li>
+<li><p>that a fit which maximises a likelihood says what it reached
+(<code class="docutils literal notranslate"><span class="pre">test_maximum.py</span></code>): its model’s <code class="docutils literal notranslate"><span class="pre">maximum</span></code> is <code class="docutils literal notranslate"><span class="pre">&quot;verified&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;unverified&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;no</span> <span class="pre">finite</span> <span class="pre">maximum&quot;</span></code>, it warns exactly when that
+is not a verified maximum, and a verified maximum has a zero gradient and
+a positive-definite Hessian of the likelihood at the reported
+parameters. <strong>A new likelihood fitter must set</strong> <code class="docutils literal notranslate"><span class="pre">maximum</span></code>
+(<code class="docutils literal notranslate"><span class="pre">surpyval.utils.no_maximum.MAXIMUM_STATES</span></code>), from a check of its
+answer – <code class="docutils literal notranslate"><span class="pre">is_local_minimum</span></code>, or <code class="docutils literal notranslate"><span class="pre">verify_or_polish</span></code> for a search
+whose answer may need polishing – with <code class="docutils literal notranslate"><span class="pre">warn_unverified</span></code> or
+<code class="docutils literal notranslate"><span class="pre">warn_no_maximum</span></code> where it is not a verified maximum, and pass this
+property (a family’s likelihood goes in <code class="docutils literal notranslate"><span class="pre">SEARCHES</span></code> there; a fit that
+is not a likelihood maximisation is excluded with the reason);</p></li>
+<li><p>that no raw numpy, scipy or autograd warning escapes the package, and
+each deliberate warning appears once (<code class="docutils literal notranslate"><span class="pre">test_warnings.py</span></code>);</p></li>
+<li><p>that every model spells the model-comparison values alike
+(<code class="docutils literal notranslate"><span class="pre">neg_ll()</span></code>, <code class="docutils literal notranslate"><span class="pre">aic()</span></code>, <code class="docutils literal notranslate"><span class="pre">aic_c()</span></code>, <code class="docutils literal notranslate"><span class="pre">bic()</span></code> and <code class="docutils literal notranslate"><span class="pre">covariance()</span></code>
+methods, <code class="docutils literal notranslate"><span class="pre">log_likelihood</span></code> a value; <code class="docutils literal notranslate"><span class="pre">test_comparison.py</span></code>), that each
+name a report reads is the same kind – a method or a value – on every
+model, and that every full-likelihood fit can be ranked by <code class="docutils literal notranslate"><span class="pre">aic</span></code> and
+<code class="docutils literal notranslate"><span class="pre">bic</span></code> (<code class="docutils literal notranslate"><span class="pre">test_surface.py</span></code>).</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">test_completeness.py</span></code> walks the public namespaces and fails for any public
+class or fitter that is neither registered nor listed in <code class="docutils literal notranslate"><span class="pre">OUT_OF_SCOPE</span></code>
+with a reason. So <strong>a new model is registered</strong>: add a <code class="docutils literal notranslate"><span class="pre">Case</span></code> in
+<code class="docutils literal notranslate"><span class="pre">registry_cases.py</span></code> (the family helpers in <code class="docutils literal notranslate"><span class="pre">registry_families.py</span></code> –
+<code class="docutils literal notranslate"><span class="pre">continuous</span></code>, <code class="docutils literal notranslate"><span class="pre">regression</span></code> and the rest – do most of it), giving a small
+deterministic fixture (<code class="docutils literal notranslate"><span class="pre">registry_fixtures.py</span></code>), the fit, how its functions
+are called, and its alternate fit paths. <code class="docutils literal notranslate"><span class="pre">registry.py</span></code> gathers them,
+applies the known failures and holds <code class="docutils literal notranslate"><span class="pre">OUT_OF_SCOPE</span></code>; import from it. If a
+property cannot hold for it, exclude it in <code class="docutils literal notranslate"><span class="pre">exclude</span></code> with the reason (a
+step function has no density, a point mass no quantile inverse). If it should
+hold and does not, that is a bug: list it in <code class="docutils literal notranslate"><span class="pre">KNOWN_FAILURES</span></code>
+(<code class="docutils literal notranslate"><span class="pre">registry_known_failures.py</span></code>) with a one-line
+description, which makes it a strict xfail – the suite stays green, and
+turns red the day the bug is fixed, as the reminder to remove the entry.
+Only a failure whose outcome depends on the numpy / scipy build (an
+optimiser started far from the maximum) is listed in <code class="docutils literal notranslate"><span class="pre">NON_STRICT</span></code> as
+well, so that either outcome passes.</p>
+<p>The fast form leaves out the refits marked <code class="docutils literal notranslate"><span class="pre">slow</span></code> (the less common
+variants of families whose main member runs); the full suite includes those:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>surpyval/tests/conformance<span class="w"> </span>-m<span class="w"> </span><span class="s2">"not slow"</span><span class="w">   </span><span class="c1"># ~40 s</span>
+python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>surpyval/tests/conformance<span class="w">                 </span><span class="c1"># everything</span>
+</pre></div>
+</div>
+<p><strong>When a bug is found, add the property, not only the test.</strong> Each fix gets a
+regression test for its own case; ask as well which general property the bug
+broke, and if the battery does not check it yet, add it to the property
+modules, so every registered model is checked for it from then on.</p>
+<p>The properties enforce the package’s <a class="reference internal" href="Design%20Principles.html"><span class="doc">Design Principles</span></a>: the rules every
+model keeps, each listed with the tests that check it. Review a change against
+that list, and when a bug breaks a principle its check missed, extend the
+check.</p>
+</section>
+<section id="practitioner-scenario-cards">
+<h2>Practitioner scenario cards<a class="headerlink" href="#practitioner-scenario-cards" title="Link to this heading"></a></h2>
+<p>The conformance suite checks that each model keeps its contract; it does
+not check that the models add up to an answer. <code class="docutils literal notranslate"><span class="pre">surpyval/tests/scenarios</span></code>
+does: each module is a <em>card</em>, an end-to-end study a reliability engineer
+runs, on data simulated from a known truth in the shape it arrives in the
+field – a maintenance system’s date table with inspections and a records
+start date, a Nevada chart of warranty returns, the readouts of an
+accelerated test, a growth test of several prototypes. A card names a
+persona and the questions the standard references ask of that kind of
+study (Meeker and Escobar, Nelson, Abernethy, MIL-HDBK-189C, IEC 61508),
+then answers them through the public API only.</p>
+<p>Each answer is checked against an <em>oracle</em>, never against the package
+itself:</p>
+<ul class="simple">
+<li><p>the truth the data were simulated from, inside the fit’s own
+confidence interval (each card has a fixed seed, so this is
+deterministic);</p></li>
+<li><p>an independent likelihood written in the card with numpy and scipy
+(<code class="docutils literal notranslate"><span class="pre">scenarios/_oracles.py</span></code>): the maximum the package reports must be the
+maximum;</p></li>
+<li><p>an equivalent parameterisation: the same model written two ways (an
+accelerated life model and an AFT model on transformed stresses; a
+covariate in two units) must reach the same likelihood.</p></li>
+</ul>
+<p>A question the package cannot yet answer without the analyst writing the
+method by hand is a strict xfail whose reason is led by its issue. When
+the issue is fixed the test passes and the strict xfail turns the run red:
+update the card to the API the fix chose, with an oracle for the answer.
+A gap whose API cannot be guessed is written in the card’s docstring with
+its issue instead. (The first cards found fourteen such gaps – a bound
+on the demonstrated MTBF of a growth test, a B10 by operating condition,
+a forecast from each unit’s own repair history, among others; #570-#583.
+Each is now answered, and checked, through the API its fix chose.)</p>
+<p>The cards take seconds with <code class="docutils literal notranslate"><span class="pre">--run-scenarios</span></code>, and the release pull
+request’s full run runs them on 3.12. Add a card
+for a kind of study the package claims to support but no card covers;
+its first run is a practitioner review of that part of the package, and
+the issues it files become its xfails.</p>
+</section>
+<section id="proving-a-refactor-changed-nothing">
+<h2>Proving a refactor changed nothing<a class="headerlink" href="#proving-a-refactor-changed-nothing" title="Link to this heading"></a></h2>
+<p>A refactor (moving, merging or splitting code) must not change what the
+package computes or says. <code class="docutils literal notranslate"><span class="pre">scripts/refactor/snapshot.py</span></code> records a
+snapshot of it before the change and another after, and compares them:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/refactor/snapshot.py<span class="w"> </span>record<span class="w"> </span>/tmp/before.json
+<span class="c1"># ... make the change ...</span>
+python<span class="w"> </span>scripts/refactor/snapshot.py<span class="w"> </span>record<span class="w"> </span>/tmp/after.json
+python<span class="w"> </span>scripts/refactor/snapshot.py<span class="w"> </span>compare<span class="w"> </span>/tmp/before.json<span class="w"> </span>/tmp/after.json
+</pre></div>
+</div>
+<p>A snapshot holds, for every case in the conformance registry: the fitted
+parameters, <code class="docutils literal notranslate"><span class="pre">neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">aic</span></code> and <code class="docutils literal notranslate"><span class="pre">bic</span></code>, every function at the
+registry’s query, every confidence bound the case declares (each side and
+<code class="docutils literal notranslate"><span class="pre">on=</span></code>), <code class="docutils literal notranslate"><span class="pre">to_dict()</span></code>, <code class="docutils literal notranslate"><span class="pre">repr</span></code> and <code class="docutils literal notranslate"><span class="pre">summary()</span></code>, the warnings each call
+raises, each alternate fit path, and the error each of a corpus of invalid
+inputs raises. It adds the fits the registry does not reach (time-varying
+covariates, seeded bootstraps, recurrent data mixing every kind of
+censoring), the public API (names, signatures and defaults), the modules
+<code class="docutils literal notranslate"><span class="pre">import</span> <span class="pre">surpyval</span></code> loads, and the IDs of the collected tests and
+doctests. It takes two to three minutes on two cores (<code class="docutils literal notranslate"><span class="pre">-j</span></code> sets the
+workers; <code class="docutils literal notranslate"><span class="pre">--full</span></code> adds the likelihood-ratio bounds the conformance suite
+runs only in the full suite, about two minutes more).</p>
+<p>Floats are stored exactly, so <code class="docutils literal notranslate"><span class="pre">compare</span></code> is bit-exact unless given
+<code class="docutils literal notranslate"><span class="pre">--rtol</span></code>. A pure move or merge must compare clean. Splitting a function
+into steps may change results by at most <code class="docutils literal notranslate"><span class="pre">--rtol</span> <span class="pre">1e-12</span></code>, with the reason
+for each difference given in the pull request. A change that is meant to
+alter the API (a removed name, a new method) shows only in the <code class="docutils literal notranslate"><span class="pre">api</span></code>
+section; say so. The snapshot depends on the numpy and scipy build, so
+compare snapshots recorded in the same environment, and with the same
+version of the script (copy it aside if the change edits it). The snapshots
+themselves are not committed.</p>
+</section>
+<section id="mutation-testing">
+<h2>Mutation testing<a class="headerlink" href="#mutation-testing" title="Link to this heading"></a></h2>
+<p>Coverage shows that a line ran, not that a test would notice if it were
+wrong. <code class="docutils literal notranslate"><span class="pre">scripts/mutation/run.sh</span> <span class="pre">&lt;module&gt;</span></code> (mutmut; see
+<code class="docutils literal notranslate"><span class="pre">scripts/mutation/README.md</span></code>) changes a module one small edit at a time –
+<code class="docutils literal notranslate"><span class="pre">&lt;</span></code> to <code class="docutils literal notranslate"><span class="pre">&lt;=</span></code>, a dropped argument, <code class="docutils literal notranslate"><span class="pre">side=&quot;right&quot;</span></code> removed – in a copy of
+the repository, and reruns the tests that reach the changed function; an
+edit no test notices is a <em>surviving mutant</em>. It takes hours (2.5 to 3.5 for
+the non-parametric module on two workers), so run it after a large change to
+a module or before a release, not on a pull request, and record the score in
+the README.</p>
+<p>Triage every survivor: a plausible bug no test would notice gets a test –
+preferably a conformance property that covers every model, else one in
+<code class="docutils literal notranslate"><span class="pre">surpyval/tests/mutation/test_&lt;module&gt;_kills.py</span></code>; a change with no
+observable effect is <em>equivalent</em>; code whose mutants can never be observed
+is a simplification candidate; a survivor that shows a bug is pinned as a
+strict xfail with its issue number. <code class="docutils literal notranslate"><span class="pre">scripts/mutation/recheck.py</span></code> checks
+new tests against the survivors in minutes. A fixture that caches results
+across tests hides mutants from mutmut: the plugin clears the conformance
+caches, and a new cache needs the same.</p>
+</section>
+<section id="reviewing-a-module-by-bug-class">
+<h2>Reviewing a module by bug class<a class="headerlink" href="#reviewing-a-module-by-bug-class" title="Link to this heading"></a></h2>
+<p>Tests find what someone thought to check; a review looks for what nobody
+did. Review a module against the kinds of bug this package has actually
+had, choosing modules by lowest branch coverage and by how often they have
+been fixed (<code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">log</span> <span class="pre">--follow</span> <span class="pre">-p</span> <span class="pre">&lt;file&gt;</span></code>). Run</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>--cov<span class="o">=</span>&lt;package<span class="w"> </span>path&gt;<span class="w"> </span>--cov-branch<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--cov-report<span class="o">=</span>term-missing<span class="w"> </span>&lt;its<span class="w"> </span>tests&gt;
+</pre></div>
+</div>
+<p>and read the uncovered branches first. Then, for each public function and
+each entry point that reaches it, try:</p>
+<ol class="arabic simple">
+<li><p><strong>Ties</strong>: an event and a censoring at the same time; events tied among
+themselves; an interval endpoint equal to an exact time.</p></li>
+<li><p><strong>Order</strong>: unsorted rows; unsorted or duplicated queries.</p></li>
+<li><p><strong>Endpoints</strong>: the first and last piece, a query exactly on a boundary,
+a start before or at 0, x = 0.</p></li>
+<li><p><strong>Degenerate values</strong>: NaN, inf and empty input, in the data and in the
+queries; probabilities outside [0, 1].</p></li>
+<li><p><strong>Tails and scale</strong>: 1e-6 and 1e6 times the natural scale; <code class="docutils literal notranslate"><span class="pre">log_*</span></code>
+functions against the logs of the plain ones; a special case (e.g. an
+exponentiated Weibull with mu = 1) against its parent distribution.</p></li>
+<li><p><strong>Shapes</strong>: scalar, 1-D, 2-D and empty queries; array parameters where a
+docstring allows them.</p></li>
+<li><p><strong>Counts</strong>: <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">k</span></code> against k repeated rows.</p></li>
+<li><p><strong>Truncation</strong>: <code class="docutils literal notranslate"><span class="pre">tl</span></code> / <code class="docutils literal notranslate"><span class="pre">tr</span></code> at, just inside and outside an
+observation.</p></li>
+<li><p><strong>Reference software</strong>: R <code class="docutils literal notranslate"><span class="pre">survival</span></code>, <code class="docutils literal notranslate"><span class="pre">cmprsk</span></code>, lifelines and
+scikit-survival, minding each one’s reporting convention.</p></li>
+<li><p><strong>Entry points</strong>: <code class="docutils literal notranslate"><span class="pre">fit</span></code>, <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code>, <code class="docutils literal notranslate"><span class="pre">from_dict</span></code> / JSON and the
+<code class="docutils literal notranslate"><span class="pre">fit_from_*</span></code> helpers.</p></li>
+<li><p><strong>User-supplied names and labels</strong>: collisions with attribute names;
+tuple and mixed labels.</p></li>
+<li><p><strong>Messages</strong>: every error names the argument (principle 2), and no raw
+numpy warning escapes (principle 22).</p></li>
+</ol>
+<p>A suspected bug counts only with a numerical reproduction. Pin it as a
+strict xfail whose reason starts with its issue number in
+<code class="docutils literal notranslate"><span class="pre">surpyval/tests/review/test_&lt;module&gt;_review.py</span></code>, and where it breaks a
+general property, add that property to the conformance suite so every
+model is checked for it.</p>
+</section>
+<section id="branching-and-releases">
+<h2>Branching and releases<a class="headerlink" href="#branching-and-releases" title="Link to this heading"></a></h2>
+<p>SurPyval uses a two-tier branch model to keep continuous integration and the
+documentation build from running on every change:</p>
+<ul class="simple">
+<li><p><strong>main</strong> is the release branch. It is only updated at a version release,
+and pushing a <code class="docutils literal notranslate"><span class="pre">v*</span></code> tag to it publishes the package and rebuilds the hosted
+documentation.</p></li>
+<li><p><strong>dev</strong> is the long-lived integration branch. Feature work is done on a
+short-lived branch and opened as a pull request into <code class="docutils literal notranslate"><span class="pre">dev</span></code>.</p></li>
+<li><p>At release time <code class="docutils literal notranslate"><span class="pre">dev</span></code> is merged into <code class="docutils literal notranslate"><span class="pre">main</span></code> in a single pull
+request and the new version is tagged. Either push the tag, or run the
+publish workflow by hand on <code class="docutils literal notranslate"><span class="pre">main</span></code> (<code class="docutils literal notranslate"><span class="pre">gh</span> <span class="pre">workflow</span> <span class="pre">run</span> <span class="pre">publish.yml</span>
+<span class="pre">--ref</span> <span class="pre">main</span> <span class="pre">-f</span> <span class="pre">version=0.25</span></code>): it publishes first, then creates the tag
+and a GitHub Release itself, so no tag needs pushing. <code class="docutils literal notranslate"><span class="pre">-f</span> <span class="pre">dry_run=true</span></code>
+checks and builds only.</p></li>
+</ul>
+<p>Versions have two parts, <code class="docutils literal notranslate"><span class="pre">MAJOR.MINOR</span></code> (<code class="docutils literal notranslate"><span class="pre">0.22</span></code>, tagged <code class="docutils literal notranslate"><span class="pre">v0.22</span></code>), since
+0.22; earlier releases had three. Every release, fixes only or not, takes the
+next minor number. A name deprecated in one release is removed in the next
+(<code class="docutils literal notranslate"><span class="pre">REMOVED_IN</span></code> in <code class="docutils literal notranslate"><span class="pre">surpyval/utils/deprecation.py</span></code>), and a test fails once
+the version reaches it while the old names are still accepted. A
+deprecation the maintainer gives longer is listed with its release in
+<code class="docutils literal notranslate"><span class="pre">SCHEDULED_REMOVALS</span></code> (<code class="docutils literal notranslate"><span class="pre">check_ph</span></code> was, until its removal in v0.28) and
+warns through <code class="docutils literal notranslate"><span class="pre">scheduled_removal</span></code>; its own test fails once that release
+is reached.
+The rules users rely on are in the <a class="reference internal" href="Deprecation%20Policy.html"><span class="doc">Deprecation Policy</span></a>; the steps
+are below.</p>
+<section id="deprecating-and-removing-a-name">
+<h3>Deprecating and removing a name<a class="headerlink" href="#deprecating-and-removing-a-name" title="Link to this heading"></a></h3>
+<p>A public name (see the <a class="reference internal" href="Deprecation%20Policy.html"><span class="doc">Deprecation Policy</span></a> for what is public) is
+never removed or renamed in one step:</p>
+<ol class="arabic simple">
+<li><p><strong>Deprecate it.</strong> Keep the old name working with a warning that names
+the new one, using the helpers in <code class="docutils literal notranslate"><span class="pre">surpyval/utils/deprecation.py</span></code>:
+<code class="docutils literal notranslate"><span class="pre">renamed_arguments</span></code> for an argument, <code class="docutils literal notranslate"><span class="pre">RenamedAttribute</span></code> for an
+attribute, and <code class="docutils literal notranslate"><span class="pre">renamed_name</span></code> from a module’s <code class="docutils literal notranslate"><span class="pre">__getattr__</span></code> for a
+class or function. A name deprecated in the release being prepared is
+removed in the release after it: pass <code class="docutils literal notranslate"><span class="pre">removed_in=REMOVED_IN_NEXT</span></code>
+(<code class="docutils literal notranslate"><span class="pre">REMOVED_IN</span></code> holds the release that removes the names the last
+release deprecated). A longer window, chosen by the maintainer, goes in
+<code class="docutils literal notranslate"><span class="pre">SCHEDULED_REMOVALS</span></code> with <code class="docutils literal notranslate"><span class="pre">scheduled_removal</span></code>. Add a line under
+<strong>Deprecated</strong> in <code class="docutils literal notranslate"><span class="pre">docs/changelog.rst</span></code> naming the replacement and
+the release that removes the old name.</p></li>
+<li><p><strong>Remove it</strong> in that release. <code class="docutils literal notranslate"><span class="pre">test_removed_arguments.py</span></code> fails once
+the version reaches <code class="docutils literal notranslate"><span class="pre">REMOVED_IN</span></code> (or a <code class="docutils literal notranslate"><span class="pre">SCHEDULED_REMOVALS</span></code>
+release) while a shim is left. Delete the shim, its tests and its
+documentation, and add a line under <strong>Removed</strong>.</p></li>
+<li><p><strong>Leave a hint.</strong> Register the old name in
+<code class="docutils literal notranslate"><span class="pre">surpyval/utils/removed_names.py</span></code> so that using it raises the error
+Python would, naming the release and the replacement: a
+<code class="docutils literal notranslate"><span class="pre">RemovedName</span></code> class attribute for a model attribute,
+<code class="docutils literal notranslate"><span class="pre">REMOVED_TOP_LEVEL</span></code> for a name in <code class="docutils literal notranslate"><span class="pre">surpyval</span></code>, <code class="docutils literal notranslate"><span class="pre">removed_arguments</span></code>
+for an argument, or a subpackage <code class="docutils literal notranslate"><span class="pre">__getattr__</span></code> that raises with
+<code class="docutils literal notranslate"><span class="pre">removed_message</span></code>. An entry is dropped once the old name has been
+gone for a release or two (with <code class="docutils literal notranslate"><span class="pre">--update</span> <span class="pre">--force</span></code> for the public
+surface list, below, if the name is listed there).</p></li>
+</ol>
+<p><code class="docutils literal notranslate"><span class="pre">surpyval/tests/test_public_surface.py</span></code> holds this in place for the
+public namespaces. <code class="docutils literal notranslate"><span class="pre">surpyval/tests/public_surface.txt</span></code> lists every
+public name, and the test fails when a listed name has gone without a
+deprecation warning or a removal hint, and when a public name is not in
+the list. After adding a public name (with a line under <strong>Added</strong>), or to
+drop a name whose removal hint has been retired, regenerate the list and
+commit it with the change:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>surpyval.tests.test_public_surface<span class="w"> </span>--update
+</pre></div>
+</div>
+<p>It prints each name it adds and drops, and refuses to drop a name with no
+deprecation or hint unless given <code class="docutils literal notranslate"><span class="pre">--force</span></code>. A helper that should not be
+public gets a leading underscore instead (or, in a namespace with an
+<code class="docutils literal notranslate"><span class="pre">__all__</span></code>, is left out of it).</p>
+<p>A change of behaviour that cannot carry a warning (a corrected result, a
+new default, a convention made consistent) is listed under <strong>Changed</strong> or
+<strong>Fixed</strong> with how much the numbers move; where it changes what a saved
+model means, the model is converted as it loads (as 0.27 does for the
+distributional regression’s coefficient signs).</p>
+<p>Continuous integration (<code class="docutils literal notranslate"><span class="pre">.github/workflows/actions.yml</span></code>) therefore runs
+once, on the <strong>pull request from dev into main</strong> (the release), and on
+nothing else: not on pull requests into <code class="docutils literal notranslate"><span class="pre">dev</span></code> and not on pushes to any
+branch. It tests the pull request’s merge result, and each new push to
+<code class="docutils literal notranslate"><span class="pre">dev</span></code> cancels the release pull request’s out-of-date run, so only the
+latest <code class="docutils literal notranslate"><span class="pre">dev</span></code> is tested. Before pushing a change, run the tests for what it
+touches with the commands under “Running things” above; the full suite runs
+in that release run (or locally when the maintainer asks for it).</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Event</p></th>
+<th class="head"><p>Jobs</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Pull request into <code class="docutils literal notranslate"><span class="pre">dev</span></code></p></td>
+<td><p>none</p></td>
+</tr>
+<tr class="row-odd"><td><p>Pull request into <code class="docutils literal notranslate"><span class="pre">main</span></code> (the release)</p></td>
+<td><p>lint, the conformance suite, the test suite across three
+interpreters (each split into six parts that run at once, with
+the docstring examples; 3.12 measures coverage), the calibration
+studies and scenario cards (on 3.12, in groups that run at
+once, chosen by the studies’ measured times), the wheel check and
+the documentation build</p></td>
+</tr>
+<tr class="row-even"><td><p>Merge into <code class="docutils literal notranslate"><span class="pre">main</span></code></p></td>
+<td><p>none in this repository; Read the Docs rebuilds the hosted
+documentation</p></td>
+</tr>
+<tr class="row-odd"><td><p>Push of a <code class="docutils literal notranslate"><span class="pre">v*</span></code> tag</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">.github/workflows/publish.yml</span></code> checks that the tagged commit is
+the merge of a pull request into <code class="docutils literal notranslate"><span class="pre">main</span></code> whose full run passed
+(every job), and that the tag matches the version in
+<code class="docutils literal notranslate"><span class="pre">pyproject.toml</span></code>; it then builds the package and publishes it to
+PyPI. It runs no tests of its own. Read the Docs builds the tagged
+documentation</p></td>
+</tr>
+<tr class="row-even"><td><p>Publish workflow run by hand on <code class="docutils literal notranslate"><span class="pre">main</span></code></p></td>
+<td><p>the same checks and publishing, for the version typed in (which
+must have no tag and no PyPI release yet); then it creates the tag
+and a GitHub Release</p></td>
+</tr>
+</tbody>
+</table>
+<p>The full test suite and the documentation build run once per release, on the
+release pull request. That run tests the pull request’s merge result, so a
+failure is found before <code class="docutils literal notranslate"><span class="pre">main</span></code> changes: fix it on <code class="docutils literal notranslate"><span class="pre">dev</span></code> (the
+pull request picks the fix up) and merge the release when the run is green.
+Waiting on the full suite at every step made a release take hours.</p>
+<p>Every job in both workflows has a time limit (<code class="docutils literal notranslate"><span class="pre">timeout-minutes</span></code>, about
+twice its usual time), and the test suite, the conformance suite and the
+calibration studies have a per-test limit too (pytest-timeout), so a test
+that hangs fails with its name and stack instead of holding the release.
+The suite’s six parts per interpreter are balanced by recorded test times
+when <code class="docutils literal notranslate"><span class="pre">.github/test_durations.json</span></code> exists, and split by a hash of the
+test id otherwise. Each release run records the times: download its
+<code class="docutils literal notranslate"><span class="pre">test-durations</span></code> artifact (from the <code class="docutils literal notranslate"><span class="pre">coverage</span></code> job) and commit it as
+<code class="docutils literal notranslate"><span class="pre">.github/test_durations.json</span></code> to refresh the balance. A test added since
+counts as the median time, so the file only needs refreshing when the
+parts drift apart. Locally:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>-n<span class="w"> </span>auto<span class="w"> </span>--shard<span class="o">=</span><span class="m">2</span>/4<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--shard-durations<span class="o">=</span>.github/test_durations.json<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--store-durations<span class="o">=</span>times.json
+</pre></div>
+</div>
+<p>Every change is tested locally by the tests for what it changed, before it is
+pushed:</p>
+<ul>
+<li><p>the test modules covering the code touched, and the conformance tests for
+the models it touches (<code class="docutils literal notranslate"><span class="pre">surpyval/tests/conformance</span></code>, filtered with
+<code class="docutils literal notranslate"><span class="pre">-k</span></code>);</p></li>
+<li><p>the doctests of the modules touched
+(<code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">pytest</span> <span class="pre">--doctest-modules</span> <span class="pre">&lt;module&gt;</span></code>);</p></li>
+<li><p>lint, formatting and <code class="docutils literal notranslate"><span class="pre">mypy</span></code>, as the lint job runs them;</p></li>
+<li><p>the documentation pages that call what changed, when a public function’s
+behaviour changes (documentation cells call the real API);</p></li>
+<li><p>for a numerical change, its tests on more than one interpreter.
+<code class="docutils literal notranslate"><span class="pre">scripts/check_all_pythons.py</span></code> runs the whole suite on 3.11, 3.12 and
+3.13; the environments it keeps in <code class="docutils literal notranslate"><span class="pre">.venvs/</span></code> (git-ignored) run any
+selection:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/check_all_pythons.py<span class="w"> </span><span class="m">3</span>.11<span class="w">   </span><span class="c1"># create .venvs/py3.11 once</span>
+.venvs/py3.11/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>surpyval/tests/univariate/parametric
+</pre></div>
+</div>
+</li>
+</ul>
+</section>
+</section>
+<section id="documentation">
+<h2>Documentation<a class="headerlink" href="#documentation" title="Link to this heading"></a></h2>
+<p>The documentation executes its own code examples when it is built. Code in
+<code class="docutils literal notranslate"><span class="pre">..</span> <span class="pre">jupyter-execute::</span></code> directives is run in a Jupyter kernel during the
+Sphinx build, and the text output and matplotlib figures are embedded in the
+rendered pages. This means the examples and images never go stale — they
+always reflect the installed version of SurPyval — and an example that no
+longer runs will fail the documentation build.</p>
+<p>To build the documentation locally:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">".[docs]"</span>
+sphinx-build<span class="w"> </span>-b<span class="w"> </span>html<span class="w"> </span>-W<span class="w"> </span>--keep-going<span class="w"> </span>docs<span class="w"> </span>docs/_build/html
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">-W</span></code> turns warnings into errors, which is how continuous integration and
+Read the Docs both build. A Sphinx warning is rarely cosmetic – a broken
+cross-reference silently renders as plain text, a mistyped <code class="docutils literal notranslate"><span class="pre">autoclass</span></code> path
+drops the class from the page entirely – so the build is kept at zero
+warnings rather than at “succeeded, N warnings”. <code class="docutils literal notranslate"><span class="pre">--keep-going</span></code> reports all
+of them instead of stopping at the first.</p>
+<p>When writing documentation, prefer <code class="docutils literal notranslate"><span class="pre">..</span> <span class="pre">jupyter-execute::</span></code> over static
+<code class="docutils literal notranslate"><span class="pre">..</span> <span class="pre">code-block::</span> <span class="pre">python</span></code> blocks with pasted outputs or screenshots. All
+cells in a page share one kernel, so later cells can use variables defined
+in earlier ones. Anything a cell writes to stderr fails the build, so cells
+must run without warnings: fix the example (better data or arguments) rather
+than hide a warning. Only when the warning is itself the point being taught,
+add the <code class="docutils literal notranslate"><span class="pre">:stderr:</span></code> option so it is rendered in the page. Seed any
+randomness, so the numbers quoted in the text are the numbers the build
+prints.</p>
+<section id="checking-the-numbers-quoted-in-the-text">
+<h3>Checking the numbers quoted in the text<a class="headerlink" href="#checking-the-numbers-quoted-in-the-text" title="Link to this heading"></a></h3>
+<p>A cell’s output is regenerated on every build, but a number quoted in the
+prose around it (“a shape of about 2.1”, “83 wear-out failures”, “the lower
+AIC”) is not, and it goes stale silently when the output changes. So every
+such claim is checked by a hidden cell after the paragraph that makes it:</p>
+<div class="highlight-rst notranslate"><div class="highlight"><pre><span></span>The shape <span class="na">:math:</span><span class="nv">`\beta \approx 2.1`</span> is greater than one, ...
+
+<span class="p">..</span> <span class="ow">jupyter-execute</span><span class="p">::</span>
+    <span class="nc">:hide-code:</span>
+    <span class="nc">:hide-output:</span>
+
+    assert round(model.params[1], 1) == 2.1, model.params
+</pre></div>
+</div>
+<p>The cell runs in the page’s kernel like any other and renders nothing; a
+failing <code class="docutils literal notranslate"><span class="pre">assert</span></code> stops the build with its traceback. Some conventions:</p>
+<ul class="simple">
+<li><p>Check the claim at the precision the text states it: <code class="docutils literal notranslate"><span class="pre">round(x,</span> <span class="pre">1)</span> <span class="pre">==</span> <span class="pre">2.1</span></code>
+for “about 2.1”, a comparison for “lower”, “wider” or “inside the interval”.</p></li>
+<li><p>Give the value as the assertion message, so a failure shows what the output
+now is.</p></li>
+<li><p>Prefix names used only by a check with <code class="docutils literal notranslate"><span class="pre">_</span></code>, and never change a variable a
+later cell uses. If a claim needs a value that a visible cell computed but
+did not keep (inside a loop, say), keep it in that cell (<code class="docutils literal notranslate"><span class="pre">aic[df]</span> <span class="pre">=</span> <span class="pre">...</span></code>)
+rather than repeating an expensive computation in the check.</p></li>
+<li><p>Inputs (the parameters a simulation was drawn from), definitions and
+literature values need no check.</p></li>
+<li><p>When a check fails because an output changed, correct the text to the new
+output rather than loosening the check.</p></li>
+</ul>
+<p>To iterate on a page, rerun the build command above: Sphinx keeps its doctree
+cache in <code class="docutils literal notranslate"><span class="pre">docs/_build/html/.doctrees</span></code>, so after the first full build a
+rebuild re-reads, and so re-executes, only the pages that changed.</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Support.html" class="btn btn-neutral float-left" title="Support" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="acknowledgements.html" class="btn btn-neutral float-right" title="Acknowledgements" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

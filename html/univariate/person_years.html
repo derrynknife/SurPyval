@@ -1,0 +1,626 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exposure (Person-Years) Tables &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Pooled Rates Across Sources" href="pooled_rate.html" />
+    <link rel="prev" title="Plotting Positions" href="plotting_positions.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#non-parametric-class">Non-Parametric Class</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#non-parametric-estimators">Non-Parametric Estimators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#relative-survival">Relative Survival</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#plotting">Plotting</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.nonparametric.html#other-non-parametric-functions">Other Non-Parametric Functions</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="success_run.html">Success Run</a></li>
+<li class="toctree-l4"><a class="reference internal" href="plotting_positions.html">Plotting Positions</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Exposure (Person-Years) Tables</a></li>
+<li class="toctree-l4"><a class="reference internal" href="pooled_rate.html">Pooled Rates Across Sources</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+      <li class="breadcrumb-item active">Exposure (Person-Years) Tables</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/univariate/person_years.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="exposure-person-years-tables">
+<h1>Exposure (Person-Years) Tables<a class="headerlink" href="#exposure-person-years-tables" title="Link to this heading"></a></h1>
+<p>The total time at risk, the events and the units in each cell of a
+cross-classification by fixed factors and by time bands the units move
+through (attained age, calendar period, time since entry), with each
+cell’s event rate and its exact bounds, rate ratios between cells, and
+observed to expected ratios given reference rates. Worked examples are
+in <a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html"><span class="doc">Non-Parametric SurPyval Modelling</span></a>.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.person_years">
+<span class="sig-prename descclassname"><span class="pre">surpyval.</span></span><span class="sig-name descname"><span class="pre">person_years</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">factors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timescales</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rates</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.PersonYears" title="surpyval.univariate.nonparametric.person_years.PersonYears"><span class="pre">PersonYears</span></a></span></span><a class="headerlink" href="#surpyval.person_years" title="Link to this definition"></a></dt>
+<dd><p>The exposure (person-years) table of right censored, possibly
+late-entry data: in each cell of a cross-classification, the total
+time the units were followed there, the number of events there and
+the number of units that spent time there, with the event rate and
+its exact confidence bounds. As R’s <code class="docutils literal notranslate"><span class="pre">survival::pyears</span></code>.</p>
+<p>The cells are formed by <em>factors</em>, fixed for each unit (a site, a
+model, a sex), and by <em>time scales</em> cut into bands (attained age,
+calendar period, time since entry, operating hours since overhaul).
+A unit moves through the bands of a time scale as it is followed: a
+pump followed from 3,000 to 7,000 operating hours, with bands every
+2,000 hours, spends 1,000 hours in the 2,000-4,000 band, 2,000 in the
+4,000-6,000 band and 1,000 in the 6,000-8,000 band; its event (or its
+censoring) is in the band it is in when it happens. R’s <code class="docutils literal notranslate"><span class="pre">tcut</span></code> does
+this; a band read from each unit’s value at the start
+(<code class="docutils literal notranslate"><span class="pre">cut(age,</span> <span class="pre">...)</span></code>) would put all its time in one band.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em>) – The time each unit’s follow-up ends (its event or its censoring),
+on the time scale of the data: time since each unit’s origin
+(installation, birth, diagnosis, the start of a study). The rows
+are matched to the factors and start values by position, so a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">SurpyvalData</span></code> (which sorts its rows) is
+refused; pass the arrays.</p></li>
+<li><p><strong>c</strong> (<em>array like</em><em>, </em><em>optional</em>) – The censoring flags: 0 an event, 1 right censored (followed to
+<code class="docutils literal notranslate"><span class="pre">x</span></code> with no event). Left (-1) and interval (2) censored rows
+are refused: their exposure ends at an unknown time.</p></li>
+<li><p><strong>n</strong> (<em>array like</em><em>, </em><em>optional</em>) – The count of each row: <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">k</span></code> is <code class="docutils literal notranslate"><span class="pre">k</span></code> identical units. Default
+1.</p></li>
+<li><p><strong>tl</strong> (<em>array like</em><em> or </em><em>float</em><em>, </em><em>optional</em>) – Each unit’s entry time (late entry, left truncation), on the same
+scale as <code class="docutils literal notranslate"><span class="pre">x</span></code>: the unit is followed on <code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">x]</span></code>. Default 0.</p></li>
+<li><p><strong>factors</strong> (<em>dict</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">{name:</span> <span class="pre">labels}</span></code>: a fixed classification of the units, one label
+per row (strings, numbers or a <code class="docutils literal notranslate"><span class="pre">pandas.Categorical</span></code>, whose
+category order is kept; otherwise the levels are sorted).</p></li>
+<li><p><strong>timescales</strong> (<em>dict</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">{name:</span> <span class="pre">(start,</span> <span class="pre">breaks)}</span></code> (or <code class="docutils literal notranslate"><span class="pre">{name:</span> <span class="pre">{&quot;start&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;breaks&quot;:</span>
+<span class="pre">...}}</span></code>): a time scale that runs with the follow-up. <code class="docutils literal notranslate"><span class="pre">start</span></code> is
+each unit’s value on it at time 0 of <code class="docutils literal notranslate"><span class="pre">x</span></code> (a number, or one per
+row): its value at time <code class="docutils literal notranslate"><span class="pre">t</span></code> is <code class="docutils literal notranslate"><span class="pre">start</span> <span class="pre">+</span> <span class="pre">t</span></code>. Age at time 0 for
+attained age; the calendar date at time 0 for calendar period; 0
+for the time scale of <code class="docutils literal notranslate"><span class="pre">x</span></code> itself; <code class="docutils literal notranslate"><span class="pre">-tl</span></code> for time since entry.
+<code class="docutils literal notranslate"><span class="pre">breaks</span></code> are the increasing band edges (the last may be <code class="docutils literal notranslate"><span class="pre">inf</span></code>);
+the bands are <code class="docutils literal notranslate"><span class="pre">(b_j,</span> <span class="pre">b_{j+1}]</span></code>, so an event exactly on an edge
+is in the band that ends there, as in R. Time before the first
+edge or after the last is <em>off the table</em>: counted in
+<a class="reference internal" href="#surpyval.PersonYears.offtable" title="surpyval.PersonYears.offtable"><code class="xref py py-attr docutils literal notranslate"><span class="pre">PersonYears.offtable</span></code></a>, with a warning.</p></li>
+<li><p><strong>rates</strong> (<em>DataFrame</em><em>, </em><em>dict</em><em>, </em><em>float</em><em> or </em><em>None</em><em>, </em><em>optional</em>) – Reference rates, to give each cell’s expected events and the
+observed to expected ratio (a standardised incidence or mortality
+ratio). A single rate for every cell, or a table: a
+<code class="docutils literal notranslate"><span class="pre">pandas.DataFrame</span></code> (or a dict of columns) with a column
+<code class="docutils literal notranslate"><span class="pre">&quot;rate&quot;</span></code> and one column for each of the factors and time scales
+it varies by (a subset of them). A time scale’s column holds each
+band’s lower edge, as the table’s does. Every cell must find one
+rate. The rates are in the units of the table’s rates: events per
+<code class="docutils literal notranslate"><span class="pre">per</span></code> units of time.</p></li>
+<li><p><strong>per</strong> (<em>float</em><em>, </em><em>optional</em>) – The rates are per <code class="docutils literal notranslate"><span class="pre">per</span></code> units of the time of <code class="docutils literal notranslate"><span class="pre">x</span></code>: <code class="docutils literal notranslate"><span class="pre">per=1000</span></code>
+gives failures per 1,000 hours when <code class="docutils literal notranslate"><span class="pre">x</span></code> is in hours. Default 1.
+The exposure stays in the units of <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The bounds are two-sided <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code> intervals. Default 0.05.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><p>The table (<a class="reference internal" href="#surpyval.PersonYears.table" title="surpyval.PersonYears.table"><code class="xref py py-attr docutils literal notranslate"><span class="pre">PersonYears.table</span></code></a>), one row per cell, every
+combination of the levels and bands (cells with no time
+included), with the columns:</p>
+<ul class="simple">
+<li><p>one per factor (its label) and one per time scale (its band’s
+lower edge), followed by <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;_end</span></code> (the upper edge) for
+each time scale;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">units</span></code>: the units (the sum of <code class="docutils literal notranslate"><span class="pre">n</span></code>) that spent time in the
+cell; a unit is counted in each cell it passes through;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">exposure</span></code>: the total time at risk in the cell, in the units
+of <code class="docutils literal notranslate"><span class="pre">x</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">events</span></code>: the events in the cell;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rate</span></code>, <code class="docutils literal notranslate"><span class="pre">rate_lower</span></code>, <code class="docutils literal notranslate"><span class="pre">rate_upper</span></code>: <code class="docutils literal notranslate"><span class="pre">events</span> <span class="pre">/</span> <span class="pre">exposure</span></code>
+times <code class="docutils literal notranslate"><span class="pre">per</span></code>, with its exact Garwood bounds (<code class="docutils literal notranslate"><span class="pre">nan</span></code> with no
+exposure);</p></li>
+<li><p>with <code class="docutils literal notranslate"><span class="pre">rates</span></code>: <code class="docutils literal notranslate"><span class="pre">expected</span></code> (the reference rate times the
+exposure, divided by <code class="docutils literal notranslate"><span class="pre">per</span></code>), <code class="docutils literal notranslate"><span class="pre">oe_ratio</span></code> (<code class="docutils literal notranslate"><span class="pre">events</span> <span class="pre">/</span>
+<span class="pre">expected</span></code>) and its exact bounds <code class="docutils literal notranslate"><span class="pre">oe_lower</span></code> and <code class="docutils literal notranslate"><span class="pre">oe_upper</span></code>
+(the Garwood bounds of the events divided by the expected).</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.PersonYears" title="surpyval.PersonYears">PersonYears</a></p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>Each unit’s follow-up <code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">x]</span></code> is cut where any of its time scales
+crosses a band edge, and each piece is added to the cell it lies in.
+The event rate of a cell is the maximum likelihood estimate of a
+constant hazard there, <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">/</span> <span class="pre">T</span></code>. Its exact bounds treat <code class="docutils literal notranslate"><span class="pre">d</span></code> as
+Poisson with mean <code class="docutils literal notranslate"><span class="pre">lambda</span> <span class="pre">T</span></code> (Garwood 1936): with <code class="docutils literal notranslate"><span class="pre">chi2_{k,</span> <span class="pre">p}</span></code>
+the <code class="docutils literal notranslate"><span class="pre">p</span></code> quantile of a chi-square on <code class="docutils literal notranslate"><span class="pre">k</span></code> degrees of freedom,</p>
+<div class="math notranslate nohighlight">
+\[\left[\frac{\chi^2_{2d,\ \alpha/2}}{2T},\
+\frac{\chi^2_{2d+2,\ 1-\alpha/2}}{2T}\right].\]</div>
+<p>With <code class="docutils literal notranslate"><span class="pre">rates</span></code>, the expected events of a cell are <code class="docutils literal notranslate"><span class="pre">E</span> <span class="pre">=</span> <span class="pre">r</span> <span class="pre">T</span></code>, and
+the observed to expected ratio <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">/</span> <span class="pre">E</span></code> has the bounds above times
+<code class="docutils literal notranslate"><span class="pre">T</span> <span class="pre">/</span> <span class="pre">E</span></code> (Breslow and Day 1987, section 2.3), <code class="docutils literal notranslate"><span class="pre">E</span></code> taken as known.
+The rate table’s resolution is the table’s: a reference rate that
+changes within a cell is approximated by one value there (R’s
+<code class="docutils literal notranslate"><span class="pre">pyears</span></code> integrates a finer rate table along each unit’s path);
+cut the time scales at the rate table’s edges for the exact expected
+count, and add up the cells.</p>
+<p class="rubric">References</p>
+<p>Garwood, F. (1936), “Fiducial limits for the Poisson distribution”,
+Biometrika 28, 437-442.</p>
+<p>Breslow, N. E. and Day, N. E. (1987), <em>Statistical Methods in Cancer
+Research, Volume II: The Design and Analysis of Cohort Studies</em>,
+IARC, chapter 2.</p>
+<p>Berry, G. (1983), “The analysis of mortality by the subject-years
+method”, Biometrics 39, 173-184.</p>
+<p class="rubric">Examples</p>
+<p>Four pumps at two sites, followed from installation (hours), with
+bands of operating age:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1500</span><span class="p">,</span> <span class="mi">4200</span><span class="p">,</span> <span class="mi">2500</span><span class="p">,</span> <span class="mi">6000</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">site</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">py</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">person_years</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">factors</span><span class="o">=</span><span class="p">{</span><span class="s2">"site"</span><span class="p">:</span> <span class="n">site</span><span class="p">},</span>
+<span class="gp">... </span>    <span class="n">timescales</span><span class="o">=</span><span class="p">{</span><span class="s2">"age"</span><span class="p">:</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2000</span><span class="p">,</span> <span class="mi">4000</span><span class="p">,</span> <span class="mi">8000</span><span class="p">])},</span>
+<span class="gp">... </span>    <span class="n">per</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">cols</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"site"</span><span class="p">,</span> <span class="s2">"age"</span><span class="p">,</span> <span class="s2">"units"</span><span class="p">,</span> <span class="s2">"exposure"</span><span class="p">,</span> <span class="s2">"events"</span><span class="p">,</span> <span class="s2">"rate"</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">py</span><span class="o">.</span><span class="n">table</span><span class="p">[</span><span class="n">cols</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">  site     age  units  exposure  events   rate</span>
+<span class="go">0    A     0.0      2    3500.0       1  0.286</span>
+<span class="go">1    A  2000.0      1    2000.0       0  0.000</span>
+<span class="go">2    A  4000.0      1     200.0       0  0.000</span>
+<span class="go">3    B     0.0      2    4000.0       0  0.000</span>
+<span class="go">4    B  2000.0      2    2500.0       1  0.400</span>
+<span class="go">5    B  4000.0      1    2000.0       1  0.500</span>
+</pre></div>
+</div>
+<p>Site B’s failure rate over site A’s, with its exact bounds:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">ratio</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">rate_ratio</span><span class="p">({</span><span class="s2">"site"</span><span class="p">:</span> <span class="s2">"B"</span><span class="p">},</span> <span class="p">{</span><span class="s2">"site"</span><span class="p">:</span> <span class="s2">"A"</span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">ratio</span><span class="p">[</span><span class="s2">"ratio"</span><span class="p">],</span> <span class="mi">3</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">ratio</span><span class="p">[</span><span class="s2">"upper"</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
+<span class="go">1.341 79.1</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.PersonYears">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.</span></span><span class="sig-name descname"><span class="pre">PersonYears</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pd.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">factors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">timescales</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">offtable</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">units</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.PersonYears" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>An exposure (person-years) table, from <a class="reference internal" href="#surpyval.person_years" title="surpyval.person_years"><code class="xref py py-func docutils literal notranslate"><span class="pre">person_years()</span></code></a>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PersonYears.table">
+<span class="sig-name descname"><span class="pre">table</span></span><a class="headerlink" href="#surpyval.PersonYears.table" title="Link to this definition"></a></dt>
+<dd><p>One row per cell; see <a class="reference internal" href="#surpyval.person_years" title="surpyval.person_years"><code class="xref py py-func docutils literal notranslate"><span class="pre">person_years()</span></code></a> for the columns.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">factors,</span> <span class="pre">timescales</span></span></dt>
+<dd><p>The names of the fixed factors and of the time scales, in the
+order of the table’s columns.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list of str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PersonYears.per">
+<span class="sig-name descname"><span class="pre">per</span></span><a class="headerlink" href="#surpyval.PersonYears.per" title="Link to this definition"></a></dt>
+<dd><p>The rates are events per <code class="docutils literal notranslate"><span class="pre">per</span></code> units of time.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PersonYears.alpha_ci">
+<span class="sig-name descname"><span class="pre">alpha_ci</span></span><a class="headerlink" href="#surpyval.PersonYears.alpha_ci" title="Link to this definition"></a></dt>
+<dd><p>The bounds are two-sided <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code> intervals.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PersonYears.offtable">
+<span class="sig-name descname"><span class="pre">offtable</span></span><a class="headerlink" href="#surpyval.PersonYears.offtable" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">{&quot;exposure&quot;:</span> <span class="pre">...,</span> <span class="pre">&quot;events&quot;:</span> <span class="pre">...}</span></code>: the time and the events that
+fell outside every band of a time scale (R’s <code class="docutils literal notranslate"><span class="pre">offtable</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.PersonYears.units">
+<span class="sig-name descname"><span class="pre">units</span></span><a class="headerlink" href="#surpyval.PersonYears.units" title="Link to this definition"></a></dt>
+<dd><p>The units with any time in the table, each counted once.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">py</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">person_years</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">[</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="mf">30.0</span><span class="p">,</span> <span class="mf">40.0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="n">factors</span><span class="o">=</span><span class="p">{</span><span class="s2">"group"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">]},</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">py</span><span class="o">.</span><span class="n">margins</span><span class="p">()[[</span><span class="s2">"exposure"</span><span class="p">,</span> <span class="s2">"events"</span><span class="p">,</span> <span class="s2">"rate"</span><span class="p">]]</span>
+<span class="go">   exposure  events      rate</span>
+<span class="go">0     100.0       3  0.03</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ratio</span> <span class="o">=</span> <span class="n">py</span><span class="o">.</span><span class="n">rate_ratio</span><span class="p">({</span><span class="s2">"group"</span><span class="p">:</span> <span class="s2">"a"</span><span class="p">},</span> <span class="p">{</span><span class="s2">"group"</span><span class="p">:</span> <span class="s2">"b"</span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">ratio</span><span class="p">[</span><span class="s2">"ratio"</span><span class="p">],</span> <span class="mi">4</span><span class="p">)</span>
+<span class="go">4.6667</span>
+</pre></div>
+</div>
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.PersonYears.dimensions">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">dimensions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#surpyval.PersonYears.dimensions" title="Link to this definition"></a></dt>
+<dd><p>The names of the table’s dimensions, factors first, in the
+order of the call.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.PersonYears.from_dict">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.PersonYears" title="surpyval.univariate.nonparametric.person_years.PersonYears"><span class="pre">PersonYears</span></a></span></span><a class="headerlink" href="#surpyval.PersonYears.from_dict" title="Link to this definition"></a></dt>
+<dd><p>The table <a class="reference internal" href="#surpyval.PersonYears.to_dict" title="surpyval.PersonYears.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> wrote.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>result_dict</strong> (<em>dict</em>) – A dict written by <a class="reference internal" href="#surpyval.PersonYears.to_dict" title="surpyval.PersonYears.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#surpyval.PersonYears" title="surpyval.PersonYears">PersonYears</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.PersonYears.has_expected">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">has_expected</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#surpyval.PersonYears.has_expected" title="Link to this definition"></a></dt>
+<dd><p>Whether the table was given reference rates.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.PersonYears.margins">
+<span class="sig-name descname"><span class="pre">margins</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">by</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pd.DataFrame</span></span></span><a class="headerlink" href="#surpyval.PersonYears.margins" title="Link to this definition"></a></dt>
+<dd><p>The table added up over every dimension not in <code class="docutils literal notranslate"><span class="pre">by</span></code>: the
+exposure, events (and expected events), with the rates (and
+observed to expected ratios) and their exact bounds recomputed.</p>
+<p>A unit passes through several cells, so the counts of units do not
+add up and are not given; <a class="reference internal" href="#surpyval.PersonYears.units" title="surpyval.PersonYears.units"><code class="xref py py-attr docutils literal notranslate"><span class="pre">units</span></code></a> is the count for the whole
+table, and <a class="reference internal" href="#surpyval.person_years" title="surpyval.person_years"><code class="xref py py-func docutils literal notranslate"><span class="pre">person_years()</span></code></a> called with only the dimensions in
+<code class="docutils literal notranslate"><span class="pre">by</span></code> gives them per cell.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>by</strong> (<em>str</em><em> or </em><em>list</em><em> of </em><em>str</em><em>, </em><em>optional</em>) – The factors and time scales to keep. Default none: one row,
+the whole table.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>One row per combination of the kept dimensions.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.PersonYears.rate_ratio">
+<span class="sig-name descname"><span class="pre">rate_ratio</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">cells</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">reference</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.PersonYears.rate_ratio" title="Link to this definition"></a></dt>
+<dd><p>The ratio of the event rate in <code class="docutils literal notranslate"><span class="pre">cells</span></code> to that in <code class="docutils literal notranslate"><span class="pre">reference</span></code>,
+with its exact confidence bounds and the exact test of equal rates.</p>
+<p>Each of <code class="docutils literal notranslate"><span class="pre">cells</span></code> and <code class="docutils literal notranslate"><span class="pre">reference</span></code> picks cells by their labels,
+<code class="docutils literal notranslate"><span class="pre">{&quot;site&quot;:</span> <span class="pre">&quot;B&quot;}</span></code> or <code class="docutils literal notranslate"><span class="pre">{&quot;site&quot;:</span> <span class="pre">&quot;B&quot;,</span> <span class="pre">&quot;age&quot;:</span> <span class="pre">2000}</span></code> (a time scale
+by its band’s lower edge); a dimension left out is added up over.
+Given the total <code class="docutils literal notranslate"><span class="pre">N</span> <span class="pre">=</span> <span class="pre">d_1</span> <span class="pre">+</span> <span class="pre">d_0</span></code> events in the two, <code class="docutils literal notranslate"><span class="pre">d_1</span></code> is
+binomial with probability <code class="docutils literal notranslate"><span class="pre">rho</span> <span class="pre">T_1</span> <span class="pre">/</span> <span class="pre">(rho</span> <span class="pre">T_1</span> <span class="pre">+</span> <span class="pre">T_0)</span></code>: the
+Clopper-Pearson bounds of that probability give the bounds of the
+ratio <code class="docutils literal notranslate"><span class="pre">rho</span></code>, and the exact binomial test of <code class="docutils literal notranslate"><span class="pre">T_1</span> <span class="pre">/</span> <span class="pre">(T_1</span> <span class="pre">+</span>
+<span class="pre">T_0)</span></code> gives the p-value, as R’s <code class="docutils literal notranslate"><span class="pre">poisson.test</span></code> with two counts
+(the conditional test, Breslow and Day 1987, section 2.4).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>cells</strong> (<em>dict</em>) – The labels picking the two sets of cells; they must not share
+a cell.</p></li>
+<li><p><strong>reference</strong> (<em>dict</em>) – The labels picking the two sets of cells; they must not share
+a cell.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">ratio</span></code>, <code class="docutils literal notranslate"><span class="pre">lower</span></code>, <code class="docutils literal notranslate"><span class="pre">upper</span></code> (the <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code> bounds),
+<code class="docutils literal notranslate"><span class="pre">p_value</span></code> (two-sided), and each side’s <code class="docutils literal notranslate"><span class="pre">events</span></code> and
+<code class="docutils literal notranslate"><span class="pre">exposure</span></code>. With no events in either, the ratio is <code class="docutils literal notranslate"><span class="pre">nan</span></code>
+with bounds <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">inf]</span></code> and <code class="docutils literal notranslate"><span class="pre">p_value</span></code> 1.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.PersonYears.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.PersonYears.to_dict" title="Link to this definition"></a></dt>
+<dd><p>The table as a dict of native Python values, strict JSON: a
+missing or infinite number is written as <code class="docutils literal notranslate"><span class="pre">None</span></code> and recorded
+under <code class="docutils literal notranslate"><span class="pre">&quot;non_finite&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The settings and the table, column by column.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<p>The exact (Garwood) bounds of a single rate:</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.poisson_rate_bounds">
+<span class="sig-prename descclassname"><span class="pre">surpyval.</span></span><span class="sig-name descname"><span class="pre">poisson_rate_bounds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">events</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exposure</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">NDArray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">NDArray</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.poisson_rate_bounds" title="Link to this definition"></a></dt>
+<dd><p>The exact (Garwood) two-sided confidence bounds of a Poisson rate,
+<code class="docutils literal notranslate"><span class="pre">events</span> <span class="pre">/</span> <span class="pre">exposure</span></code>.</p>
+<p>The lower bound is the rate at which seeing <code class="docutils literal notranslate"><span class="pre">events</span></code> or more has
+probability <code class="docutils literal notranslate"><span class="pre">alpha_ci</span> <span class="pre">/</span> <span class="pre">2</span></code>, the upper the rate at which seeing
+<code class="docutils literal notranslate"><span class="pre">events</span></code> or fewer has that probability:</p>
+<div class="math notranslate nohighlight">
+\[\frac{\chi^2_{2d,\ \alpha/2}}{2T}, \qquad
+\frac{\chi^2_{2d + 2,\ 1 - \alpha/2}}{2T},\]</div>
+<p>with a lower bound of 0 when <code class="docutils literal notranslate"><span class="pre">d</span> <span class="pre">=</span> <span class="pre">0</span></code> (Garwood 1936; R’s
+<code class="docutils literal notranslate"><span class="pre">poisson.test</span></code>). Their coverage is at least <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code> for
+every true rate.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>events</strong> (<em>array like</em>) – The number of events (whole or not: a count given with weights
+<code class="docutils literal notranslate"><span class="pre">n</span></code> that are not whole is used as it is).</p></li>
+<li><p><strong>exposure</strong> (<em>array like</em>) – The total time at risk, in any unit; the bounds are per that unit.</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The bounds are a two-sided <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">alpha_ci</span></code> interval. Default
+0.05.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>lower, upper</strong> – The bounds, <code class="docutils literal notranslate"><span class="pre">nan</span></code> where the exposure is 0.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>ndarray</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">poisson_rate_bounds</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">lower</span><span class="p">,</span> <span class="n">upper</span> <span class="o">=</span> <span class="n">poisson_rate_bounds</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mf">1000.0</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">lower</span><span class="p">),</span> <span class="mi">6</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">upper</span><span class="p">),</span> <span class="mi">6</span><span class="p">))</span>
+<span class="go">0.000619 0.008767</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="plotting_positions.html" class="btn btn-neutral float-left" title="Plotting Positions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="pooled_rate.html" class="btn btn-neutral float-right" title="Pooled Rates Across Sources" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

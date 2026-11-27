@@ -1,0 +1,806 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mixture-Cure Regression &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Equivalent Time Scales" href="Equivalent%20Time%20Scales.html" />
+    <link rel="prev" title="Distributional Regression" href="Distributional%20Regression.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Mixture-Cure Regression</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#a-warranty-example-a-defect-that-depends-on-the-lot">A warranty example: a defect that depends on the lot</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#is-a-unit-that-is-still-running-sound">Is a unit that is still running sound?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#choosing-what-acts-on-what">Choosing what acts on what</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#a-medical-example-who-relapses-and-when">A medical example: who relapses, and when</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#was-follow-up-long-enough">Was follow-up long enough?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-model">The model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-is-not-built">What is not built</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Mixture-Cure Regression</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Mixture-Cure Regression.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="mixture-cure-regression">
+<h1>Mixture-Cure Regression<a class="headerlink" href="#mixture-cure-regression" title="Link to this heading"></a></h1>
+<p>Most survival models assume that every unit fails eventually. Often that
+is not true:</p>
+<ul class="simple">
+<li><p>only the parts with a manufacturing defect fail of it; the sound ones
+never do, however long they run;</p></li>
+<li><p>some patients are cured, and never have the relapse the study follows;</p></li>
+<li><p>some customers never cancel, some borrowers never default.</p></li>
+</ul>
+<p>The mark of such data is a survival curve that <strong>levels off above zero</strong>:
+after a while the failures stop, with many units still under observation.</p>
+<p>A mixture-cure model treats the population as two groups. A unit is
+<em>susceptible</em> (it will fail) with some probability, and a susceptible
+unit has a time to failure with an ordinary lifetime distribution. A
+mixture-cure <em>regression</em> lets covariates act on both parts, and so
+answers two different questions at once:</p>
+<ul class="simple">
+<li><p><strong>Who fails?</strong> Which lots, sites or patients have a higher chance of
+ever failing. This is the <em>incidence</em>.</p></li>
+<li><p><strong>When?</strong> Among those that do fail, what makes failure come sooner.
+This is the <em>latency</em>.</p></li>
+</ul>
+<p>A covariate can matter for one and not the other. A bad production lot
+may contain more defective parts without the defective parts failing any
+faster; a treatment may cure more patients without delaying relapse in
+those it does not cure. An ordinary regression, with one effect per
+covariate, cannot tell these apart.</p>
+<p>Without covariates this is the limited-failure-population model that the
+distributions already fit (<code class="docutils literal notranslate"><span class="pre">Weibull.fit(x,</span> <span class="pre">c,</span> <span class="pre">lfp=True)</span></code>, see
+<a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a>). <code class="docutils literal notranslate"><span class="pre">MixtureCure</span></code> is that model
+with covariates. The API reference is <a class="reference internal" href="regression/mixture_cure.html"><span class="doc">Mixture-Cure Regression</span></a>.</p>
+<section id="a-warranty-example-a-defect-that-depends-on-the-lot">
+<h2>A warranty example: a defect that depends on the lot<a class="headerlink" href="#a-warranty-example-a-defect-that-depends-on-the-lot" title="Link to this heading"></a></h2>
+<p>A controller fails early when a solder joint is defective. Two things
+were recorded for each of 1,500 units: whether it came from a production
+lot made after a process change (<code class="docutils literal notranslate"><span class="pre">late_lot</span></code>), and the thermal load at
+its site (<code class="docutils literal notranslate"><span class="pre">load</span></code>, standardised). Units have been in service for between
+300 and 500 days. The data are simulated, so the truth is known: the
+defect is more common in the late lots and at high load, and the late
+lots’ defective units also fail sooner.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">1500</span>
+<span class="n">late_lot</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">load</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+<span class="n">p_defect</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span> <span class="o">+</span> <span class="mf">1.0</span> <span class="o">*</span> <span class="n">late_lot</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">load</span><span class="p">)))</span>
+<span class="n">defective</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">p_defect</span>
+<span class="n">life</span> <span class="o">=</span> <span class="mi">100</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.4</span> <span class="o">*</span> <span class="n">late_lot</span><span class="p">)</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">in_service</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">300</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">failed</span> <span class="o">=</span> <span class="n">defective</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">life</span> <span class="o">&lt;</span> <span class="n">in_service</span><span class="p">)</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">"days"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">failed</span><span class="p">,</span> <span class="n">life</span><span class="p">,</span> <span class="n">in_service</span><span class="p">),</span>
+        <span class="s2">"c"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">failed</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="s2">"late_lot"</span><span class="p">:</span> <span class="n">late_lot</span><span class="p">,</span>
+        <span class="s2">"load"</span><span class="p">:</span> <span class="n">load</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The Kaplan-Meier curve shows the plateau: failures stop after about 250
+days with roughly half the units still running.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">km</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"days"</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="n">df</span><span class="p">[</span><span class="s2">"c"</span><span class="p">])</span>
+<span class="n">ax</span> <span class="o">=</span> <span class="n">km</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Mixture-Cure%20Regression_1_0.png" src="_images/Mixture-Cure%20Regression_1_0.png" />
+</div>
+</div>
+<p>Fit the model. <code class="docutils literal notranslate"><span class="pre">WeibullMixtureCure</span></code> is <code class="docutils literal notranslate"><span class="pre">MixtureCure(Weibull)</span></code>: a
+Weibull life for the defective units and a logistic regression for the
+chance of being defective.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullMixtureCure</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"days"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"late_lot"</span><span class="p">,</span> <span class="s2">"load"</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Mixture-Cure Regression SurPyval Model
+======================================
+Kind                : Distributional
+Distribution        : WeibullMixtureCure
+Parameters          : log(alpha) ~ 1 - late_lot - load; log(beta) ~ 1; logit(lfp_p) ~ 1 + late_lot + load
+Fitted by           : MLE
+Data                : 1500 units: 774 events at 774 unique times, 726 right censored
+Baseline            : WeibullMixtureCure parameters; Wald 95% intervals
+           estimate      se  lower 95%  upper 95%
+    alpha     103.1   3.139      97.14      109.4
+    beta      1.952 0.05487      1.848      2.063
+    lfp_p     0.389 0.01824     0.3539     0.4253
+Coefficients        : Wald 95% intervals
+                       coef  se(coef)  lower 95%  upper 95%      z         p
+    alpha_late_lot   0.4241    0.0377     0.3502     0.4979  11.25 2.391e-29
+    alpha_load     0.007046   0.01902   -0.03023    0.04432 0.3705     0.711
+    lfp_p_late_lot    1.053    0.1113     0.8351      1.272  9.461 3.057e-21
+    lfp_p_load       0.5708   0.05781     0.4575     0.6842  9.874 5.382e-23
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>How to read it:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code> are the Weibull scale and shape of a defective
+unit’s life at the reference row (an early lot at average load), and
+<code class="docutils literal notranslate"><span class="pre">lfp_p</span></code> is the probability there of being defective: 0.39. It is the
+same name as the univariate fit’s limited-failure proportion.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">lfp_p_late_lot</span></code> and <code class="docutils literal notranslate"><span class="pre">lfp_p_load</span></code> are the incidence’s coefficients,
+on the logit scale, so <code class="docutils literal notranslate"><span class="pre">exp</span></code> of one is an odds ratio. A late lot has
+<code class="docutils literal notranslate"><span class="pre">exp(1.1)</span> <span class="pre">=</span> <span class="pre">2.9</span></code> times the odds of containing the defect.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">alpha_late_lot</span></code> and <code class="docutils literal notranslate"><span class="pre">alpha_load</span></code> are the latency’s coefficients,
+with the sign of SurPyval’s AFT models: positive means shorter. A late
+lot’s defective units have <code class="docutils literal notranslate"><span class="pre">exp(-0.42)</span> <span class="pre">=</span> <span class="pre">0.65</span></code> times the life of an
+early lot’s. Load shows no effect on <em>when</em> a defective unit fails
+(<code class="docutils literal notranslate"><span class="pre">alpha_load</span></code> is near 0, as simulated): it only makes the defect more
+likely.</p></li>
+</ul>
+<p>Every coefficient has the same sign convention: <strong>positive is worse</strong>, a
+higher chance of failing or an earlier failure.</p>
+<p>The two parts for a given unit:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rows</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"late_lot"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="s2">"load"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">]})</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"defective :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">susceptible_probability</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"sound     :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">cure_probability</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span>
+    <span class="s2">"median life of a defective unit:"</span><span class="p">,</span>
+    <span class="n">model</span><span class="o">.</span><span class="n">qf</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">rows</span><span class="p">,</span> <span class="n">susceptible</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>defective : [0.389 0.646]
+sound     : [0.611 0.354]
+median life of a defective unit: [85.5 55.9]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code> and the rest are the <em>population’s</em>: the survival
+of a unit whose status is not known, which levels off at the cure
+probability. With <code class="docutils literal notranslate"><span class="pre">susceptible=True</span></code> they are the latency’s, the
+functions of a unit that does fail.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">late</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"late_lot"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="s2">"load"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]})</span>
+<span class="n">t</span> <span class="o">=</span> <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">400</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"population :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">late</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"defective  :"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">late</span><span class="p">,</span> <span class="n">susceptible</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"95% bounds at 400 days:"</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="mi">400</span><span class="p">,</span> <span class="n">late</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>population : [0.724 0.429 0.354 0.354]
+defective  : [0.573 0.116 0.    0.   ]
+95% bounds at 400 days: [0.319 0.391]
+</pre></div>
+</div>
+</div>
+</div>
+<section id="is-a-unit-that-is-still-running-sound">
+<h3>Is a unit that is still running sound?<a class="headerlink" href="#is-a-unit-that-is-still-running-sound" title="Link to this heading"></a></h3>
+<p>The field question is about the units still in service. A new unit from
+a late lot is sound with probability <code class="docutils literal notranslate"><span class="pre">cure_probability</span></code>. One that has
+already run 150 days without failing is much more likely to be sound,
+because most of the defective ones would have failed by then:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ages</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">250</span><span class="p">]</span>
+<span class="n">model</span><span class="o">.</span><span class="n">cure_given_survival</span><span class="p">(</span><span class="n">ages</span><span class="p">,</span> <span class="n">late</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([0.354, 0.489, 0.825, 0.985, 1.   ])
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>This is the number to plan a recall or a spares buy with: of the late-lot
+units still running at a given age, the share that will never fail.</p>
+</section>
+<section id="choosing-what-acts-on-what">
+<h3>Choosing what acts on what<a class="headerlink" href="#choosing-what-acts-on-what" title="Link to this heading"></a></h3>
+<p>By default every covariate acts on the incidence and on the latency’s
+life parameter (the scale of a Weibull or log-logistic, <code class="docutils literal notranslate"><span class="pre">mu</span></code> of a
+log-normal, the rate of a gamma or exponential). <code class="docutils literal notranslate"><span class="pre">covariates</span></code> chooses,
+by parameter; with a data frame, <code class="docutils literal notranslate"><span class="pre">formulas</span></code> gives each part its own
+formula:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">chosen</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullMixtureCure</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span>
+    <span class="n">x_col</span><span class="o">=</span><span class="s2">"days"</span><span class="p">,</span>
+    <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span><span class="p">,</span>
+    <span class="n">formulas</span><span class="o">=</span><span class="p">{</span><span class="s2">"lfp_p"</span><span class="p">:</span> <span class="s2">"late_lot + load"</span><span class="p">,</span> <span class="s2">"alpha"</span><span class="p">:</span> <span class="s2">"late_lot"</span><span class="p">},</span>
+<span class="p">)</span>
+<span class="n">chosen</span><span class="o">.</span><span class="n">parameter_names</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>['alpha', 'beta', 'lfp_p', 'alpha_late_lot', 'lfp_p_late_lot', 'lfp_p_load']
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"AIC, load on both parts  :"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">aic</span><span class="p">(),</span> <span class="mi">1</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"AIC, load on incidence   :"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">chosen</span><span class="o">.</span><span class="n">aic</span><span class="p">(),</span> <span class="mi">1</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>AIC, load on both parts  : 9624.5
+AIC, load on incidence   : 9622.6
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Dropping the load from the latency lowers the AIC: the data agree that
+it does not change when a defective unit fails. A covariate on the shape
+is possible too (<code class="docutils literal notranslate"><span class="pre">covariates={&quot;beta&quot;:</span> <span class="pre">[...]}</span></code>), as in a
+<a class="reference internal" href="Distributional%20Regression.html"><span class="doc">distributional regression</span></a>, of which
+this model is a member: the fits, checks, bounds (<code class="docutils literal notranslate"><span class="pre">cb</span></code>, <code class="docutils literal notranslate"><span class="pre">param_cb</span></code>
+and <code class="docutils literal notranslate"><span class="pre">parameter_cb</span></code> with Wald, likelihood-ratio and bootstrap methods),
+weights, <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> and <code class="docutils literal notranslate"><span class="pre">from_dict</span></code> are that family’s.</p>
+<p>One bound behaves differently. A quantile, the age by which a fraction
+<code class="docutils literal notranslate"><span class="pre">p</span></code> of the units have failed, is infinite when <code class="docutils literal notranslate"><span class="pre">p</span></code> is at or above the
+chance of ever failing. So the likelihood-ratio bound on a quantile
+(<code class="docutils literal notranslate"><span class="pre">quantile_cb(p,</span> <span class="pre">Z,</span> <span class="pre">method=&quot;lr&quot;)</span></code>) has an infinite upper end whenever
+the data cannot rule out that so few units ever fail: whenever the
+likelihood-ratio lower bound on <code class="docutils literal notranslate"><span class="pre">lfp_p</span></code> at that row is at or below <code class="docutils literal notranslate"><span class="pre">p</span></code>.
+It is an honest answer, saying the data do not bound that quantile from
+above.</p>
+</section>
+</section>
+<section id="a-medical-example-who-relapses-and-when">
+<h2>A medical example: who relapses, and when<a class="headerlink" href="#a-medical-example-who-relapses-and-when" title="Link to this heading"></a></h2>
+<p>In a trial, some patients given a treatment never relapse. Two questions
+are asked of the treatment: does it cure more patients, and does it delay
+relapse in those it does not cure? The data here are simulated with a
+treatment that does the first and not the second, and a log-normal time
+to relapse (in months), followed for five to eight years.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">11</span><span class="p">)</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">800</span>
+<span class="n">treated</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">relapses</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">treated</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">0.45</span><span class="p">,</span> <span class="mf">0.70</span><span class="p">)</span>
+<span class="n">months</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">2.3</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="n">n</span><span class="p">))</span>
+<span class="n">follow</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">60</span><span class="p">,</span> <span class="mi">96</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">seen</span> <span class="o">=</span> <span class="n">relapses</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">months</span> <span class="o">&lt;</span> <span class="n">follow</span><span class="p">)</span>
+<span class="n">trial</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">"months"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">seen</span><span class="p">,</span> <span class="n">months</span><span class="p">,</span> <span class="n">follow</span><span class="p">),</span>
+        <span class="s2">"c"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">seen</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+        <span class="s2">"treated"</span><span class="p">:</span> <span class="n">treated</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+<span class="n">cure</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">LogNormalMixtureCure</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">trial</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"months"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"treated"</span><span class="p">]</span>
+<span class="p">)</span>
+<span class="n">cure</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th></th>
+      <th>coef</th>
+      <th>exp(coef)</th>
+      <th>se(coef)</th>
+      <th>coef lower 95%</th>
+      <th>coef upper 95%</th>
+      <th>exp(coef) lower 95%</th>
+      <th>exp(coef) upper 95%</th>
+      <th>z</th>
+      <th>p</th>
+    </tr>
+    <tr>
+      <th>part</th>
+      <th>name</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th rowspan="3" valign="top">baseline</th>
+      <th>mu</th>
+      <td>2.364</td>
+      <td>NaN</td>
+      <td>0.043</td>
+      <td>2.280</td>
+      <td>2.448</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>sigma</th>
+      <td>0.725</td>
+      <td>NaN</td>
+      <td>0.025</td>
+      <td>0.677</td>
+      <td>0.775</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th>lfp_p</th>
+      <td>0.712</td>
+      <td>NaN</td>
+      <td>0.022</td>
+      <td>0.667</td>
+      <td>0.754</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>NaN</td>
+    </tr>
+    <tr>
+      <th rowspan="2" valign="top">coefficients</th>
+      <th>mu_treated</th>
+      <td>0.106</td>
+      <td>NaN</td>
+      <td>0.070</td>
+      <td>-0.031</td>
+      <td>0.243</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>1.518</td>
+      <td>0.129</td>
+    </tr>
+    <tr>
+      <th>lfp_p_treated</th>
+      <td>-1.060</td>
+      <td>NaN</td>
+      <td>0.150</td>
+      <td>-1.353</td>
+      <td>-0.766</td>
+      <td>NaN</td>
+      <td>NaN</td>
+      <td>-7.080</td>
+      <td>0.000</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">arms</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"treated"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]})</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"cured:"</span><span class="p">,</span> <span class="n">cure</span><span class="o">.</span><span class="n">cure_probability</span><span class="p">(</span><span class="n">arms</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"odds ratio of relapse:"</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">cure</span><span class="o">.</span><span class="n">params</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"95</span><span class="si">% i</span><span class="s2">nterval:"</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">cure</span><span class="o">.</span><span class="n">param_cb</span><span class="p">(</span><span class="s2">"lfp_p_treated"</span><span class="p">))</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"p-value, effect on time to relapse:"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">cure</span><span class="o">.</span><span class="n">p_values</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="mi">2</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>cured: [0.288 0.538]
+odds ratio of relapse: 0.35
+95% interval: [0.26 0.46]
+p-value, effect on time to relapse: 0.13
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>About 30% of the untreated and over half of the treated are cured, an
+odds ratio of relapse well below 1, while the coefficient on the time to
+relapse (<code class="docutils literal notranslate"><span class="pre">mu_treated</span></code>) is not distinguishable from 0. A Cox or AFT
+model of the same data would report one diluted “treatment effect” and
+break its own assumptions doing it (the hazards of the two arms are not
+proportional when one arm has more cured patients).</p>
+</section>
+<section id="was-follow-up-long-enough">
+<h2>Was follow-up long enough?<a class="headerlink" href="#was-follow-up-long-enough" title="Link to this heading"></a></h2>
+<p>A cure fraction can only be seen if the units were followed past the
+point where the susceptible ones have failed. If follow-up stops while
+failures are still arriving, the data cannot tell “30% never fail” from
+“30% have not failed <em>yet</em>”, and the fitted cure probability is a guess
+that depends on the latency distribution chosen. No model can fix that.</p>
+<p>Two checks:</p>
+<ul class="simple">
+<li><p><strong>Look at the Kaplan-Meier curve.</strong> It should be flat at the end, with
+a good number of units still at risk on the flat part.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">model.follow_up()</span></code> is Maller and Zhou’s check. It compares the
+length of the plateau (from the last failure to the end of follow-up)
+with how the failures were spaced before it, and returns a p-value:
+small means the failures had died away before follow-up ended.</p></li>
+</ul>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span><span class="o">.</span><span class="n">follow_up</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>{'last_failure': 257.2522708859546,
+ 'last_time': 499.83145639926084,
+ 'plateau': 242.57918551330624,
+ 'n_plateau': 726.0,
+ 'n_failures_in_window': 743.0,
+ 'n': 1500.0,
+ 'p_value': 0.0,
+ 'sufficient': True}
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>When the data have no plateau at all, the likelihood has no maximum
+inside the model: the susceptible probability runs to 1. The fit then
+warns “No finite maximum”, naming <code class="docutils literal notranslate"><span class="pre">lfp_p</span></code>, and says to fit the latency
+alone; <code class="docutils literal notranslate"><span class="pre">model.maximum</span></code> is <code class="docutils literal notranslate"><span class="pre">&quot;no</span> <span class="pre">finite</span> <span class="pre">maximum&quot;</span></code>. Take the warning at
+its word.</p>
+</section>
+<section id="the-model">
+<h2>The model<a class="headerlink" href="#the-model" title="Link to this heading"></a></h2>
+<p>A unit with covariates <span class="math notranslate nohighlight">\(z\)</span> is susceptible with probability
+<span class="math notranslate nohighlight">\(\pi(z)\)</span>, and a susceptible unit’s life has survival function
+<span class="math notranslate nohighlight">\(S_u(t \mid z)\)</span>. The population’s survival is</p>
+<div class="math notranslate nohighlight">
+\[S(t \mid z) = 1 - \pi(z) + \pi(z)\, S_u(t \mid z),\]</div>
+<p>which falls to the cure probability <span class="math notranslate nohighlight">\(1 - \pi(z)\)</span>, not to 0.</p>
+<p><strong>Incidence.</strong> <span class="math notranslate nohighlight">\(g(\pi(z)) = g(\pi) + x_\pi(z)' b_\pi\)</span>, with
+<span class="math notranslate nohighlight">\(g\)</span> the logit (the default; logistic regression), the probit or the
+complementary log-log link, chosen by <code class="docutils literal notranslate"><span class="pre">MixtureCure(latency,</span>
+<span class="pre">incidence=...)</span></code>. <code class="docutils literal notranslate"><span class="pre">lfp_p</span></code> is <span class="math notranslate nohighlight">\(\pi\)</span> at the reference row.</p>
+<p><strong>Latency.</strong> A Weibull, log-normal, log-logistic, gamma or exponential
+distribution whose parameters depend on the covariates through their own
+links, as in a <a class="reference internal" href="Distributional%20Regression.html"><span class="doc">distributional regression</span></a>: a scale as <span class="math notranslate nohighlight">\(\alpha(z) = \alpha\, e^{-x' b}\)</span> (the AFT
+model), a location as <span class="math notranslate nohighlight">\(\mu(z) = \mu - x' b\)</span>, a rate as
+<span class="math notranslate nohighlight">\(\lambda(z) = \lambda\, e^{x' b}\)</span>. For a Weibull latency, a
+coefficient <span class="math notranslate nohighlight">\(b\)</span> on the scale is a log hazard ratio of
+<span class="math notranslate nohighlight">\(\beta\, b\)</span> among the susceptible, <span class="math notranslate nohighlight">\(\beta\)</span> the shape.</p>
+<p><strong>Likelihood.</strong> Both parts are fitted together by maximum likelihood.
+Each kind of observation contributes what the population model says of
+it:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 40.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Observation</p></th>
+<th class="head"><p>Contribution</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Failed at <span class="math notranslate nohighlight">\(t\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\pi\, f_u(t)\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>Still running at <span class="math notranslate nohighlight">\(t\)</span> (right censored)</p></td>
+<td><p><span class="math notranslate nohighlight">\(1 - \pi + \pi\, S_u(t)\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>Failed before <span class="math notranslate nohighlight">\(t\)</span> (left censored)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\pi\, F_u(t)\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>Failed between <span class="math notranslate nohighlight">\(l\)</span> and <span class="math notranslate nohighlight">\(r\)</span> (interval censored)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\pi\, (F_u(r) - F_u(l))\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>Entered observation at age <span class="math notranslate nohighlight">\(a\)</span> (left truncated)</p></td>
+<td><p>divided by <span class="math notranslate nohighlight">\(1 - \pi + \pi\, S_u(a)\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<p>A unit still running is either cured or a susceptible unit that has not
+failed yet; the likelihood adds the two. Counts <code class="docutils literal notranslate"><span class="pre">n</span></code> and weights <code class="docutils literal notranslate"><span class="pre">w</span></code>
+multiply each row’s term. The covariance is the inverse of the observed
+information (the robust one for a weighted fit), and the fit reports
+whether it reached a verified maximum (<code class="docutils literal notranslate"><span class="pre">model.maximum</span></code>).</p>
+<p>With no covariates on either part the fit is the distribution’s own
+limited-failure fit, <code class="docutils literal notranslate"><span class="pre">latency.fit(x,</span> <span class="pre">c,</span> <span class="pre">lfp=True)</span></code>, to the last digit
+of the likelihood. The fits are checked against R’s <code class="docutils literal notranslate"><span class="pre">flexsurvcure</span></code>.</p>
+<p><strong>The chance that a survivor is cured</strong> follows from Bayes’ rule:</p>
+<div class="math notranslate nohighlight">
+\[P(\text{cured} \mid T &gt; t, z)
+= \frac{1 - \pi(z)}{1 - \pi(z) + \pi(z)\, S_u(t \mid z)} .\]</div>
+</section>
+<section id="what-is-not-built">
+<h2>What is not built<a class="headerlink" href="#what-is-not-built" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>A semi-parametric (Cox) latency</strong>, as in R’s <code class="docutils literal notranslate"><span class="pre">smcure</span></code>: the latency
+here is parametric. A flexible parametric choice (compare the
+latencies by AIC) covers most uses.</p></li>
+<li><p><strong>A dead-on-arrival fraction</strong> (zero inflation) in the same model: that
+is its own model, <a class="reference internal" href="Zero-Inflated%20Regression.html"><span class="doc">Zero-Inflated Regression</span></a>.</p></li>
+<li><p><strong>The incidence estimated by a general classifier</strong> (a gradient-boosted
+or random-forest model in place of the link).</p></li>
+<li><p><strong>Latencies on the whole line</strong> (normal, Gumbel, logistic): a time to
+failure is positive.</p></li>
+<li><p><strong>Covariate paths</strong> (<code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code>), as for every distributional
+regression.</p></li>
+</ul>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Berkson, J. and Gage, R. P. (1952). Survival curve for cancer patients
+following treatment. <em>Journal of the American Statistical Association</em>
+47, 501-515.</p></li>
+<li><p>Farewell, V. T. (1982). The use of mixture models for the analysis of
+survival data with long-term survivors. <em>Biometrics</em> 38, 1041-1046.</p></li>
+<li><p>Maller, R. A. and Zhou, X. (1996). <em>Survival Analysis with Long-Term
+Survivors</em>. Wiley.</p></li>
+<li><p>Meeker, W. Q. (1987). Limited failure population life tests:
+application to integrated circuit reliability. <em>Technometrics</em> 29,
+51-65.</p></li>
+<li><p>Peng, Y. and Dear, K. B. G. (2000). A nonparametric mixture model for
+cure rate estimation. <em>Biometrics</em> 56, 237-243.</p></li>
+<li><p>Amdahl, J. (2022). <em>flexsurvcure: Flexible Parametric Cure Models</em>. R
+package.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Distributional%20Regression.html" class="btn btn-neutral float-left" title="Distributional Regression" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Equivalent%20Time%20Scales.html" class="btn btn-neutral float-right" title="Equivalent Time Scales" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

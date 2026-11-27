@@ -1,0 +1,502 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Relative Survival &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Model Diagnostics" href="Model%20Diagnostics.html" />
+    <link rel="prev" title="Adjusted Survival Curves" href="Adjusted%20Survival%20Curves.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Relative Survival</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#in-plain-words">In plain words</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-rate-table">The rate table</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#estimating-net-survival">Estimating net survival</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#excess-hazard-regression">Excess hazard regression</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-maths">The maths</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Relative Survival</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Relative Survival.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="relative-survival">
+<h1>Relative Survival<a class="headerlink" href="#relative-survival" title="Link to this heading"></a></h1>
+<p>When units are followed after some starting point – patients after a
+diagnosis, machines after an overhaul – many of them have the event for
+reasons that have nothing to do with what is being studied: a patient
+with a cancer dies of a heart attack, a vehicle is scrapped after an
+accident. Often the cause of each event is not recorded, or not
+reliably. <em>Relative survival</em> deals with this by comparing the units
+with the population they come from, whose own hazard is known from a
+table of rates.</p>
+<section id="in-plain-words">
+<h2>In plain words<a class="headerlink" href="#in-plain-words" title="Link to this heading"></a></h2>
+<p><strong>Two hazards add up.</strong> Each unit’s hazard is split into the hazard it
+would have anyway, as a member of its population (read from a <em>rate
+table</em> for its age, the calendar year and, say, its sex), and an
+<em>excess</em> hazard due to the condition studied:</p>
+<div class="math notranslate nohighlight">
+\[\lambda_i(t) = \lambda_{P,i}(t) + \lambda_E(t).\]</div>
+<p>The population part changes as each unit gets older and as the calendar
+moves on, so an 80-year-old’s background is far higher than a
+50-year-old’s.</p>
+<p><strong>Net survival</strong> is the survival the units would have if the excess
+hazard were the only one: <span class="math notranslate nohighlight">\(S_E(t) = \exp(-\Lambda_E(t))\)</span>. It is the
+standard measure for comparing cancer survival between countries and
+periods whose background mortality differs, and it needs no cause of
+death: an event of any cause counts, and the rate table takes out what
+the population would have had anyway.</p>
+<p><strong>Two estimators.</strong> <code class="docutils literal notranslate"><span class="pre">RelativeSurvival.fit</span></code> estimates net survival:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">method=&quot;pohar-perme&quot;</span></code> (the default): Pohar Perme’s estimator
+weights each unit by the inverse of its expected survival, which puts
+back, in expectation, the units the background hazard took. It
+estimates net survival whatever the excess hazard depends on.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">method=&quot;ederer2&quot;</span></code>: Ederer II, the relative survival ratio of the
+units still followed. Where the excess hazard depends on age (it
+usually does), the units still followed late on are the younger ones,
+and Ederer II no longer estimates net survival.</p></li>
+</ul>
+<p><strong>A regression.</strong> <code class="docutils literal notranslate"><span class="pre">ExcessHazard.fit</span></code> models how covariates act on the
+excess hazard: <span class="math notranslate nohighlight">\(\lambda_i(t) = \lambda_{P,i}(t) + \lambda_0(t)
+e^{\beta' Z_i}\)</span>. Its coefficients are logs of <em>excess hazard ratios</em>,
+and its baseline <span class="math notranslate nohighlight">\(\lambda_0\)</span> is constant within intervals of
+follow-up (one by default; <code class="docutils literal notranslate"><span class="pre">breaks</span></code> gives more).</p>
+<p><strong>Net survival is not a probability of a set of units.</strong> It is a
+difference of hazards. Where fewer units fail than the population rates
+expect it rises, and it can exceed 1. SurPyval reports it as it is.</p>
+</section>
+<section id="the-rate-table">
+<h2>The rate table<a class="headerlink" href="#the-rate-table" title="Link to this heading"></a></h2>
+<p>A <a class="reference internal" href="univariate/relative_survival.html#surpyval.RateTable" title="surpyval.RateTable"><code class="xref py py-class docutils literal notranslate"><span class="pre">RateTable</span></code></a> holds the population’s hazard rates by
+age band, and optionally by calendar-year band and stratum. Its ages,
+years and the follow-up times must all be in one unit, and its rates per
+that unit: per person-year with times in years. National life tables
+give the probability <span class="math notranslate nohighlight">\(q\)</span> of dying within a year of age; the rate
+for that year is <span class="math notranslate nohighlight">\(-\log(1 - q)\)</span>.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="c1"># A population whose death rates rise about 9% a year of age, the</span>
+<span class="c1"># men's 70% above the women's (annual bands, 0 to 110+).</span>
+<span class="n">ages</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">111</span><span class="p">)</span>
+<span class="n">women</span> <span class="o">=</span> <span class="mf">4e-5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.092</span> <span class="o">*</span> <span class="n">ages</span><span class="p">)</span>
+<span class="n">table</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">RateTable</span><span class="p">({</span><span class="s2">"F"</span><span class="p">:</span> <span class="n">women</span><span class="p">,</span> <span class="s2">"M"</span><span class="p">:</span> <span class="mf">1.7</span> <span class="o">*</span> <span class="n">women</span><span class="p">},</span> <span class="n">ages</span><span class="o">=</span><span class="n">ages</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">table</span><span class="p">)</span>
+<span class="c1"># The chance that a woman aged 70 lives another ten years</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">table</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="n">age</span><span class="o">=</span><span class="mi">70</span><span class="p">,</span> <span class="n">stratum</span><span class="o">=</span><span class="s2">"F"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>RateTable: 111 age band(s) (0 to 110+), 2 strata ('F', 'M')
+0.675
+</pre></div>
+</div>
+</div>
+</div>
+<p>A table by calendar year as well takes a 2-D array of rates per stratum,
+one column per year band, and <code class="docutils literal notranslate"><span class="pre">years=</span></code> the bands’ lower edges; each
+unit then also needs its calendar time at the start of follow-up
+(<code class="docutils literal notranslate"><span class="pre">year=2011.5</span></code>). <code class="docutils literal notranslate"><span class="pre">RateTable.from_df</span></code> reads a long table (one row per
+age, year and stratum) from a DataFrame.</p>
+</section>
+<section id="estimating-net-survival">
+<h2>Estimating net survival<a class="headerlink" href="#estimating-net-survival" title="Link to this heading"></a></h2>
+<p>The units below are simulated: 2,000 people aged 50 to 85, whose excess
+hazard is 0.1 a year at 65 and rises 5% a year of age, each also subject
+to the population rates above, followed for up to 10 years.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">size</span> <span class="o">=</span> <span class="mi">2000</span>
+<span class="n">age</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">50</span><span class="p">,</span> <span class="mi">85</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+<span class="n">sex</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">([</span><span class="s2">"F"</span><span class="p">,</span> <span class="s2">"M"</span><span class="p">],</span> <span class="n">size</span><span class="p">)</span>
+<span class="n">excess_rate</span> <span class="o">=</span> <span class="mf">0.1</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.05</span> <span class="o">*</span> <span class="p">(</span><span class="n">age</span> <span class="o">-</span> <span class="mi">65</span><span class="p">))</span>
+<span class="n">excess</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">excess_rate</span><span class="p">)</span>
+<span class="c1"># Each unit's time to death from the population's hazard: its</span>
+<span class="c1"># expected cumulative hazard on a grid, inverted at an exponential draw</span>
+<span class="n">grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">1201</span><span class="p">)</span>
+<span class="n">H</span> <span class="o">=</span> <span class="n">table</span><span class="o">.</span><span class="n">Hf</span><span class="p">(</span><span class="n">grid</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:],</span> <span class="n">age</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">stratum</span><span class="o">=</span><span class="n">sex</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">])</span>
+<span class="n">reached</span> <span class="o">=</span> <span class="p">(</span><span class="n">H</span> <span class="o">&lt;</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="n">size</span><span class="p">)[:,</span> <span class="kc">None</span><span class="p">])</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">population</span> <span class="o">=</span> <span class="n">grid</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">reached</span><span class="p">,</span> <span class="n">grid</span><span class="o">.</span><span class="n">size</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)]</span>
+<span class="n">years</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">excess</span><span class="p">,</span> <span class="n">population</span><span class="p">),</span> <span class="mf">10.0</span><span class="p">)</span>
+<span class="n">censored</span> <span class="o">=</span> <span class="p">(</span><span class="n">years</span> <span class="o">==</span> <span class="mf">10.0</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+
+<span class="n">pohar_perme</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">RelativeSurvival</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">years</span><span class="p">,</span> <span class="n">censored</span><span class="p">,</span> <span class="n">rate_table</span><span class="o">=</span><span class="n">table</span><span class="p">,</span> <span class="n">age</span><span class="o">=</span><span class="n">age</span><span class="p">,</span> <span class="n">stratum</span><span class="o">=</span><span class="n">sex</span>
+<span class="p">)</span>
+<span class="n">ederer2</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">RelativeSurvival</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">years</span><span class="p">,</span> <span class="n">censored</span><span class="p">,</span> <span class="n">rate_table</span><span class="o">=</span><span class="n">table</span><span class="p">,</span> <span class="n">age</span><span class="o">=</span><span class="n">age</span><span class="p">,</span> <span class="n">stratum</span><span class="o">=</span><span class="n">sex</span><span class="p">,</span>
+    <span class="n">method</span><span class="o">=</span><span class="s2">"ederer2"</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">truth</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">excess_rate</span> <span class="o">*</span> <span class="n">t</span><span class="p">))</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">)]</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"true net survival      "</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">truth</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Pohar Perme            "</span><span class="p">,</span> <span class="n">pohar_perme</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Ederer II              "</span><span class="p">,</span> <span class="n">ederer2</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="c1"># 90% two-sided pointwise bounds on Pohar Perme's net survival at 10</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"Pohar Perme, 90% bounds"</span><span class="p">,</span> <span class="n">pohar_perme</span><span class="o">.</span><span class="n">cb</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>true net survival       [0.551 0.328]
+Pohar Perme             [0.545 0.337]
+Ederer II               [0.559 0.367]
+Pohar Perme, 90% bounds [0.311 0.366]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Pohar Perme’s estimate at 10 years is close to the truth, inside its
+90% bounds. Ederer II’s is higher than both: the older units, whose
+excess hazard is higher, have left the risk set faster than the younger,
+and the relative survival ratio of those still followed describes the
+younger ones.</p>
+<p><code class="docutils literal notranslate"><span class="pre">model.table</span></code> gives, at each follow-up time, the number at risk and of
+events, the increments of the observed and expected cumulative hazards,
+the cumulative excess hazard <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, its standard error and net survival.
+<code class="docutils literal notranslate"><span class="pre">cb</span></code> gives pointwise bounds on <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code> or <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, on the log
+scale (<code class="docutils literal notranslate"><span class="pre">bound_type=&quot;log&quot;</span></code>, the default, as R’s relsurv) or the plain
+one (<code class="docutils literal notranslate"><span class="pre">&quot;normal&quot;</span></code>); neither is cut at 1.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">pohar_perme</span><span class="o">.</span><span class="n">table</span><span class="o">.</span><span class="n">head</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>          at_risk  events  observed  expected        Hf    se(Hf)        sf
+x                                                                          
+0.001362   2000.0     1.0  0.000500  0.000052  0.000448  0.000500  0.999552
+0.002229   1999.0     1.0  0.000500  0.000033  0.000915  0.000707  0.999086
+0.008567   1998.0     1.0  0.000500  0.000244  0.001171  0.000866  0.998830
+0.012905   1997.0     1.0  0.000501  0.000167  0.001505  0.001001  0.998496
+0.015624   1996.0     1.0  0.000501  0.000105  0.001901  0.001119  0.998101
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="excess-hazard-regression">
+<h2>Excess hazard regression<a class="headerlink" href="#excess-hazard-regression" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">ExcessHazard</span></code> fits the excess hazard as <span class="math notranslate nohighlight">\(\lambda_0(t)
+e^{\beta' Z}\)</span> beside each unit’s population hazard, by maximum
+likelihood (Estève et al., 1990). Here a treatment halves the excess
+hazard, which is otherwise constant at 0.15 a year:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">treated</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+<span class="n">excess</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mf">0.15</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.7</span> <span class="o">*</span> <span class="n">treated</span><span class="p">)))</span>
+<span class="n">years</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">excess</span><span class="p">,</span> <span class="n">population</span><span class="p">),</span> <span class="mf">8.0</span><span class="p">)</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">"years"</span><span class="p">:</span> <span class="n">years</span><span class="p">,</span>
+    <span class="s2">"censored"</span><span class="p">:</span> <span class="p">(</span><span class="n">years</span> <span class="o">==</span> <span class="mf">8.0</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">),</span>
+    <span class="s2">"treated"</span><span class="p">:</span> <span class="n">treated</span><span class="p">,</span>
+    <span class="s2">"age"</span><span class="p">:</span> <span class="n">age</span><span class="p">,</span>
+    <span class="s2">"sex"</span><span class="p">:</span> <span class="n">sex</span><span class="p">,</span>
+<span class="p">})</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">ExcessHazard</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span> <span class="s2">"years"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"treated"</span><span class="p">],</span> <span class="s2">"age"</span><span class="p">,</span> <span class="n">table</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"censored"</span><span class="p">,</span>
+    <span class="n">stratum_col</span><span class="o">=</span><span class="s2">"sex"</span><span class="p">,</span> <span class="n">breaks</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="n">columns</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"coef"</span><span class="p">,</span> <span class="s2">"exp(coef)"</span><span class="p">,</span> <span class="s2">"coef lower 90%"</span><span class="p">,</span> <span class="s2">"coef upper 90%"</span><span class="p">,</span> <span class="s2">"p"</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">summary</span><span class="p">(</span><span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)[</span><span class="n">columns</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Excess Hazard SurPyval Model
+============================
+Model        : population hazard + baseline excess hazard x exp(beta'Z)
+Baseline     : constant on 3 interval(s)
+Log-like     : -3969.52
+Parameters   :
+      rate_0: 0.146766
+      rate_1: 0.156447
+      rate_2: 0.158814
+     treated: -0.784233
+            coef  exp(coef)  coef lower 90%  coef upper 90%    p
+covariate                                                       
+treated   -0.784      0.456          -0.913          -0.656  0.0
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The treatment’s excess hazard ratio, <code class="docutils literal notranslate"><span class="pre">exp(coef)</span></code>, is about a half, and
+its 90% interval holds the true coefficient, -0.7. <code class="docutils literal notranslate"><span class="pre">breaks=3</span></code> gives the
+baseline three intervals with equal numbers of events (an array of times
+gives them directly); every interval needs events. A covariate that is
+constant, or a combination of the others, is <em>aliased</em> (its coefficient
+<code class="docutils literal notranslate"><span class="pre">nan</span></code>, with one warning), and a fit whose likelihood has no finite
+maximum – an interval with no more events than the population rates
+expect, or a group with no events at all – says so.</p>
+<p>The model’s <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code> and <code class="docutils literal notranslate"><span class="pre">qf</span></code> are the net
+(excess-only) functions of a unit with covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code>; <code class="docutils literal notranslate"><span class="pre">cb</span></code> bounds
+them by the delta method on the log of the cumulative excess hazard, and
+<code class="docutils literal notranslate"><span class="pre">observed_sf</span></code> is a unit’s all-cause survival, its expected survival
+from the rate table times its net survival:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="s2">"net survival at 5, treated or not:"</span><span class="p">,</span>
+      <span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="p">[[</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">]])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"all-cause survival at 5 of a treated woman aged 70:"</span><span class="p">,</span>
+      <span class="n">model</span><span class="o">.</span><span class="n">observed_sf</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">age</span><span class="o">=</span><span class="mi">70</span><span class="p">,</span> <span class="n">stratum</span><span class="o">=</span><span class="s2">"F"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>net survival at 5, treated or not: [0.705 0.465]
+all-cause survival at 5 of a treated woman aged 70: 0.606
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="the-maths">
+<h2>The maths<a class="headerlink" href="#the-maths" title="Link to this heading"></a></h2>
+<p>With <span class="math notranslate nohighlight">\(Y_i(t)\)</span> unit <span class="math notranslate nohighlight">\(i\)</span>’s at-risk indicator,
+<span class="math notranslate nohighlight">\(\Lambda_{P,i}\)</span> its expected cumulative hazard along its path
+through the rate table and <span class="math notranslate nohighlight">\(u_k\)</span> the distinct follow-up times:</p>
+<ul class="simple">
+<li><p>Ederer II: <span class="math notranslate nohighlight">\(\hat\Lambda_E(t) = \sum_{u_k \le t} d_k / Y(u_k) -
+\int_0^t \sum_i Y_i(s)\lambda_{P,i}(s) / Y(s)\, ds\)</span>, with variance
+<span class="math notranslate nohighlight">\(\sum_{u_k \le t} d_k / Y(u_k)^2\)</span>;</p></li>
+<li><p>Pohar Perme: the same with each unit weighted by
+<span class="math notranslate nohighlight">\(w_i(t) = 1/S_{P,i}(t)\)</span>, <span class="math notranslate nohighlight">\(Y^w = \sum_i Y_i w_i\)</span>; the
+expected part over a stretch with the same units at risk is the
+increase of <span class="math notranslate nohighlight">\(\log Y^w\)</span> there (as <span class="math notranslate nohighlight">\(dw_i/ds =
+w_i\lambda_{P,i}\)</span>), and the variance <span class="math notranslate nohighlight">\(\sum_{\text{events}} w_i^2
+/ Y^w(u_k)^2\)</span>.</p></li>
+</ul>
+<p>The expected parts are integrated exactly between the follow-up times;
+between two of them a prediction takes the expected part as linear in
+time. The excess hazard model’s log-likelihood is</p>
+<div class="math notranslate nohighlight">
+\[\ell = \sum_i n_i \Big[ \delta_i \log\big(\lambda_{P,i}(x_i) +
+\lambda_0(x_i) e^{\beta' Z_i}\big) - e^{\beta' Z_i}\Lambda_0(x_i)
+- \Lambda_{P,i}(x_i) \Big].\]</div>
+<p>What is not built yet: delayed entry (left truncation) and interval
+censoring, which the fits refuse; a spline or other flexible baseline
+excess hazard; and covariate effects on the excess hazard that change
+with time.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<p>Ederer, F. and Heise, H. (1959). Instructions to IBM 650 programmers in
+processing survival computations. Methodological note 10, End Results
+Evaluation Section, National Cancer Institute.</p>
+<p>Estève, J., Benhamou, E., Croasdale, M. and Raymond, L. (1990).
+Relative survival and the estimation of net survival: elements for
+further discussion. <em>Statistics in Medicine</em> 9, 529-538.</p>
+<p>Pohar Perme, M., Stare, J. and Estève, J. (2012). On estimation in
+relative survival. <em>Biometrics</em> 68, 113-120.</p>
+<p>Pohar, M. and Stare, J. (2006). Relative survival analysis in R.
+<em>Computer Methods and Programs in Biomedicine</em> 81, 272-278.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Adjusted%20Survival%20Curves.html" class="btn btn-neutral float-left" title="Adjusted Survival Curves" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Model%20Diagnostics.html" class="btn btn-neutral float-right" title="Model Diagnostics" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

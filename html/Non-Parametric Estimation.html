@@ -1,0 +1,638 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Non-Parametric Estimation &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Parametric Estimation" href="Parametric%20Estimation.html" />
+    <link rel="prev" title="Weighted Data" href="Weighted%20Data.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Non-Parametric Estimation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#kaplan-meier-estimation">Kaplan-Meier Estimation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#greenwood-s-variance">Greenwood’s variance</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#from-a-variance-to-confidence-bounds">From a variance to confidence bounds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pointwise-bounds-bands-and-the-bootstrap">Pointwise bounds, bands and the bootstrap</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#quantiles-the-median-and-the-mean">Quantiles, the median and the mean</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#no-failures-at-all-success-run-testing">No failures at all: success-run testing</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#nelson-aalen-estimation">Nelson-Aalen Estimation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#hazard-rates-and-densities-from-a-step-function">Hazard rates and densities from a step function</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#fleming-harrington-estimation">Fleming-Harrington Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#turnbull-estimation">Turnbull Estimation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#every-observation-as-an-interval">Every observation as an interval</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-self-consistency-em-algorithm">The self-consistency (EM) algorithm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#why-a-turnbull-fit-need-not-equal-the-kaplan-meier">Why a Turnbull fit need not equal the Kaplan-Meier</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#uncertainty-in-a-turnbull-estimate">Uncertainty in a Turnbull estimate</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-the-data-cannot-tell-you-non-identifiability">What the data cannot tell you: non-identifiability</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#when-to-use-it">When to use it</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#on-surpyval-s-recommended-estimator">On Surpyval’s recommended estimator</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#plotting-positions">Plotting positions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#comparing-two-groups-the-log-rank-test">Comparing two groups: the log-rank test</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#restricted-mean-survival-time">Restricted mean survival time</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Non-Parametric Estimation</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Non-Parametric Estimation.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="non-parametric-estimation">
+<h1>Non-Parametric Estimation<a class="headerlink" href="#non-parametric-estimation" title="Link to this heading"></a></h1>
+<p>Non-parametric survival analysis is the attempt to capture the distribution of survival data without making any assumptions about the shape of the distribution. That is, non-parametric analysis, unlike parametric analysis, does not assume that the survival data was Weibull distributed or that it was Normally distributed etc. Concretely, non-parametric estimation does not attempt to estimate the parameters of a distribution, therefore “non-parametric.” Parametric analysis is covered in more detail in the <a class="reference internal" href="Parametric%20Estimation.html"><span class="doc">Parametric Estimation</span></a> section but it is important to contrast non-parametric estimation against what it is not. So what exactly is non-parametric analysis?</p>
+<p>Survival analysis is using statistics to answer the question ‘what is the probability that the thing survived to a particular time?’ Non-parametric analysis answers this by estimating the probability from the proportion that have failed (had the event) up to a given time. This can be done by either estimating the probability of surviving a particular segment (the Kaplan-Meier approach) or by estimating the hazard rate and accumulating it (the Nelson-Aalen and Fleming-Harrington approach). When the data are too incomplete for either — left or interval censoring, or right truncation — the Turnbull estimator finds the most likely curve directly.</p>
+<p>The price of making no assumption about shape is that a non-parametric estimate can only say something about times at which data were actually seen: it is a step function that changes only at observed values, it cannot extrapolate beyond the largest observation, and it cannot say anything below the earliest time at which items were being watched. Parametric models trade an assumption for the ability to interpolate and extrapolate; the non-parametric estimate is the yardstick against which that assumption is judged.</p>
+<p>This page is the theory. For runnable examples of everything described here see <a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html"><span class="doc">Non-Parametric SurPyval Modelling</span></a>.</p>
+<p><strong>The xrd format.</strong> Non-parametric estimation is well understood by appreciating the data format used to estimate the CDF. Specifically, the ‘xrd’ format and particularly understanding the r and d sets of that format.</p>
+<p>The number of components at risk, <span class="math notranslate nohighlight">\(r\)</span>, at a given time, <span class="math notranslate nohighlight">\(x\)</span>, is the number of things at risk just prior to time <span class="math notranslate nohighlight">\(x\)</span>. The number of deaths, <span class="math notranslate nohighlight">\(d\)</span>, is the number of the at risk items that died (or failed) at time <span class="math notranslate nohighlight">\(x\)</span>. So for completely observed data the number at risk counts down for every death. So r would count down, e.g. 6, 5, 4, 3… for each death, 1, 1, 1, 1, … So in this example there were 6 items at risk and one death at the first time. Then, because there was 1 death at the first time the number of items at risk has decreased to 5, therefore for the next death there are only 5 at risk. This continues further until there are no more items at risk because they have all died, i.e. there is 1 at risk and 1 death.</p>
+<p>This can be extended to more than one death. For example, the risk set could be 8, 6, 5, 3, 2, 1. with an accompanying death set of 2, 1, 2, 1, 1, 1. In this example there were times where there were 2 deaths and therefore the number at risk decreased by 2 after that number of deaths.</p>
+<p>So a complete example of this format is:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">]</span>
+<span class="n">r</span> <span class="o">=</span> <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">d</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>This format for data is not how survival data is usually provided in text books or papers. Survival data is usually displayed with the simple list of failure times such as “1, 3, 6, 7, 10, 16”. The first step surpyval does for non-parametric analysis is to transform data into the xrd format. All the <code class="code docutils literal notranslate"><span class="pre">fit()</span></code> methods for surpyval take as input the xcnt format, see more at the <a class="reference internal" href="Types%20of%20Data.html"><span class="doc">Types of Data</span></a> docs. So if you provide surpyval with the data “1, 2, 3, 4, 5, 6” it will assume that each of them are one death, and then create the risk set from the death counts resulting in the xrd format from above. (If you already have data in the xrd format you can skip the conversion: every estimator except Turnbull has a <code class="docutils literal notranslate"><span class="pre">from_xrd(x,</span> <span class="pre">r,</span> <span class="pre">d)</span></code> method.)</p>
+<p><strong>Right censoring enters through the risk set.</strong> A right censored item is one we stopped watching while it was still working. It contributes no death, but it <em>was</em> at risk up to the time it was censored, so it is counted in <span class="math notranslate nohighlight">\(r\)</span> at every time up to and including its censoring time, and removed afterwards. In particular, an item censored at exactly the same time as a death is counted as at risk for that death: the convention is that failures at a given time happen just before censorings at that time. For example the data 1, 2, 2+, 3 (where + marks a censored value) becomes <span class="math notranslate nohighlight">\(x = (1, 2, 3)\)</span>, <span class="math notranslate nohighlight">\(r = (4, 3, 1)\)</span> and <span class="math notranslate nohighlight">\(d = (1, 1, 1)\)</span>. The censored item is in the risk set at time 2, and gone by time 3. This is the only thing censoring changes, which is why the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators handle right censoring with no modification at all.</p>
+<p><strong>Left truncation (delayed entry) also enters through the risk set.</strong> A left truncated item is one that only came under observation at some entry time <span class="math notranslate nohighlight">\(t_l\)</span>; had it failed before then we would never have known it existed. Such an item cannot be counted as at risk before it entered. SurPyval uses the standard <span class="math notranslate nohighlight">\((t_l, x]\)</span> convention (the same one as R’s <code class="docutils literal notranslate"><span class="pre">survival</span></code> package and lifelines): an item is at risk at time <span class="math notranslate nohighlight">\(t\)</span> if <span class="math notranslate nohighlight">\(t_l &lt; t \leq x\)</span>. An item entering at <em>exactly</em> the time of an event is therefore <strong>not</strong> at risk for that event, and an observed value equal to its own entry time is rejected as invalid (it would have a zero-length observation window). For example, with values 2, 3, 3, 4, 5, 6 and entry times 0, 0, 1, 1, 2, 2 the risk set is <span class="math notranslate nohighlight">\(r = (4, 5, 3, 2, 1)\)</span> at <span class="math notranslate nohighlight">\(x = (2, 3, 4, 5, 6)\)</span>: the two items entering at time 2 are not at risk for the failure at 2, but they are at risk by time 3, so the risk set <em>grows</em> from 4 to 5. With delayed entry the risk set need not decrease, which is the whole mechanism by which truncation is handled.</p>
+<p>Two consequences are worth stating. First, the estimate is really of survival <em>conditional on surviving to the earliest entry time</em> — nothing can be learned about what happened before anyone was being watched. Second, if only a handful of items have entered at early times the risk set there is small, and a single early failure can move the estimate a long way (with one item at risk and one failure, the Kaplan-Meier estimate drops to zero and stays there). Always look at <span class="math notranslate nohighlight">\(r\)</span> when working with delayed entry.</p>
+<p><strong>What does not fit into the xrd format.</strong> Left censoring (we only know the failure was <em>before</em> some time), interval censoring (it was <em>between</em> two times) and right truncation (items that fail <em>after</em> some time are never seen) cannot be expressed as a count of deaths at a time with a known risk set: the death times are not known, or the number at risk is not known. SurPyval raises an error if you pass such data to the Kaplan-Meier, Nelson-Aalen or Fleming-Harrington estimators. The Turnbull estimator, described below, handles them by estimating the <span class="math notranslate nohighlight">\(r\)</span> and <span class="math notranslate nohighlight">\(d\)</span> sets rather than counting them.</p>
+<p>Given we now understand the format of the data we can estimate the probability of survival to some time with non-parametric methods. The first method we will visit is the Kaplan-Meier.</p>
+<section id="kaplan-meier-estimation">
+<h2>Kaplan-Meier Estimation<a class="headerlink" href="#kaplan-meier-estimation" title="Link to this heading"></a></h2>
+<p>Kaplan-Meier <a class="reference internal" href="#km" id="id1"><span>[KM]</span></a> is a very popular method for estimating survival curves for populations. The insight for this method is that for each time there is a death, we can estimate the probability of having survived since the previous deaths. Using the data from above as an example, at time 1, there are 7 items at risk and there are 2 deaths. We can therefore say that the probability of surviving this period was (7 - 2)/7, i.e. 5/7. Then the next time there is a death, the probability of having survived that extra time is (5 - 1)/5, i.e. 4/5.</p>
+<p>To be clear, this is the chance of survival between each death. Therefore the chance of surviving up to a given time is the chance of surviving each segment. Therefore the probability of surviving up to any given time is the probability of surviving through all the previous segments. The probability of surviving multiple outcomes is the multiplication of each of the survival probabilities. Surviving through three sections is equal to the probability that I survive the first, then multiply this by the probability of surviving the second, then multiplying this result with the probability of surviving the third. So continuing our example from above, the probability of surviving the first two segments is (5/7) x (4/5) = 4/7.</p>
+<p>Therefore using the at risk count, r, and the death count, d, can be used to estimate the segment survival probabilities and the survival probability to any point can be found by multiplying these probabilities. Formally, this has the following formula:</p>
+<div class="math notranslate nohighlight">
+\[R(x) = \prod_{i:x_{i} \leq x}^{} \left ( 1 - \frac{d_{i} }{r_{i}}  \right )\]</div>
+<p>where <span class="math notranslate nohighlight">\(x_i\)</span> are the distinct observed times, <span class="math notranslate nohighlight">\(r_i\)</span> the number at risk just before <span class="math notranslate nohighlight">\(x_i\)</span> and <span class="math notranslate nohighlight">\(d_i\)</span> the number of failures at <span class="math notranslate nohighlight">\(x_i\)</span>. This is why it is also called the <em>product-limit</em> estimator. Because each factor is a ratio of counts the estimate is a step function that drops only at failure times; censored values change later factors (through <span class="math notranslate nohighlight">\(r\)</span>) but never cause a drop themselves. For the example above the estimate is 5/7, 4/7, 3/7, 2/7, 1/7 and finally 0: with no censoring the Kaplan-Meier is exactly one minus the empirical CDF.</p>
+<p><strong>Why this is the “right” answer.</strong> The Kaplan-Meier is the non-parametric maximum likelihood estimator (NPMLE) for right censored and left truncated data: of all distributions, the one putting probability mass <span class="math notranslate nohighlight">\(d_i / r_i \times R(x_{i-1})\)</span> at each failure time is the one that makes the observed data most likely. An equivalent and very intuitive construction is Efron’s <em>redistribute-to-the-right</em> algorithm <a class="reference internal" href="#efron1967np" id="id2"><span>[Efron1967np]</span></a>: start with mass <span class="math notranslate nohighlight">\(1/N\)</span> on every observation, then, working from left to right, take the mass of each censored observation and share it equally among all observations to its right. A censored item has, after all, failed at some later time, and with no other information it is equally likely to be any of the later ones. The mass left on the failures is exactly the Kaplan-Meier. Keep this picture in mind: it is the same idea the Turnbull estimator generalises.</p>
+<section id="greenwood-s-variance">
+<h3>Greenwood’s variance<a class="headerlink" href="#greenwood-s-variance" title="Link to this heading"></a></h3>
+<p>The Kaplan-Meier is an estimate, so it has uncertainty. Each factor <span class="math notranslate nohighlight">\(1 - d_i/r_i\)</span> is an estimated binomial proportion, and the uncertainty of the product is most easily found on the log scale, where the product becomes a sum. Working with the cumulative hazard <span class="math notranslate nohighlight">\(H(x) = -\ln R(x)\)</span>, Greenwood’s formula <a class="reference internal" href="#greenwood1926np" id="id3"><span>[Greenwood1926np]</span></a> is</p>
+<div class="math notranslate nohighlight">
+\[\widehat{Var}\left(\hat{H}(x)\right) = \sum_{i:x_{i} \leq x} \frac{d_{i}}{r_{i} \left ( r_{i} - d_{i} \right )}\]</div>
+<p>and, by the delta method, <span class="math notranslate nohighlight">\(\widehat{Var}(\hat{R}(x)) \approx \hat{R}(x)^2 \, \widehat{Var}(\hat{H}(x))\)</span>. Two things are visible in the formula. The terms grow as the risk set shrinks, so the estimate is least certain in the right-hand tail where few items remain. And when <span class="math notranslate nohighlight">\(d_i = r_i\)</span> (everyone still at risk fails, which happens at the last value of a data set with no right censoring) the term is undefined: the estimate has reached 0 and Greenwood’s formula has nothing to say there. SurPyval stores the cumulative variance of <span class="math notranslate nohighlight">\(\hat{H}\)</span> for every fitted model in the attribute <code class="docutils literal notranslate"><span class="pre">greenwood</span></code> (the name is historical; for the Nelson-Aalen and Fleming-Harrington estimators it holds their own variance, given below).</p>
+</section>
+<section id="from-a-variance-to-confidence-bounds">
+<h3>From a variance to confidence bounds<a class="headerlink" href="#from-a-variance-to-confidence-bounds" title="Link to this heading"></a></h3>
+<p>All the estimators on this page produce confidence bounds the same way, from <span class="math notranslate nohighlight">\(\hat{\sigma}^2(x) = \widehat{Var}(\hat{H}(x))\)</span>. Write <span class="math notranslate nohighlight">\(z\)</span> for the standard normal quantile: <span class="math notranslate nohighlight">\(z = \Phi^{-1}(1 - \alpha/2)\)</span> for a two-sided interval and <span class="math notranslate nohighlight">\(z = \Phi^{-1}(1 - \alpha)\)</span> for a one-sided bound, where <span class="math notranslate nohighlight">\(\alpha\)</span> is <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code> (0.05 by default).</p>
+<p>The naive (“normal”, or plain Greenwood) interval is <span class="math notranslate nohighlight">\(\hat{R} \pm z \hat{R} \hat{\sigma}\)</span>. It is symmetric, but a survival probability is not: near 0 or 1 this interval spills outside <span class="math notranslate nohighlight">\([0, 1]\)</span> and it tends to undercover in small samples.</p>
+<p>The default (“exp”) interval instead applies the normal approximation to <span class="math notranslate nohighlight">\(\ln \hat{H}(x) = \ln(-\ln \hat{R}(x))\)</span>, which is unbounded in both directions and much closer to normally distributed. Its standard error is <span class="math notranslate nohighlight">\(\hat{\sigma}/\hat{H}\)</span> (delta method again), and transforming back gives</p>
+<div class="math notranslate nohighlight">
+\[\left[ \hat{R}(x)^{\exp\left(z\hat{\sigma}(x)/\hat{H}(x)\right)},\;
+       \hat{R}(x)^{\exp\left(-z\hat{\sigma}(x)/\hat{H}(x)\right)} \right]\]</div>
+<p>which always lies within <span class="math notranslate nohighlight">\([0, 1]\)</span>. This is the “log(-log)” or “exponential Greenwood” interval, and it is what <code class="docutils literal notranslate"><span class="pre">cb()</span></code> and <code class="docutils literal notranslate"><span class="pre">plot()</span></code> use unless told otherwise (<code class="docutils literal notranslate"><span class="pre">bound_type='normal'</span></code> selects the plain interval). The same recipe on other scales gives the other intervals <code class="docutils literal notranslate"><span class="pre">cb()</span></code> offers: on <span class="math notranslate nohighlight">\(\ln\hat{R}\)</span> (<code class="docutils literal notranslate"><span class="pre">'log'</span></code>, <span class="math notranslate nohighlight">\(\hat{R}e^{\pm z\hat{\sigma}}\)</span>, the upper end cut at 1; R’s default), on the log-odds (<code class="docutils literal notranslate"><span class="pre">'logit'</span></code>, <span class="math notranslate nohighlight">\(\operatorname{logit}\hat{R} \pm z\hat{\sigma}/(1-\hat{R})\)</span>) and on <span class="math notranslate nohighlight">\(\arcsin\sqrt{\hat{R}}\)</span> (<code class="docutils literal notranslate"><span class="pre">'arcsine'</span></code>, half width <span class="math notranslate nohighlight">\(\tfrac12 z\hat{\sigma}\sqrt{\hat{R}/(1-\hat{R})}\)</span>) <a class="reference internal" href="#borganliestol1990np" id="id4"><span>[BorganLiestol1990np]</span></a>. Two more change the variance rather than the scale: <code class="docutils literal notranslate"><span class="pre">'peto'</span></code> is the plain interval with Peto’s variance <span class="math notranslate nohighlight">\(\hat{R}^2(1-\hat{R})/Y(x)\)</span>, with <span class="math notranslate nohighlight">\(Y(x)\)</span> the number at risk, which is larger than Greenwood’s late in follow-up under censoring and so cautious there; <code class="docutils literal notranslate"><span class="pre">'rothman'</span></code> is Rothman’s Wilson-type (score) interval for a proportion, with the effective sample size <span class="math notranslate nohighlight">\(n' = \hat{R}(1-\hat{R})/\widehat{\operatorname{Var}}(\hat{R})\)</span>. In simulation (n = 100, about 30% censored, at the quartiles) all of them cover 94% to 96% for a nominal 95%, except the one-sided <code class="docutils literal notranslate"><span class="pre">'log'</span></code> lower bound (about 93.5%) and Peto’s one-sided lower bound at the third quartile (about 97.7%). Bounds on <span class="math notranslate nohighlight">\(F = 1 - R\)</span> and on <span class="math notranslate nohighlight">\(H = -\ln R\)</span> are the corresponding transformations of the bounds on <span class="math notranslate nohighlight">\(R\)</span>. A few practical details of the implementation:</p>
+<ul class="simple">
+<li><p>The bounds are asymptotic, so only the normal (<code class="docutils literal notranslate"><span class="pre">dist='z'</span></code>) statistic is offered; for small samples, or for the Turnbull estimator, use the bootstrap (below).</p></li>
+<li><p>Where the variance is undefined because the estimate has reached zero (Kaplan-Meier with no right censoring at the last value) the lower bound is set to 0 and the upper bound to the last finite upper bound, so bounds can still be drawn to the last observation.</p></li>
+<li><p>Where the variance is still zero (before the first failure, e.g. when the first values are right censored) the <code class="docutils literal notranslate"><span class="pre">'exp'</span></code> bounds are <span class="math notranslate nohighlight">\([1, 1]\)</span>: the estimate is 1 and the formula has no uncertainty to report.</p></li>
+<li><p>Bounds are only reported within the range of the data; below the first or above the last observed value <code class="docutils literal notranslate"><span class="pre">cb()</span></code> returns <code class="docutils literal notranslate"><span class="pre">nan</span></code>.</p></li>
+</ul>
+</section>
+<section id="pointwise-bounds-bands-and-the-bootstrap">
+<h3>Pointwise bounds, bands and the bootstrap<a class="headerlink" href="#pointwise-bounds-bands-and-the-bootstrap" title="Link to this heading"></a></h3>
+<p>The interval above is <em>pointwise</em>: at any single time <span class="math notranslate nohighlight">\(x\)</span> it covers the true <span class="math notranslate nohighlight">\(R(x)\)</span> with probability <span class="math notranslate nohighlight">\(1-\alpha\)</span>. It does <strong>not</strong> mean that the whole true curve lies between the two bound curves with that probability; a curve has many opportunities to escape somewhere. If the question is “is this whole curve (for example a fitted Weibull) consistent with the data?”, you need a <em>simultaneous confidence band</em>, which is wider. SurPyval provides the two classical bands via <code class="docutils literal notranslate"><span class="pre">band()</span></code>: the Hall-Wellner band <a class="reference internal" href="#hallwellner1980np" id="id5"><span>[HallWellner1980np]</span></a>, whose width is proportional to <span class="math notranslate nohighlight">\((1 + N\hat{\sigma}^2(x))/\sqrt{N}\)</span> with <span class="math notranslate nohighlight">\(N\)</span> the total number of items, and Nair’s equal-precision band <a class="reference internal" href="#nair1984np" id="id6"><span>[Nair1984np]</span></a>, which is the pointwise interval with a larger critical value. The critical values come from the supremum of a (standardised) Brownian bridge over the range of the data, computed numerically (to about 1e-8, rather than read from a table or simulated) so that they are exact for whatever range the data give; the bands are defined only between the first and last points with a positive, finite variance. Near either end of the data the estimate rests on a handful of failures, or of items at risk, and its error is far from the normal the bands assume. Two things then matter. The first is the scale the band is applied on: SurPyval applies it, by default, to <span class="math notranslate nohighlight">\(\arcsin\sqrt{\hat{R}(x)}\)</span>, whose half width is <span class="math notranslate nohighlight">\(\tfrac12 c\,\hat{\sigma}(x)\sqrt{\hat{R}(x)/(1 - \hat{R}(x))}\)</span> for a band of half width <span class="math notranslate nohighlight">\(c\,\hat{\sigma}(x)\)</span> on <span class="math notranslate nohighlight">\(\hat{R}\)</span> itself (the delta method), cut at 0 and <span class="math notranslate nohighlight">\(\pi/2\)</span> <a class="reference internal" href="#borganliestol1990np" id="id7"><span>[BorganLiestol1990np]</span></a>. The second is the range: the equal-precision band’s boundary, <span class="math notranslate nohighlight">\(c\sqrt{a(1-a)}\)</span> for the Brownian bridge in <span class="math notranslate nohighlight">\(a = N\hat{\sigma}^2/(1 + N\hat{\sigma}^2)\)</span>, makes its critical value grow without limit as the range reaches <span class="math notranslate nohighlight">\(a = 0\)</span> or 1, and the theory is for a range <span class="math notranslate nohighlight">\([t_L, t_U]\)</span> inside the data. By default it covers the times with <span class="math notranslate nohighlight">\(0.1 \le a \le 0.9\)</span> (Klein and Moeschberger tabulate it for <span class="math notranslate nohighlight">\(a_L\)</span> from 0.02 and <span class="math notranslate nohighlight">\(a_U\)</span> to 0.98), and <code class="docutils literal notranslate"><span class="pre">x_range=(t_L,</span> <span class="pre">t_U)</span></code> sets any range. In simulation (n = 40 to 400) it then covers 94% to 96% for a nominal 95%; over the first to the last event it covered about 93% on the arcsine scale, 87% to 89% on the log(-log) scale (<code class="docutils literal notranslate"><span class="pre">bound_type='exp'</span></code>, the pointwise default) and 83% untransformed (<code class="docutils literal notranslate"><span class="pre">'normal'</span></code>), most misses at the first few events. The Hall-Wellner band, whose boundary in <span class="math notranslate nohighlight">\(a\)</span> is flat, covers about 95% over the first to the last event. See <a class="reference internal" href="#kleinmoeschberger2003np" id="id8"><span>[KleinMoeschberger2003np]</span></a> (section 4.4) for the derivations.</p>
+<p>The asymptotic formulas all rest on large-sample theory for counts that were actually observed. When that is doubtful (small samples, or Turnbull estimates built from expected counts) the non-parametric bootstrap is the robust alternative: <code class="docutils literal notranslate"><span class="pre">bootstrap_cb()</span></code> resamples the original observations with replacement, refits the same estimator to each resample and reports the percentile interval of the refitted curves at each requested time.</p>
+</section>
+<section id="quantiles-the-median-and-the-mean">
+<h3>Quantiles, the median and the mean<a class="headerlink" href="#quantiles-the-median-and-the-mean" title="Link to this heading"></a></h3>
+<p>Because the estimate is a step function, its quantile is defined as the smallest observed value at which the estimated CDF reaches the requested probability, <span class="math notranslate nohighlight">\(\hat{q}(p) = \min\{x_i : \hat{F}(x_i) \geq p\}\)</span>, and the median is <span class="math notranslate nohighlight">\(\hat{q}(0.5)\)</span>. SurPyval allows <span class="math notranslate nohighlight">\(10^{-9}\)</span> of round-off in that comparison, so that a curve which reaches <span class="math notranslate nohighlight">\(p\)</span> exactly on paper, such as the Kaplan-Meier of 1 to 30 at 15, is not put a step late. With right censoring the estimate may never reach <span class="math notranslate nohighlight">\(p\)</span> (the curve stops above <span class="math notranslate nohighlight">\(1-p\)</span>), in which case the quantile is undefined and SurPyval returns <code class="docutils literal notranslate"><span class="pre">nan</span></code> rather than guess. A confidence interval for a quantile is found by the Brookmeyer-Crowley method <a class="reference internal" href="#brookmeyercrowley1982np" id="id9"><span>[BrookmeyerCrowley1982np]</span></a>: invert the pointwise bounds, i.e. take all times at which the confidence interval for <span class="math notranslate nohighlight">\(R(x)\)</span> contains <span class="math notranslate nohighlight">\(1 - p\)</span>.</p>
+<p>In SurPyval <code class="docutils literal notranslate"><span class="pre">quantile_cb(p)</span></code> returns, for each <span class="math notranslate nohighlight">\(p\)</span>, the first observed time at which the lower bound of <span class="math notranslate nohighlight">\(R\)</span> has fallen to <span class="math notranslate nohighlight">\(1 - p\)</span> (the lower end of the interval) and the first observed time at which the upper bound of <span class="math notranslate nohighlight">\(R\)</span> has fallen <em>below</em> <span class="math notranslate nohighlight">\(1 - p\)</span> (the upper end). With heavy censoring the upper bound may never get that low, and the upper end is then <code class="docutils literal notranslate"><span class="pre">nan</span></code>: the interval is open to the right, the data being consistent with the quantile lying beyond the last observation.</p>
+<p>The mean is the area under the survival curve. With right censoring the curve does not reach zero, so the area to infinity is unknown; what can be estimated is the area up to a horizon <span class="math notranslate nohighlight">\(\tau\)</span>, the <em>restricted</em> mean (see <a class="reference internal" href="#restricted-mean-survival-time">Restricted mean survival time</a> below). SurPyval’s <code class="docutils literal notranslate"><span class="pre">mean()</span></code> integrates the step function from 0 to <span class="math notranslate nohighlight">\(\tau\)</span>, defaulting <span class="math notranslate nohighlight">\(\tau\)</span> to the largest observed value; if the estimate reaches zero this is the ordinary mean of the estimated distribution. A <span class="math notranslate nohighlight">\(\tau\)</span> beyond the last observation holds the curve at its final value out to <span class="math notranslate nohighlight">\(\tau\)</span>, which is an extrapolation, not an estimate.</p>
+</section>
+<section id="no-failures-at-all-success-run-testing">
+<h3>No failures at all: success-run testing<a class="headerlink" href="#no-failures-at-all-success-run-testing" title="Link to this heading"></a></h3>
+<p>A common reliability test is to run <span class="math notranslate nohighlight">\(n\)</span> items for a fixed duration (or demand) and hope that none fail. If none do, the Kaplan-Meier estimate is 1 with zero variance, which is true of the sample but useless as a statement about the population. The question is instead: what is the lowest reliability consistent with seeing <span class="math notranslate nohighlight">\(n\)</span> successes in a row? If the true probability of success is <span class="math notranslate nohighlight">\(R\)</span> and trials are independent, the chance of <span class="math notranslate nohighlight">\(n\)</span> successes is <span class="math notranslate nohighlight">\(R^n\)</span>. The smallest <span class="math notranslate nohighlight">\(R\)</span> for which that chance is still at least <span class="math notranslate nohighlight">\(\alpha\)</span> is the lower <span class="math notranslate nohighlight">\(1-\alpha\)</span> confidence bound</p>
+<div class="math notranslate nohighlight">
+\[R_L = \alpha^{1/n}.\]</div>
+<p>For example, 59 successes demonstrate <span class="math notranslate nohighlight">\(R \geq 0.95\)</span> at 95% confidence (<span class="math notranslate nohighlight">\(0.05^{1/59} \approx 0.9505\)</span>), and 22 successes demonstrate <span class="math notranslate nohighlight">\(R \geq 0.90\)</span> at 90% confidence. This is <code class="docutils literal notranslate"><span class="pre">surpyval.success_run(n,</span> <span class="pre">alpha_ci=...)</span></code>; the exact (Clopper-Pearson) bounds of a <code class="docutils literal notranslate"><span class="pre">Bernoulli</span></code> fit, <code class="docutils literal notranslate"><span class="pre">param_cb(&quot;p&quot;)</span></code>, give the same bound and extend it to tests with failures.</p>
+</section>
+</section>
+<section id="nelson-aalen-estimation">
+<h2>Nelson-Aalen Estimation<a class="headerlink" href="#nelson-aalen-estimation" title="Link to this heading"></a></h2>
+<p>The Nelson-Aalen estimator <a class="reference internal" href="#na" id="id10"><span>[NA]</span></a>, instead of finding the probability, estimates the cumulative hazard function, and given that we know the relationship between the cumulative hazard function and the reliability function, the Nelson-Aalen cumulative hazard estimate can be converted to a survival curve.</p>
+<p>A word on names, because the literature is not consistent. The survival curve <span class="math notranslate nohighlight">\(e^{-\hat{H}}\)</span> built from the Nelson-Aalen cumulative hazard is called the <em>Breslow</em> estimator by some authors and, confusingly, the <em>Fleming-Harrington</em> estimator by others (R’s <code class="docutils literal notranslate"><span class="pre">survfit</span></code> has used <code class="docutils literal notranslate"><span class="pre">type=&quot;fleming-harrington&quot;</span></code> for it, and <code class="docutils literal notranslate"><span class="pre">type=&quot;fh2&quot;</span></code> for the tie-corrected version). In SurPyval, <code class="docutils literal notranslate"><span class="pre">NelsonAalen</span></code> is <span class="math notranslate nohighlight">\(e^{-\hat{H}}\)</span> with the plain Nelson-Aalen <span class="math notranslate nohighlight">\(\hat{H}\)</span>, and <code class="docutils literal notranslate"><span class="pre">FlemingHarrington</span></code> is <span class="math notranslate nohighlight">\(e^{-\hat{H}}\)</span> with the tie-corrected <span class="math notranslate nohighlight">\(\hat{H}\)</span> described in <a class="reference internal" href="#fleming-harrington-estimation">Fleming-Harrington Estimation</a> below. The two are identical when there are no tied failures.</p>
+<p>The first step in computing the NA estimate is to convert your data to the x, r, d format. Once in this format the instantaneous hazard rate is found by:</p>
+<div class="math notranslate nohighlight">
+\[h(x) = \frac{d_{x} }{r_{x}}\]</div>
+<p>This estimate of the instantaneous hazard rate is the proportion of deaths/failures at a value, x, among those at risk there. Strictly, <span class="math notranslate nohighlight">\(d_x/r_x\)</span> is the <em>increment</em> of the cumulative hazard at <span class="math notranslate nohighlight">\(x\)</span> (a probability of failing at <span class="math notranslate nohighlight">\(x\)</span> given survival to just before it), not a rate per unit time. Then to find the cumulative hazard rate for any x we simply take the sum of the instantaneous hazard rates for all the values below x. Mathematically:</p>
+<div class="math notranslate nohighlight">
+\[H(x) = \sum_{i:x_{i} \leq x}^{} \frac{d_{i} }{r_{i}}\]</div>
+<p>Then, since we know that the reliability, or survival function, is related to the cumulative hazard function, we can easily compute it.</p>
+<div class="math notranslate nohighlight">
+\[R(x) = e^{-H(x)}\]</div>
+<p>So we now have the survival/reliability function. One benefit of the Nelson-Aalen estimator is that it does not estimate a probability of 0 for the highest value (in a completely observed data set). This means that for a completely observed data set the whole estimation can be plotted on a transformed y-axis. For this reason SurPyval uses the Nelson-Aalen as the default plotting position.</p>
+<p><strong>How it relates to the Kaplan-Meier.</strong> Compare the factor each estimator applies at a failure time: Kaplan-Meier multiplies by <span class="math notranslate nohighlight">\(1 - d_i/r_i\)</span>, Nelson-Aalen by <span class="math notranslate nohighlight">\(e^{-d_i/r_i}\)</span>. Since <span class="math notranslate nohighlight">\(e^{-u} \geq 1 - u\)</span> for all <span class="math notranslate nohighlight">\(u\)</span>, the Nelson-Aalen survival estimate is always at least as large as the Kaplan-Meier. When <span class="math notranslate nohighlight">\(d_i/r_i\)</span> is small (large risk set, few ties) the two factors are almost equal and so are the estimates; they separate when a large fraction of the risk set fails at once — with many ties, or in the tail where the risk set is small. In the worked example above, the survival at time 1 is 0.714 by Kaplan-Meier and 0.751 by Nelson-Aalen, and at the last value 0 versus 0.077.</p>
+<p><strong>Variance.</strong> The variance of <span class="math notranslate nohighlight">\(\hat{H}\)</span> used by SurPyval for the Nelson-Aalen estimator is Aalen’s (Poisson-type) estimator <a class="reference internal" href="#aalen1978np" id="id11"><span>[Aalen1978np]</span></a>,</p>
+<div class="math notranslate nohighlight">
+\[\widehat{Var}\left(\hat{H}(x)\right) = \sum_{i:x_{i} \leq x} \frac{d_{i}}{r_{i}^{2}},\]</div>
+<p>which Klein <a class="reference internal" href="#klein1991np" id="id12"><span>[Klein1991np]</span></a> recommends for its small-sample performance. Unlike Greenwood’s formula it stays finite when <span class="math notranslate nohighlight">\(d_i = r_i\)</span>, so Nelson-Aalen bounds are defined right up to the last observation. The bounds themselves are built exactly as described in <a class="reference internal" href="#from-a-variance-to-confidence-bounds">From a variance to confidence bounds</a>.</p>
+<section id="hazard-rates-and-densities-from-a-step-function">
+<h3>Hazard rates and densities from a step function<a class="headerlink" href="#hazard-rates-and-densities-from-a-step-function" title="Link to this heading"></a></h3>
+<p>A non-parametric estimate of <span class="math notranslate nohighlight">\(H\)</span> is a step function, and the derivative of a step function is zero almost everywhere and infinite at the steps, so the hazard <em>rate</em> <span class="math notranslate nohighlight">\(h(x) = dH/dx\)</span> cannot be read off it directly. SurPyval offers two approximations. <code class="docutils literal notranslate"><span class="pre">hf()</span></code> differences the cumulative hazard between the points you ask for, so the answer is an <em>increment</em> over your grid, not a rate per unit time, and it depends on the grid you choose. (Two conventions of <code class="docutils literal notranslate"><span class="pre">hf()</span></code> are worth knowing: the first point has nothing before it to difference from and repeats the second point’s value, and a zero increment, i.e. a gap in the grid with no failure, is replaced by the previous non-zero one. A single point returns the jump of the step it falls in.) <code class="docutils literal notranslate"><span class="pre">df()</span></code> is the drop in the survival over the same step, the probability the estimate puts there (<span class="math notranslate nohighlight">\(S(1 - e^{-\Delta H})\)</span> for a step of <span class="math notranslate nohighlight">\(\Delta H\)</span> starting at <span class="math notranslate nohighlight">\(S\)</span>, close to <span class="math notranslate nohighlight">\(h e^{-H}\)</span> for small steps), so it inherits the same grid dependence and conventions; it stays finite where a Kaplan-Meier estimate falls to zero, whose last <code class="docutils literal notranslate"><span class="pre">hf()</span></code> is infinite. The better estimate is <code class="docutils literal notranslate"><span class="pre">smoothed_hf()</span></code>, which spreads each jump <span class="math notranslate nohighlight">\(\Delta \hat{H}(x_i)\)</span> over a neighbourhood with an Epanechnikov kernel of bandwidth <span class="math notranslate nohighlight">\(b\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[\hat{h}(t) = \frac{1}{b} \sum_{i} K\left( \frac{t - x_i}{b} \right) \Delta \hat{H}(x_i),
+\qquad K(u) = \tfrac{3}{4}(1 - u^2) \text{ for } |u| \leq 1,\]</div>
+<p>with a correction near the ends of the data where part of the kernel falls outside the observed range (the sum is divided by the share of the kernel’s mass that lies inside the range). The bandwidth trades bias (large <span class="math notranslate nohighlight">\(b\)</span> flattens real features) against variance (small <span class="math notranslate nohighlight">\(b\)</span> is noisy); the default of one eighth of the observed range is only a starting point. The estimate is <code class="docutils literal notranslate"><span class="pre">nan</span></code> outside the observed range, and an infinite jump (a Kaplan-Meier falling to zero at the last failure) is left out of the sum. See <a class="reference internal" href="#kleinmoeschberger2003np" id="id13"><span>[KleinMoeschberger2003np]</span></a> (section 6.2).</p>
+</section>
+</section>
+<section id="fleming-harrington-estimation">
+<h2>Fleming-Harrington Estimation<a class="headerlink" href="#fleming-harrington-estimation" title="Link to this heading"></a></h2>
+<p>The Fleming-Harrington estimator <a class="reference internal" href="#fh" id="id14"><span>[FH]</span></a>, uses the same principle as the Nelson-Aalen estimator. That is, it finds the cumulative hazard function and then converts that to the reliability/survival estimate. However, the NA estimate assumes, for any given step, that the number of items at risk is the same for each of the tied deaths; the FH estimate changes this. If <span class="math notranslate nohighlight">\(d\)</span> items fail “at the same time” they did not really fail at the same instant — the ties are an artefact of recording to finite precision — so the FH estimator imagines them failing one after another, with the risk set shrinking by one after each. Mathematically, the hazard rate is calculated with:</p>
+<div class="math notranslate nohighlight">
+\[h(x) = \frac{1}{r_{x}} + \frac{1}{r_{x} - 1} + \frac{1}{r_{x} - 2} + ... + \frac{1}{r_{x} - (d_{x} - 1)}\]</div>
+<p>Which can be summarised as:</p>
+<div class="math notranslate nohighlight">
+\[h(x) = \sum_{j=0}^{d_x-1} \frac{1}{r_x - j}\]</div>
+<p>The cumulative hazard rate therefore becomes:</p>
+<div class="math notranslate nohighlight">
+\[H(x) = \sum_{i:x_{i} \leq x} \sum_{j=0}^{d_i-1} \frac{1}{r_i - j}\]</div>
+<p>and, as for the Nelson-Aalen, <span class="math notranslate nohighlight">\(R(x) = e^{-H(x)}\)</span>. You can see that the cumulative hazard rate will be slightly higher than the NA estimate since:</p>
+<div class="math notranslate nohighlight">
+\[\underbrace{\frac{1}{r_{x}} + ... + \frac{1}{r_{x}}}_{d_x \text{ terms}} \leq \frac{1}{r_{x}} + \frac{1}{r_{x} - 1} + ... + \frac{1}{r_{x} - (d_{x} - 1)}\]</div>
+<p>with equality exactly when there is a single death/failure at that time (<span class="math notranslate nohighlight">\(d_x = 1\)</span>). So the Fleming-Harrington estimate is <em>identical</em> to the Nelson-Aalen when there are no tied failures, and differs from it only at tied failure times. There is also an ordering between all three estimators: since each term <span class="math notranslate nohighlight">\(e^{-1/(r-j)} \geq 1 - 1/(r-j)\)</span> and <span class="math notranslate nohighlight">\(\prod_{j=0}^{d-1}(1 - \frac{1}{r-j}) = 1 - \frac{d}{r}\)</span>, at every step</p>
+<div class="math notranslate nohighlight">
+\[R_{KM}(x) \leq R_{FH}(x) \leq R_{NA}(x).\]</div>
+<p>In the worked example the survival at time 1 (two tied failures among seven) is 0.714, 0.734 and 0.751 respectively. The Fleming-Harrington and Nelson-Aalen estimates are particularly useful for small samples, see <a class="reference internal" href="#fh" id="id15"><span>[FH]</span></a>.</p>
+<p>The variance of <span class="math notranslate nohighlight">\(\hat{H}\)</span> uses the same tie-splitting as the estimator,</p>
+<div class="math notranslate nohighlight">
+\[\widehat{Var}\left(\hat{H}(x)\right) = \sum_{i:x_{i} \leq x} \sum_{j=0}^{d_i-1} \frac{1}{(r_i - j)^2},\]</div>
+<p>which is the variance used by R’s <code class="docutils literal notranslate"><span class="pre">survfit</span></code> with <code class="docutils literal notranslate"><span class="pre">ctype=2</span></code>, and reduces to the Nelson-Aalen variance <span class="math notranslate nohighlight">\(\sum d_i/r_i^2\)</span> when there are no ties.</p>
+<p>The Turnbull estimator (below) produces <em>expected</em>, and therefore fractional, death counts. SurPyval extends the tie-splitting ladder to a fractional <span class="math notranslate nohighlight">\(d\)</span> by taking the whole terms <span class="math notranslate nohighlight">\(1/r, 1/(r-1), \ldots\)</span> for the first <span class="math notranslate nohighlight">\(\lceil d \rceil - 1\)</span> failures and a pro-rata share of the next term for the remainder, so the Fleming-Harrington estimator can be applied to a Turnbull ladder. For example <span class="math notranslate nohighlight">\(d = 2.5\)</span> gives <span class="math notranslate nohighlight">\(1/r + 1/(r-1) + 0.5/(r-2)\)</span>, and any <span class="math notranslate nohighlight">\(d \leq 1\)</span> gives <span class="math notranslate nohighlight">\(d/r\)</span>, the Nelson-Aalen term. This extension is SurPyval’s own choice, not something from <a class="reference internal" href="#fh" id="id16"><span>[FH]</span></a>. Counts that differ from a whole number only by floating-point round-off (the EM can produce <span class="math notranslate nohighlight">\(1 + 2\times 10^{-16}\)</span>) are treated as that whole number, so they do not add a spurious extra term with a near-zero risk set.</p>
+</section>
+<section id="turnbull-estimation">
+<h2>Turnbull Estimation<a class="headerlink" href="#turnbull-estimation" title="Link to this heading"></a></h2>
+<p>The Turnbull estimator is a remarkable non-parametric estimation method for data that can handle arbitrary censoring and truncation <a class="reference internal" href="#tb" id="id17"><span>[TB]</span></a>. The Turnbull estimator can be found with a procedure of finding the most likely survival curve from the data, for that reason it is also known as the Non-Parametric Maximum Likelihood Estimator (NPMLE). The Kaplan-Meier is also a non-parametric maximum likelihood estimator, so is there a contradiction? No: for data that the Kaplan-Meier can handle (exact, right censored and left truncated observations), the Turnbull NPMLE <em>is</em> the Kaplan-Meier. Turnbull’s contribution is the generalisation to data that the Kaplan-Meier cannot handle. (Whether SurPyval’s <code class="docutils literal notranslate"><span class="pre">Turnbull</span></code> <em>output</em> equals the Kaplan-Meier depends on an option; see <a class="reference internal" href="#why-a-turnbull-fit-need-not-equal-the-kaplan-meier">Why a Turnbull fit need not equal the Kaplan-Meier</a>.)</p>
+<section id="every-observation-as-an-interval">
+<h3>Every observation as an interval<a class="headerlink" href="#every-observation-as-an-interval" title="Link to this heading"></a></h3>
+<p>The Turnbull estimate is really an estimate of the observed failures given censoring, and then the ‘ghost’ failures (as Turnbull describes it) due to truncation. Turnbull’s estimate converts all failures to interval failures regardless of the censoring. This is because a left censored point is equivalent to an intervally censored observation in the interval -Inf to x, and a right censored point is equivalent to an intervally censored observation in the interval x to Inf. An exactly observed failure at <span class="math notranslate nohighlight">\(x\)</span> is the degenerate interval <span class="math notranslate nohighlight">\([x, x]\)</span>.</p>
+<p>SurPyval uses the standard <span class="math notranslate nohighlight">\((l, r]\)</span> convention for censoring intervals: an observation censored in <span class="math notranslate nohighlight">\((l, r]\)</span> failed strictly after <span class="math notranslate nohighlight">\(l\)</span> and at or before <span class="math notranslate nohighlight">\(r\)</span>. So an interval whose right end coincides with an exactly observed failure time <em>can</em> have failed at that time, and a left censored observation at <span class="math notranslate nohighlight">\(x\)</span>, i.e. <span class="math notranslate nohighlight">\((-\infty, x]\)</span>, can have failed at <span class="math notranslate nohighlight">\(x\)</span> itself. This matches Turnbull’s paper, and the <span class="math notranslate nohighlight">\((t_l, x]\)</span> convention used for truncation windows.</p>
+<p>Next the time axis is cut into pieces at every distinct endpoint: every observed value, every interval end and every truncation time, with an extra zero-width piece <span class="math notranslate nohighlight">\([x, x]\)</span> at each exactly observed time to hold the mass of that failure. Let <span class="math notranslate nohighlight">\(p_j\)</span> be the (unknown) probability that a failure falls in piece <span class="math notranslate nohighlight">\(j\)</span>; the survival curve is determined by these masses, so estimating the <span class="math notranslate nohighlight">\(p_j\)</span> <em>is</em> estimating the curve. Then for all the pieces between negative infinity and infinity we find how many failures happened in each. This value need not be a whole number since a single observation could have failed across several pieces.</p>
+</section>
+<section id="the-self-consistency-em-algorithm">
+<h3>The self-consistency (EM) algorithm<a class="headerlink" href="#the-self-consistency-em-algorithm" title="Link to this heading"></a></h3>
+<p>If we knew the curve we could say where each observation most likely failed; if we knew where each failed we could estimate the curve by counting. Turnbull’s algorithm alternates between these two, which makes it an instance of the Expectation-Maximisation (EM) algorithm. Suppose observation <span class="math notranslate nohighlight">\(i\)</span> (which may represent <span class="math notranslate nohighlight">\(n_i\)</span> identical items) has censoring interval <span class="math notranslate nohighlight">\(A_i\)</span> and truncation window <span class="math notranslate nohighlight">\(B_i\)</span>, and write <span class="math notranslate nohighlight">\(\alpha_{ij} = 1\)</span> if piece <span class="math notranslate nohighlight">\(j\)</span> lies inside <span class="math notranslate nohighlight">\(A_i\)</span> (the observation could have failed there) and 0 otherwise, and <span class="math notranslate nohighlight">\(\beta_{ij} = 1\)</span> if piece <span class="math notranslate nohighlight">\(j\)</span> lies inside <span class="math notranslate nohighlight">\(B_i\)</span> (a failure there would have been observable) and 0 otherwise.</p>
+<p><strong>E-step, observed failures.</strong> Given the current masses <span class="math notranslate nohighlight">\(p\)</span>, the expected number of observation <span class="math notranslate nohighlight">\(i\)</span>’s failures that fell in piece <span class="math notranslate nohighlight">\(j\)</span> is its count shared out over the pieces it could have failed in, in proportion to how likely each piece is:</p>
+<div class="math notranslate nohighlight">
+\[\mu_{ij}(p) = n_i \frac{\alpha_{ij}p_j}{\sum_{k=1}^{m}\alpha_{ik}p_k}\]</div>
+<p>where <span class="math notranslate nohighlight">\(m\)</span> is the number of pieces. For a right censored observation this is exactly the redistribute-to-the-right idea from the Kaplan-Meier section; for an exact observation all the count lands on its own zero-width piece.</p>
+<p><strong>E-step, ghosts.</strong> If an observation is truncated, it was only a possible observation among others that would have been seen had the observation not been limited. If the probability of falling inside the window is <span class="math notranslate nohighlight">\(P(B_i) = \sum_k \beta_{ik}p_k\)</span>, then for every item seen there were, on average, <span class="math notranslate nohighlight">\((1 - P(B_i))/P(B_i)\)</span> unseen ‘ghost’ items whose failures fell outside it. Spreading them over the pieces outside the window gives:</p>
+<div class="math notranslate nohighlight">
+\[\nu_{ij}(p) = n_i \frac{(1 - \beta_{ij})p_j}{\sum_{k=1}^{m}\beta_{ik}p_k}\]</div>
+<p><strong>M-step.</strong> We can then estimate the probability of failure in each piece as the total expected failures in that piece divided by the total expected failures:</p>
+<div class="math notranslate nohighlight">
+\[p_j = \frac{\sum_{i=1}^{N} \left( \mu_{ij} + \nu_{ij} \right)}{M(p)}
+\qquad\text{where}\qquad
+M(p) = \sum_{i=1}^{N} \sum_{j=1}^{m} \left( \mu_{ij} + \nu_{ij} \right)\]</div>
+<p>Using this estimate of the masses, it can be input to the start of this procedure and it done again. This can then be repeated over and over until the values do not change; a solution that reproduces itself this way is called <em>self-consistent</em>. At this point we have reached the NPMLE estimate of the survival function!</p>
+<p>It helps to see the M-step in xrd terms. Call <span class="math notranslate nohighlight">\(d_j = \sum_i (\mu_{ij} + \nu_{ij})\)</span> the expected deaths in piece <span class="math notranslate nohighlight">\(j\)</span> and <span class="math notranslate nohighlight">\(r_j = \sum_{k \geq j} d_k\)</span> the expected number at risk just before it. The Kaplan-Meier on this <em>expected</em> ladder, <span class="math notranslate nohighlight">\(\prod (1 - d_j/r_j)\)</span>, telescopes to a curve whose mass in piece <span class="math notranslate nohighlight">\(j\)</span> is exactly <span class="math notranslate nohighlight">\(d_j / M\)</span>. The M-step is therefore just a Kaplan-Meier applied to expected counts, which is why a fitted Turnbull model has <code class="docutils literal notranslate"><span class="pre">r</span></code> and <code class="docutils literal notranslate"><span class="pre">d</span></code> attributes like every other estimator, with fractional values.</p>
+<p>In SurPyval the iteration stops when the largest change in any <span class="math notranslate nohighlight">\(p_j\)</span> falls below <code class="docutils literal notranslate"><span class="pre">tol</span></code> (default <span class="math notranslate nohighlight">\(10^{-10}\)</span>), or after <code class="docutils literal notranslate"><span class="pre">max_iter</span></code> iterations (default 1000), with a warning if the tolerance was not reached. The iteration starts from equal masses on every piece (under truncation, on every piece some observation could have failed in). With the Kaplan-Meier option and no truncation it starts instead on Turnbull’s <em>innermost intervals</em>, the runs of pieces that begin where some observation’s possible failure pieces begin and end where some observation’s end, with no other beginning or end in between. Every other piece is dominated: any observation that could have failed there could also have failed in an innermost interval, so the NPMLE gives it no mass <a class="reference internal" href="#tb" id="id18"><span>[TB]</span></a>. Starting there spares the EM from draining that mass away, which it does only slowly, leaving residues of around <span class="math notranslate nohighlight">\(10^{-9}\)</span> that the confidence bounds are sensitive to (see below). Under left truncation the dominance argument fails in general (moving mass changes the windows’ probabilities), but with only exact and right censored observations the delayed-entry Kaplan-Meier is an NPMLE with its mass on the innermost intervals, so the iteration starts there too; that also makes it return the Kaplan-Meier where the data leave the maximum not unique (see below). EM is reliable but can be slow, especially when many observations are censored far to the right or the data are interval censored; raising <code class="docutils literal notranslate"><span class="pre">max_iter</span></code> is the first thing to try. Without truncation SurPyval computes the same maximum, by default (<code class="docutils literal notranslate"><span class="pre">turnbull_algorithm='auto'</span></code>; <code class="docutils literal notranslate"><span class="pre">'EM'</span></code> runs the EM), by Wellner and Zhan’s EM-ICM <a class="reference internal" href="#wellnerzhan1997np" id="id19"><span>[WellnerZhan1997np]</span></a>, the algorithm of R’s <code class="docutils literal notranslate"><span class="pre">Icens::EMICM</span></code> and <code class="docutils literal notranslate"><span class="pre">icenReg::ic_np</span></code>: each iteration follows the EM step above with an <em>iterative convex minorant</em> step, a Newton step for each cumulative mass <span class="math notranslate nohighlight">\(F_j\)</span> alone made monotone by weighted isotonic regression, halved until the likelihood does not fall. It stops when the Karush-Kuhn-Tucker conditions of the maximum hold to <code class="docutils literal notranslate"><span class="pre">tol</span></code>: the derivative <span class="math notranslate nohighlight">\(D_j\)</span> of the log-likelihood in the mass of each innermost interval is at most <span class="math notranslate nohighlight">\(N\)</span> (with equality where there is mass), so <span class="math notranslate nohighlight">\(\max_j D_j / N - 1\)</span> is 0 at the maximum, and since the log-likelihood is concave it is within <span class="math notranslate nohighlight">\(N\)</span> times that of its maximum. The EM’s own stopping rule measures how far one step moves, not how far the maximum is. On 1,000 random intervals the EM stops at <code class="docutils literal notranslate"><span class="pre">max_iter</span></code> with a warning and needs over 23,000 iterations to meet its <code class="docutils literal notranslate"><span class="pre">tol</span></code>, still <span class="math notranslate nohighlight">\(3 \times 10^{-7}\)</span> from the maximum, where the EM-ICM reaches it in tens of iterations. It computes the NPMLE (the Kaplan-Meier option’s answer); with the Nelson-Aalen or Fleming-Harrington option that estimator is applied to the NPMLE’s expected ladder, as under truncation. Under truncation SurPyval also intersects each observation’s support with its own truncation window (an observed failure cannot have happened where it would not have been observed) and confines the mass to pieces that at least one observation could have failed in, which keeps the iteration away from meaningless solutions.</p>
+</section>
+<section id="why-a-turnbull-fit-need-not-equal-the-kaplan-meier">
+<h3>Why a Turnbull fit need not equal the Kaplan-Meier<a class="headerlink" href="#why-a-turnbull-fit-need-not-equal-the-kaplan-meier" title="Link to this heading"></a></h3>
+<p>Once the EM has produced the expected ladder <span class="math notranslate nohighlight">\((r_j, d_j)\)</span>, SurPyval lets you choose how to turn it into a survival curve with <code class="docutils literal notranslate"><span class="pre">turnbull_estimator</span></code>: <code class="docutils literal notranslate"><span class="pre">'Kaplan-Meier'</span></code>, <code class="docutils literal notranslate"><span class="pre">'Nelson-Aalen'</span></code> or <code class="docutils literal notranslate"><span class="pre">'Fleming-Harrington'</span></code> (the default). Under truncation the EM always iterates with the Kaplan-Meier (self-consistency) update above and the chosen estimator is applied to the converged ladder; without truncation the chosen estimator’s curve is also used within the iteration, i.e. the masses <span class="math notranslate nohighlight">\(p_j\)</span> of the next E-step are the drops of the chosen estimator’s curve. The Nelson-Aalen and Fleming-Harrington curves never reach zero, so in that case the drops add up to less than one and a small share of the right censored items’ expected failures is placed beyond the last finite value (it shows up in <span class="math notranslate nohighlight">\(r\)</span> but not in the reported <span class="math notranslate nohighlight">\(d\)</span>). Either way:</p>
+<ul class="simple">
+<li><p>Only <code class="docutils literal notranslate"><span class="pre">turnbull_estimator='Kaplan-Meier'</span></code> gives the NPMLE. With it, on exact, right censored and left truncated data, <code class="docutils literal notranslate"><span class="pre">Turnbull</span></code> agrees with <code class="docutils literal notranslate"><span class="pre">KaplanMeier</span></code> for both the curve and the confidence bounds, to within the EM’s tolerance (around <span class="math notranslate nohighlight">\(10^{-9}\)</span>): with censoring or truncation the Turnbull fit is iterated to convergence rather than computed in closed form, so it is not equal to the last digit.</p></li>
+<li><p>The Nelson-Aalen and Fleming-Harrington options are <span class="math notranslate nohighlight">\(e^{-H}\)</span> constructions on the expected ladder. They are not trying to maximise the likelihood, and they give a (usually slightly) higher survival curve, by the ordering shown in the Fleming-Harrington section. They are offered for the same reasons those estimators are preferred elsewhere: they do not drop to zero at the last failure and they behave better in the far tail.</p></li>
+<li><p>Because the ladder is an <em>expected</em> one — right censored items appear as fractional failures spread over later pieces, and truncation adds ghost failures — a Turnbull fit with the Fleming-Harrington option is not in general equal to <code class="docutils literal notranslate"><span class="pre">FlemingHarrington.fit</span></code> on the same data either, even where the latter can be used.</p></li>
+</ul>
+<p>For example, with values 2, 3, 3, 4, 5, 6 and entry times 0, 0, 1, 1, 2, 2 the Turnbull estimate of survival at 2 is 0.750 with the Kaplan-Meier option (identical to <code class="docutils literal notranslate"><span class="pre">KaplanMeier</span></code>), 0.765 with Fleming-Harrington and 0.779 with Nelson-Aalen. None of these is a mistake; they are different estimators. When comparing a Turnbull fit with a Kaplan-Meier fit, compare like with like.</p>
+</section>
+<section id="uncertainty-in-a-turnbull-estimate">
+<h3>Uncertainty in a Turnbull estimate<a class="headerlink" href="#uncertainty-in-a-turnbull-estimate" title="Link to this heading"></a></h3>
+<p>The confidence bounds from <code class="docutils literal notranslate"><span class="pre">cb()</span></code> for a Turnbull model use the variance formula of the chosen estimator, but the choice of <em>ladder</em> matters:</p>
+<ul class="simple">
+<li><p>With no truncation and only exact and right censored observations (where Turnbull reduces to the Kaplan-Meier) the variance is computed from the <em>observed</em> counts, i.e. the ordinary Greenwood ladder. The EM’s expected ladder would treat redistributed censored mass as extra observed failures and give intervals that are too narrow.</p></li>
+<li><p>With truncation, the variance ladder also uses observed counts: exact failures count once at their time, censored items leave the risk set at their censoring time, and each item is only at risk inside its own truncation window. Ghost failures, which are needed to get the <em>estimate</em> right, are not data and are excluded. Only genuinely interval or left censored items, whose failure time is unknown, are spread over their possible pieces.</p></li>
+<li><p>With interval or left censoring and no truncation, the expected ladder is used as though it were observed. This ignores the uncertainty in where the censored failures were allocated, so the bounds are an approximation.</p></li>
+</ul>
+<p>In the last case, and whenever you want calibrated intervals for a Turnbull estimate, use <code class="docutils literal notranslate"><span class="pre">bootstrap_cb()</span></code>. The simultaneous bands of <code class="docutils literal notranslate"><span class="pre">band()</span></code> rest on theory for right censored data and should not be used with interval censored Turnbull estimates.</p>
+<p>The variance at each value uses the same pieces as the estimate there: the expected failures in a piece <span class="math notranslate nohighlight">\((x_k, x_{k+1}]\)</span> enter both at <span class="math notranslate nohighlight">\(x_{k+1}\)</span>, where the estimate drops, so where the estimate is still 1 the bounds are <span class="math notranslate nohighlight">\([1, 1]\)</span>. Expected counts that are equal, or zero, up to rounding error are treated as exactly so: at a last value where every item still at risk fails the variance is undefined, just as for exact data. One sensitivity remains. The width of the log(-log) interval on its own scale is roughly <span class="math notranslate nohighlight">\(1/\sqrt{D}\)</span> for <span class="math notranslate nohighlight">\(D\)</span> expected failures so far, so where the ladder holds only a tiny fraction of a failure the bounds are <span class="math notranslate nohighlight">\([0, 1]\)</span> even though the estimate is 1 to eight decimal places. That happens where the EM leaves a small residue of mass on a piece the NPMLE gives none, which it can with the Nelson-Aalen and Fleming-Harrington options or under truncation (the Kaplan-Meier option without truncation avoids it, as described above). <code class="docutils literal notranslate"><span class="pre">bound_type='normal'</span></code> or <code class="docutils literal notranslate"><span class="pre">bootstrap_cb()</span></code> avoid it too.</p>
+</section>
+<section id="what-the-data-cannot-tell-you-non-identifiability">
+<h3>What the data cannot tell you: non-identifiability<a class="headerlink" href="#what-the-data-cannot-tell-you-non-identifiability" title="Link to this heading"></a></h3>
+<p>The NPMLE is a delicate object, and it is worth being clear about what it does <em>not</em> determine.</p>
+<p><strong>Mass inside an interval.</strong> The likelihood only depends on how much mass lies in each piece, not on where within the piece it lies. Within a piece where the estimate drops, every curve between the value at the left end and the value at the right end fits the data equally well. SurPyval’s step function places each piece’s drop at the piece’s right end, which is a convention, not an estimate. The fitted model keeps both ends of that range: <code class="docutils literal notranslate"><span class="pre">R_upper[k]</span></code> is the estimate at <code class="docutils literal notranslate"><span class="pre">x[k]</span></code> (before the drop in the piece <span class="math notranslate nohighlight">\((x_k, x_{k+1}]\)</span>, and the same as <code class="docutils literal notranslate"><span class="pre">R[k]</span></code>) and <code class="docutils literal notranslate"><span class="pre">R_lower[k]</span></code> the estimate at <code class="docutils literal notranslate"><span class="pre">x[k+1]</span></code> (after it), so every curve lying between them fits equally well. Evaluate Turnbull curves and bounds at piece boundaries (<code class="docutils literal notranslate"><span class="pre">model.bounds</span></code>, which also includes <span class="math notranslate nohighlight">\(\pm\infty\)</span> and any truncation times) when precision matters.</p>
+<p><strong>Mass outside the observation windows.</strong> With truncation the estimate is conditional: with left truncation it describes survival <em>given survival to the earliest entry time</em>; with right truncation it describes the distribution <em>given failure before the latest truncation time</em>. There is no information below the smallest left truncation time or above the largest right truncation time, and in effect the estimate assumes that the first value, if left truncated, had a 100% chance of observation, and likewise for the last value if right truncated. Only a parametric model, by assuming a shape, can extrapolate into those regions.</p>
+<p><strong>A likelihood with no maximum.</strong> Under truncation each observation’s likelihood is a ratio, the mass of the pieces it could have failed in (its <em>support</em>) over the mass of its truncation <em>window</em>. The supremum of such a product can lie where some windows carry no mass at all, a limit the parameter space does not contain: the NPMLE then <em>does not exist</em>, the EM climbs towards the boundary without settling, and raising <code class="docutils literal notranslate"><span class="pre">max_iter</span></code> does not help. Or the likelihood can be flat in some direction, so the maximum exists but is <em>not unique</em>. Which applies is a property of the data, not of the fit, and SurPyval decides it before the EM runs; the answer is <code class="docutils literal notranslate"><span class="pre">model.npmle</span></code>, one of <code class="docutils literal notranslate"><span class="pre">&quot;exists&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;not</span> <span class="pre">unique&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;does</span> <span class="pre">not</span> <span class="pre">exist&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;undetermined&quot;</span></code>.</p>
+<p>The criterion (derived in full in <code class="docutils literal notranslate"><span class="pre">surpyval/univariate/nonparametric/_turnbull_npmle.py</span></code>) comes from three results:</p>
+<ul class="simple">
+<li><p><em>Existence.</em> Call a set of pieces <em>closed</em> if every observation whose window meets it has a support that meets it. If every non-empty closed set meets every window, the maximum is attained (compactness). The condition is checked exactly in <span class="math notranslate nohighlight">\(O((N + M)\log M)\)</span>. It is a sample counterpart of Woodroofe’s condition that every time carrying mass be observable with positive probability <a class="reference internal" href="#woodroofe1985np" id="id20"><span>[Woodroofe1985np]</span></a>.</p></li>
+<li><p><em>Exact observations.</em> When every support is a single point this condition is the strong connectivity of the graph of Vardi and Wang <a class="reference internal" href="#vardi1985np" id="id21"><span>[Vardi1985np]</span></a> <a class="reference internal" href="#wang1991np" id="id22"><span>[Wang1991np]</span></a>, with an edge from <span class="math notranslate nohighlight">\(a\)</span> to <span class="math notranslate nohighlight">\(b\)</span> when an observation observable at <span class="math notranslate nohighlight">\(a\)</span> failed at <span class="math notranslate nohighlight">\(b\)</span>. As they showed, if the windows fall into groups that do not overlap, each strongly connected, the NPMLE exists but is not unique (nothing links the groups’ total masses); if a group is connected but not strongly connected, it does not exist.</p></li>
+<li><p><em>One-sided truncation, any censoring.</em> With left truncation only, the likelihood is a polynomial in the discrete hazards, which always has a maximiser; the NPMLE exists unless every maximiser has a hazard of one before the last entry, where the survival would be zero before someone is observed. That can happen only at a <em>gap</em>: a time <span class="math notranslate nohighlight">\(t\)</span>, before the last entry, such that nobody who had entered by <span class="math notranslate nohighlight">\(t\)</span> is known to have survived past it. If some support containing the gap ends before the last support starts, raising the hazard at the gap always raises the likelihood and the NPMLE <strong>does not exist</strong>; otherwise the likelihood does not depend on the gap’s hazard at all and the NPMLE exists but is <strong>not unique</strong>. With no gap it <strong>exists</strong>. Right truncation alone is the mirror image.</p></li>
+</ul>
+<p>The first case of the last result is the collapse seen with left censoring and staggered entry: a left censored observation whose support reaches below the other observations’ entry times, where their conditional likelihoods cannot see it. It also covers the delayed-entry Kaplan-Meier that falls to zero when every item at risk fails before the next item enters. The second needs a censored observation whose support runs across the gap: a left or interval censored one, or an item right censored before the next item enters (one item entering at 0 and censored at 1, another entering at 5 and failing at 6: nothing in the data says how much probability lies in <span class="math notranslate nohighlight">\((1, 5]\)</span>). With exact and right censored observations only, SurPyval returns the delayed-entry Kaplan-Meier, the maximiser that puts none there. Entering every unit at a common time removes both.</p>
+<p>With windows truncated on both sides <em>and</em> censored observations none of these arguments applies in full, and existence can depend on the counts, not just on which observation could have failed where. SurPyval reports <code class="docutils literal notranslate"><span class="pre">&quot;exists&quot;</span></code> when the first condition holds, <code class="docutils literal notranslate"><span class="pre">&quot;does</span> <span class="pre">not</span> <span class="pre">exist&quot;</span></code> when it finds a piece whose mass always raises the likelihood, and otherwise <code class="docutils literal notranslate"><span class="pre">&quot;undetermined&quot;</span></code>; then the EM’s convergence is the guide. For interval censored data with left truncation, Hudgens <a class="reference internal" href="#hudgens2005np" id="id23"><span>[Hudgens2005np]</span></a> gives a necessary and sufficient condition for existence; the one-sided result above was derived and checked numerically on its own, not transcribed from that paper.</p>
+<p>SurPyval warns when the verdict is <code class="docutils literal notranslate"><span class="pre">&quot;does</span> <span class="pre">not</span> <span class="pre">exist&quot;</span></code> (the estimate is not identifiable) or <code class="docutils literal notranslate"><span class="pre">&quot;not</span> <span class="pre">unique&quot;</span></code>. On 240 simulated samples of 30 left truncated observations with every kind of censoring, the verdict agreed with what the EM does every time: all 63 with <code class="docutils literal notranslate"><span class="pre">&quot;does</span> <span class="pre">not</span> <span class="pre">exist&quot;</span></code> drifted to the boundary (the smallest window mass shrinking tenfold or more between 1,000 and 10,000 iterations), the one <code class="docutils literal notranslate"><span class="pre">&quot;not</span> <span class="pre">unique&quot;</span></code> sample settled in different places from different starts with the same likelihood, and the 176 with <code class="docutils literal notranslate"><span class="pre">&quot;exists&quot;</span></code> did not drift. The share of the fitted mass on pieces that some observation gains from and none pays for, still reported as <code class="docutils literal notranslate"><span class="pre">exploitable_mass</span></code>, ranged from 0.11 to 0.99 on the samples whose NPMLE does not exist, which is why it no longer decides the warning.</p>
+<p>“Exists” rules out the free directions above, not every ambiguity: besides the placement of mass inside a piece, interval censored data can have a ridge of maxima with the same likelihood <a class="reference internal" href="#gentlemangeyer1994np" id="id24"><span>[GentlemanGeyer1994np]</span></a>. Two of those 176 samples did.</p>
+<p><strong>A collapsed estimate.</strong> If the iteration produces a non-finite update, or (under truncation) the survival estimate collapses to essentially zero across the region the data can identify, SurPyval warns and sets <code class="docutils literal notranslate"><span class="pre">degenerate</span> <span class="pre">=</span> <span class="pre">True</span></code> on the model. The fitted model also records <code class="docutils literal notranslate"><span class="pre">converged</span></code> and <code class="docutils literal notranslate"><span class="pre">iters</span></code>. Treat any Turnbull estimate for which a warning was raised with suspicion: it is telling you that the data do not pin down a unique curve.</p>
+</section>
+<section id="when-to-use-it">
+<h3>When to use it<a class="headerlink" href="#when-to-use-it" title="Link to this heading"></a></h3>
+<p>The Turnbull estimator is the only non-parametric method that can handle left censoring, interval censoring, and right truncation (and arbitrary combinations of censoring and truncation). Left truncation / delayed entry on its own is handled by the Kaplan-Meier, Nelson-Aalen and Fleming-Harrington estimators too, via the <code class="docutils literal notranslate"><span class="pre">tl</span></code> keyword; it is only the left/interval censoring and right truncation that require Turnbull. Turnbull must therefore be used to supply the plotting positions in the parametric package whenever such data is present. For data the simpler estimators can handle, prefer them: they are exact rather than iterative, and their confidence bounds rest on firmer ground.</p>
+</section>
+</section>
+<section id="on-surpyval-s-recommended-estimator">
+<h2>On Surpyval’s recommended estimator<a class="headerlink" href="#on-surpyval-s-recommended-estimator" title="Link to this heading"></a></h2>
+<p>Two distinct “defaults” are worth separating. When a non-parametric estimate is
+used <em>internally</em> as the plotting position for a parametric probability plot,
+surpyval uses the Nelson-Aalen estimator (as noted above), because for a
+completely observed data set it never assigns probability 1 to the largest
+value and so plots cleanly on a transformed axis. When you want a <em>standalone</em>
+non-parametric survival estimate, however, the Fleming-Harrington estimator is
+the recommended choice (and is the default estimator applied to a Turnbull
+ladder). The rationale is that it has near-optimal behaviour: it
+performs well where the Kaplan-Meier and the Nelson-Aalen behave poorly.</p>
+<p>The Kaplan-Meier, since its estimate of the probability of failure reaches 1 at the last failure of a completely observed sample, results in cases where it overstates the probability of failure in the tail: having seen every one of a finite sample fail says little about whether the population could last longer. (A related but distinct warning applies to competing risks: one minus a Kaplan-Meier that treats failures from other causes as censored overstates the probability of failing from the cause of interest, and the Nelson-Aalen construction has the same problem. Use the cumulative incidence methods described in <a class="reference internal" href="Competing%20Risks%20Analysis.html"><span class="doc">Competing Risks Analysis</span></a> there.) As an example, a comparison between a Nelson-Aalen and Kaplan-Meier estimate over time (I have plotted the Fleming-Harrington estimate for later discussion):</p>
+<img alt="_images/km_na_high_comparison.png" class="align-center" src="_images/km_na_high_comparison.png" />
+<p>On the contrary, the Nelson-Aalen estimate performs poorly with lots of ties. With many failures tied at one time, the factor <span class="math notranslate nohighlight">\(e^{-d/r}\)</span> is much larger than <span class="math notranslate nohighlight">\(1 - d/r\)</span>, so the Nelson-Aalen estimator understates the probability of failure (overstates survival) at the lower failure times. This is in contrast to the Kaplan-Meier estimator which does well with lots of tied values. For example:</p>
+<img alt="_images/km_na_low_comparison.png" class="align-center" src="_images/km_na_low_comparison.png" />
+<p>The Fleming-Harrington, plotted in red in the above two charts, optimises between these two estimators. The Fleming-Harrington estimate approaches the Nelson-Aalen under the conditions of where the Nelson-Aalen estimate performs well and the Kaplan-Meier does poorly. Fleming-Harrington also does well where the Nelson-Aalen estimate does poorly but the Kaplan-Meier does well. Both follow from its construction: without ties it <em>is</em> the Nelson-Aalen, and with ties its tie-splitting ladder brings it close to the Kaplan-Meier. Although the two examples provided are in the extreme, it is worth reaching for the Fleming-Harrington as a general-purpose non-parametric estimator since it is more flexible; it is for this reason that surpyval recommends it. This is not to say not to use KM or NA, but only when you are sure you are making the correct assumptions about what you are doing! In particular, reach for the Kaplan-Meier when you need the maximum likelihood estimate itself, or results that match other software’s product-limit output, and remember that for large samples with few ties the three are practically indistinguishable.</p>
+<section id="plotting-positions">
+<h3>Plotting positions<a class="headerlink" href="#plotting-positions" title="Link to this heading"></a></h3>
+<p>Probability plotting, the traditional way to check and fit a distribution by eye (see <a class="reference internal" href="Parametric%20Estimation.html"><span class="doc">Parametric Estimation</span></a>), needs an estimate of <span class="math notranslate nohighlight">\(F\)</span> at each observation. Any of the estimators above can supply one, but there is a long tradition of simpler rank-based formulas, called <em>plotting positions</em> or <em>heuristics</em>. For the <span class="math notranslate nohighlight">\(i\)</span>-th smallest of <span class="math notranslate nohighlight">\(N\)</span> values they have the form</p>
+<div class="math notranslate nohighlight">
+\[\hat{F}_i = \frac{i - A}{N + B}\]</div>
+<p>for constants <span class="math notranslate nohighlight">\(A\)</span> and <span class="math notranslate nohighlight">\(B\)</span>. The idea is that, whatever the true distribution, <span class="math notranslate nohighlight">\(F(X_{(i)})\)</span> for the <span class="math notranslate nohighlight">\(i\)</span>-th smallest value <span class="math notranslate nohighlight">\(X_{(i)}\)</span> is distributed like the <span class="math notranslate nohighlight">\(i\)</span>-th smallest of <span class="math notranslate nohighlight">\(N\)</span> uniform values, a Beta(<span class="math notranslate nohighlight">\(i, N-i+1\)</span>) variable. Its mean is <span class="math notranslate nohighlight">\(i/(N+1)\)</span> (<code class="docutils literal notranslate"><span class="pre">'Mean'</span></code>), its mode <span class="math notranslate nohighlight">\((i-1)/(N-1)\)</span> (<code class="docutils literal notranslate"><span class="pre">'Modal'</span></code>), and its median is very closely approximated by Benard’s <span class="math notranslate nohighlight">\((i-0.3)/(N+0.4)\)</span> (<code class="docutils literal notranslate"><span class="pre">'Median'</span></code>; Filliben’s heuristic below is another approximation to the median). Blom’s constants instead make <span class="math notranslate nohighlight">\(\Phi^{-1}(\hat{F}_i)\)</span> approximate the expected order statistics of a normal sample, and the rest are traditional compromises between these. Most of them keep <span class="math notranslate nohighlight">\(\hat{F}\)</span> strictly between 0 and 1, which a transformed probability axis needs; the plain <code class="docutils literal notranslate"><span class="pre">ECDF</span></code>, <code class="docutils literal notranslate"><span class="pre">None</span></code>, <code class="docutils literal notranslate"><span class="pre">Modal</span></code> and <code class="docutils literal notranslate"><span class="pre">DPW</span></code> choices do not. Those available in <code class="docutils literal notranslate"><span class="pre">surpyval.univariate.nonparametric.plotting_positions</span></code> are:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Heuristic</p></th>
+<th class="head"><p>A</p></th>
+<th class="head"><p>B</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Blom</p></td>
+<td><p>0.375</p></td>
+<td><p>0.25</p></td>
+</tr>
+<tr class="row-odd"><td><p>Median</p></td>
+<td><p>0.3</p></td>
+<td><p>0.4</p></td>
+</tr>
+<tr class="row-even"><td><p>ECDF</p></td>
+<td><p>0</p></td>
+<td><p>0</p></td>
+</tr>
+<tr class="row-odd"><td><p>ECDF_Adj</p></td>
+<td><p>0</p></td>
+<td><p>1</p></td>
+</tr>
+<tr class="row-even"><td><p>Modal</p></td>
+<td><p>1</p></td>
+<td><p>-1</p></td>
+</tr>
+<tr class="row-odd"><td><p>Midpoint</p></td>
+<td><p>0.5</p></td>
+<td><p>0</p></td>
+</tr>
+<tr class="row-even"><td><p>Mean / Weibull</p></td>
+<td><p>0</p></td>
+<td><p>1</p></td>
+</tr>
+<tr class="row-odd"><td><p>Benard</p></td>
+<td><p>0.3</p></td>
+<td><p>0.4</p></td>
+</tr>
+<tr class="row-even"><td><p>Beard</p></td>
+<td><p>0.31</p></td>
+<td><p>0.38</p></td>
+</tr>
+<tr class="row-odd"><td><p>Hazen</p></td>
+<td><p>0.5</p></td>
+<td><p>0</p></td>
+</tr>
+<tr class="row-even"><td><p>Gringorten</p></td>
+<td><p>0.44</p></td>
+<td><p>0.12</p></td>
+</tr>
+<tr class="row-odd"><td><p>Larsen</p></td>
+<td><p>0.567</p></td>
+<td><p>-0.134</p></td>
+</tr>
+<tr class="row-even"><td><p>Tukey</p></td>
+<td><p>1/3</p></td>
+<td><p>1/3</p></td>
+</tr>
+<tr class="row-odd"><td><p>DPW</p></td>
+<td><p>1</p></td>
+<td><p>0</p></td>
+</tr>
+<tr class="row-even"><td><p>None</p></td>
+<td><p>0</p></td>
+<td><p>0</p></td>
+</tr>
+</tbody>
+</table>
+<p>The names are the strings to pass as <code class="docutils literal notranslate"><span class="pre">heuristic</span></code> (<code class="docutils literal notranslate"><span class="pre">'Mean'</span></code> and <code class="docutils literal notranslate"><span class="pre">'Weibull'</span></code> are the same formula, as are <code class="docutils literal notranslate"><span class="pre">'Median'</span></code> and <code class="docutils literal notranslate"><span class="pre">'Benard'</span></code>).</p>
+<p>The Filliben heuristic <a class="reference internal" href="#filliben1975np" id="id25"><span>[Filliben1975np]</span></a> uses <span class="math notranslate nohighlight">\(A = 0.3175, B = 0.365\)</span> for the interior values and <span class="math notranslate nohighlight">\(1 - 0.5^{1/N}\)</span> and <span class="math notranslate nohighlight">\(0.5^{1/N}\)</span> for the smallest and largest. With right censored data the ranks <span class="math notranslate nohighlight">\(i\)</span> of the failures are replaced by adjusted (mean order number) ranks: each failure’s rank is the previous adjusted rank plus <span class="math notranslate nohighlight">\((N + 1 - \text{previous rank}) / (1 + \text{number of items at or beyond the current position})\)</span>, which shares the “missing” ranks of censored items among the later failures, much as the Kaplan-Meier redistributes their mass. Filliben’s end-point values go only to a failure whose adjusted rank is exactly 1 or <span class="math notranslate nohighlight">\(N\)</span>. A first failure with censored items before it, or a last failure in a sample with any censored item, has an adjusted rank strictly between the two and takes the interior formula. The rank-based heuristics cannot handle truncation; the <code class="docutils literal notranslate"><span class="pre">'Kaplan-Meier'</span></code>, <code class="docutils literal notranslate"><span class="pre">'Nelson-Aalen'</span></code> and <code class="docutils literal notranslate"><span class="pre">'Fleming-Harrington'</span></code> options handle left truncation; and left censoring, interval censoring or right truncation require <code class="docutils literal notranslate"><span class="pre">'Turnbull'</span></code>.</p>
+</section>
+</section>
+<section id="comparing-two-groups-the-log-rank-test">
+<h2>Comparing two groups: the log-rank test<a class="headerlink" href="#comparing-two-groups-the-log-rank-test" title="Link to this heading"></a></h2>
+<p>Having estimated a survival curve for each of several groups, the natural next question is whether the groups genuinely <em>differ</em>, or whether the separation between the curves is just sampling noise. The <strong>log-rank test</strong> answers this. At every distinct event time it compares the number of failures observed in each group with the number <em>expected</em> if all groups shared one common survival curve, where the expected count in a group is the total number of failures at that time apportioned by the group’s share of the risk set. Summing the observed-minus-expected differences over all event times, and dividing by their variance, gives a statistic that is <span class="math notranslate nohighlight">\(\chi^2\)</span> distributed with <span class="math notranslate nohighlight">\(k - 1\)</span> degrees of freedom for <span class="math notranslate nohighlight">\(k\)</span> groups (counting, as R’s <code class="docutils literal notranslate"><span class="pre">survdiff</span></code> does, only groups with a positive expected number of failures; a group never at risk at a failure time carries no information). A small <span class="math notranslate nohighlight">\(p\)</span>-value is evidence the groups differ.</p>
+<p>Concretely, at event time <span class="math notranslate nohighlight">\(t\)</span> let <span class="math notranslate nohighlight">\(r_{gt}\)</span> and <span class="math notranslate nohighlight">\(d_{gt}\)</span> be the number at risk and the number of failures in group <span class="math notranslate nohighlight">\(g\)</span>, and <span class="math notranslate nohighlight">\(r_t\)</span> and <span class="math notranslate nohighlight">\(d_t\)</span> the pooled totals. Under the null hypothesis the failures at <span class="math notranslate nohighlight">\(t\)</span> are shared out like a draw without replacement from the risk set, so the expected count in group <span class="math notranslate nohighlight">\(g\)</span> is <span class="math notranslate nohighlight">\(E_{gt} = d_t r_{gt}/r_t\)</span> with hypergeometric variance <span class="math notranslate nohighlight">\(d_t \frac{r_t - d_t}{r_t - 1} \frac{r_{gt}}{r_t}\left(1 - \frac{r_{gt}}{r_t}\right)\)</span>. The test statistic is built from <span class="math notranslate nohighlight">\(\sum_t w_t (d_{gt} - E_{gt})\)</span> and the corresponding (weighted) covariance, with one group dropped because the differences sum to zero. The test uses exact and right censored data.</p>
+<p>The plain log-rank weights every event time equally (<span class="math notranslate nohighlight">\(w_t = 1\)</span>), which makes it most sensitive to <em>proportional</em> differences in hazard. Weighted variants change that emphasis: the <strong>Gehan-Breslow</strong> (<span class="math notranslate nohighlight">\(w_t = r_t\)</span>) and <strong>Tarone-Ware</strong> (<span class="math notranslate nohighlight">\(w_t = \sqrt{r_t}\)</span>) weights, and the <strong>Fleming-Harrington</strong> family <span class="math notranslate nohighlight">\(w_t = \hat{S}(t-)^{\rho}(1 - \hat{S}(t-))^{\gamma}\)</span> (with <span class="math notranslate nohighlight">\(\hat{S}\)</span> the pooled Kaplan-Meier just before <span class="math notranslate nohighlight">\(t\)</span>), up-weight early or late times so the test is more sensitive to differences concentrated there. Because the risk set is largest at the start, the Gehan-Breslow and Tarone-Ware weights emphasise early differences (Gehan more strongly), but they also depend on the censoring pattern, which the Fleming-Harrington weights do not. In the Fleming-Harrington family <span class="math notranslate nohighlight">\(\rho &gt; 0, \gamma = 0\)</span> emphasises early differences (<span class="math notranslate nohighlight">\(\rho = 1\)</span> is close to the Peto-Peto test), <span class="math notranslate nohighlight">\(\rho = 0, \gamma &gt; 0\)</span> late ones, and <span class="math notranslate nohighlight">\(\rho = \gamma = 0\)</span> is the plain log-rank. Choose the weighting <em>before</em> looking at the data: trying several and reporting the smallest <span class="math notranslate nohighlight">\(p\)</span>-value inflates the false-positive rate. See <a class="reference internal" href="#kleinmoeschberger2003np" id="id26"><span>[KleinMoeschberger2003np]</span></a> (chapter 7). (These Fleming-Harrington <em>weights</em> are a different thing from the Fleming-Harrington <em>estimator</em> above; the same two authors are behind both.)</p>
+<p>When a <em>nuisance</em> factor (a site, a batch) also affects survival, comparing groups while ignoring it can be misleading if the groups are unevenly distributed across its levels. The <strong>stratified log-rank</strong> accumulates the observed-minus-expected numerators and their variances <em>within</em> each stratum before forming the statistic, so groups are only ever compared against others in the same stratum — the same logic as stratification in a Cox model, applied to the two-sample test. The degrees of freedom are still <span class="math notranslate nohighlight">\(k - 1\)</span>, and with Fleming-Harrington weights the pooled Kaplan-Meier behind the weights is computed within each stratum.</p>
+<p>With sampling or propensity weights (<code class="docutils literal notranslate"><span class="pre">w=</span></code>) the numbers at risk and of failures are weighted, and the hypergeometric variance no longer applies: it would treat a weight of 2.5 as 2.5 units seen. The weighted test uses the design-based variance instead, the sum over the units of the squares of their weighted contributions to the numerator (each unit’s score residual), which is the robust score test of a Cox model of the groups (see <a class="reference internal" href="Weighted%20Data.html"><span class="doc">Weighted Data</span></a>).</p>
+</section>
+<section id="restricted-mean-survival-time">
+<h2>Restricted mean survival time<a class="headerlink" href="#restricted-mean-survival-time" title="Link to this heading"></a></h2>
+<p>A hazard ratio (from a log-rank test or a Cox model) only has a clean interpretation when the proportional-hazards assumption holds. When it does not — curves that cross, an effect that reverses over time — the <strong>restricted mean survival time</strong> (RMST) is an assumption-light summary. It is the area under the survival curve up to a horizon <span class="math notranslate nohighlight">\(\tau\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[\text{RMST}(\tau) = \int_0^{\tau} S(t)\, dt,\]</div>
+<p>which is exactly the average event-free time over the first <span class="math notranslate nohighlight">\(\tau\)</span> units and is always well defined. For a non-parametric estimate the integral is a sum of rectangles under the step function. Its variance is</p>
+<div class="math notranslate nohighlight">
+\[\widehat{Var}\left(\widehat{\text{RMST}}(\tau)\right) = \sum_{i: x_i \leq \tau} A_i^2 \, v_i\]</div>
+<p>where <span class="math notranslate nohighlight">\(A_i\)</span> is the area under the estimated curve from <span class="math notranslate nohighlight">\(x_i\)</span> to <span class="math notranslate nohighlight">\(\tau\)</span> and <span class="math notranslate nohighlight">\(v_i\)</span> is the increment at <span class="math notranslate nohighlight">\(x_i\)</span> of the estimator’s variance of <span class="math notranslate nohighlight">\(\hat{H}\)</span> (Greenwood’s increment <span class="math notranslate nohighlight">\(d_i / (r_i(r_i - d_i))\)</span> for the Kaplan-Meier, the corresponding increments for the Nelson-Aalen and Fleming-Harrington). For the Kaplan-Meier this is the standard estimator (see <a class="reference internal" href="#kleinmoeschberger2003np" id="id27"><span>[KleinMoeschberger2003np]</span></a>, section 4.5); using the other estimators’ increments is the natural analogue. A Turnbull model uses the increments of its variance ladder, so with left or interval censoring the standard error inherits the approximation described in <a class="reference internal" href="#uncertainty-in-a-turnbull-estimate">Uncertainty in a Turnbull estimate</a>. Intuitively, uncertainty in the hazard at <span class="math notranslate nohighlight">\(x_i\)</span> moves the whole curve after <span class="math notranslate nohighlight">\(x_i\)</span>, and hence the area <span class="math notranslate nohighlight">\(A_i\)</span>. Comparing two groups by the <strong>difference</strong> in their RMST gives an effect measured in the natural units of time, with the variance of the difference being the sum of the two (independent) variances, and needs no assumption about the shape of, or relationship between, the two hazards. SurPyval’s intervals are the plain normal ones, <span class="math notranslate nohighlight">\(\widehat{\text{RMST}} \pm z\,\widehat{SE}\)</span>, and the <span class="math notranslate nohighlight">\(p\)</span>-value for the difference is the two-sided <span class="math notranslate nohighlight">\(z\)</span>-test of a zero difference. The choice of <span class="math notranslate nohighlight">\(\tau\)</span> matters: it should be a time of practical interest at which both curves are still supported by data.</p>
+<p>For worked examples — fitting the Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull estimators, confidence bounds and bands, Turnbull diagnostics, plotting positions and success-run testing, and comparing groups with the log-rank test and RMST difference — see the <a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html"><span class="doc">Non-Parametric SurPyval Modelling</span></a> page.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<div role="list" class="citation-list">
+<div class="citation" id="km" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">KM</a><span class="fn-bracket">]</span></span>
+<p>Kaplan, E. L., &amp; Meier, P. (1958). Nonparametric estimation from incomplete observations. Journal of the American statistical association, 53(282), 457-481.</p>
+</div>
+<div class="citation" id="na" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id10">NA</a><span class="fn-bracket">]</span></span>
+<p>Nelson, Wayne (1969). Hazard plotting for incomplete failure data. Journal of Quality Technology, 1(1), 27-52.</p>
+</div>
+<div class="citation" id="fh" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>FH<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id14">1</a>,<a role="doc-backlink" href="#id15">2</a>,<a role="doc-backlink" href="#id16">3</a>)</span>
+<p>Fleming, Thomas R and Harrington, David P (1984). Nonparametric estimation of the survival distribution in censored data. Communications in Statistics-Theory and Methods, 13(20), 2469-2486.</p>
+</div>
+<div class="citation" id="tb" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>TB<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id17">1</a>,<a role="doc-backlink" href="#id18">2</a>)</span>
+<p>Turnbull, Bruce W (1976). The empirical distribution function with arbitrarily grouped, censored and truncated data. Journal of the Royal Statistical Society: Series B (Methodological), 38(3), 290-295.</p>
+</div>
+<div class="citation" id="greenwood1926np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">Greenwood1926np</a><span class="fn-bracket">]</span></span>
+<p>Greenwood, M. (1926). The natural duration of cancer. Reports on Public Health and Medical Subjects, 33, 1-26. London: His Majesty’s Stationery Office.</p>
+</div>
+<div class="citation" id="aalen1978np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id11">Aalen1978np</a><span class="fn-bracket">]</span></span>
+<p>Aalen, O. (1978). Nonparametric inference for a family of counting processes. The Annals of Statistics, 6(4), 701-726.</p>
+</div>
+<div class="citation" id="klein1991np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id12">Klein1991np</a><span class="fn-bracket">]</span></span>
+<p>Klein, J. P. (1991). Small sample moments of some estimators of the variance of the Kaplan-Meier and Nelson-Aalen estimators. Scandinavian Journal of Statistics, 18(4), 333-340.</p>
+</div>
+<div class="citation" id="efron1967np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">Efron1967np</a><span class="fn-bracket">]</span></span>
+<p>Efron, B. (1967). The two sample problem with censored data. Proceedings of the Fifth Berkeley Symposium on Mathematical Statistics and Probability, 4, 831-853.</p>
+</div>
+<div class="citation" id="hallwellner1980np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id5">HallWellner1980np</a><span class="fn-bracket">]</span></span>
+<p>Hall, W. J., &amp; Wellner, J. A. (1980). Confidence bands for a survival curve from censored data. Biometrika, 67(1), 133-143.</p>
+</div>
+<div class="citation" id="nair1984np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id6">Nair1984np</a><span class="fn-bracket">]</span></span>
+<p>Nair, V. N. (1984). Confidence bands for survival functions with censored data: a comparative study. Technometrics, 26(3), 265-275.</p>
+</div>
+<div class="citation" id="wellnerzhan1997np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id19">WellnerZhan1997np</a><span class="fn-bracket">]</span></span>
+<p>Wellner, J. A. and Zhan, Y. (1997). A hybrid algorithm for computation of the nonparametric maximum likelihood estimator from censored data. Journal of the American Statistical Association, 92(439), 945-959.</p>
+</div>
+<div class="citation" id="borganliestol1990np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>BorganLiestol1990np<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id4">1</a>,<a role="doc-backlink" href="#id7">2</a>)</span>
+<p>Borgan, Ø. and Liestøl, K. (1990). A note on confidence intervals and bands for the survival function based on transformations. Scandinavian Journal of Statistics, 17(1), 35-41.</p>
+</div>
+<div class="citation" id="brookmeyercrowley1982np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id9">BrookmeyerCrowley1982np</a><span class="fn-bracket">]</span></span>
+<p>Brookmeyer, R., &amp; Crowley, J. (1982). A confidence interval for the median survival time. Biometrics, 38(1), 29-41.</p>
+</div>
+<div class="citation" id="kleinmoeschberger2003np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>KleinMoeschberger2003np<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id8">1</a>,<a role="doc-backlink" href="#id13">2</a>,<a role="doc-backlink" href="#id26">3</a>,<a role="doc-backlink" href="#id27">4</a>)</span>
+<p>Klein, J. P., &amp; Moeschberger, M. L. (2003). Survival Analysis: Techniques for Censored and Truncated Data (2nd ed.). Springer.</p>
+</div>
+<div class="citation" id="filliben1975np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id25">Filliben1975np</a><span class="fn-bracket">]</span></span>
+<p>Filliben, J. J. (1975). The probability plot correlation coefficient test for normality. Technometrics, 17(1), 111-117.</p>
+</div>
+<div class="citation" id="vardi1985np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id21">Vardi1985np</a><span class="fn-bracket">]</span></span>
+<p>Vardi, Y. (1985). Empirical distributions in selection bias models. The Annals of Statistics, 13(1), 178-203.</p>
+</div>
+<div class="citation" id="wang1991np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id22">Wang1991np</a><span class="fn-bracket">]</span></span>
+<p>Wang, M.-C. (1991). Nonparametric estimation from cross-sectional survival data. Journal of the American Statistical Association, 86(413), 130-143.</p>
+</div>
+<div class="citation" id="woodroofe1985np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id20">Woodroofe1985np</a><span class="fn-bracket">]</span></span>
+<p>Woodroofe, M. (1985). Estimating a distribution function with truncated data. The Annals of Statistics, 13(1), 163-177.</p>
+</div>
+<div class="citation" id="hudgens2005np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id23">Hudgens2005np</a><span class="fn-bracket">]</span></span>
+<p>Hudgens, M. G. (2005). On nonparametric maximum likelihood estimation with interval censoring and left truncation. Journal of the Royal Statistical Society: Series B, 67(4), 573-587.</p>
+</div>
+<div class="citation" id="gentlemangeyer1994np" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id24">GentlemanGeyer1994np</a><span class="fn-bracket">]</span></span>
+<p>Gentleman, R., &amp; Geyer, C. J. (1994). Maximum likelihood for interval censored data: consistency and computation. Biometrika, 81(3), 618-623.</p>
+</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Weighted%20Data.html" class="btn btn-neutral float-left" title="Weighted Data" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Parametric%20Estimation.html" class="btn btn-neutral float-right" title="Parametric Estimation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,1454 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Degradation Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Joint Models" href="Joint%20Models.html" />
+    <link rel="prev" title="Recurrent Event Regression Analysis" href="Recurrent%20Event%20Regression%20Analysis.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Degradation Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#choosing-an-approach">Choosing an approach</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#notation">Notation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-general-path-pseudo-failure-time-approach">The general-path (pseudo-failure-time) approach</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-path-model">The path model</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#predicting-a-new-unit-and-remaining-useful-life">Predicting a new unit, and remaining useful life</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-population-path-parameter-distribution">The population path-parameter distribution</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-two-stage-moments-estimate">The two-stage (moments) estimate</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-reml-estimate">The REML estimate</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#induced-failure-time-distribution-lu-meeker">Induced failure-time distribution (Lu-Meeker)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#uncertainty-two-stage-confidence-bounds">Uncertainty: two-stage confidence bounds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#accelerated-degradation-stress-dependent-path-parameters">Accelerated degradation: stress-dependent path parameters</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#stress-on-the-life-a-regression-on-the-pseudo-failure-times">Stress on the life: a regression on the pseudo failure times</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stress-on-the-mechanism-path-parameters-that-depend-on-stress">Stress on the mechanism: path parameters that depend on stress</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#step-stress-degradation-an-accelerated-clock">Step-stress degradation: an accelerated clock</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-clock">The clock</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#estimating-the-acceleration">Estimating the acceleration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#life-and-prediction-on-the-clock">Life and prediction on the clock</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#choosing-how-stress-enters-a-general-path-model">Choosing how stress enters a general-path model</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#stochastic-process-degradation-models">Stochastic-process degradation models</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#the-wiener-process">The Wiener process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-gamma-process">The Gamma process</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stress-and-time-varying-stress">Stress and time-varying stress</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#choosing-between-a-path-and-a-process">Choosing between a path and a process</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#destructive-degradation">Destructive degradation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Degradation Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Degradation Analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="degradation-analysis">
+<h1>Degradation Analysis<a class="headerlink" href="#degradation-analysis" title="Link to this heading"></a></h1>
+<p>Sometimes failure data is scarce or takes too long to collect: items are
+highly reliable, test time is limited, and few (or no) units fail during the
+observation window. But failure is often the end point of a gradual,
+measurable process — a crack grows, a resistance drifts, a lumen output fades,
+a material wears. Degradation analysis exploits this: instead of waiting for
+units to fail, we track a <em>degradation measurement</em> over time on each unit,
+define failure as the measurement crossing a <em>threshold</em>, and infer a
+failure-time distribution from the way the measurements evolve — even for units
+that never actually failed on test.</p>
+<p>The idea that makes this work is simple. If failure <em>is</em> “the degradation
+reached <span class="math notranslate nohighlight">\(D\)</span>”, then anything that tells you how degradation evolves also
+tells you when it will reach <span class="math notranslate nohighlight">\(D\)</span>. A unit that has drifted halfway to the
+threshold in 500 hours, at a steady rate, will probably fail at around 1000
+hours — no failure needed. Everything on this page is a more careful version of
+that sentence: how to describe the evolution (a curve, or a random process),
+how to account for units differing from each other, how to account for
+measurement noise, and how to carry all of it through to a failure-time
+distribution with honest uncertainty.</p>
+<p>This page is the theory. Every model here is demonstrated, with runnable code,
+on the <a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html"><span class="doc">Degradation Modelling with SurPyval</span></a> page, which follows the same
+order.</p>
+<section id="choosing-an-approach">
+<h2>Choosing an approach<a class="headerlink" href="#choosing-an-approach" title="Link to this heading"></a></h2>
+<p>Three families of model are available, and the choice is dictated mostly by
+<em>how</em> you measure and <em>what the degradation physically does</em>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 35.0%" />
+<col style="width: 35.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Your data look like…</p></th>
+<th class="head"><p>Use</p></th>
+<th class="head"><p>Because</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>each unit measured repeatedly, and each unit’s trace is a smooth trend
+plus measurement scatter (units differ in their <em>rate</em>)</p></td>
+<td><p>the <strong>general-path</strong> model (<code class="docutils literal notranslate"><span class="pre">DegradationAnalysis</span></code>)</p></td>
+<td><p>the randomness is <em>between</em> units (each has its own curve), not along
+each unit’s path</p></td>
+</tr>
+<tr class="row-odd"><td><p>each unit measured repeatedly, and each unit’s trace wanders or jumps
+on its own</p></td>
+<td><p>a <strong>stochastic process</strong> (<code class="docutils literal notranslate"><span class="pre">WienerProcess</span></code> if the signal can go down,
+<code class="docutils literal notranslate"><span class="pre">GammaProcess</span></code> if it only ever increases)</p></td>
+<td><p>the randomness is <em>along</em> the path: every interval adds an independent
+random amount of damage</p></td>
+</tr>
+<tr class="row-even"><td><p>each unit measured <strong>once</strong>, because measuring destroys it</p></td>
+<td><p><strong>destructive degradation</strong> (<code class="docutils literal notranslate"><span class="pre">DestructiveDegradation</span></code>)</p></td>
+<td><p>there are no paths, only the distribution of the measurement at each age</p></td>
+</tr>
+</tbody>
+</table>
+<p>All three can be combined with stress: units run at elevated or changing stress
+(temperature, voltage, load) to make degradation happen faster, and the model
+then predicts life at the (lower) use stress. How stress enters is its own
+topic, covered in <a class="reference internal" href="#accelerated-degradation-stress-dependent-path-parameters">Accelerated degradation: stress-dependent path
+parameters</a> and <a class="reference internal" href="#step-stress-degradation-an-accelerated-clock">Step-stress degradation: an accelerated clock</a>, with a
+summary of which to use in <a class="reference internal" href="#choosing-how-stress-enters-a-general-path-model">Choosing how stress enters a general-path
+model</a>.</p>
+</section>
+<section id="notation">
+<h2>Notation<a class="headerlink" href="#notation" title="Link to this heading"></a></h2>
+<p>Used throughout the page:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Symbol</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(i\)</span>, <span class="math notranslate nohighlight">\(j\)</span></p></td>
+<td><p>unit <span class="math notranslate nohighlight">\(i = 1..n\)</span>, and its <span class="math notranslate nohighlight">\(j\)</span>-th measurement</p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(t_{ij}\)</span>, <span class="math notranslate nohighlight">\(y_{ij}\)</span></p></td>
+<td><p>the time and value of that measurement</p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(D\)</span></p></td>
+<td><p>the failure threshold: a unit has failed once its degradation reaches
+<span class="math notranslate nohighlight">\(D\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(g(t; \theta)\)</span></p></td>
+<td><p>a <em>path model</em>: the degradation curve at time <span class="math notranslate nohighlight">\(t\)</span> for a unit
+with path parameters <span class="math notranslate nohighlight">\(\theta\)</span> (e.g. <span class="math notranslate nohighlight">\(a + b t\)</span>)</p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(\theta_i\)</span></p></td>
+<td><p>unit <span class="math notranslate nohighlight">\(i\)</span>’s path parameters; <span class="math notranslate nohighlight">\(\hat\theta_i\)</span> its
+least-squares estimate</p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(\mu\)</span>, <span class="math notranslate nohighlight">\(\Sigma\)</span></p></td>
+<td><p>the population mean and between-unit covariance of the path parameters</p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(\sigma^2\)</span></p></td>
+<td><p>the measurement-error variance around a unit’s path</p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(\hat T_i\)</span>, <span class="math notranslate nohighlight">\(\phi\)</span></p></td>
+<td><p>unit <span class="math notranslate nohighlight">\(i\)</span>’s pseudo failure time, and the parameters of the
+lifetime distribution fitted to the pseudo failure times</p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(z\)</span>, <span class="math notranslate nohighlight">\(\gamma\)</span></p></td>
+<td><p>a stress (covariate) row, and the coefficients describing its effect:
+the fixed effects of a stress-dependent population, or the stress
+coefficients of the accelerated clock (the section says which)</p></td>
+</tr>
+<tr class="row-odd"><td><p><span class="math notranslate nohighlight">\(\eta\)</span>, <span class="math notranslate nohighlight">\(D(z)\)</span></p></td>
+<td><p>path parameters on a <em>link</em> scale (e.g. <span class="math notranslate nohighlight">\(\log b\)</span>), and the
+design matrix that maps <span class="math notranslate nohighlight">\(\gamma\)</span> to their mean at stress
+<span class="math notranslate nohighlight">\(z\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p><span class="math notranslate nohighlight">\(\mathrm{AF}(z)\)</span>, <span class="math notranslate nohighlight">\(\tau(t)\)</span></p></td>
+<td><p>the acceleration factor of stress <span class="math notranslate nohighlight">\(z\)</span>, and the reference-stress
+time a unit has aged by calendar time <span class="math notranslate nohighlight">\(t\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<section id="the-general-path-pseudo-failure-time-approach">
+<h3>The general-path (pseudo-failure-time) approach<a class="headerlink" href="#the-general-path-pseudo-failure-time-approach" title="Link to this heading"></a></h3>
+<p>The classic approach treats each unit’s degradation as a smooth deterministic
+curve observed with measurement error:</p>
+<div class="math notranslate nohighlight">
+\[y_{ij} = g(t_{ij}; \theta_i) + \varepsilon_{ij},
+\qquad \varepsilon_{ij} \sim N(0, \sigma^2).\]</div>
+<p>Units differ because each has its own <span class="math notranslate nohighlight">\(\theta_i\)</span> — one resistor drifts at
+0.3 Ω per 1000 h, another at 0.4 — and the measurements scatter around each
+unit’s curve because instruments are noisy. The randomness that makes lifetimes
+differ is therefore <em>between</em> units: once you know a unit’s <span class="math notranslate nohighlight">\(\theta_i\)</span>,
+its failure time is fixed,</p>
+<div class="math notranslate nohighlight">
+\[T_i = g^{-1}(D; \theta_i),\]</div>
+<p>the time its curve reaches the threshold. The analysis proceeds in three steps:</p>
+<ol class="arabic simple">
+<li><p><strong>Fit a path to each unit.</strong> The path model is fitted to each unit’s
+measurements by least squares, giving <span class="math notranslate nohighlight">\(\hat\theta_i\)</span>.</p></li>
+<li><p><strong>Extrapolate to the threshold.</strong> Each fitted path is solved for the time it
+reaches <span class="math notranslate nohighlight">\(D\)</span>: the unit’s <em>pseudo failure time</em>
+<span class="math notranslate nohighlight">\(\hat T_i = g^{-1}(D; \hat\theta_i)\)</span>. “Pseudo” because it is a
+prediction, not an observed failure — usually well beyond the last
+measurement.</p></li>
+<li><p><strong>Fit a lifetime distribution.</strong> A lifetime distribution (Weibull by
+default; any SurPyval parametric distribution) is fitted to the pseudo
+failure times, and from then on is used like any other survival model.</p></li>
+</ol>
+<p>If a unit’s fitted path never reaches the threshold at a positive time — it is
+not degrading, or is trending away from <span class="math notranslate nohighlight">\(D\)</span> — it has no pseudo failure
+time. Such a unit is treated as <strong>right censored at its last observed time</strong>
+(it had not failed by then, as far as we know), and that censoring is carried
+into the step-3 fit, with a warning so that you know it happened.</p>
+<p>The opposite case is a unit that is <strong>already past the threshold at its first
+measurement</strong>: its fitted path crossed <span class="math notranslate nohighlight">\(D\)</span> at or before time zero. It has
+failed — only we do not know when, beyond “before it was first measured” — so
+it is treated as <strong>left censored at its first measurement time</strong> (its first
+positive time, if the measurements start at zero), again with a warning.
+Counting it as never reaching <span class="math notranslate nohighlight">\(D\)</span> would turn the worst unit into a
+survivor. Which side of <span class="math notranslate nohighlight">\(D\)</span> counts as failed is read from the units whose
+paths do cross it (rising through it, or falling), so a unit trending <em>away</em>
+from the threshold on the good side is still one that never reaches it.</p>
+</section>
+</section>
+<section id="the-path-model">
+<h2>The path model<a class="headerlink" href="#the-path-model" title="Link to this heading"></a></h2>
+<p>The path model is the load-bearing assumption: it is extrapolated well beyond
+the observed data, so a shape with physical justification (a diffusion-limited
+process grows like <span class="math notranslate nohighlight">\(\sqrt t\)</span>, a first-order reaction decays
+exponentially, …) is always preferable to one chosen on how well it fits.
+The available shapes, and the threshold-crossing (pseudo failure) time each
+implies for a threshold <span class="math notranslate nohighlight">\(y_t\)</span>, are:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Name</p></th>
+<th class="head"><p>Path</p></th>
+<th class="head"><p>Threshold crossing time</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>linear</p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a + b x\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\((y_{t} - a) / b\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>quadratic</p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a + b x + c x^{2}\)</span></p></td>
+<td><p>first positive root of <span class="math notranslate nohighlight">\(c t^{2} + b t + (a - y_{t})\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>exponential</p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a e^{b x}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\ln(y_{t} / a) / b\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>offset-exponential</p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a + b e^{c x}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\ln((y_{t} - a) / b) / c\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>power</p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a x^{b}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\((y_{t} / a)^{1/b}\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>logarithmic</p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a + b \ln(x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(e^{(y_{t} - a) / b}\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>lloyd-lipow</p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a - b / x\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(b / (a - y_{t})\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>gompertz</p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a e^{-b e^{-c x}}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(-\ln(-\ln(y_{t}/a)/b) / c\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>michaelis-menten</p></td>
+<td><p><span class="math notranslate nohighlight">\(y = a x / (b + x)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(b y_{t} / (a - y_{t})\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<p>Degradation can be increasing (crack length) or decreasing (luminous flux);
+the direction is carried by the sign of the fitted parameters and needs no
+configuration.</p>
+<p>Two properties of a path model matter later on:</p>
+<ul class="simple">
+<li><p><strong>Linear in its parameters.</strong> The linear, quadratic, logarithmic and
+Lloyd-Lipow paths are linear in <span class="math notranslate nohighlight">\(\theta\)</span> (for example
+<span class="math notranslate nohighlight">\(a + b\ln x\)</span> is linear in <span class="math notranslate nohighlight">\((a, b)\)</span> even though it is not linear
+in <span class="math notranslate nohighlight">\(x\)</span>). They are fitted by ordinary least squares in closed form, and
+the population models below are then <em>exact</em> linear mixed models. The
+others (exponential, power, Gompertz, …) are fitted by nonlinear least
+squares started from a linearised fit, and the population models use a
+linearisation.</p></li>
+<li><p><strong>Closed under rescaling time.</strong> Every built-in family has the property that
+replacing <span class="math notranslate nohighlight">\(t\)</span> by <span class="math notranslate nohighlight">\(c\,t\)</span> gives another member of the same family
+(<span class="math notranslate nohighlight">\(a + b\,(ct) = a + (bc)\,t\)</span>). This is what lets a unit held at one
+stress “absorb” an acceleration factor into its own parameters, which becomes
+important for step-stress tests.</p></li>
+</ul>
+<p>When the physics does not dictate a shape, one can be selected by information
+criterion: every registered path is fitted to every unit, the residual sums of
+squares are pooled (assuming one common measurement variance), and the path with
+the smallest AICc,</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{AICc} = N \ln(\mathrm{RSS}/N) + 2k + \frac{2k(k+1)}{N - k - 1},
+\qquad k = n \times (\text{parameters per path}) + 1,\]</div>
+<p>wins (<span class="math notranslate nohighlight">\(N\)</span> is the total number of measurements, and the <code class="docutils literal notranslate"><span class="pre">+</span> <span class="pre">1</span></code> counts the
+common variance). Treat this only as a fallback: the winner is extrapolated far
+beyond the data, and a better fit inside the data says little about behaviour
+outside it.</p>
+<section id="predicting-a-new-unit-and-remaining-useful-life">
+<h3>Predicting a new unit, and remaining useful life<a class="headerlink" href="#predicting-a-new-unit-and-remaining-useful-life" title="Link to this heading"></a></h3>
+<p>A fitted model can forecast the failure time of a <em>new</em>, partially observed
+unit from its own trajectory. The simplest forecast repeats steps 1–2 for the
+new unit — fit the path to its measurements, extrapolate to <span class="math notranslate nohighlight">\(D\)</span> — and the
+<strong>remaining useful life</strong> (RUL) is that failure time minus the unit’s current
+age.</p>
+<p>Trusting that single least-squares extrapolation is dangerous when the
+trajectory is short or noisy: two measurements a little too close together can
+imply a slope of nearly zero and a failure time of centuries. The robust
+forecast blends the unit’s own trend with what the population says is
+plausible. In Bayesian terms:</p>
+<ul class="simple">
+<li><p>the <strong>prior</strong> for the new unit’s path parameters is the population,
+<span class="math notranslate nohighlight">\(\theta \sim N(\mu, \Sigma)\)</span> (estimated as described in the next
+section);</p></li>
+<li><p>the <strong>likelihood</strong> is its measurements,
+<span class="math notranslate nohighlight">\(y_j \sim N(g(t_j; \theta), \sigma^2)\)</span>;</p></li>
+<li><p>the <strong>posterior</strong> of <span class="math notranslate nohighlight">\(\theta\)</span> combines the two.</p></li>
+</ul>
+<p>For a path that is linear in its parameters, <span class="math notranslate nohighlight">\(g(t; \theta) = J\theta\)</span>
+with a fixed design matrix <span class="math notranslate nohighlight">\(J\)</span>, the posterior is exactly Gaussian (the
+conjugate update):</p>
+<div class="math notranslate nohighlight">
+\[\Lambda = \Sigma^{-1} + \frac{J^\top J}{\sigma^2},
+\qquad
+\theta \mid y \sim N\!\left(\Lambda^{-1}\Bigl(\Sigma^{-1}\mu
+    + \frac{J^\top y}{\sigma^2}\Bigr),\ \Lambda^{-1}\right).\]</div>
+<p>The posterior precision <span class="math notranslate nohighlight">\(\Lambda\)</span> adds the population’s precision to the
+data’s; the posterior mean is the precision-weighted compromise between the
+population mean <span class="math notranslate nohighlight">\(\mu\)</span> and the unit’s own least-squares fit. With one or
+two noisy points the population term dominates and the unit is <em>shrunk</em> toward
+the typical path; as measurements accumulate <span class="math notranslate nohighlight">\(J^\top J/\sigma^2\)</span> grows
+without bound and the posterior converges on the plain extrapolation. For a
+nonlinear path the same update is iterated, re-linearising <span class="math notranslate nohighlight">\(g\)</span> about the
+current estimate until it settles (a Laplace approximation to the posterior).</p>
+<p>The posterior is then pushed through the threshold crossing by Monte Carlo:
+draw many <span class="math notranslate nohighlight">\(\theta\)</span> from the posterior, compute <span class="math notranslate nohighlight">\(g^{-1}(D; \theta)\)</span>
+for each, and read the median and a credible interval off the draws. Two
+probabilities come along for free: the fraction of draws whose failure time is
+already in the past (the unit has <em>probably</em> already crossed <span class="math notranslate nohighlight">\(D\)</span>), and the
+fraction whose path never reaches <span class="math notranslate nohighlight">\(D\)</span> at all. A draw whose path is already
+past <span class="math notranslate nohighlight">\(D\)</span> at the unit’s first measurement (it crossed at or before time
+zero) has failed: it counts as a failure at time zero, not as “never fails”.
+Quantiles that reach into the never-fails fraction are infinite.</p>
+</section>
+<section id="the-population-path-parameter-distribution">
+<h3>The population path-parameter distribution<a class="headerlink" href="#the-population-path-parameter-distribution" title="Link to this heading"></a></h3>
+<p>Both the Bayesian forecast and the induced life (next section) need the
+<strong>population</strong> of path parameters: the model that each unit’s
+<span class="math notranslate nohighlight">\(\theta_i\)</span> is a draw from a common distribution,</p>
+<div class="math notranslate nohighlight">
+\[\theta_i \sim \mathrm{MVN}(\mu, \Sigma).\]</div>
+<p><span class="math notranslate nohighlight">\(\mu\)</span> is the typical unit and <span class="math notranslate nohighlight">\(\Sigma\)</span> how much units differ. Put
+together with the measurement model above this is a <strong>random-effects</strong> (mixed)
+model: fixed population parameters <span class="math notranslate nohighlight">\((\mu, \Sigma, \sigma^2)\)</span>, and one
+random <span class="math notranslate nohighlight">\(\theta_i\)</span> per unit. Two ways of estimating it are available.</p>
+</section>
+</section>
+<section id="the-two-stage-moments-estimate">
+<h2>The two-stage (moments) estimate<a class="headerlink" href="#the-two-stage-moments-estimate" title="Link to this heading"></a></h2>
+<p>The obvious estimate — the sample mean and covariance of the fitted
+<span class="math notranslate nohighlight">\(\hat\theta_i\)</span> — has a flaw identified by Lu and Meeker
+<a class="reference internal" href="#lumeeker1993" id="id1"><span>[LuMeeker1993]</span></a>. Each <span class="math notranslate nohighlight">\(\hat\theta_i\)</span> is a least-squares <em>estimate</em>, so
+its scatter across units mixes two sources: genuine unit-to-unit variability
+<span class="math notranslate nohighlight">\(\Sigma\)</span> and the unit’s own estimation noise <span class="math notranslate nohighlight">\(V_i\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{Cov}(\hat{\theta}_i) = \Sigma + V_i.\]</div>
+<p>The raw sample covariance therefore <em>overstates</em> how much units really differ —
+badly so when each unit has few, noisy measurements. The two-stage correction
+estimates and removes the noise part:</p>
+<ol class="arabic simple">
+<li><p>pool the measurement variance from every unit’s residuals,
+<span class="math notranslate nohighlight">\(\hat\sigma^2 = \sum \mathrm{RSS}_i / \sum (n_i - p)\)</span>;</p></li>
+<li><p>form each unit’s least-squares estimation covariance from its path Jacobian
+<span class="math notranslate nohighlight">\(J_i\)</span> (the matrix of derivatives <span class="math notranslate nohighlight">\(\partial g/\partial\theta\)</span> at
+its measurement times), <span class="math notranslate nohighlight">\(V_i = \hat\sigma^2 (J_i^{\top} J_i)^{-1}\)</span>;</p></li>
+<li><p>subtract the average: <span class="math notranslate nohighlight">\(\hat\Sigma = S - \bar V\)</span>, with <span class="math notranslate nohighlight">\(S\)</span> the
+sample covariance of the <span class="math notranslate nohighlight">\(\hat\theta_i\)</span>.</p></li>
+</ol>
+<p>A difference of covariance matrices need not be a covariance matrix: when the
+estimation noise rivals the between-unit scatter (few units, or few
+measurements per unit) <span class="math notranslate nohighlight">\(S - \bar V\)</span> can have negative eigenvalues. These
+are clipped to zero and a warning is raised, because the estimate is then
+unreliable.</p>
+</section>
+<section id="the-reml-estimate">
+<h2>The REML estimate<a class="headerlink" href="#the-reml-estimate" title="Link to this heading"></a></h2>
+<p>The robust alternative fits the random-effects model directly. For a path that
+is linear in its parameters, <span class="math notranslate nohighlight">\(y_i = X_i\theta_i + \varepsilon_i\)</span>, and the
+random <span class="math notranslate nohighlight">\(\theta_i\)</span> can be integrated out: each unit’s measurement vector is
+marginally</p>
+<div class="math notranslate nohighlight">
+\[y_i \sim N\bigl(X_i \mu,\ V_i\bigr),
+\qquad V_i = X_i \Sigma X_i^{\top} + \sigma^2 I.\]</div>
+<p>That is a likelihood for <span class="math notranslate nohighlight">\((\mu, \Sigma, \sigma^2)\)</span> from all the raw
+measurements at once — no per-unit fits, no subtraction, and a <span class="math notranslate nohighlight">\(\Sigma\)</span>
+that is positive definite by construction (it is parameterised by its Cholesky
+factor). Plain maximum likelihood for variance components is biased low in
+small samples, for the same reason the sample variance divides by
+<span class="math notranslate nohighlight">\(n - 1\)</span>: it ignores that <span class="math notranslate nohighlight">\(\mu\)</span> was estimated from the same data.
+<strong>REML</strong> (restricted maximum likelihood) fixes this by maximising the
+likelihood of the part of the data that does not depend on <span class="math notranslate nohighlight">\(\mu\)</span>. With
+<span class="math notranslate nohighlight">\(\mu\)</span> profiled out by generalised least squares,
+<span class="math notranslate nohighlight">\(\hat\mu = \bigl(\sum X_i^\top V_i^{-1} X_i\bigr)^{-1}
+\sum X_i^\top V_i^{-1} y_i\)</span>, the quantity minimised over
+<span class="math notranslate nohighlight">\((\Sigma, \sigma^2)\)</span> is</p>
+<div class="math notranslate nohighlight">
+\[-2\ell_R = \sum_i \log\det V_i
+    + \sum_i (y_i - X_i\hat\mu)^\top V_i^{-1} (y_i - X_i\hat\mu)
+    + \log\det\Bigl(\sum_i X_i^\top V_i^{-1} X_i\Bigr)\]</div>
+<p>(up to a constant). The first two terms are the ordinary (ML) Gaussian
+likelihood; the last is the REML adjustment for having estimated <span class="math notranslate nohighlight">\(\mu\)</span>. On a
+balanced design (every unit measured at the same times, with a path linear in
+its parameters) REML and the corrected moments estimate coincide whenever the
+moments estimate needed no clipping — the two are then different routes to the
+same answer. They differ, and REML is the better estimate, on unbalanced data
+and with few units, where the subtraction <span class="math notranslate nohighlight">\(S - \bar V\)</span> can go negative
+but a Cholesky-parameterised <span class="math notranslate nohighlight">\(\Sigma\)</span> cannot.</p>
+<p>A <strong>nonlinear</strong> path has no fixed <span class="math notranslate nohighlight">\(X_i\)</span>, and the marginal likelihood has
+no closed form. The Lindstrom-Bates algorithm <a class="reference internal" href="#lindstrombates1990" id="id2"><span>[LindstromBates1990]</span></a> (known as
+FOCE, first-order conditional estimation) alternates two steps until nothing
+changes:</p>
+<ol class="arabic simple">
+<li><p>with the population fixed, find each unit’s most probable parameters — its
+<em>conditional mode</em>, the penalised least-squares fit that balances its data
+against the population prior;</p></li>
+<li><p>linearise the path about those modes (a first-order Taylor expansion), which
+turns the problem into a linear mixed model with pseudo-data, and take one
+REML step on it to update <span class="math notranslate nohighlight">\((\mu, \Sigma, \sigma^2)\)</span>.</p></li>
+</ol>
+<p>On a path that is already linear the linearisation is exact and the loop stops
+after one pass, so the two routes agree.</p>
+<p>Computationally, each evaluation of the REML objective needs
+<span class="math notranslate nohighlight">\(V_i^{-1}\)</span> and <span class="math notranslate nohighlight">\(\log\det V_i\)</span> for every unit. Writing
+<span class="math notranslate nohighlight">\(\Sigma = LL^\top\)</span> (its Cholesky factor, which is what is optimised) and
+<span class="math notranslate nohighlight">\(M_i = I_p + L^\top X_i^\top X_i L/\sigma^2\)</span>, the Woodbury identity gives</p>
+<div class="math notranslate nohighlight">
+\[V_i^{-1} = \frac{1}{\sigma^2}\Bigl(I - \frac{X_i L\, M_i^{-1} L^\top
+    X_i^\top}{\sigma^2}\Bigr),
+\qquad
+\log\det V_i = n_i \log\sigma^2 + \log\det M_i,\]</div>
+<p>so every unit’s <span class="math notranslate nohighlight">\(n_i \times n_i\)</span> problem becomes a <span class="math notranslate nohighlight">\(p \times p\)</span> one
+(<span class="math notranslate nohighlight">\(p\)</span> the number of path parameters) on the cross-products
+<span class="math notranslate nohighlight">\(X_i^\top X_i\)</span>, <span class="math notranslate nohighlight">\(X_i^\top y_i\)</span>, and the cost does not grow with the
+number of measurements per unit. The objective is minimised over the entries
+of <span class="math notranslate nohighlight">\(L\)</span> (its diagonal on the log scale, so it stays positive) and
+<span class="math notranslate nohighlight">\(\log\sigma\)</span> by a quasi-Newton (BFGS) search started from the moments
+estimate. The same machinery is reused, many times over, by the step-stress
+clock below.</p>
+<section id="induced-failure-time-distribution-lu-meeker">
+<h3>Induced failure-time distribution (Lu-Meeker)<a class="headerlink" href="#induced-failure-time-distribution-lu-meeker" title="Link to this heading"></a></h3>
+<p>The pseudo-failure-time route extrapolates each unit to one (noisy) failure
+time and fits a distribution to those times — simple and robust, but it discards
+the fact that we have estimated the whole <em>population</em> of paths. The Lu-Meeker
+<strong>induced</strong> failure-time distribution uses that population directly: a unit
+with parameters <span class="math notranslate nohighlight">\(\theta\)</span> fails at <span class="math notranslate nohighlight">\(T(\theta) = g^{-1}(D; \theta)\)</span>,
+so the population failure-time distribution is the distribution of
+<span class="math notranslate nohighlight">\(T(\theta)\)</span> when <span class="math notranslate nohighlight">\(\theta \sim N(\mu, \Sigma)\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[F(t) = P\bigl(g^{-1}(D; \theta) \le t\bigr),
+\qquad \theta \sim N(\mu, \Sigma).\]</div>
+<p>There is rarely a closed form, so it is evaluated by Monte Carlo: draw many
+<span class="math notranslate nohighlight">\(\theta\)</span>, compute each <span class="math notranslate nohighlight">\(T(\theta)\)</span>, and use the empirical
+distribution of the draws.</p>
+<p>Some draws may describe a path that never reaches <span class="math notranslate nohighlight">\(D\)</span> (a non-increasing
+slope, say). They contribute an infinite failure time — a <em>defective</em> “never
+fails” mass. That is a real prediction, not a numerical accident: if a fraction
+of the population never fails, the population has no finite mean life, and
+quantiles that reach into that fraction are infinite too. At the other end, a
+draw whose path is already past <span class="math notranslate nohighlight">\(D\)</span> at the earliest measurement time
+crossed it at or before time zero; it counts as a failure at time zero, an atom
+of the distribution there.</p>
+<p>The induced distribution’s chief use is as a <strong>diagnostic</strong>. The
+pseudo-failure fit and the induced distribution reach the population life two
+different ways — one through a parametric family fitted to extrapolated times,
+the other through the path model and a Gaussian population. Close agreement is
+reassuring; a large gap warns that the path model, the Gaussian population
+assumption, or the covariance estimate is off.</p>
+</section>
+<section id="uncertainty-two-stage-confidence-bounds">
+<h3>Uncertainty: two-stage confidence bounds<a class="headerlink" href="#uncertainty-two-stage-confidence-bounds" title="Link to this heading"></a></h3>
+<p>The pseudo-failure-time approach is a <strong>two-stage</strong> estimator: stage one
+estimates each unit’s path, stage two fits a lifetime distribution to the
+extrapolated failure times <em>as if they had been observed exactly</em>. The
+ordinary confidence bounds of the stage-two fit therefore only reflect the
+scatter between the pseudo failure times, and miss that each one is itself an
+uncertain extrapolation. They are too narrow — sometimes much too narrow when
+the extrapolation is long.</p>
+<p>Two corrections are available.</p>
+<ul>
+<li><p><strong>Analytic (delta method / generated regressor).</strong> Each pseudo failure time
+<span class="math notranslate nohighlight">\(\hat T_i\)</span> carries a variance <span class="math notranslate nohighlight">\(v_i\)</span>, propagated from the unit’s
+path-fit covariance through <span class="math notranslate nohighlight">\(g^{-1}\)</span> by the delta method. If
+<span class="math notranslate nohighlight">\(\hat T_i\)</span> moved a little, the life-model estimate <span class="math notranslate nohighlight">\(\hat\phi\)</span>
+would move by <span class="math notranslate nohighlight">\(\partial\hat\phi/\partial T_i\)</span> (by the implicit function
+theorem, <span class="math notranslate nohighlight">\(H^{-1}\)</span> times the derivative of the score, with <span class="math notranslate nohighlight">\(H\)</span> the
+life model’s observed information). The corrected covariance adds the
+first-stage contribution to the usual one,</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{Cov}(\hat\phi) = H^{-1}
+    + \sum_i v_i
+    \frac{\partial\hat\phi}{\partial T_i}
+    \frac{\partial\hat\phi}{\partial T_i}^{\!\top},\]</div>
+<p>and bounds on survival (or anything else) follow by one more delta step,
+taken on the life distribution’s probability-plot scale (as for the
+parametric models) so they stay inside <span class="math notranslate nohighlight">\((0, 1)\)</span>; a two-sided
+band puts <span class="math notranslate nohighlight">\(\alpha/2\)</span> in each tail. It is fast — no refitting. (In a
+simulation with twelve units, the nominal 95 % band covered the true
+reliability in 92–98 % of 400 runs, depending on the time.)</p>
+</li>
+<li><p><strong>Bootstrap.</strong> Resample whole units with replacement, rerun the entire
+pipeline (path fits, pseudo failure times, life fit) on each resample, and
+take percentiles of the resulting curves. Slower, but it makes no
+first-order approximation, so it is a useful check on the analytic bounds,
+especially with long extrapolations. It is not a cure for having few units,
+though: a percentile bootstrap of a dozen units resamples only a dozen
+pseudo failure times, and its band can then be too narrow in the tails (in a
+small simulation with twelve units, a nominal 95 % band covered the true
+reliability of 0.13 only about 80 % of the time). The path model is
+held fixed across resamples, so after a <code class="docutils literal notranslate"><span class="pre">path=&quot;best&quot;</span></code> selection the band
+does not include the uncertainty of having chosen the shape.</p></li>
+</ul>
+<p>The accelerated models further down have both bounds too.</p>
+<ul>
+<li><p><strong>A covariate (ADT) life fit.</strong> The same correction applies to the
+regression parameters <span class="math notranslate nohighlight">\(\phi\)</span> (the distribution’s and the stress
+coefficients): the derivative of the regression score in
+<span class="math notranslate nohighlight">\(T_i\)</span> is taken at unit <span class="math notranslate nohighlight">\(i\)</span>’s stress, and the bound on
+survival at a stress <span class="math notranslate nohighlight">\(z\)</span> follows by the delta method.</p></li>
+<li><p><strong>A step-stress (clock) fit.</strong> Here every pseudo failure time also depends
+on the estimated clock <span class="math notranslate nohighlight">\(\hat\gamma\)</span>, so the times are correlated,
+and life under a stress depends on <span class="math notranslate nohighlight">\(\hat\gamma\)</span> directly. With
+<code class="docutils literal notranslate"><span class="pre">population_method=&quot;moments&quot;</span></code> the clock and the path parameters
+<span class="math notranslate nohighlight">\(\theta_1, \dots, \theta_n\)</span> are one joint least-squares fit, whose
+Gauss-Newton covariance <span class="math notranslate nohighlight">\(\sigma^2 (J^\top J)^{-1}\)</span> gives the joint
+covariance of <span class="math notranslate nohighlight">\(\hat\gamma\)</span> and the pseudo failure times (the
+Schur complement of the clock block keeps it to one small matrix per
+unit). The corrected covariance of <span class="math notranslate nohighlight">\((\hat\phi, \hat\gamma)\)</span> is then</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{Cov}(\hat\phi) = H^{-1} + A\,\mathrm{Cov}(\hat T)\,A^{\top},
+\quad
+\mathrm{Cov}(\hat\phi, \hat\gamma) = A\,\mathrm{Cov}(\hat T, \hat\gamma),\]</div>
+<p>with <span class="math notranslate nohighlight">\(A = \partial\hat\phi/\partial T\)</span> as above, and the bound on
+<span class="math notranslate nohighlight">\(S_0(\tau_z(t; \hat\gamma); \hat\phi)\)</span> follows by the delta method in
+both. The mixed-model clock (<code class="docutils literal notranslate"><span class="pre">population_method=&quot;reml&quot;</span></code>) is not
+covered: its bound is the bootstrap’s.</p>
+</li>
+</ul>
+<p>The bootstrap resamples units together with their stresses (a step-stress
+unit with its whole stress history) and reruns the whole accelerated fit —
+including, for the clock, the estimate of <span class="math notranslate nohighlight">\(\gamma\)</span> — each time.</p>
+</section>
+<section id="accelerated-degradation-stress-dependent-path-parameters">
+<h3>Accelerated degradation: stress-dependent path parameters<a class="headerlink" href="#accelerated-degradation-stress-dependent-path-parameters" title="Link to this heading"></a></h3>
+<p>In an <strong>accelerated degradation test</strong> (ADT) units run at elevated stress —
+temperature, voltage, humidity, load — so that they degrade fast enough to
+measure in a test of reasonable length, and the life at the (lower) <em>use</em>
+stress is then extrapolated from a model of how stress speeds things up.
+SurPyval offers three ways for stress to enter a general-path model. They
+answer increasingly detailed questions, and they need increasingly specific
+data:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 30.0%" />
+<col style="width: 26.0%" />
+<col style="width: 26.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Stress acts on…</p></th>
+<th class="head"><p>Model</p></th>
+<th class="head"><p>Data needed</p></th>
+<th class="head"><p>Gives you</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>the <strong>pseudo failure times</strong> (<code class="docutils literal notranslate"><span class="pre">Z</span></code>)</p></td>
+<td><p>a regression life model (AFT) fitted to the pseudo failure times</p></td>
+<td><p>each unit at one constant stress; at least two stress levels</p></td>
+<td><p>life at any stress</p></td>
+</tr>
+<tr class="row-odd"><td><p>the <strong>path parameters</strong> (<code class="docutils literal notranslate"><span class="pre">Z</span></code> and <code class="docutils literal notranslate"><span class="pre">links</span></code>)</p></td>
+<td><p>each unit’s path parameters depend on its stress through a link</p></td>
+<td><p>each unit at one constant stress; at least two levels</p></td>
+<td><p>life at any stress <em>and</em> the degradation mechanism: how the rate
+changes with stress, a population of paths at each stress, and
+stress-aware remaining-life prediction</p></td>
+</tr>
+<tr class="row-even"><td><p>the <strong>clock</strong> (<code class="docutils literal notranslate"><span class="pre">Z</span></code> and <code class="docutils literal notranslate"><span class="pre">acceleration=&quot;clock&quot;</span></code>)</p></td>
+<td><p>stress speeds up time for the whole path</p></td>
+<td><p>stress may change <em>during</em> a unit’s test (step-stress), as well as
+between units</p></td>
+<td><p>all of the above, under any stress history, including remaining life
+on a planned future stress profile</p></td>
+</tr>
+</tbody>
+</table>
+<p>The first two are described here and the clock in the next section.</p>
+</section>
+</section>
+<section id="stress-on-the-life-a-regression-on-the-pseudo-failure-times">
+<h2>Stress on the life: a regression on the pseudo failure times<a class="headerlink" href="#stress-on-the-life-a-regression-on-the-pseudo-failure-times" title="Link to this heading"></a></h2>
+<p>The simplest treatment keeps the path fits exactly as before and lets stress act
+only in step three: instead of a plain distribution, an accelerated failure time
+(AFT) regression is fitted to the pseudo failure times, with each unit’s stress
+row <span class="math notranslate nohighlight">\(z_i\)</span> as its covariate. In SurPyval’s AFT parameterisation the
+cumulative hazard is</p>
+<div class="math notranslate nohighlight">
+\[H(t \mid z) = H_0\bigl(e^{\beta^\top z}\, t\bigr),\]</div>
+<p>so a unit at stress <span class="math notranslate nohighlight">\(z\)</span> lives <span class="math notranslate nohighlight">\(e^{\beta^\top z}\)</span> times <em>shorter</em> than
+one at <span class="math notranslate nohighlight">\(z = 0\)</span> (a positive coefficient means higher stress, shorter life).
+Any SurPyval regression fitter can be used instead of AFT.</p>
+<p><strong>Estimation</strong> is the ordinary censored maximum-likelihood regression of the
+triples <span class="math notranslate nohighlight">\((\hat T_i, c_i, z_i)\)</span> — a unit whose path never reaches
+<span class="math notranslate nohighlight">\(D\)</span> enters as right censored (and one already past it at its first
+measurement as left censored), exactly as in the plain analysis. The stress
+effect needs at least two stress levels, so the fit refuses a single one. The
+stress must be one value per unit: this model has no notion of a
+stress that changes during a test. <strong>Prediction</strong>: <span class="math notranslate nohighlight">\(S(t \mid z)\)</span> is the
+life distribution of a unit held at the constant stress <span class="math notranslate nohighlight">\(z\)</span> for its
+whole life, and its quantiles and mean are read off it numerically. The
+extrapolation to use conditions is carried entirely by the regression’s
+functional form in <span class="math notranslate nohighlight">\(z\)</span> (log-linear, for AFT), fitted to a handful of
+stress levels.</p>
+<p>This predicts life at any stress, but it never models <em>why</em> life changes. The
+population of path parameters is pooled across the stress levels — it mixes
+fast units at high stress with slow ones at low stress — so it describes no
+unit actually tested, and it cannot be used as a prior for a new unit or to
+induce the life at a stress.</p>
+</section>
+<section id="stress-on-the-mechanism-path-parameters-that-depend-on-stress">
+<h2>Stress on the mechanism: path parameters that depend on stress<a class="headerlink" href="#stress-on-the-mechanism-path-parameters-that-depend-on-stress" title="Link to this heading"></a></h2>
+<p>The mechanistic alternative models the degradation <strong>rate itself</strong> as a
+function of stress <a class="reference internal" href="#meeker1998" id="id3"><span>[Meeker1998]</span></a> — the way a physicist would: “the reaction rate
+follows Arrhenius in temperature, the initial state does not depend on
+temperature”. Each path parameter is placed on a <strong>link scale</strong> — the identity,
+or the log for a parameter that must stay positive and whose stress effect is
+multiplicative — and the link-scale parameters of unit <span class="math notranslate nohighlight">\(i\)</span>, tested at
+stress <span class="math notranslate nohighlight">\(z_i\)</span>, are</p>
+<div class="math notranslate nohighlight">
+\[\eta_i = D(z_i)\,\gamma + u_i, \qquad u_i \sim \mathrm{MVN}(0, \Sigma),
+\qquad \theta_i = h(\eta_i),\]</div>
+<p>with <span class="math notranslate nohighlight">\(h\)</span> the inverse links (identity, or <span class="math notranslate nohighlight">\(\exp\)</span>). Read it as:</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(D(z)\gamma\)</span> is the <strong>typical</strong> unit at stress <span class="math notranslate nohighlight">\(z\)</span>. The design
+<span class="math notranslate nohighlight">\(D(z)\)</span> gives each stress-dependent parameter an intercept and a
+coefficient per covariate, and every other parameter an intercept only.</p></li>
+<li><p><span class="math notranslate nohighlight">\(u_i\)</span> is unit <span class="math notranslate nohighlight">\(i\)</span>’s own deviation from that typical unit, and
+<span class="math notranslate nohighlight">\(\Sigma\)</span> the unit-to-unit scatter that remains <em>after</em> the stress
+effect is removed — the same at every stress.</p></li>
+</ul>
+<p>A concrete case makes <span class="math notranslate nohighlight">\(D\)</span> less abstract. For the linear path
+<span class="math notranslate nohighlight">\(a + b\,t\)</span> with the rate log-linked on one covariate,
+<code class="docutils literal notranslate"><span class="pre">links={&quot;b&quot;:</span> <span class="pre">&quot;log&quot;}</span></code>, the link-scale parameters are <span class="math notranslate nohighlight">\((a, \log b)\)</span> and</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\begin{pmatrix} a_i \\ \log b_i \end{pmatrix}
+= \underbrace{\begin{pmatrix} 1 &amp; 0 &amp; 0 \\ 0 &amp; 1 &amp; z_i \end{pmatrix}}_{D(z_i)}
+  \begin{pmatrix} \gamma_a \\ \gamma_{b,0} \\ \gamma_{b,1} \end{pmatrix}
+  + u_i,\end{split}\]</div>
+<p>so <span class="math notranslate nohighlight">\(\gamma\)</span> holds three fixed effects — the intercept <span class="math notranslate nohighlight">\(a\)</span>, the
+log-rate intercept, and the log-rate’s slope in stress. SurPyval labels them
+<code class="docutils literal notranslate"><span class="pre">a</span></code>, <code class="docutils literal notranslate"><span class="pre">log(b)</span></code> and <code class="docutils literal notranslate"><span class="pre">log(b):Z0</span></code> (<code class="docutils literal notranslate"><span class="pre">:Zj</span></code> for the coefficient on covariate
+<span class="math notranslate nohighlight">\(j\)</span>).</p>
+<p>With the covariate <span class="math notranslate nohighlight">\(z = 1/T\)</span> (absolute temperature) a log-linked rate is
+exactly the <strong>Arrhenius</strong> relationship,</p>
+<div class="math notranslate nohighlight">
+\[\log b = \gamma_{b,0} + \gamma_{b,1}\,\frac{1}{T},
+\qquad \gamma_{b,1} = -\frac{E_a}{k},\]</div>
+<p>with <span class="math notranslate nohighlight">\(E_a\)</span> the activation energy and <span class="math notranslate nohighlight">\(k\)</span> Boltzmann’s constant
+(<span class="math notranslate nohighlight">\(8.617\times10^{-5}\)</span> eV/K). A log-linked rate with <span class="math notranslate nohighlight">\(z = \log V\)</span>
+is an inverse power law in voltage.</p>
+<p><strong>Estimation</strong> follows the two population routes above, with the wider
+fixed-effects design. The two-stage estimate fits each unit’s path on the link
+scale, regresses those per-unit estimates on their designs <span class="math notranslate nohighlight">\(D(z_i)\)</span> by
+least squares to get <span class="math notranslate nohighlight">\(\gamma\)</span>, and takes <span class="math notranslate nohighlight">\(\Sigma\)</span> as the covariance
+of the regression residuals less the average link-scale estimation covariance.
+REML fits the mixed model directly: with identity links on a path linear in its
+parameters it is still an exact linear mixed model (fixed-effects design
+<span class="math notranslate nohighlight">\(X_i D(z_i)\)</span>), and a log link makes the path nonlinear in <span class="math notranslate nohighlight">\(\eta\)</span>, so
+the Lindstrom-Bates linearisation handles it as for any nonlinear path.</p>
+<p>The life model is still the regression of the previous subsection, so life at a
+stress is available exactly as before. What the mechanism adds is a <strong>population
+of paths at each stress</strong>, which buys two things the pooled population cannot
+give:</p>
+<ul class="simple">
+<li><p>a <strong>stress-conditional prior</strong> for remaining-useful-life prediction: a new
+unit running at stress <span class="math notranslate nohighlight">\(z\)</span> is updated against
+<span class="math notranslate nohighlight">\(N(D(z)\gamma, \Sigma)\)</span>, the population of units at <em>its</em> stress,
+rather than against a mixture of every stress tested. The update is done on
+the link scale, so a log-linked rate stays positive;</p></li>
+<li><p>a <strong>stress-conditional induced life</strong>: drawing
+<span class="math notranslate nohighlight">\(\eta \sim N(D(z)\gamma, \Sigma)\)</span> and pushing each draw through the
+threshold crossing gives the failure-time distribution at any stress —
+including stresses outside the tested range, where the mechanism, not a
+curve fitted to the pseudo failure times, carries the extrapolation.</p></li>
+</ul>
+<p>Because each link is monotone and each link-scale parameter normal, the
+population <em>median</em> of each parameter at stress <span class="math notranslate nohighlight">\(z\)</span> is exactly
+<span class="math notranslate nohighlight">\(h(D(z)\gamma)\)</span>: for a log-linked rate that is the geometric-mean rate (the
+rate’s mean is larger, by the log-normal factor).</p>
+<section id="step-stress-degradation-an-accelerated-clock">
+<h3>Step-stress degradation: an accelerated clock<a class="headerlink" href="#step-stress-degradation-an-accelerated-clock" title="Link to this heading"></a></h3>
+<p>Both treatments above assume each unit is tested at one stress. In a
+<strong>step-stress</strong> test the stress is raised part way through, on the same units —
+50 °C for 100 hours, then 75 °C, then 100 °C — so each unit’s path runs at
+several stresses in turn. That is efficient (every unit contributes information
+at every level, and failures come sooner) but it raises a question the
+constant-stress models never had to answer: <em>how does a path carry on at a
+step?</em></p>
+</section>
+</section>
+<section id="the-clock">
+<h2>The clock<a class="headerlink" href="#the-clock" title="Link to this heading"></a></h2>
+<p>The natural answer is the <strong>cumulative-exposure</strong> principle <a class="reference internal" href="#nelson1980" id="id4"><span>[Nelson1980]</span></a>:
+stress does not change what degradation looks like, it changes how <em>fast</em> it
+happens — it speeds up the unit’s clock. A unit at stress <span class="math notranslate nohighlight">\(z\)</span> ages</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{AF}(z) = \exp\!\bigl(\gamma^\top (z - z_{\text{ref}})\bigr)\]</div>
+<p>times faster than at the reference stress <span class="math notranslate nohighlight">\(z_{\text{ref}}\)</span> (usually the
+use condition, where <span class="math notranslate nohighlight">\(\mathrm{AF} = 1\)</span>; if none is given SurPyval uses
+the mean stress over the measurement intervals). The choice of
+<span class="math notranslate nohighlight">\(z_{\text{ref}}\)</span> decides which stress the fitted path parameters and life
+distribution describe, so passing the use condition lets you read them
+directly. Under a stress history
+<span class="math notranslate nohighlight">\(z(s)\)</span> it has therefore aged</p>
+<div class="math notranslate nohighlight">
+\[\tau(t) = \int_0^t \mathrm{AF}\bigl(z(s)\bigr)\,ds\]</div>
+<p>of reference-stress time by calendar time <span class="math notranslate nohighlight">\(t\)</span> — an hour at 100 °C might
+count as eight hours at 50 °C — and its path is the ordinary path model on that
+clock,</p>
+<div class="math notranslate nohighlight">
+\[y_{ij} = g\bigl(\tau_i(t_{ij}); \theta_i\bigr) + \varepsilon_{ij},
+\qquad \theta_i \sim \mathrm{MVN}(\mu, \Sigma).\]</div>
+<p>Everything about the path — <span class="math notranslate nohighlight">\(\theta_i\)</span>, its population, the pseudo failure
+times — now describes degradation at the reference stress, and <span class="math notranslate nohighlight">\(\gamma\)</span>
+describes how strongly stress speeds it up. With <span class="math notranslate nohighlight">\(z = 1/T\)</span> this is again
+Arrhenius, <span class="math notranslate nohighlight">\(\mathrm{AF} = \exp\bigl(\tfrac{E_a}{k}(\tfrac{1}{T_{\text{ref}}}
+- \tfrac{1}{T})\bigr)\)</span> with <span class="math notranslate nohighlight">\(\gamma = -E_a/k\)</span>: a coefficient of
+<span class="math notranslate nohighlight">\(-5000\)</span> is an activation energy of about 0.43 eV. It is the same clock the
+stochastic-process models use for time-varying stress (below), and at a constant
+stress it is exactly the AFT form of the first accelerated model, now estimated
+from the paths rather than from pseudo failure times.</p>
+<p>In data, stress is recorded per measurement: the stress row attached to a
+measurement is the stress applied over the interval that <strong>ends</strong> at it, the
+first interval starting at time zero. For a unit inspected every 10 hours with
+the chamber stepped up just after the 100-hour inspection, the rows for
+<span class="math notranslate nohighlight">\(t = 10, \dots, 100\)</span> carry 50 °C and those from <span class="math notranslate nohighlight">\(t = 110\)</span> carry
+75 °C. The unit’s clock at its <span class="math notranslate nohighlight">\(j\)</span>-th measurement is then the sum
+<span class="math notranslate nohighlight">\(\tau_{ij} = \sum_{k \le j} \mathrm{AF}(z_{ik})\,(t_{ik} - t_{i,k-1})\)</span>.</p>
+<p>Why a clock rather than some other rule for the step? For a path that rises
+with time, <span class="math notranslate nohighlight">\(y = g(\tau)\)</span> means</p>
+<div class="math notranslate nohighlight">
+\[\frac{dy}{dt} = \mathrm{AF}(z)\,f(y), \qquad f(y) = g'\bigl(g^{-1}(y)\bigr):\]</div>
+<p>at every moment the unit degrades at a rate set by its <em>current damage</em> and
+multiplied by the stress’s acceleration factor. So the clock model is also the
+natural <em>rate-based</em> model — the damage is carried over at a step, and the unit
+continues from it at the new stress’s rate, without a jump. The two rules would
+only part company if stress changed the <em>shape</em> of the path rather than its
+speed, which a step-stress profile cannot identify without a separate model of
+the damage rate; so stress-dependent <em>links</em> are not combined with the clock.</p>
+</section>
+<section id="estimating-the-acceleration">
+<h2>Estimating the acceleration<a class="headerlink" href="#estimating-the-acceleration" title="Link to this heading"></a></h2>
+<p>Estimating <span class="math notranslate nohighlight">\(\gamma\)</span> needs care. Because every built-in path family is
+closed under rescaling time, a unit held at a single stress can absorb <em>any</em>
+acceleration into its own path parameters: at constant stress
+<span class="math notranslate nohighlight">\(a + b\,(\mathrm{AF}\cdot t)\)</span> is just a line with slope
+<span class="math notranslate nohighlight">\(b\,\mathrm{AF}\)</span>, and on its own that unit cannot tell a fast unit from an
+accelerated one. The information about <span class="math notranslate nohighlight">\(\gamma\)</span> comes from two places:</p>
+<ul class="simple">
+<li><p><strong>Units whose stress steps during the test.</strong> A unit’s own slope changes by
+exactly <span class="math notranslate nohighlight">\(\mathrm{AF}(z_2)/\mathrm{AF}(z_1)\)</span> at a step from <span class="math notranslate nohighlight">\(z_1\)</span> to
+<span class="math notranslate nohighlight">\(z_2\)</span> — its own path parameters cannot absorb that, because they are
+shared by both segments. The kink in each stepped unit’s trace is a direct
+reading of the acceleration.</p></li>
+<li><p><strong>Units at different stresses, through the population.</strong> Units share one
+population of path parameters, so if the units at 100 °C all look eight times
+faster than the units at 50 °C, that is not unit-to-unit variation — it is
+the stress. This source needs the population model; per-unit fits alone
+cannot see it.</p></li>
+</ul>
+<p>The two population methods differ precisely in which of these sources they
+use.</p>
+<p><strong>Two-stage estimate</strong> (<code class="docutils literal notranslate"><span class="pre">moments</span></code>): <strong>profile least squares on the stepped
+units.</strong> For a
+trial <span class="math notranslate nohighlight">\(\gamma\)</span>, compute every unit’s clock
+<span class="math notranslate nohighlight">\(\tau_{ij}(\gamma)\)</span>, refit its path on that clock by least squares, and
+add up the residuals:</p>
+<div class="math notranslate nohighlight">
+\[\hat\gamma = \arg\min_\gamma \sum_i \min_{\theta_i}
+    \sum_j \bigl(y_{ij} - g(\tau_{ij}(\gamma); \theta_i)\bigr)^2 .\]</div>
+<p>Because each unit is refitted freely, a unit held at one stress fits equally
+well for <em>every</em> <span class="math notranslate nohighlight">\(\gamma\)</span> and contributes nothing to the choice; only the
+stepped units’ kinks move the objective. So this route needs units whose stress
+changes during the test — more precisely, the within-unit variation of the
+stress rows must span every covariate — and it refuses otherwise. With one
+covariate the search is a coarse grid followed by a bounded scalar
+minimisation; with several, a Nelder-Mead search. Once <span class="math notranslate nohighlight">\(\hat\gamma\)</span> is
+fixed, every unit’s path is refitted on its clock and the population
+<span class="math notranslate nohighlight">\((\mu, \Sigma, \sigma^2)\)</span> is the ordinary two-stage (Lu-Meeker) moments
+estimate on those clock-time fits.</p>
+<p><strong>Mixed-model estimate</strong> (<code class="docutils literal notranslate"><span class="pre">reml</span></code>): <strong>the population identifies</strong>
+<span class="math notranslate nohighlight">\(\gamma\)</span> <strong>too.</strong> Here the likelihood is the marginal likelihood of all the
+measurements with the <span class="math notranslate nohighlight">\(\theta_i\)</span> integrated out against
+<span class="math notranslate nohighlight">\(N(\mu, \Sigma)\)</span>, so a unit’s rate is no longer free: a rate far from
+the population’s costs likelihood, and an acceleration that explains why the
+hot units look fast is preferred. It uses both sources, so it also works for a
+classic constant-stress test with no steps at all. As for any nonlinear path,
+the marginal likelihood is approximated by the Lindstrom-Bates (FOCE)
+linearisation, now about the clock as well. The estimation runs in three
+stages:</p>
+<ol class="arabic">
+<li><p><strong>Joint FOCE iteration.</strong> Treat <span class="math notranslate nohighlight">\(\gamma\)</span> as one more fixed effect.
+About each unit’s conditional mode <span class="math notranslate nohighlight">\(\tilde\theta_i\)</span>, linearise the
+path in both <span class="math notranslate nohighlight">\(\theta\)</span> and <span class="math notranslate nohighlight">\(\gamma\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[g(\tau_{ij}(\gamma); \theta) \approx g(\tau_{ij}(\gamma_0);
+    \tilde\theta_i)
+    + J_{ij}\,(\theta - \tilde\theta_i)
+    + G_{ij}\,(\gamma - \gamma_0),
+\qquad
+G_{ij} = g'(\tau_{ij})\,\frac{\partial\tau_{ij}}{\partial\gamma},\]</div>
+<p>with <span class="math notranslate nohighlight">\(J\)</span> the path Jacobian, <span class="math notranslate nohighlight">\(g'\)</span> the path’s slope in time and
+<span class="math notranslate nohighlight">\(\partial\tau_{ij}/\partial\gamma = \sum_{k\le j}
+\mathrm{AF}(z_{ik})\,\Delta t_{ik}\,(z_{ik} - z_\text{ref})\)</span>. That is a
+linear mixed model with fixed-effects design <span class="math notranslate nohighlight">\([J_i, G_i]\)</span> and
+random-effects design <span class="math notranslate nohighlight">\(J_i\)</span>, and one Woodbury REML step estimates
+<span class="math notranslate nohighlight">\((\mu, \gamma)\)</span> by GLS together with <span class="math notranslate nohighlight">\((\Sigma, \sigma^2)\)</span>.
+Repeating this moves quickly to the neighbourhood of the estimate.</p>
+</li>
+<li><p><strong>Profile likelihood of</strong> <span class="math notranslate nohighlight">\(\gamma\)</span>. Near the estimate the joint
+iteration crawls: a unit held at one stress creates a curved ridge along
+which its rate and <span class="math notranslate nohighlight">\(\gamma\)</span> nearly trade off. So <span class="math notranslate nohighlight">\(\gamma\)</span> is
+then optimised directly: for each trial <span class="math notranslate nohighlight">\(\gamma\)</span> the clocks are
+recomputed, the population is refitted by FOCE with <span class="math notranslate nohighlight">\(\gamma\)</span> held
+fixed, and the resulting approximate marginal log-likelihood is compared
+(a Brent search for one covariate, Nelder-Mead for several). This profile
+uses the <em>plain</em> likelihood rather than REML: <span class="math notranslate nohighlight">\(\gamma\)</span> changes the
+fixed-effects design, and REML likelihoods for different designs are not
+comparable.</p></li>
+<li><p><strong>Population at</strong> <span class="math notranslate nohighlight">\(\hat\gamma\)</span>. With the clock fixed, the population
+<span class="math notranslate nohighlight">\((\mu, \Sigma, \sigma^2)\)</span> is estimated by REML, exactly as for a
+constant-stress nonlinear path.</p></li>
+</ol>
+<p>Each profile evaluation is itself a FOCE fit, so <code class="docutils literal notranslate"><span class="pre">reml</span></code> is much slower than
+<code class="docutils literal notranslate"><span class="pre">moments</span></code> — seconds rather than a fraction of a second on a few dozen
+units — and a
+bootstrap of a <code class="docutils literal notranslate"><span class="pre">reml</span></code> clock model reruns all of it on every resample. Use
+<code class="docutils literal notranslate"><span class="pre">moments</span></code> when every unit is stepped and the test is large; use <code class="docutils literal notranslate"><span class="pre">reml</span></code>
+when some or all units are held at one stress, when there are few units, or
+when you want the population estimated as well as possible.</p>
+</section>
+<section id="life-and-prediction-on-the-clock">
+<h2>Life and prediction on the clock<a class="headerlink" href="#life-and-prediction-on-the-clock" title="Link to this heading"></a></h2>
+<p>Once <span class="math notranslate nohighlight">\(\gamma\)</span> is estimated, everything else is the ordinary general-path
+analysis on the clock. The pseudo failure times
+<span class="math notranslate nohighlight">\(\hat\tau_i^* = g^{-1}(D; \hat\theta_i)\)</span> are <em>reference-stress</em>
+lifetimes, and a lifetime distribution <span class="math notranslate nohighlight">\(F_0\)</span> is fitted to them. Life under
+<strong>any</strong> stress history follows from the clock,</p>
+<div class="math notranslate nohighlight">
+\[F(t) = F_0\bigl(\tau(t)\bigr),\]</div>
+<p>because a unit that has aged <span class="math notranslate nohighlight">\(\tau(t)\)</span> reference hours has exactly the
+reference-stress chance of having failed by then. At a constant stress this is
+<span class="math notranslate nohighlight">\(F_0(\mathrm{AF}(z)\,t)\)</span>: every quantile divides by <span class="math notranslate nohighlight">\(\mathrm{AF}\)</span>.
+Under a profile, the density and hazard pick up the clock’s rate,
+<span class="math notranslate nohighlight">\(f(t) = f_0(\tau(t))\,\mathrm{AF}(z(t))\)</span> and
+<span class="math notranslate nohighlight">\(h(t) = h_0(\tau(t))\,\mathrm{AF}(z(t))\)</span>; a quantile is the calendar
+time at which the clock reaches the reference quantile,
+<span class="math notranslate nohighlight">\(t_p = \tau^{-1}\bigl(F_0^{-1}(p)\bigr)\)</span>; and the mean life is the
+integral of <span class="math notranslate nohighlight">\(1 - F(t)\)</span>. The induced (Lu-Meeker) life works the same
+way: draw <span class="math notranslate nohighlight">\(\theta \sim N(\mu, \Sigma)\)</span>, compute its reference-stress
+failure time <span class="math notranslate nohighlight">\(g^{-1}(D; \theta)\)</span>, and carry it to calendar time through
+<span class="math notranslate nohighlight">\(\tau^{-1}\)</span> of the stress history of interest.</p>
+<p>A unit being <strong>monitored</strong> is predicted on its own clock. Its measured stress
+history gives the reference-stress time at each of its measurements; the
+population <span class="math notranslate nohighlight">\(N(\mu, \Sigma)\)</span> is the prior for its path parameters, updated
+by its measurements exactly as in the Bayesian forecast above; and each
+posterior draw’s reference-stress failure time <span class="math notranslate nohighlight">\(g^{-1}(D; \theta)\)</span> is
+carried back to calendar time — through its history if it has already been
+reached, and otherwise through the <em>planned</em> future stress from now on. Its
+remaining life therefore depends on the stress plan, not only on how degraded it
+is: the same unit has a shorter remaining life if you intend to run it hotter.
+(The plain least-squares forecast is the same without the prior: fit the path
+to the unit’s measurements on its clock, extrapolate to <span class="math notranslate nohighlight">\(D\)</span>, and carry
+that single reference-stress time back to calendar time.)</p>
+<section id="choosing-how-stress-enters-a-general-path-model">
+<span id="deg-choosing-stress"></span><h3>Choosing how stress enters a general-path model<a class="headerlink" href="#choosing-how-stress-enters-a-general-path-model" title="Link to this heading"></a></h3>
+<p>The three accelerated models form a progression, each adding one assumption and
+buying one capability:</p>
+<ol class="arabic simple">
+<li><p><strong>Life regression</strong> (<code class="docutils literal notranslate"><span class="pre">Z</span></code>). Assumes only that each unit ran at one stress.
+Stress acts on the pseudo failure times through a regression life model.
+Gives the life at any constant stress. Use it when all you need is a life
+distribution at use conditions from a constant-stress test, and you are
+content to extrapolate with the regression’s form in <span class="math notranslate nohighlight">\(z\)</span>.</p></li>
+<li><p><strong>Stress-dependent population</strong> (<code class="docutils literal notranslate"><span class="pre">Z</span></code> and <code class="docutils literal notranslate"><span class="pre">links</span></code>). Adds a model of
+<em>which path parameters</em> stress changes, and how (a link per parameter).
+Gives, in addition, the population of paths at each stress, and with it a
+stress-aware Bayesian RUL and an induced life that extrapolates through the
+mechanism. Use it for a constant-stress test when you know (or want to
+test) which parameter carries the stress effect — “the rate is Arrhenius,
+the initial value is not” — and when you will forecast individual units.
+It lets stress act on each parameter independently, so it can describe
+stress changing the <em>shape</em> of the path; the price is that the stress must
+be constant within a unit.</p></li>
+<li><p><strong>Accelerated clock</strong> (<code class="docutils literal notranslate"><span class="pre">Z</span></code> and <code class="docutils literal notranslate"><span class="pre">acceleration=&quot;clock&quot;</span></code>). Assumes instead
+that stress changes only the <em>speed</em> of degradation: every parameter’s
+effect is accelerated together, as a rescaling of time. That one assumption
+is what makes a stress that changes <em>during</em> a test tractable (the unit
+carries on from its current damage at the new speed), so it is the model for
+step-stress tests, and it also gives life and RUL under any stress plan. It
+is equally valid for a constant-stress test (with <code class="docutils literal notranslate"><span class="pre">reml</span></code>).</p></li>
+</ol>
+<p>The last two are close relatives. For the linear path at a constant stress,
+the clock gives <span class="math notranslate nohighlight">\(a + b\,\mathrm{AF}(z)\,t\)</span>: the intercept is untouched and
+the rate is multiplied by <span class="math notranslate nohighlight">\(e^{\gamma^\top(z - z_\text{ref})}\)</span> — which is
+exactly <code class="docutils literal notranslate"><span class="pre">links={&quot;b&quot;:</span> <span class="pre">&quot;log&quot;}</span></code>, the log-rate linear in <span class="math notranslate nohighlight">\(z\)</span>. The two then
+differ only in the population: the clock has a normal rate at the reference
+stress, scaled by <span class="math notranslate nohighlight">\(\mathrm{AF}\)</span> (so its coefficient of variation is the
+same at every stress), the link model a log-normal rate with a common log-scale
+spread. For a curved path they differ more, because the clock can only rescale
+time. For the Gompertz path <span class="math notranslate nohighlight">\(a e^{-b e^{-c\,\mathrm{AF}\,t}}\)</span> it
+multiplies the rate <span class="math notranslate nohighlight">\(c\)</span> by <span class="math notranslate nohighlight">\(\mathrm{AF}\)</span> and leaves the asymptote
+<span class="math notranslate nohighlight">\(a\)</span> alone; for the power path <span class="math notranslate nohighlight">\(a(\mathrm{AF}\,t)^b\)</span> it multiplies
+<span class="math notranslate nohighlight">\(a\)</span> by <span class="math notranslate nohighlight">\(\mathrm{AF}^b\)</span>, tying the stress effect to the exponent.
+Links let stress act on any parameter independently, so a stress that raises
+the asymptote, or changes the power path’s exponent, can only be expressed
+with links. When the data can tell the two apart, the fitted models will
+disagree; when they cannot, the clock’s one-coefficient-per-covariate
+description is the more economical.</p>
+<p>Whichever you choose, check it the same way: the pseudo-failure life and the
+induced life should agree at the tested stresses, the fitted coefficient
+should be physically plausible (an activation energy of a few tenths of an
+eV, say), and extrapolation to use conditions deserves the most scepticism —
+it is where the chosen form in <span class="math notranslate nohighlight">\(z\)</span>, not the data, sets the answer.</p>
+</section>
+<section id="stochastic-process-degradation-models">
+<h3>Stochastic-process degradation models<a class="headerlink" href="#stochastic-process-degradation-models" title="Link to this heading"></a></h3>
+<p>The general-path approach assumes each unit follows a smooth curve observed with
+error, with all the randomness <em>between</em> units. Sometimes the degradation is
+instead <em>random over time</em> — a crack that jumps ahead in fits and starts, a wear
+signal that wanders — and two units that are identical in every respect still
+fail at different times because of the luck of the draw along the way. Then it
+is more honest to model the <strong>increments</strong> of the degradation as a stochastic
+process, and read the failure-time distribution off the process directly, as the
+distribution of the <strong>first time the process crosses the threshold</strong> (the
+<em>first-passage time</em>) <a class="reference internal" href="#meeker1998" id="id5"><span>[Meeker1998]</span></a>.</p>
+<p>Both processes below have <em>independent increments</em>: the change over an
+interval does not depend on what happened before it. That has three practical
+consequences. Fitting uses only the increments
+<span class="math notranslate nohighlight">\(\Delta y = y_{j} - y_{j-1}\)</span> over <span class="math notranslate nohighlight">\(\Delta t = t_j - t_{j-1}\)</span>, so
+units measured at different, irregular times need no special handling. The
+failure-time distribution comes from the fitted process in closed form, with no
+pseudo failure times. And a unit’s <strong>remaining life</strong> from its current level
+<span class="math notranslate nohighlight">\(y\)</span> is simply a fresh first passage over the remaining distance
+<span class="math notranslate nohighlight">\(D - y\)</span>. Two processes cover the common cases, and the choice between them
+is dictated by whether the degradation can <em>decrease</em>.</p>
+<p>One convention matters in practice. A unit starts at a level <span class="math notranslate nohighlight">\(y_0\)</span> at
+time zero, <span class="math notranslate nohighlight">\(W(0) = y_0\)</span>, and fails on reaching the threshold, so its life
+is the first passage over the <em>distance</em> <span class="math notranslate nohighlight">\(D = \text{threshold} - y_0\)</span>.
+Fitting uses only increments and never sees the starting level, but the life
+distribution does: an initial resistance of 100 Ω that fails at 110 Ω has 10 to
+go, not 110. The fit therefore estimates <span class="math notranslate nohighlight">\(y_0\)</span> from the readings — each
+unit’s first reading <span class="math notranslate nohighlight">\(y_{i1}\)</span> at time <span class="math notranslate nohighlight">\(t_{i1}\)</span>, less the
+degradation the process accrues on average before it,</p>
+<div class="math notranslate nohighlight">
+\[\hat y_0 = \frac{1}{k}\sum_{i=1}^{k}\bigl(y_{i1} - m\,\tau(t_{i1})\bigr),\]</div>
+<p>over the <span class="math notranslate nohighlight">\(k\)</span> units, with <span class="math notranslate nohighlight">\(m\)</span> the fitted mean rate (<span class="math notranslate nohighlight">\(\mu\)</span>, or
+<span class="math notranslate nohighlight">\(\alpha/\beta\)</span>) and <span class="math notranslate nohighlight">\(\tau(t_{i1})\)</span> the time to the first reading
+(on the stress clock, at its stress) — simply the mean of the readings at time
+zero when every unit is read then. A known starting level is given as <code class="docutils literal notranslate"><span class="pre">y0</span></code>,
+to the fit, or to the life functions for a unit that starts elsewhere. Before
+v0.23 the life was measured from <span class="math notranslate nohighlight">\(W(0) = 0\)</span>, which overstated it by
+<span class="math notranslate nohighlight">\(y_0\)</span> over the rate when the readings started higher. The process models
+are also <em>homogeneous</em>: every unit has the
+same drift, so the spread of lifetimes comes entirely from the randomness along
+the path, not from differences between units (random-effect extensions, which
+add unit-to-unit variation in the drift, are surveyed in <a class="reference internal" href="#wang2010" id="id6"><span>[Wang2010]</span></a> but are
+not implemented).</p>
+</section>
+</section>
+<section id="the-wiener-process">
+<h2>The Wiener process<a class="headerlink" href="#the-wiener-process" title="Link to this heading"></a></h2>
+<p>A <strong>Wiener process with drift</strong> (Brownian motion with drift) models the
+degradation as <span class="math notranslate nohighlight">\(W(t) = \mu t + \sigma B(t)\)</span>, with <span class="math notranslate nohighlight">\(B(t)\)</span> standard
+Brownian motion. The <strong>drift</strong> <span class="math notranslate nohighlight">\(\mu\)</span> is the average rate at which
+degradation accumulates; the <strong>diffusion</strong> <span class="math notranslate nohighlight">\(\sigma\)</span> is the size of the
+random wobble around that trend. Over an interval <span class="math notranslate nohighlight">\(\Delta t\)</span> the change is
+Gaussian, <span class="math notranslate nohighlight">\(\Delta W \sim N(\mu \Delta t, \sigma^2 \Delta t)\)</span>, which can be
+negative — so the path may go down as well as up, making the Wiener process the
+right model for noisy, non-monotone signals.</p>
+<p><strong>Fitting.</strong> The increments are independent Gaussians, so the maximum
+likelihood estimates have closed forms:</p>
+<div class="math notranslate nohighlight">
+\[\hat\mu = \frac{\sum \Delta y}{\sum \Delta t},
+\qquad
+\hat\sigma^2 = \frac{1}{m}\sum \frac{(\Delta y - \hat\mu\,\Delta t)^2}{\Delta t},\]</div>
+<p>over all <span class="math notranslate nohighlight">\(m\)</span> increments of all units: the drift is total degradation over
+total time, and the diffusion measures the scatter of the increments around
+that trend, each scaled by its own interval length.</p>
+<p><strong>Life.</strong> The first-passage time to a threshold <span class="math notranslate nohighlight">\(D\)</span> is <strong>Inverse
+Gaussian</strong> with</p>
+<div class="math notranslate nohighlight">
+\[\text{mean} = \frac{D}{\mu}, \qquad \text{shape} = \frac{D^2}{\sigma^2}.\]</div>
+<p>The mean life <span class="math notranslate nohighlight">\(D/\mu\)</span> — distance to failure over average speed — is
+intuitive, and the shape controls how tightly failure times cluster around it
+(more diffusion, more scatter). The drift must be positive for the life to be
+well defined: with <span class="math notranslate nohighlight">\(\mu \le 0\)</span> the process is not reliably heading toward
+the threshold, so the fit refuses. So does it for noise-free data
+(<span class="math notranslate nohighlight">\(\hat\sigma = 0\)</span>), which is a deterministic line, not a Wiener process.</p>
+</section>
+<section id="the-gamma-process">
+<h2>The Gamma process<a class="headerlink" href="#the-gamma-process" title="Link to this heading"></a></h2>
+<p>The Wiener process allows the signal to decrease, which is wrong for damage that
+only ever <em>accumulates</em> — wear, corrosion, crack growth. The <strong>Gamma process</strong>
+models such monotone degradation: its increment over <span class="math notranslate nohighlight">\(\Delta t\)</span> is Gamma
+distributed,</p>
+<div class="math notranslate nohighlight">
+\[\Delta W \sim \mathrm{Gamma}\bigl(\text{shape} = \alpha\,\Delta t,\
+    \text{rate} = \beta\bigr),\]</div>
+<p>and therefore never negative, so the path is non-decreasing by construction.
+Its mean degradation per unit time is <span class="math notranslate nohighlight">\(\alpha/\beta\)</span> (the analogue of the
+Wiener drift) and its variance per unit time <span class="math notranslate nohighlight">\(\alpha/\beta^2\)</span>: a large
+<span class="math notranslate nohighlight">\(\alpha\)</span> gives many small, regular increments, a small one fewer, larger,
+jumpier ones. Gamma processes are a standard tool in maintenance modelling; see
+<a class="reference internal" href="#vannoortwijk2009" id="id7"><span>[vanNoortwijk2009]</span></a> for a survey.</p>
+<p><strong>Fitting.</strong> The likelihood of the increments is a product of Gamma densities.
+For a given <span class="math notranslate nohighlight">\(\alpha\)</span> the best <span class="math notranslate nohighlight">\(\beta\)</span> has a closed form,
+<span class="math notranslate nohighlight">\(\hat\beta = \alpha \sum\Delta t / \sum \Delta y\)</span> (it matches the mean
+rate), so the fit is a one-dimensional search over <span class="math notranslate nohighlight">\(\alpha\)</span> with
+<span class="math notranslate nohighlight">\(\beta\)</span> profiled out. A decrease between two measurements is impossible
+under this model, so data with one is refused, with a pointer to the Wiener
+process. An increment of exactly zero is possible in data but has probability
+zero under the model: it means the change was below the measurement
+resolution <span class="math notranslate nohighlight">\(\delta\)</span>, so it enters the likelihood as censored,
+<span class="math notranslate nohighlight">\(P(\Delta W \le \delta)\)</span> (<code class="docutils literal notranslate"><span class="pre">resolution</span></code>, by default the smallest
+positive increment in the data — the grid step of rounded readings), and
+<span class="math notranslate nohighlight">\(\alpha\)</span> and <span class="math notranslate nohighlight">\(\beta\)</span> are then found jointly.</p>
+<p><strong>Readings from a coarse gauge.</strong> Censoring the zeros still takes every
+non-zero increment at face value. When the readings come from a gauge whose
+step <span class="math notranslate nohighlight">\(\delta\)</span> is comparable to the increments, those are rounded too — a
+true increment of 0.4 is read as 0 or 0.5, one of 0.6 as 0.5 or 1 — and the fit
+is biased: for wear with a mean increment of 0.5 read to the nearest 0.5, the
+censored fit puts <span class="math notranslate nohighlight">\(\alpha\)</span> at 5.2 against 2.2 for the unrounded readings,
+and the mean life at 17.5 against 21.2. Given the step (<code class="docutils literal notranslate"><span class="pre">gauge</span></code>), the fit
+uses the likelihood of what was actually observed. A reading <span class="math notranslate nohighlight">\(r_j\)</span> says
+only that the true level lies in its <strong>bin</strong>,</p>
+<div class="math notranslate nohighlight">
+\[B_j = [r_j - \delta/2,\ r_j + \delta/2) \quad (\texttt{rounding=&quot;nearest&quot;}),
+\qquad
+B_j = [r_j,\ r_j + \delta) \quad (\texttt{rounding=&quot;floor&quot;}),\]</div>
+<p>and the likelihood of a unit is the probability that its path passes through
+all of its bins,</p>
+<div class="math notranslate nohighlight">
+\[L = P\bigl(W(t_0) \in B_0,\ W(t_1) \in B_1,\ \dots,\ W(t_n) \in B_n\bigr).\]</div>
+<p>The rounded increments are not independent — two neighbouring increments share
+the rounding error of the reading between them — but the process is Markov, so
+<span class="math notranslate nohighlight">\(L\)</span> is a forward recursion. With <span class="math notranslate nohighlight">\(f_j\)</span> the density of the level at
+<span class="math notranslate nohighlight">\(t_j\)</span> jointly with the path having passed through <span class="math notranslate nohighlight">\(B_0, \dots,
+B_j\)</span>, and <span class="math notranslate nohighlight">\(g_j\)</span> the density of the increment
+<span class="math notranslate nohighlight">\(\mathrm{Gamma}(\alpha\,\Delta\tau_j, \beta)\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[f_0 = \text{uniform on } B_0, \qquad
+f_j(y) = \int_{B_{j-1}} f_{j-1}(u)\, g_j(y - u)\, du \quad (y \in B_j),
+\qquad
+L = \int_{B_n} f_n(y)\, dy.\]</div>
+<p>SurPyval splits every bin into <span class="math notranslate nohighlight">\(m = 16\)</span> cells of width <span class="math notranslate nohighlight">\(h =
+\delta/m\)</span> and carries the probability of each cell forward, taking the level as
+uniform within a cell. The step to a cell a distance <span class="math notranslate nohighlight">\(d\)</span> higher then has
+probability</p>
+<div class="math notranslate nohighlight">
+\[p(d) = \frac{H(d + h) - 2H(d) + H(d - h)}{h},
+\qquad
+H(x) = \int_0^x G_j(s)\, ds
+     = x\,P(k_j, \beta x) - \frac{k_j}{\beta} P(k_j + 1, \beta x),\]</div>
+<p>with <span class="math notranslate nohighlight">\(G_j\)</span> the increment CDF, <span class="math notranslate nohighlight">\(k_j = \alpha\,\Delta\tau_j\)</span> and
+<span class="math notranslate nohighlight">\(P\)</span> the regularised lower incomplete gamma function. The increment’s
+distribution is integrated exactly, so the infinite density at zero of a shape
+below one does no harm; the within-cell approximation’s error falls as
+<span class="math notranslate nohighlight">\(h^2\)</span>, and with 16 cells the log-likelihood is within about
+<span class="math notranslate nohighlight">\(10^{-4}\)</span> per increment of its limit (checked against direct quadrature
+and Monte Carlo path probabilities). The steps depend only on the offset between
+cells, so an increment costs <span class="math notranslate nohighlight">\(2m + 1\)</span> evaluations of <span class="math notranslate nohighlight">\(H\)</span>. Stress
+enters through <span class="math notranslate nohighlight">\(\Delta\tau_j\)</span> exactly as in the ordinary fit.</p>
+<p>With a single cell per bin the recursion collapses to the product of the
+probabilities <span class="math notranslate nohighlight">\(p(\Delta_j)\)</span> (with <span class="math notranslate nohighlight">\(h = \delta\)</span>) of the single
+recorded increments — each one’s exact probability on its own, ignoring their
+dependence. That is <code class="docutils literal notranslate"><span class="pre">gauge_method=&quot;independent&quot;</span></code>, several times cheaper than
+the default <code class="docutils literal notranslate"><span class="pre">&quot;exact&quot;</span></code>. In 50 simulated data sets like the example above (10
+units of 20 readings, <span class="math notranslate nohighlight">\(\alpha = 2\)</span>, <span class="math notranslate nohighlight">\(\beta = 4\)</span>, mean life 20.25)
+read to the nearest 0.5, the median <span class="math notranslate nohighlight">\(\alpha\)</span> is 4.7 for the censored fit,
+2.00 for the exact and 1.96 for the independent quantised fits, with standard
+deviations 0.25 and 0.27 (0.19 from unrounded readings); both give a mean life
+of 20.2–20.3, against 16.9 for the censored fit. With a gauge of 1.0 the
+censored fit’s <span class="math notranslate nohighlight">\(\alpha\)</span> is above 20, the quantised fits stay near 2, and
+the independent approximation’s spread grows to 0.56 against 0.33 for the exact
+one. Treating each increment instead as interval-censored in <span class="math notranslate nohighlight">\([\max(\Delta
+- \delta, 0),\ \Delta + \delta]\)</span>, a cruder approximation, does not remove the
+bias.</p>
+<p>The level at a unit’s first reading is taken as uniform over its bin. Only the
+differences between the bins then enter <span class="math notranslate nohighlight">\(L\)</span>, so the two rounding
+conventions give the same fit. When the first reading is exact instead — new
+units at exactly zero wear, not read off the gauge — <code class="docutils literal notranslate"><span class="pre">exact_start=True</span></code>
+starts the path at the point <span class="math notranslate nohighlight">\(r_0\)</span>, which the convention places in the
+middle (<code class="docutils literal notranslate"><span class="pre">&quot;nearest&quot;</span></code>) or at the bottom (<code class="docutils literal notranslate"><span class="pre">&quot;floor&quot;</span></code>) of its bin. Finally, a
+gauge much coarser than the scatter a unit builds up over the whole test cannot
+tell a random path from a straight line: <span class="math notranslate nohighlight">\(\alpha\)</span> and <span class="math notranslate nohighlight">\(\beta\)</span> then
+grow large together, while their ratio (the mean rate) and the mean life stay
+well estimated.</p>
+<p><strong>Life.</strong> Because the path only goes up, it has crossed <span class="math notranslate nohighlight">\(D\)</span> by time
+<span class="math notranslate nohighlight">\(t\)</span> exactly when its level at <span class="math notranslate nohighlight">\(t\)</span> is at least <span class="math notranslate nohighlight">\(D\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[F(t) = P\bigl(W(t) \ge D\bigr) = Q(\alpha t,\ \beta D),\]</div>
+<p>the regularised upper incomplete gamma function. The density, quantiles and mean
+follow from it numerically.</p>
+</section>
+<section id="stress-and-time-varying-stress">
+<h2>Stress and time-varying stress<a class="headerlink" href="#stress-and-time-varying-stress" title="Link to this heading"></a></h2>
+<p>In an accelerated degradation test the stress — temperature, voltage, load — is
+raised to make degradation happen faster, and in a <strong>step-stress</strong> test it is
+raised part way through the test on the same units. Both process models handle
+this through the same <strong>acceleration of the clock</strong> as the general-path model
+(for the Wiener process this is the time-scale transformation of
+<a class="reference internal" href="#whitmoreschenkelberg1997" id="id8"><span>[WhitmoreSchenkelberg1997]</span></a>): a unit held at stress <span class="math notranslate nohighlight">\(z\)</span> ages at</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{AF}(z) = \exp\!\bigl(\gamma^\top (z - z_{\text{ref}})\bigr)\]</div>
+<p>times the rate it would at the reference (use) stress <span class="math notranslate nohighlight">\(z_{\text{ref}}\)</span>,
+and under a stress profile <span class="math notranslate nohighlight">\(z(s)\)</span> its <strong>operational time</strong> is</p>
+<div class="math notranslate nohighlight">
+\[\tau(t) = \int_0^t \mathrm{AF}\bigl(z(s)\bigr)\, ds.\]</div>
+<p>The process runs on <span class="math notranslate nohighlight">\(\tau\)</span> instead of <span class="math notranslate nohighlight">\(t\)</span>. Over a measurement interval
+the Wiener increment becomes <span class="math notranslate nohighlight">\(N(\mu\,\Delta\tau, \sigma^2\,\Delta\tau)\)</span> and
+the Gamma increment <span class="math notranslate nohighlight">\(\mathrm{Gamma}(\alpha\,\Delta\tau, \beta)\)</span>, so the
+parameters <span class="math notranslate nohighlight">\((\mu, \sigma)\)</span> or <span class="math notranslate nohighlight">\((\alpha, \beta)\)</span> describe degradation at
+the reference stress and <span class="math notranslate nohighlight">\(\gamma\)</span> how strongly stress speeds it up. With
+<span class="math notranslate nohighlight">\(z = 1/T\)</span> (absolute temperature) the acceleration factor is Arrhenius, with
+<span class="math notranslate nohighlight">\(\gamma = -E_a / k\)</span>; with <span class="math notranslate nohighlight">\(z = \log V\)</span> it is an inverse power law.</p>
+<p>Fitting maximises the same increment likelihood with <span class="math notranslate nohighlight">\(\Delta\tau\)</span> in place
+of <span class="math notranslate nohighlight">\(\Delta t\)</span>: given <span class="math notranslate nohighlight">\(\gamma\)</span> the Wiener parameters still have the
+closed forms above and the Gamma rate is still profiled out, so only
+<span class="math notranslate nohighlight">\(\gamma\)</span> (and the Gamma shape) needs a numerical search. <span class="math notranslate nohighlight">\(\gamma\)</span> is
+identified by stress that differs across the measurement intervals — between
+units or within them — and at least two distinct stress levels are required.
+Unlike the general-path <code class="docutils literal notranslate"><span class="pre">moments</span></code> route, a process model needs no steps: all
+units share the same <span class="math notranslate nohighlight">\((\mu, \sigma)\)</span> or <span class="math notranslate nohighlight">\((\alpha, \beta)\)</span>, so there
+are no unit-specific parameters that could absorb an acceleration, and units
+that simply run at different constant stresses identify <span class="math notranslate nohighlight">\(\gamma\)</span>
+directly.</p>
+<p>Because stress only changes the speed of the clock, the life under any stress
+history is the reference life read at the operational time,
+<span class="math notranslate nohighlight">\(F(t) = F_0\bigl(\tau(t)\bigr)\)</span> — closed form for both processes, and a
+simple rescaling of time, <span class="math notranslate nohighlight">\(F(t) = F_0(\mathrm{AF}(z)\,t)\)</span>, at a constant
+stress. For the Wiener process this means the stress scales the variance per
+unit time along with the drift (both are multiplied by <span class="math notranslate nohighlight">\(\mathrm{AF}\)</span>, so
+the ratio <span class="math notranslate nohighlight">\(\mu/\sigma^2\)</span> is stress-free). That is the defining assumption
+of the time-scale model — stress changes only how fast time passes — and it is
+what makes the life under any profile closed form; a model in which stress
+changed the drift but not the diffusion would be a different model, and is not
+the one fitted here. For the Gamma process, the shape accrues at
+<span class="math notranslate nohighlight">\(\alpha\,\mathrm{AF}(z)\)</span> per unit time while <span class="math notranslate nohighlight">\(\beta\)</span> is the same at
+every stress.</p>
+</section>
+<section id="choosing-between-a-path-and-a-process">
+<h2>Choosing between a path and a process<a class="headerlink" href="#choosing-between-a-path-and-a-process" title="Link to this heading"></a></h2>
+<p>The two approaches put the randomness in different places, and the question to
+ask of your data is <em>where the spread in lifetimes comes from</em>. If each unit’s
+trace is a clean trend with small scatter and the traces fan out at different
+slopes, the spread comes from differences between units: use a general path. If
+each trace wanders so much that a smooth curve through it would be a fiction,
+the spread comes from the process itself: use a Wiener process if it can go down
+and a Gamma process if it cannot. The process models handle irregular
+measurement times without special treatment and give the life distribution
+directly from the fitted process, rather than through noisy pseudo failure
+times; the general-path models capture unit-to-unit differences in rate and
+curve shape explicitly, which the (homogeneous) process models do not.</p>
+<section id="destructive-degradation">
+<h3>Destructive degradation<a class="headerlink" href="#destructive-degradation" title="Link to this heading"></a></h3>
+<p>All the approaches so far assume each unit is measured <em>repeatedly</em> over time.
+In a <strong>destructive</strong> test the act of measuring destroys the specimen — a coupon
+must be broken to read its strength, insulation driven to breakdown — so each
+unit yields exactly <strong>one</strong> <span class="math notranslate nohighlight">\((t, y)\)</span> observation. With one point per unit
+there are no paths to fit and no increments to accumulate, so neither the
+general-path nor the stochastic-process machinery applies <a class="reference internal" href="#meeker1998" id="id9"><span>[Meeker1998]</span></a>.</p>
+<p>Instead the <strong>distribution of the degradation as a function of time</strong> is modelled
+directly. The measurement follows a location-scale distribution whose location
+moves with a transform of time,</p>
+<div class="math notranslate nohighlight">
+\[Y \mid t \ \sim\ \mathrm{dist}\bigl(\text{loc} = \beta_0 + \beta_1\,\varphi(t),
+\ \text{scale} = \sigma\bigr),\]</div>
+<p>with <span class="math notranslate nohighlight">\(\varphi\)</span> a time transform (identity, log, square root, reciprocal)
+chosen to make the trend in location linear. “Location-scale” covers the Normal
+(location = mean) and, through the log of the measurement, the LogNormal — the
+usual choice for a positive quantity such as a strength, where the scatter grows
+with the level. This is an ordinary censored location-scale regression of the
+response on <span class="math notranslate nohighlight">\(\varphi(t)\)</span>, fitted by maximum likelihood, so destructive
+measurements that are only bounded — a strength below the test floor, a
+specimen that survived the maximum load — enter as left- or right-censored
+observations in the usual way.</p>
+<p>A unit fails when its degradation crosses the threshold <span class="math notranslate nohighlight">\(D_f\)</span>. Because only
+the location moves with time, the population ordering is preserved: a specimen
+in the weakest 10 % at one age is in the weakest 10 % at every age. So the
+failure-time distribution is read straight off the fitted degradation
+distribution: for <strong>increasing</strong> degradation (wear, crack growth)
+<span class="math notranslate nohighlight">\(F_T(t) = P(Y(t) &gt; D_f)\)</span>, and for <strong>decreasing</strong> degradation (strength
+loss) <span class="math notranslate nohighlight">\(F_T(t) = P(Y(t) &lt; D_f)\)</span>. Unless it is given, the direction is
+inferred from the sign of a straight-line trend of the measurements against
+time. This is the standard destructive-degradation
+(degradation-distribution) model; see <a class="reference internal" href="#meeker1998" id="id10"><span>[Meeker1998]</span></a>.</p>
+</section>
+<section id="references">
+<h3>References<a class="headerlink" href="#references" title="Link to this heading"></a></h3>
+<div role="list" class="citation-list">
+<div class="citation" id="meeker1998" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>Meeker1998<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id3">1</a>,<a role="doc-backlink" href="#id5">2</a>,<a role="doc-backlink" href="#id9">3</a>,<a role="doc-backlink" href="#id10">4</a>)</span>
+<p>Meeker, W.Q. and Escobar, L.A., 1998. <em>Statistical Methods for
+Reliability Data</em>. John Wiley &amp; Sons.</p>
+</div>
+<div class="citation" id="lumeeker1993" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">LuMeeker1993</a><span class="fn-bracket">]</span></span>
+<p>Lu, C.J. and Meeker, W.Q., 1993. Using degradation measures to
+estimate a time-to-failure distribution. <em>Technometrics</em>, 35(2), pp.161-174.</p>
+</div>
+<div class="citation" id="wang2010" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id6">Wang2010</a><span class="fn-bracket">]</span></span>
+<p>Wang, X., 2010. Wiener processes with random effects for
+degradation data. <em>Journal of Multivariate Analysis</em>, 101(2), pp.340-351.</p>
+</div>
+<div class="citation" id="vannoortwijk2009" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id7">vanNoortwijk2009</a><span class="fn-bracket">]</span></span>
+<p>van Noortwijk, J.M., 2009. A survey of the application of
+gamma processes in maintenance. <em>Reliability Engineering &amp; System Safety</em>,
+94(1), pp.2-21.</p>
+</div>
+<div class="citation" id="nelson1980" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">Nelson1980</a><span class="fn-bracket">]</span></span>
+<p>Nelson, W., 1980. Accelerated life testing — step-stress
+models and data analyses. <em>IEEE Transactions on Reliability</em>, R-29(2),
+pp.103-108.</p>
+</div>
+<div class="citation" id="whitmoreschenkelberg1997" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id8">WhitmoreSchenkelberg1997</a><span class="fn-bracket">]</span></span>
+<p>Whitmore, G.A. and Schenkelberg, F., 1997.
+Modelling accelerated degradation data using Wiener diffusion with a time
+scale transformation. <em>Lifetime Data Analysis</em>, 3(1), pp.27-45.</p>
+</div>
+<div class="citation" id="lindstrombates1990" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">LindstromBates1990</a><span class="fn-bracket">]</span></span>
+<p>Lindstrom, M.J. and Bates, D.M., 1990. Nonlinear
+mixed effects models for repeated measures data. <em>Biometrics</em>, 46(3),
+pp.673-687.</p>
+</div>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Recurrent%20Event%20Regression%20Analysis.html" class="btn btn-neutral float-left" title="Recurrent Event Regression Analysis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Joint%20Models.html" class="btn btn-neutral float-right" title="Joint Models" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

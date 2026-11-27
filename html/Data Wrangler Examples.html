@@ -1,0 +1,1635 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Data Wrangling Examples &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Weighted Data" href="Weighted%20Data.html" />
+    <link rel="prev" title="Handy References - Aide-mémoire" href="Handy%20References%20-%20Aide-m%C3%A9moire.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Data Wrangling Examples</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#one-record-per-item">One record per item</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#from-a-dataframe">From a DataFrame</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#one-dataset-several-analyses">One dataset, several analyses</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#updating-a-dataset-as-items-age">Updating a dataset as items age</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#comparing-sites-arms-or-product-lines">Comparing sites, arms or product lines</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#combining-every-input-type-in-one-fit">Combining every input type in one fit</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#same-data-whichever-format-you-have-it-in">Same data, whichever format you have it in</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#combining-comparing-rescaling-and-resampling">Combining, comparing, rescaling and resampling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#truncation-four-ways">Truncation, four ways</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#from-dates-to-durations">From dates to durations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#counts-found-at-inspections">Counts found at inspections</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#recurrent-events-from-a-maintenance-log">Recurrent events from a maintenance log</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#format-converters">Format converters</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Data Wrangling Examples</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Data Wrangler Examples.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="data-wrangling-examples">
+<h1>Data Wrangling Examples<a class="headerlink" href="#data-wrangling-examples" title="Link to this heading"></a></h1>
+<p>Every SurPyval fitter takes data in the same form: values <code class="docutils literal notranslate"><span class="pre">x</span></code>, censoring flags <code class="docutils literal notranslate"><span class="pre">c</span></code>, counts <code class="docutils literal notranslate"><span class="pre">n</span></code> and truncation <code class="docutils literal notranslate"><span class="pre">t</span></code> (or <code class="docutils literal notranslate"><span class="pre">tl</span></code> and <code class="docutils literal notranslate"><span class="pre">tr</span></code>), described in <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>. Data rarely arrives that way. It comes as a list of failures and a list of survivors, as text with “+” marks, as a spreadsheet of install and removal dates, or as counts found at each inspection. This page shows how to get from each of these to something <code class="docutils literal notranslate"><span class="pre">fit()</span></code> accepts. The tool for it is <code class="xref py py-class docutils literal notranslate"><span class="pre">SurpyvalData</span></code>: its constructors read each common layout, it validates the data exactly as the fitters do, and the parametric, non-parametric and regression <code class="docutils literal notranslate"><span class="pre">fit</span></code> methods take one in place of the arrays. The general recipe is always the same: decide, for each item, <em>what is known about its value</em> (exact, above a value, below a value, or between two values) and <em>whether it could have been missed altogether</em> (truncation), then write that down as <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code> and <code class="docutils literal notranslate"><span class="pre">t</span></code>.</p>
+<p>Let’s say we have a list of failures and a list of right censored (suspended) values. <code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_observations</span></code> takes a list of each kind of observation, and the fitters take what it returns:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">SurpyvalData</span>
+
+<span class="c1"># Failure data</span>
+<span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+<span class="c1"># 'suspended' or right censored data</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_observations</span><span class="p">(</span><span class="n">observed</span><span class="o">=</span><span class="n">f</span><span class="p">,</span> <span class="n">right_censored</span><span class="o">=</span><span class="n">s</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">c</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[ 1.  2.  2.  3.  4.  5.  6.  7.  8.  9. 10.] [1 0 1 0 0 0 0 0 0 0 1] [1 1 1 1 1 1 1 1 2 1 1]
+Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 12 units: 9 events at 8 unique times, 3 right censored
+Parameters          :
+     alpha: 7.200723108358338
+      beta: 2.474773883262152
+</pre></div>
+</div>
+</div>
+</div>
+<p>A <code class="docutils literal notranslate"><span class="pre">fit</span></code> given a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> takes everything from it – values, flags, counts, truncation and, for a regression, the covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code> – so it refuses <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">t</span></code> (and the rest) given alongside it. <code class="docutils literal notranslate"><span class="pre">data.to_xcnt()</span></code> gives the arrays themselves, <code class="docutils literal notranslate"><span class="pre">x,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">t</span></code>, where a function of your own needs them.</p>
+<p>You can even bring in your left censored data as well:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Failure data</span>
+<span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+<span class="c1"># 'suspended' or right censored data</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
+<span class="c1"># left censored data</span>
+<span class="n">l</span> <span class="o">=</span> <span class="p">[</span><span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_observations</span><span class="p">(</span>
+    <span class="n">observed</span><span class="o">=</span><span class="n">f</span><span class="p">,</span> <span class="n">right_censored</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">left_censored</span><span class="o">=</span><span class="n">l</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">c</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[ 1.  2.  2.  3.  4.  5.  6.  7.  7.  8.  8.  9.  9. 10.] [ 1  0  1  0  0  0  0 -1  0 -1  0 -1  0  1] [1 1 1 1 1 1 1 1 1 1 2 1 1 1]
+Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 15 units: 12 events (9 exact at 8 unique times, 3 left censored), 3 right censored
+Parameters          :
+     alpha: 6.814751532142517
+      beta: 2.470899121389332
+</pre></div>
+</div>
+</div>
+</div>
+<p>Another common type of data that is provided is in a simple text list with “+” indicating that the observation was censored at that point. Using some simple python list comprehensions can help.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example provided data</span>
+<span class="n">data</span> <span class="o">=</span> <span class="s2">"1, 2, 3+, 5, 6, 8, 10, 3+, 5+"</span>
+
+<span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">','</span><span class="p">)</span> <span class="k">if</span> <span class="s2">"+"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">x</span><span class="p">]</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">data</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">','</span><span class="p">)</span> <span class="k">if</span> <span class="s2">"+"</span> <span class="ow">in</span> <span class="n">x</span><span class="p">]</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_observations</span><span class="p">(</span><span class="n">observed</span><span class="o">=</span><span class="n">f</span><span class="p">,</span> <span class="n">right_censored</span><span class="o">=</span><span class="n">s</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 9 units: 6 events at 6 unique times, 3 right censored
+Parameters          :
+     alpha: 6.7375366592227985
+      beta: 1.9245506418697922
+</pre></div>
+</div>
+</div>
+</div>
+<p>Again, this can be extended to left censored data as well:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="s2">"1, 2, 3+, 5, 6, 8, 10, 3+, 5+, 15-, 16-, 17-"</span>
+<span class="n">split_data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">','</span><span class="p">)</span>
+
+<span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">split_data</span> <span class="k">if</span> <span class="p">(</span><span class="s2">"+"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">x</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="s2">"-"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">x</span><span class="p">)]</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">split_data</span> <span class="k">if</span> <span class="s2">"+"</span> <span class="ow">in</span> <span class="n">x</span><span class="p">]</span>
+<span class="n">l</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">split_data</span> <span class="k">if</span> <span class="s2">"-"</span> <span class="ow">in</span> <span class="n">x</span><span class="p">]</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_observations</span><span class="p">(</span>
+    <span class="n">observed</span><span class="o">=</span><span class="n">f</span><span class="p">,</span> <span class="n">right_censored</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">left_censored</span><span class="o">=</span><span class="n">l</span>
+<span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The notation in <code class="xref py py-mod docutils literal notranslate"><span class="pre">surpyval.utils.notation</span></code> reads that text directly, and gives a way of writing small datasets in code the way you would describe them. <code class="docutils literal notranslate"><span class="pre">Observations.parse</span></code> takes entries separated by commas, semicolons or new lines: <code class="docutils literal notranslate"><span class="pre">10</span></code> failed at 10, <code class="docutils literal notranslate"><span class="pre">20+</span></code> still running at 20, <code class="docutils literal notranslate"><span class="pre">&lt;3</span></code> or <code class="docutils literal notranslate"><span class="pre">3-</span></code> failed before 3, <code class="docutils literal notranslate"><span class="pre">[5,</span> <span class="pre">10]</span></code> failed between 5 and 10, and <code class="docutils literal notranslate"><span class="pre">3*10</span></code> three units alike:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.utils.notation</span><span class="w"> </span><span class="kn">import</span> <span class="n">Observations</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">Observations</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s2">"1, 2, 3+, 5, 6, 8, 10, 3+, 5+, 15-, 16-, 17-"</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">surpyval_data</span><span class="p">())</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 12 units: 9 events (6 exact at 6 unique times, 3 left censored), 3 right censored
+Parameters          :
+     alpha: 6.69634185755945
+      beta: 1.9484504058788998
+</pre></div>
+</div>
+</div>
+</div>
+<p>In code, each observation is one object: <code class="docutils literal notranslate"><span class="pre">O</span></code> (failed at), <code class="docutils literal notranslate"><span class="pre">RC</span></code> (still running at), <code class="docutils literal notranslate"><span class="pre">LC</span></code> (failed before) and <code class="docutils literal notranslate"><span class="pre">IC</span></code> (failed between). <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">*</span> <span class="pre">obs</span></code> is <code class="docutils literal notranslate"><span class="pre">n</span></code> units alike, and <code class="docutils literal notranslate"><span class="pre">obs</span> <span class="pre">/</span> <span class="pre">Truncation(tl,</span> <span class="pre">tr)</span></code> says the unit was only observed within <code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">tr]</span></code> (late entry at <code class="docutils literal notranslate"><span class="pre">tl</span></code>); dividing a whole <code class="docutils literal notranslate"><span class="pre">Observations</span></code> by a <code class="docutils literal notranslate"><span class="pre">Truncation</span></code> gives every observation without a window of its own that window. An observation outside its window is refused, and the printout reads as words:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.utils.notation</span><span class="w"> </span><span class="kn">import</span> <span class="n">IC</span><span class="p">,</span> <span class="n">LC</span><span class="p">,</span> <span class="n">RC</span><span class="p">,</span> <span class="n">O</span><span class="p">,</span> <span class="n">Truncation</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">Observations</span><span class="p">([</span>
+    <span class="mi">3</span> <span class="o">*</span> <span class="n">O</span><span class="p">(</span><span class="mi">10</span><span class="p">),</span> <span class="n">RC</span><span class="p">(</span><span class="mi">20</span><span class="p">),</span> <span class="n">LC</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span>
+    <span class="n">IC</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span> <span class="o">/</span> <span class="n">Truncation</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">40</span><span class="p">),</span>
+<span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">xcnt</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Observations, 4 rows (6 units):
+  3 × failed at 10
+  1 × still running at 20
+  1 × failed before 3
+  1 × failed between 5 and 10, observed in (0, 40]
+{'x': array([[10., 10.],
+       [20., 20.],
+       [ 3.,  3.],
+       [ 5., 10.]]), 'c': array([ 0,  1, -1,  2]), 'n': array([3, 1, 1, 1]), 'tl': array([-inf, -inf, -inf,   0.]), 'tr': array([inf, inf, inf, 40.])}
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">xcnt()</span></code> gives the arrays (one row per observation, <code class="docutils literal notranslate"><span class="pre">tl</span></code>/<code class="docutils literal notranslate"><span class="pre">tr</span></code> of <code class="docutils literal notranslate"><span class="pre">-inf</span></code>/<code class="docutils literal notranslate"><span class="pre">inf</span></code> where there is no truncation) and <code class="docutils literal notranslate"><span class="pre">surpyval_data()</span></code> the <code class="xref py py-class docutils literal notranslate"><span class="pre">SurpyvalData</span></code> every fitter takes; a fitter also takes the <code class="docutils literal notranslate"><span class="pre">Observations</span></code> as it is. The rules are those of <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code>, checked when each observation is built: a count is a whole number, a time is finite, a point lies in its window <code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">tr]</span></code> (a suspension strictly before <code class="docutils literal notranslate"><span class="pre">tr</span></code>), an interval lies inside it (<code class="docutils literal notranslate"><span class="pre">tl</span> <span class="pre">&lt;=</span> <span class="pre">lower</span></code>, <code class="docutils literal notranslate"><span class="pre">upper</span> <span class="pre">&lt;=</span> <span class="pre">tr</span></code>), and an interval open at one end is one-sided censoring (<code class="docutils literal notranslate"><span class="pre">IC(5,</span> <span class="pre">inf)</span></code> is <code class="docutils literal notranslate"><span class="pre">RC(5)</span></code>).</p>
+<p>In text, a window follows its entry after a bar, <code class="docutils literal notranslate"><span class="pre">12</span> <span class="pre">|</span> <span class="pre">(2,</span> <span class="pre">50]</span></code> (<code class="docutils literal notranslate"><span class="pre">inf</span></code> for an open side), and <code class="docutils literal notranslate"><span class="pre">text()</span></code> writes the observations back as text that <code class="docutils literal notranslate"><span class="pre">parse</span></code> reads as the same ones. <code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_notation</span></code> takes the text or the <code class="docutils literal notranslate"><span class="pre">Observations</span></code>, and <code class="docutils literal notranslate"><span class="pre">data.to_notation()</span></code> goes back:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">Observations</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s2">"3*10, 20+, [5, 10] | (2, 40], 12 | (2, inf]"</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">unit</span><span class="p">)</span>
+<span class="n">back</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_notation</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">to_notation</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">back</span><span class="o">.</span><span class="n">text</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>hours
+[5, 10] | (2, 40], 3*10, 12 | (2, inf], 20+
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Each observation can also say what failed and describe its unit: <code class="docutils literal notranslate"><span class="pre">event_type=</span></code> (a failure mode or cause, for the competing-risks models; never on a suspension) and <code class="docutils literal notranslate"><span class="pre">covariates={name:</span> <span class="pre">value}</span></code>, which become the data’s event types <code class="docutils literal notranslate"><span class="pre">e</span></code> and its named covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code>. Every observation needs the same covariate names, and a set that does not is refused, saying which names are missing. The text form leaves these out, so it stays readable; they stay in Python:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">obs</span> <span class="o">=</span> <span class="n">Observations</span><span class="p">([</span>
+    <span class="n">O</span><span class="p">(</span><span class="mi">410</span><span class="p">,</span> <span class="n">event_type</span><span class="o">=</span><span class="s2">"bearing"</span><span class="p">,</span> <span class="n">covariates</span><span class="o">=</span><span class="p">{</span><span class="s2">"temp"</span><span class="p">:</span> <span class="mi">60</span><span class="p">}),</span>
+    <span class="n">O</span><span class="p">(</span><span class="mi">520</span><span class="p">,</span> <span class="n">event_type</span><span class="o">=</span><span class="s2">"seal"</span><span class="p">,</span> <span class="n">covariates</span><span class="o">=</span><span class="p">{</span><span class="s2">"temp"</span><span class="p">:</span> <span class="mi">75</span><span class="p">}),</span>
+    <span class="mi">2</span> <span class="o">*</span> <span class="n">RC</span><span class="p">(</span><span class="mi">800</span><span class="p">,</span> <span class="n">covariates</span><span class="o">=</span><span class="p">{</span><span class="s2">"temp"</span><span class="p">:</span> <span class="mi">60</span><span class="p">}),</span>
+<span class="p">])</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">obs</span><span class="o">.</span><span class="n">surpyval_data</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">covariate_names</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">Z</span><span class="o">.</span><span class="n">ravel</span><span class="p">(),</span> <span class="n">data</span><span class="o">.</span><span class="n">e</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">obs</span><span class="o">.</span><span class="n">text</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>['temp'] [60. 75. 60.] ['bearing' 'seal' None]
+410, 520, 2*800+
+</pre></div>
+</div>
+</div>
+</div>
+<p>A unit watched over several events, a repairable item, is an <code class="docutils literal notranslate"><span class="pre">Item</span></code>: its id, then its events. <code class="docutils literal notranslate"><span class="pre">RC</span></code> is the end of watching (its age when last seen; at most one, after every event), <code class="docutils literal notranslate"><span class="pre">Item(...)</span> <span class="pre">/</span> <span class="pre">Truncation(tl)</span></code> is late entry, <code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">*</span> <span class="pre">O(120)</span></code> is three failures at the same age, <code class="docutils literal notranslate"><span class="pre">IC(a,</span> <span class="pre">b)</span></code> a failure found between two inspections, and <code class="docutils literal notranslate"><span class="pre">O(800,</span> <span class="pre">terminal=True)</span></code> the event that ended the history for good (<code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">=</span> <span class="pre">1</span></code>: scrapped or written off). The item’s fixed covariates go on the item, <code class="docutils literal notranslate"><span class="pre">covariates={...}</span></code>. <code class="docutils literal notranslate"><span class="pre">Items</span></code> collects them, and <code class="docutils literal notranslate"><span class="pre">surpyval_data()</span></code> gives the <code class="xref py py-class docutils literal notranslate"><span class="pre">SurpyvalData</span></code> with each row’s unit <code class="docutils literal notranslate"><span class="pre">i</span></code> and terminal flag <code class="docutils literal notranslate"><span class="pre">a</span></code>, the form every recurrent fitter takes (and takes the <code class="docutils literal notranslate"><span class="pre">Items</span></code> as it is):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.utils.notation</span><span class="w"> </span><span class="kn">import</span> <span class="n">Item</span><span class="p">,</span> <span class="n">Items</span>
+
+<span class="n">fleet</span> <span class="o">=</span> <span class="n">Items</span><span class="p">([</span>
+    <span class="n">Item</span><span class="p">(</span><span class="s2">"P1"</span><span class="p">,</span> <span class="n">O</span><span class="p">(</span><span class="mi">120</span><span class="p">),</span> <span class="n">O</span><span class="p">(</span><span class="mi">310</span><span class="p">),</span> <span class="n">IC</span><span class="p">(</span><span class="mi">400</span><span class="p">,</span> <span class="mi">450</span><span class="p">),</span> <span class="n">RC</span><span class="p">(</span><span class="mi">1000</span><span class="p">))</span> <span class="o">/</span> <span class="n">Truncation</span><span class="p">(</span><span class="mi">0</span><span class="p">),</span>
+    <span class="n">Item</span><span class="p">(</span><span class="s2">"P2"</span><span class="p">,</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">O</span><span class="p">(</span><span class="mi">200</span><span class="p">),</span> <span class="n">O</span><span class="p">(</span><span class="mi">900</span><span class="p">,</span> <span class="n">terminal</span><span class="o">=</span><span class="kc">True</span><span class="p">)),</span>
+<span class="p">],</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fleet</span><span class="o">.</span><span class="n">surpyval_data</span><span class="p">())</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">recurrent</span><span class="o">.</span><span class="n">CrowAMSAA</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">fleet</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>SurpyvalData: 2 items, 8 rows, ages in hours
+    id                 x  c  n    tl  a
+  'P1'    [120.0, 120.0]  0  1   0.0  0
+  'P1'    [310.0, 310.0]  0  1  -inf  0
+  'P1'    [400.0, 450.0]  2  1  -inf  0
+  'P1'  [1000.0, 1000.0]  1  1  -inf  0
+  'P2'    [200.0, 200.0]  0  1  -inf  0
+  'P2'    [200.0, 200.0]  0  1  -inf  0
+  'P2'    [200.0, 200.0]  0  1  -inf  0
+  'P2'    [900.0, 900.0]  0  1  -inf  1
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric Recurrence SurPyval Model
+==================================
+Process             : Crow-AMSAA
+Unit                : hours
+Fitted by           : MLE
+Parameters          :
+     alpha: 190.66320810747175
+      beta: 0.8097332754063032
+Notes               :
+  - 1 unit ended in a terminal event (a = 1: 'P2'). This model does not model terminal events, so it is fitted as an event followed by the end of that unit's observation.
+</pre></div>
+</div>
+</div>
+</div>
+<p>A history can be written as one line of text, its id, a colon and its events in the same grammar, with the item’s window last after a bar; <code class="docutils literal notranslate"><span class="pre">text()</span></code> writes it back (covariates, event types, terminal flags and readings stay in Python):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fleet</span> <span class="o">=</span> <span class="n">Items</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s2">"""</span>
+<span class="s2">    P1: 120, 310, [400, 450], 1000+ | (0, inf]</span>
+<span class="s2">    P2: 3*200, 900</span>
+<span class="s2">"""</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fleet</span><span class="o">.</span><span class="n">text</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>P1: 120, 310, [400, 450], 1000+ | (0, inf]
+P2: 3*200, 900
+</pre></div>
+</div>
+</div>
+</div>
+<p>Readings taken on an item over its life go in <code class="docutils literal notranslate"><span class="pre">readings</span></code>: <code class="docutils literal notranslate"><span class="pre">{name:</span> <span class="pre">{age:</span> <span class="pre">value}}</span></code> for named measurements, or one <code class="docutils literal notranslate"><span class="pre">{age:</span> <span class="pre">value}</span></code> series, which the joint models read as their <code class="docutils literal notranslate"><span class="pre">markers</span></code>. They become the data’s <code class="xref py py-class docutils literal notranslate"><span class="pre">Measurements</span></code>. Covariates that change over the item’s life are given as a <code class="docutils literal notranslate"><span class="pre">StepSchedule</span></code> (or <code class="docutils literal notranslate"><span class="pre">CovariatePath</span></code>) in <code class="docutils literal notranslate"><span class="pre">time_varying_covariates</span></code>, and passed through as they are: the fits expand them into stretches themselves.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">StepSchedule</span>
+
+<span class="n">pumps</span> <span class="o">=</span> <span class="n">Items</span><span class="p">([</span>
+    <span class="n">Item</span><span class="p">(</span><span class="s2">"A"</span><span class="p">,</span> <span class="n">O</span><span class="p">(</span><span class="mi">100</span><span class="p">),</span> <span class="n">readings</span><span class="o">=</span><span class="p">{</span><span class="s2">"vibration"</span><span class="p">:</span> <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="mf">1.2</span><span class="p">,</span> <span class="mi">50</span><span class="p">:</span> <span class="mf">1.9</span><span class="p">}},</span>
+         <span class="n">time_varying_covariates</span><span class="o">=</span><span class="n">StepSchedule</span><span class="o">.</span><span class="n">from_changepoints</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">50</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">])),</span>
+    <span class="n">Item</span><span class="p">(</span><span class="s2">"B"</span><span class="p">,</span> <span class="n">RC</span><span class="p">(</span><span class="mi">120</span><span class="p">),</span> <span class="n">readings</span><span class="o">=</span><span class="p">{</span><span class="s2">"vibration"</span><span class="p">:</span> <span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mi">60</span><span class="p">:</span> <span class="mf">1.1</span><span class="p">}},</span>
+         <span class="n">time_varying_covariates</span><span class="o">=</span><span class="n">StepSchedule</span><span class="o">.</span><span class="n">from_changepoints</span><span class="p">([</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">])),</span>
+<span class="p">])</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">pumps</span><span class="o">.</span><span class="n">surpyval_data</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">m</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">time_varying_covariates</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Measurements: vibration - 2 units, 4 readings
+{'A': StepSchedule.from_changepoints([0.0, 50.0], [[0.0], [1.0]]), 'B': StepSchedule.from_changepoints([0.0], [[0.0]])}
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> with <code class="docutils literal notranslate"><span class="pre">i</span></code> is the form for several rows per unit; <code class="docutils literal notranslate"><span class="pre">EventHistoryData</span></code> is being phased out, and <code class="docutils literal notranslate"><span class="pre">fleet.event_history_data()</span></code> gives one only for code that still needs it.</p>
+<p>Surpyval also offers the ability to use a pandas DataFrame as an input to every fitter. All you need to do is tell <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> which columns to look at for x, c, n, and the truncation, tl and tr. Columns for c, n, tl and tr are optional, and tl and tr can also be given as a single number that applies to every row. Further, if you have interval censored data you can use the ‘xl’ and ‘xr’ column names instead. Any other <code class="docutils literal notranslate"><span class="pre">fit</span></code> option is passed straight to <code class="docutils literal notranslate"><span class="pre">fit</span></code>, and the model is the one <code class="docutils literal notranslate"><span class="pre">fit</span></code> gives on the same arrays. The parametric distributions (<code class="docutils literal notranslate"><span class="pre">Weibull.fit_from_df</span></code>), the non-parametric estimators (<code class="docutils literal notranslate"><span class="pre">KaplanMeier.fit_from_df</span></code>), <code class="docutils literal notranslate"><span class="pre">RoystonParmar</span></code> and <code class="docutils literal notranslate"><span class="pre">MixtureModel</span></code> take the arguments below; the regression, competing-risks and recurrent-event fitters name their columns <code class="docutils literal notranslate"><span class="pre">x_col</span></code>, <code class="docutils literal notranslate"><span class="pre">c_col</span></code>, <code class="docutils literal notranslate"><span class="pre">Z_cols</span></code>, <code class="docutils literal notranslate"><span class="pre">e_col</span></code>, <code class="docutils literal notranslate"><span class="pre">i_col</span></code>, … (see <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>).</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+<span class="n">xr</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
+<span class="n">xl</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s1">'xl'</span> <span class="p">:</span> <span class="n">xl</span><span class="p">,</span> <span class="s1">'xr'</span> <span class="p">:</span> <span class="n">xr</span><span class="p">})</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span><span class="n">df</span><span class="p">,</span> <span class="n">xl_col</span><span class="o">=</span><span class="s1">'xl'</span><span class="p">,</span> <span class="n">xr_col</span><span class="o">=</span><span class="s1">'xr'</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 5 units: 5 events (0 exact, 5 interval censored)
+Parameters          :
+     alpha: 4.694328337453229
+      beta: 2.4106932420029943
+</pre></div>
+</div>
+</div>
+</div>
+<p>If you have mixed interval and observed or censored data, the two columns can still describe every row, provided no <code class="docutils literal notranslate"><span class="pre">c</span></code> column is given: a row with the same value in both columns is an exact observation, a row whose <code class="docutils literal notranslate"><span class="pre">xr</span></code> is infinite is right censored at <code class="docutils literal notranslate"><span class="pre">xl</span></code>, and a row whose <code class="docutils literal notranslate"><span class="pre">xl</span></code> is minus infinity is left censored at <code class="docutils literal notranslate"><span class="pre">xr</span></code>. This is exactly the shape of inspection data recorded as “last seen working” and “first seen failed”:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">'last_ok'</span><span class="p">:</span>      <span class="p">[</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">300</span><span class="p">,</span> <span class="mi">420</span><span class="p">,</span>    <span class="mi">500</span><span class="p">,</span> <span class="mi">610</span><span class="p">],</span>
+    <span class="s1">'first_failed'</span><span class="p">:</span> <span class="p">[</span><span class="mi">200</span><span class="p">,</span>     <span class="mi">150</span><span class="p">,</span> <span class="mi">380</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">],</span>
+<span class="p">})</span>
+<span class="c1"># row 0: failed before the first inspection at 200 -&gt; left censored</span>
+<span class="c1"># rows 1 and 4: failure time known exactly         -&gt; observed</span>
+<span class="c1"># row 2: failed between inspections at 300 and 380 -&gt; interval censored</span>
+<span class="c1"># rows 3 and 5: never seen failed                  -&gt; right censored</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="p">(</span><span class="n">xl</span><span class="o">=</span><span class="n">df</span><span class="p">[</span><span class="s1">'last_ok'</span><span class="p">],</span> <span class="n">xr</span><span class="o">=</span><span class="n">df</span><span class="p">[</span><span class="s1">'first_failed'</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">c</span><span class="p">)</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span> <span class="n">xl_col</span><span class="o">=</span><span class="s1">'last_ok'</span><span class="p">,</span> <span class="n">xr_col</span><span class="o">=</span><span class="s1">'first_failed'</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[ 0 -1  2  1  0  1]
+[498.97122045   1.43729139]
+</pre></div>
+</div>
+</div>
+</div>
+<p>(<code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> validates its input exactly as every fitter does; building one yourself is a quick way to check how SurPyval has read your data. Its rows are sorted, so the flags come back in order of time.)</p>
+<p>To see the data itself, <code class="docutils literal notranslate"><span class="pre">data.plot_lifetimes()</span></code> draws one line for each unit (a swimmer plot): a filled circle where it failed, an open triangle where it was still running (right censored) or had already failed (left censored), a bracket over an interval, and the line starting where the unit came under observation (late entry). A row standing for several items is labelled with its count, an item’s several rows share a line, event types take colours, and <code class="docutils literal notranslate"><span class="pre">max_rows</span></code> (100 by default) limits a large dataset, saying how many lines were left out. It returns the Axes.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_observations</span><span class="p">(</span>
+    <span class="n">observed</span><span class="o">=</span><span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span>
+    <span class="n">right_censored</span><span class="o">=</span><span class="p">[</span><span class="mi">8</span><span class="p">],</span>
+    <span class="n">left_censored</span><span class="o">=</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span>
+    <span class="n">interval_censored</span><span class="o">=</span><span class="p">[[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">]],</span>
+    <span class="n">observed_left_truncation</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="n">ax</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">plot_lifetimes</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Data%20Wrangler%20Examples_14_0.png" src="_images/Data%20Wrangler%20Examples_14_0.png" />
+</div>
+</div>
+<section id="one-record-per-item">
+<h2>One record per item<a class="headerlink" href="#one-record-per-item" title="Link to this heading"></a></h2>
+<p>When each item’s record carries more than a time and a flag (its own
+observation window, what failed, its covariates), describe it with an
+<code class="docutils literal notranslate"><span class="pre">ItemLifetime</span></code> and build the data from the list. How many identical items
+each one stands for goes in <code class="docutils literal notranslate"><span class="pre">counts</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">ItemLifetime</span>
+
+<span class="n">items</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n">ItemLifetime</span><span class="p">(</span><span class="s2">"B7"</span><span class="p">,</span> <span class="n">observed</span><span class="o">=</span><span class="mi">1820</span><span class="p">,</span> <span class="n">covariates</span><span class="o">=</span><span class="p">[</span><span class="mf">1.0</span><span class="p">]),</span>
+    <span class="n">ItemLifetime</span><span class="p">(</span><span class="s2">"B8"</span><span class="p">,</span> <span class="n">right_censored</span><span class="o">=</span><span class="mi">2400</span><span class="p">,</span> <span class="n">covariates</span><span class="o">=</span><span class="p">[</span><span class="mf">0.0</span><span class="p">]),</span>
+    <span class="n">ItemLifetime</span><span class="p">(</span><span class="s2">"B9"</span><span class="p">,</span> <span class="n">interval_censored</span><span class="o">=</span><span class="p">[</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">1500</span><span class="p">],</span> <span class="n">covariates</span><span class="o">=</span><span class="p">[</span><span class="mf">1.0</span><span class="p">]),</span>
+    <span class="n">ItemLifetime</span><span class="p">(</span><span class="s2">"B10"</span><span class="p">,</span> <span class="n">observed</span><span class="o">=</span><span class="mi">950</span><span class="p">,</span> <span class="n">left_truncation</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">covariates</span><span class="o">=</span><span class="p">[</span><span class="mf">0.0</span><span class="p">]),</span>
+<span class="p">]</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_items</span><span class="p">(</span><span class="n">items</span><span class="p">,</span> <span class="n">counts</span><span class="o">=</span><span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">40</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">without</span><span class="p">(</span><span class="s2">"covariates"</span><span class="p">))</span><span class="o">.</span><span class="n">params</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[ 3 40  2  5]
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([6.12713963e+03, 1.57422904e+00])
+</pre></div>
+</div>
+</div>
+</div>
+<p>Records are updated as items age, each update giving a new, checked record
+(the old one is left as it was), and copied for a new item with <code class="docutils literal notranslate"><span class="pre">clone</span></code>.
+A record is fixed once made, so it is always one that passed its checks:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">b8</span> <span class="o">=</span> <span class="n">ItemLifetime</span><span class="p">(</span><span class="s2">"B8"</span><span class="p">,</span> <span class="n">right_censored</span><span class="o">=</span><span class="mi">2400</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b8</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="mi">2800</span><span class="p">))</span>            <span class="c1"># still running at 2800</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b8</span><span class="o">.</span><span class="n">fail</span><span class="p">(</span><span class="mi">2650</span><span class="p">,</span> <span class="s2">"spall"</span><span class="p">))</span>     <span class="c1"># failed at 2650</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b8</span><span class="o">.</span><span class="n">found_failed</span><span class="p">(</span><span class="mi">3000</span><span class="p">))</span>      <span class="c1"># found failed at the 3000 inspection</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">b8</span><span class="o">.</span><span class="n">clone</span><span class="p">(</span><span class="s2">"B11"</span><span class="p">))</span>            <span class="c1"># the same record for another item</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">ItemHistory</span>
+
+<span class="n">pump</span> <span class="o">=</span> <span class="n">ItemHistory</span><span class="p">(</span><span class="s2">"P1"</span><span class="p">,</span> <span class="n">observed</span><span class="o">=</span><span class="p">[</span><span class="mi">420</span><span class="p">],</span> <span class="n">right_censored</span><span class="o">=</span><span class="mi">600</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pump</span><span class="o">.</span><span class="n">add_failure</span><span class="p">(</span><span class="mi">700</span><span class="p">))</span>      <span class="c1"># failed again at 700</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>ItemLifetime('B8', right_censored=2800.0)
+ItemLifetime('B8', observed=2650.0, event_type='spall')
+ItemLifetime('B8', interval_censored=[2400.0, 3000.0])
+ItemLifetime('B11', right_censored=2400.0)
+ItemHistory('P1', observed=[420.0, 700.0], right_censored=700.0)
+</pre></div>
+</div>
+</div>
+</div>
+<p>Every check names the item, and <code class="docutils literal notranslate"><span class="pre">data.to_items()</span></code> gives the items back
+(<code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_items(data.to_items(),</span> <span class="pre">counts=data.n)</span></code> is the same
+data). A plain fit of data that holds more than a plain fit takes (covariates,
+event types) is of <code class="docutils literal notranslate"><span class="pre">data.without(&quot;covariates&quot;,</span> <span class="pre">&quot;event_types&quot;)</span></code>, which keeps
+everything else – B10’s late entry here – rather than of records rebuilt by
+hand. An item’s <code class="docutils literal notranslate"><span class="pre">event_type</span></code> goes to the competing-risks fitters
+(<code class="docutils literal notranslate"><span class="pre">CompetingRisks.fit(data)</span></code>), and its step <code class="docutils literal notranslate"><span class="pre">time_varying_covariates</span></code>
+(<code class="docutils literal notranslate"><span class="pre">{age:</span> <span class="pre">values}</span></code> or a <code class="docutils literal notranslate"><span class="pre">StepSchedule</span></code>) to a regression’s <code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code>:
+<code class="docutils literal notranslate"><span class="pre">WeibullPH.fit(data)</span></code> splits each item’s life where its covariates step.
+A continuously varying <code class="docutils literal notranslate"><span class="pre">CovariatePath</span></code> is kept with the data but not
+fitted yet (#908).</p>
+<p>The fitted model predicts for an item from its own covariates,
+<code class="docutils literal notranslate"><span class="pre">model.sf_tvc(times,</span> <span class="pre">item)</span></code>, with no schedule to build by hand: the
+item’s fixed covariates and its time-varying ones are lined up as the fit
+took them. Datasets from several sources join through their records,
+<code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_items(site_a.to_items()</span> <span class="pre">+</span> <span class="pre">site_b.to_items(),</span>
+<span class="pre">counts=[*site_a.n,</span> <span class="pre">*site_b.n])</span></code>, which refuses an item id found in both.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">StepSchedule</span>
+
+<span class="n">stress</span> <span class="o">=</span> <span class="n">StepSchedule</span><span class="o">.</span><span class="n">from_changepoints</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">500</span><span class="p">],</span> <span class="p">[[</span><span class="mf">0.0</span><span class="p">],</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">]])</span>
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">life</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">2.0</span><span class="p">,</span> <span class="mi">60</span><span class="p">)</span> <span class="o">*</span> <span class="mi">900</span>
+<span class="n">items</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n">ItemLifetime</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">observed</span><span class="o">=</span><span class="n">t</span><span class="p">,</span> <span class="n">time_varying_covariates</span><span class="o">=</span><span class="n">stress</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">life</span><span class="p">)</span>
+<span class="p">]</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_items</span><span class="p">(</span><span class="n">items</span><span class="p">))</span><span class="o">.</span><span class="n">params</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([9.75340851e+02, 1.76396302e+00, 1.38954081e-01])
+</pre></div>
+</div>
+</div>
+</div>
+<p>Covariates given by name, <code class="docutils literal notranslate"><span class="pre">covariates={&quot;age&quot;:</span> <span class="pre">54,</span> <span class="pre">&quot;arm&quot;:</span> <span class="pre">1}</span></code>, are
+named in the data (<code class="docutils literal notranslate"><span class="pre">covariate_names</span></code>) and in the fitted model, whose
+coefficients take the names; an item’s names may come in any order:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">trial</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">80</span><span class="p">):</span>
+    <span class="n">arm</span><span class="p">,</span> <span class="n">age</span> <span class="o">=</span> <span class="n">k</span> <span class="o">%</span> <span class="mi">2</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">40</span><span class="p">,</span> <span class="mi">70</span><span class="p">))</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">1.5</span><span class="p">)</span> <span class="o">*</span> <span class="mi">1000</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.6</span> <span class="o">*</span> <span class="n">arm</span><span class="p">)</span>
+    <span class="n">trial</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ItemLifetime</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">observed</span><span class="o">=</span><span class="n">t</span><span class="p">,</span> <span class="n">covariates</span><span class="o">=</span><span class="p">{</span><span class="s2">"arm"</span><span class="p">:</span> <span class="n">arm</span><span class="p">,</span> <span class="s2">"age"</span><span class="p">:</span> <span class="n">age</span><span class="p">}))</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_items</span><span class="p">(</span><span class="n">trial</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">covariate_names</span><span class="p">)</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">params</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>['arm', 'age']
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([1.46281962e+03, 1.57856629e+00, 8.01973868e-01, 9.45132342e-03])
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="from-a-dataframe">
+<h2>From a DataFrame<a class="headerlink" href="#from-a-dataframe" title="Link to this heading"></a></h2>
+<p>Most data arrives as a table with one row per item: its id, its age, a
+column saying whether it failed, what failed, and its covariates.
+<code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_dataframe</span></code> reads it, naming the columns as every
+DataFrame entry point does (<code class="docutils literal notranslate"><span class="pre">x_col</span></code>, <code class="docutils literal notranslate"><span class="pre">c_col</span></code>, … the <code class="docutils literal notranslate"><span class="pre">fit</span></code> argument
+with <code class="docutils literal notranslate"><span class="pre">_col</span></code>); a spreadsheet’s status column, 1 or True where the item
+failed, is <code class="docutils literal notranslate"><span class="pre">event_col</span></code> (the opposite coding of <code class="docutils literal notranslate"><span class="pre">c</span></code>):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">fleet_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">"unit"</span><span class="p">:</span>   <span class="p">[</span><span class="s2">"P1"</span><span class="p">,</span> <span class="s2">"P2"</span><span class="p">,</span> <span class="s2">"P3"</span><span class="p">,</span> <span class="s2">"P4"</span><span class="p">,</span> <span class="s2">"P5"</span><span class="p">],</span>
+    <span class="s2">"hours"</span><span class="p">:</span>  <span class="p">[</span><span class="mi">820</span><span class="p">,</span> <span class="mi">1450</span><span class="p">,</span> <span class="mi">2000</span><span class="p">,</span> <span class="mi">1100</span><span class="p">,</span> <span class="mi">1700</span><span class="p">],</span>
+    <span class="s2">"failed"</span><span class="p">:</span> <span class="p">[</span><span class="kc">True</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="kc">False</span><span class="p">],</span>
+    <span class="s2">"mode"</span><span class="p">:</span>   <span class="p">[</span><span class="s2">"seal"</span><span class="p">,</span> <span class="s2">"bearing"</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"seal"</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span>
+    <span class="s2">"site"</span><span class="p">:</span>   <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span>
+    <span class="s2">"load"</span><span class="p">:</span>   <span class="p">[</span><span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">],</span>
+<span class="p">})</span>
+<span class="n">fleet</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_dataframe</span><span class="p">(</span>
+    <span class="n">fleet_df</span><span class="p">,</span> <span class="n">i_col</span><span class="o">=</span><span class="s2">"unit"</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">event_col</span><span class="o">=</span><span class="s2">"failed"</span><span class="p">,</span>
+    <span class="n">e_col</span><span class="o">=</span><span class="s2">"mode"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"site"</span><span class="p">,</span> <span class="s2">"load"</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fleet</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fleet</span><span class="o">.</span><span class="n">item</span><span class="p">(</span><span class="s2">"P3"</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>SurpyvalData: 5 items, 5 rows (with item ids)
+  outcomes: 3 observed, 2 right censored
+  event types: bearing (1), seal (2)
+  covariates: 2 columns (site, load)
+ItemLifetime('P3', right_censored=2000.0, covariates={'site': 1.0, 'load': 0.4})
+</pre></div>
+</div>
+</div>
+</div>
+<p>A table of the age last seen working and the age first seen failed, with a
+blank where one is not known, is read with <code class="docutils literal notranslate"><span class="pre">xl_col</span></code> and <code class="docutils literal notranslate"><span class="pre">xr_col</span></code> (a
+blank <code class="docutils literal notranslate"><span class="pre">xr_col</span></code> is an item still running, a blank <code class="docutils literal notranslate"><span class="pre">xl_col</span></code> one already
+failed at the first look), and <code class="docutils literal notranslate"><span class="pre">to_dataframe()</span></code> gives any dataset back as
+a table:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">inspections</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">"last_ok"</span><span class="p">:</span>      <span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="mi">150</span><span class="p">,</span> <span class="mi">300</span><span class="p">,</span> <span class="mi">420</span><span class="p">,</span>  <span class="mi">500</span><span class="p">,</span> <span class="mi">610</span><span class="p">],</span>
+    <span class="s2">"first_failed"</span><span class="p">:</span> <span class="p">[</span><span class="mi">200</span><span class="p">,</span>  <span class="mi">150</span><span class="p">,</span> <span class="mi">380</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span>
+<span class="p">})</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_dataframe</span><span class="p">(</span>
+    <span class="n">inspections</span><span class="p">,</span> <span class="n">xl_col</span><span class="o">=</span><span class="s2">"last_ok"</span><span class="p">,</span> <span class="n">xr_col</span><span class="o">=</span><span class="s2">"first_failed"</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">to_dataframe</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>      xl     xr  c  n
+0  150.0  150.0  0  1
+1  200.0  200.0 -1  1
+2  300.0  380.0  2  1
+3  420.0  420.0  1  1
+4  500.0  500.0  0  1
+5  610.0  610.0  1  1
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="one-dataset-several-analyses">
+<h2>One dataset, several analyses<a class="headerlink" href="#one-dataset-several-analyses" title="Link to this heading"></a></h2>
+<p>A dataset built with covariates and failure modes (the <code class="docutils literal notranslate"><span class="pre">fleet</span></code> above) is
+refused by a fit that takes neither, rather than fitted as if they were not
+there. Reshape it for the analysis instead; each operation returns a new
+dataset:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">everything</span> <span class="o">=</span> <span class="n">fleet</span><span class="o">.</span><span class="n">without</span><span class="p">(</span><span class="s2">"covariates"</span><span class="p">,</span> <span class="s2">"event_types"</span><span class="p">)</span>   <span class="c1"># a plain fit</span>
+<span class="n">seals</span> <span class="o">=</span> <span class="n">fleet</span><span class="o">.</span><span class="n">for_event_type</span><span class="p">(</span><span class="s2">"seal"</span><span class="p">)</span><span class="o">.</span><span class="n">without</span><span class="p">(</span><span class="s2">"covariates"</span><span class="p">)</span>  <span class="c1"># one mode</span>
+<span class="n">by_load</span> <span class="o">=</span> <span class="n">fleet</span><span class="o">.</span><span class="n">with_covariates</span><span class="p">([</span><span class="s2">"load"</span><span class="p">])</span>   <span class="c1"># a regression on load alone</span>
+<span class="n">site1</span> <span class="o">=</span> <span class="n">fleet</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">where</span><span class="o">=</span><span class="k">lambda</span> <span class="n">item</span><span class="p">:</span> <span class="n">item</span><span class="o">.</span><span class="n">covariate</span><span class="p">(</span><span class="s2">"site"</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span>
+<span class="n">first_1500</span> <span class="o">=</span> <span class="n">fleet</span><span class="o">.</span><span class="n">censor_at</span><span class="p">(</span><span class="mi">1500</span><span class="p">)</span>   <span class="c1"># as seen at the end of a study</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">everything</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">seals</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[1845.64603147    2.47017653]
+SurpyvalData: 5 items, 5 rows (with item ids)
+  outcomes: 2 observed, 3 right censored
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="updating-a-dataset-as-items-age">
+<h2>Updating a dataset as items age<a class="headerlink" href="#updating-a-dataset-as-items-age" title="Link to this heading"></a></h2>
+<p>A fleet’s data is refreshed as the months pass: some items fail, the rest
+run on, new ones are installed. The records’ update methods (<code class="docutils literal notranslate"><span class="pre">fail</span></code>,
+<code class="docutils literal notranslate"><span class="pre">found_failed</span></code>, <code class="docutils literal notranslate"><span class="pre">extend</span></code>, <code class="docutils literal notranslate"><span class="pre">add_failure</span></code>) give the new records, and
+<code class="docutils literal notranslate"><span class="pre">update</span></code> takes them back into the dataset – a record whose id is in the
+data replaces that item’s, a new id is added – while <code class="docutils literal notranslate"><span class="pre">extend_running</span></code>
+moves every item still running on to the age it was last seen, and
+<code class="docutils literal notranslate"><span class="pre">drop</span></code> removes items. Counts, covariates, event types, attributes and
+the unit carry through:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">month_end</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"P1"</span><span class="p">:</span> <span class="mi">900</span><span class="p">,</span> <span class="s2">"P2"</span><span class="p">:</span> <span class="mi">1500</span><span class="p">,</span> <span class="s2">"P3"</span><span class="p">:</span> <span class="mi">2100</span><span class="p">,</span> <span class="s2">"P4"</span><span class="p">:</span> <span class="mi">1200</span><span class="p">,</span> <span class="s2">"P5"</span><span class="p">:</span> <span class="mi">1800</span><span class="p">}</span>
+<span class="n">refreshed</span> <span class="o">=</span> <span class="n">fleet</span><span class="o">.</span><span class="n">update</span><span class="p">([</span>
+    <span class="n">fleet</span><span class="o">.</span><span class="n">item</span><span class="p">(</span><span class="s2">"P3"</span><span class="p">)</span><span class="o">.</span><span class="n">fail</span><span class="p">(</span><span class="mi">2050</span><span class="p">,</span> <span class="s2">"bearing"</span><span class="p">),</span>           <span class="c1"># failed this month</span>
+    <span class="n">ItemLifetime</span><span class="p">(</span><span class="s2">"P6"</span><span class="p">,</span> <span class="n">right_censored</span><span class="o">=</span><span class="mi">90</span><span class="p">,</span> <span class="n">covariates</span><span class="o">=</span><span class="p">{</span><span class="s2">"site"</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"load"</span><span class="p">:</span> <span class="mf">0.7</span><span class="p">}),</span>
+<span class="p">])</span><span class="o">.</span><span class="n">extend_running</span><span class="p">(</span><span class="k">lambda</span> <span class="n">item</span><span class="p">:</span> <span class="n">month_end</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">item</span><span class="o">.</span><span class="n">id</span><span class="p">,</span> <span class="mi">90</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">refreshed</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">refreshed</span><span class="o">.</span><span class="n">item</span><span class="p">(</span><span class="s2">"P3"</span><span class="p">),</span> <span class="n">refreshed</span><span class="o">.</span><span class="n">item</span><span class="p">(</span><span class="s2">"P5"</span><span class="p">),</span> <span class="n">sep</span><span class="o">=</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>SurpyvalData: 6 items, 6 rows (with item ids)
+  outcomes: 4 observed, 2 right censored
+  event types: bearing (2), seal (2)
+  covariates: 2 columns (site, load)
+ItemLifetime('P3', observed=2050.0, event_type='bearing', covariates={'site': 1.0, 'load': 0.4})
+ItemLifetime('P5', right_censored=1800.0, covariates={'site': 0.0, 'load': 0.6})
+</pre></div>
+</div>
+</div>
+</div>
+<p>A fitted model predicts for the items from their records: a record (or a
+dataset, or a list of records) stands as <code class="docutils literal notranslate"><span class="pre">Z</span></code> in <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code> and <code class="docutils literal notranslate"><span class="pre">mean</span></code>, its covariates read by name, and
+<code class="docutils literal notranslate"><span class="pre">predict</span></code> gives a table, one row per item and time, with <code class="docutils literal notranslate"><span class="pre">given=&quot;age&quot;</span></code>
+for the survival of each running item given the age it has reached (an
+item that has failed gets <code class="docutils literal notranslate"><span class="pre">nan</span></code>):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">WeibullPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">refreshed</span><span class="o">.</span><span class="n">without</span><span class="p">(</span><span class="s2">"event_types"</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">2000</span><span class="p">,</span> <span class="n">refreshed</span><span class="o">.</span><span class="n">item</span><span class="p">(</span><span class="s2">"P5"</span><span class="p">)))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">refreshed</span><span class="p">,</span> <span class="n">times</span><span class="o">=</span><span class="p">[</span><span class="mi">2000</span><span class="p">,</span> <span class="mi">2500</span><span class="p">],</span> <span class="n">given</span><span class="o">=</span><span class="s2">"age"</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>0.22693009609457837
+      time     age    sf
+id                      
+P1  2000.0     NaN   NaN
+P1  2500.0     NaN   NaN
+P2  2000.0     NaN   NaN
+P2  2500.0     NaN   NaN
+P3  2000.0     NaN   NaN
+P3  2500.0     NaN   NaN
+P4  2000.0     NaN   NaN
+P4  2500.0     NaN   NaN
+P5  2000.0  1800.0  0.43
+P5  2500.0  1800.0  0.00
+P6  2000.0    90.0  0.00
+P6  2500.0    90.0  0.00
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="comparing-sites-arms-or-product-lines">
+<h2>Comparing sites, arms or product lines<a class="headerlink" href="#comparing-sites-arms-or-product-lines" title="Link to this heading"></a></h2>
+<p>What describes an item without being fitted – its site, its batch, a
+trial’s arm – is an <code class="docutils literal notranslate"><span class="pre">attribute</span></code> (any value, text included), given on the
+record (<code class="docutils literal notranslate"><span class="pre">attributes={&quot;site&quot;:</span> <span class="pre">&quot;North&quot;}</span></code>) or read from the table
+(<code class="docutils literal notranslate"><span class="pre">attribute_cols=</span></code>); a fit never refuses it. <code class="docutils literal notranslate"><span class="pre">groupby</span></code> splits the data
+by an attribute (or a covariate) and <code class="docutils literal notranslate"><span class="pre">select(where={name:</span> <span class="pre">value})</span></code> keeps
+one group, so a fit per group is one line:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">trial</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_dataframe</span><span class="p">(</span>
+    <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+        <span class="s2">"weeks"</span><span class="p">:</span>  <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span>
+        <span class="s2">"event"</span><span class="p">:</span>  <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+        <span class="s2">"age"</span><span class="p">:</span>    <span class="p">[</span><span class="mi">50</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">55</span><span class="p">,</span> <span class="mi">65</span><span class="p">,</span> <span class="mi">45</span><span class="p">,</span> <span class="mi">75</span><span class="p">,</span> <span class="mi">40</span><span class="p">],</span>
+        <span class="s2">"arm"</span><span class="p">:</span>    <span class="p">[</span><span class="s2">"drug"</span><span class="p">,</span> <span class="s2">"placebo"</span><span class="p">]</span> <span class="o">*</span> <span class="mi">4</span><span class="p">,</span>
+        <span class="s2">"site"</span><span class="p">:</span>   <span class="p">[</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">],</span>
+    <span class="p">}),</span>
+    <span class="n">x_col</span><span class="o">=</span><span class="s2">"weeks"</span><span class="p">,</span> <span class="n">event_col</span><span class="o">=</span><span class="s2">"event"</span><span class="p">,</span> <span class="n">Z_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"age"</span><span class="p">],</span>
+    <span class="n">attribute_cols</span><span class="o">=</span><span class="p">[</span><span class="s2">"arm"</span><span class="p">,</span> <span class="s2">"site"</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="n">plain</span> <span class="o">=</span> <span class="n">trial</span><span class="o">.</span><span class="n">without</span><span class="p">(</span><span class="s2">"covariates"</span><span class="p">)</span>   <span class="c1"># the age is for a regression</span>
+<span class="n">km_by_arm</span> <span class="o">=</span> <span class="p">{</span><span class="n">arm</span><span class="p">:</span> <span class="n">surv</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">part</span><span class="p">)</span> <span class="k">for</span> <span class="n">arm</span><span class="p">,</span> <span class="n">part</span> <span class="ow">in</span> <span class="n">plain</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"arm"</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+<span class="n">weibull_by_site</span> <span class="o">=</span> <span class="p">{</span><span class="n">site</span><span class="p">:</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">part</span><span class="p">)</span> <span class="k">for</span> <span class="n">site</span><span class="p">,</span> <span class="n">part</span> <span class="ow">in</span> <span class="n">plain</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"site"</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+<span class="nb">print</span><span class="p">({</span><span class="n">arm</span><span class="p">:</span> <span class="n">km</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">6</span><span class="p">)</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span> <span class="k">for</span> <span class="n">arm</span><span class="p">,</span> <span class="n">km</span> <span class="ow">in</span> <span class="n">km_by_arm</span><span class="o">.</span><span class="n">items</span><span class="p">()})</span>
+<span class="nb">print</span><span class="p">({</span><span class="n">site</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">site</span><span class="p">,</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">weibull_by_site</span><span class="o">.</span><span class="n">items</span><span class="p">()})</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">trial</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">where</span><span class="o">=</span><span class="p">{</span><span class="s2">"arm"</span><span class="p">:</span> <span class="s2">"drug"</span><span class="p">,</span> <span class="s2">"site"</span><span class="p">:</span> <span class="s2">"A"</span><span class="p">})</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'drug': np.float64(0.5), 'placebo': np.float64(0.5)}
+{'A': array([7.73, 3.96]), 'B': array([10.16,  1.42])}
+SurpyvalData: 3 items, 3 rows
+  outcomes: 3 observed
+  covariates: 1 column (age)
+  attributes: arm, site
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="combining-every-input-type-in-one-fit">
+<h2>Combining every input type in one fit<a class="headerlink" href="#combining-every-input-type-in-one-fit" title="Link to this heading"></a></h2>
+<p>The real strength of the surpyval format is that these ingredients — exact,
+left-, right- and interval-censoring, repeat counts, and truncation — compose
+freely in a <strong>single</strong> <code class="docutils literal notranslate"><span class="pre">fit</span></code> call. Each row of <code class="docutils literal notranslate"><span class="pre">x</span></code> carries its own censoring
+flag <code class="docutils literal notranslate"><span class="pre">c</span></code> and count <code class="docutils literal notranslate"><span class="pre">n</span></code>; a row is interval-censored simply by giving it two
+values <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="p">[</span><span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span> <span class="mi">22</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">30</span><span class="p">]</span>   <span class="c1"># a [lo, hi] row is interval-censored</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span>  <span class="mi">1</span><span class="p">,</span>   <span class="mi">2</span><span class="p">,</span>       <span class="o">-</span><span class="mi">1</span><span class="p">,</span>  <span class="mi">0</span><span class="p">,</span>  <span class="mi">1</span><span class="p">]</span>    <span class="c1"># observed, right, interval, left, ...</span>
+<span class="n">n</span> <span class="o">=</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span>  <span class="mi">3</span><span class="p">,</span>   <span class="mi">2</span><span class="p">,</span>        <span class="mi">1</span><span class="p">,</span>  <span class="mi">4</span><span class="p">,</span>  <span class="mi">2</span><span class="p">]</span>    <span class="c1"># each row repeated n times</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>   <span class="c1"># all left-truncated at 5</span>
+<span class="n">model</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 17 units: 12 events (9 exact at 2 unique times, 1 left censored, 2 interval censored), 5 right censored; 17 left truncated
+Parameters          :
+     alpha: 21.80566847807307
+      beta: 2.089673599012541
+</pre></div>
+</div>
+</div>
+</div>
+<p>Nothing above is special-cased: any mix of the flags is accepted, and the fitter
+condenses the data to its densest form internally.</p>
+</section>
+<section id="same-data-whichever-format-you-have-it-in">
+<h2>Same data, whichever format you have it in<a class="headerlink" href="#same-data-whichever-format-you-have-it-in" title="Link to this heading"></a></h2>
+<p>Because the formats all describe the same thing, the same dataset gives the same
+fit however you assemble it. Here failure / suspension / left / interval lists
+are read with <code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_observations</span></code> and compared to the
+hand-built <code class="docutils literal notranslate"><span class="pre">xcnt</span></code> form — the fitted parameters agree exactly:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">f</span> <span class="o">=</span> <span class="p">[</span><span class="mi">12</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">25</span><span class="p">]</span>        <span class="c1"># exact failures</span>
+<span class="n">s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">30</span><span class="p">,</span> <span class="mi">30</span><span class="p">]</span>                <span class="c1"># right-censored (suspended)</span>
+<span class="n">l</span> <span class="o">=</span> <span class="p">[</span><span class="mi">8</span><span class="p">]</span>                     <span class="c1"># left-censored</span>
+<span class="n">i</span> <span class="o">=</span> <span class="p">[[</span><span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span> <span class="p">[</span><span class="mi">22</span><span class="p">,</span> <span class="mi">26</span><span class="p">]]</span>    <span class="c1"># interval-censored</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_observations</span><span class="p">(</span>
+    <span class="n">observed</span><span class="o">=</span><span class="n">f</span><span class="p">,</span> <span class="n">right_censored</span><span class="o">=</span><span class="n">s</span><span class="p">,</span> <span class="n">left_censored</span><span class="o">=</span><span class="n">l</span><span class="p">,</span> <span class="n">interval_censored</span><span class="o">=</span><span class="n">i</span>
+<span class="p">)</span>
+<span class="n">from_lists</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+<span class="n">hand</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">12</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="p">[</span><span class="mi">15</span><span class="p">,</span> <span class="mi">20</span><span class="p">],</span> <span class="p">[</span><span class="mi">22</span><span class="p">,</span> <span class="mi">26</span><span class="p">]],</span>
+    <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+    <span class="n">n</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"from lists :"</span><span class="p">,</span> <span class="n">from_lists</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"hand xcnt  :"</span><span class="p">,</span> <span class="n">hand</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>from lists : [24.28999079  2.17917943]
+hand xcnt  : [24.28999079  2.17917943]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="combining-comparing-rescaling-and-resampling">
+<h2>Combining, comparing, rescaling and resampling<a class="headerlink" href="#combining-comparing-rescaling-and-resampling" title="Link to this heading"></a></h2>
+<p>Two batches of data become one with <code class="docutils literal notranslate"><span class="pre">SurpyvalData.concat([a,</span> <span class="pre">b,</span> <span class="pre">...])</span></code>
+or <code class="docutils literal notranslate"><span class="pre">a</span> <span class="pre">+</span> <span class="pre">b</span></code>. Everything each row has comes across (counts, weights,
+event types, truncation, attributes, readings), and the rows are sorted
+as the constructor sorts them. Datasets in different units, with
+different covariates, or sharing an item id are refused, each saying
+what to do: an id is one item, so rename the ids first where two sources
+used the same ones. <code class="docutils literal notranslate"><span class="pre">==</span></code> compares two datasets exactly and
+<code class="docutils literal notranslate"><span class="pre">equals(other,</span> <span class="pre">rtol=...)</span></code> to a tolerance. <code class="docutils literal notranslate"><span class="pre">to_dataframe()</span></code> and
+<code class="docutils literal notranslate"><span class="pre">from_dataframe()</span></code> with no column arguments are a round trip.
+<code class="docutils literal notranslate"><span class="pre">rescale_time(factor,</span> <span class="pre">unit=...)</span></code> puts the data on another clock (24
+from hours to days, 0.25 for a quarter duty cycle), as the model method
+of the same name does, so a fit of the rescaled data is the rescaled
+fit. <code class="docutils literal notranslate"><span class="pre">resample(random_state=...)</span></code> draws the units with replacement for
+a bootstrap: a row counted <code class="docutils literal notranslate"><span class="pre">n</span></code> is <code class="docutils literal notranslate"><span class="pre">n</span></code> units, and an item’s rows move
+together.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">site_a</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="p">([</span><span class="mi">120</span><span class="p">,</span> <span class="mi">310</span><span class="p">,</span> <span class="mi">400</span><span class="p">,</span> <span class="mi">1000</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+                      <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="s2">"A1"</span><span class="p">,</span> <span class="s2">"A2"</span><span class="p">,</span> <span class="s2">"A3"</span><span class="p">,</span> <span class="s2">"A4"</span><span class="p">],</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">)</span>
+<span class="n">site_b</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="p">([</span><span class="mi">200</span><span class="p">,</span> <span class="mi">650</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="s2">"B1"</span><span class="p">,</span> <span class="s2">"B2"</span><span class="p">],</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">)</span>
+<span class="n">fleet</span> <span class="o">=</span> <span class="n">site_a</span> <span class="o">+</span> <span class="n">site_b</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">fleet</span><span class="o">.</span><span class="n">ids</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_dataframe</span><span class="p">(</span><span class="n">fleet</span><span class="o">.</span><span class="n">to_dataframe</span><span class="p">())</span> <span class="o">==</span> <span class="n">fleet</span><span class="p">)</span>
+
+<span class="n">days</span> <span class="o">=</span> <span class="n">fleet</span><span class="o">.</span><span class="n">rescale_time</span><span class="p">(</span><span class="mi">24</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"days"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">days</span><span class="o">.</span><span class="n">x</span><span class="p">)</span>
+
+<span class="n">boot</span> <span class="o">=</span> <span class="n">fleet</span><span class="o">.</span><span class="n">resample</span><span class="p">(</span><span class="n">random_state</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">boot</span><span class="o">.</span><span class="n">ids</span><span class="p">,</span> <span class="n">boot</span><span class="o">.</span><span class="n">n</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>['A1', 'A2', 'A3', 'A4', 'B1', 'B2']
+True
+[ 5.         12.91666667 16.66666667 41.66666667  8.33333333 27.08333333]
+['A1', 'A2', 'A3', 'A4', 'B2'] [1 1 1 1 2]
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="truncation-four-ways">
+<h2>Truncation, four ways<a class="headerlink" href="#truncation-four-ways" title="Link to this heading"></a></h2>
+<p>Truncation can be a single shared bound, a per-observation array, an upper
+(right) bound, or a two-sided observation window — pass <code class="docutils literal notranslate"><span class="pre">tl</span></code> and/or <code class="docutils literal notranslate"><span class="pre">tr</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">674</span><span class="p">,</span> <span class="mi">792</span><span class="p">,</span> <span class="mi">1153</span><span class="p">,</span> <span class="mi">1450</span><span class="p">,</span> <span class="mi">1555</span><span class="p">]</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">"shared tl   :"</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="mi">500</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"per-unit tl :"</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span>
+    <span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="p">[</span><span class="mi">100</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">300</span><span class="p">,</span> <span class="mi">400</span><span class="p">,</span> <span class="mi">500</span><span class="p">])</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"right tr    :"</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tr</span><span class="o">=</span><span class="mi">2000</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"window tl,tr:"</span><span class="p">,</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">tr</span><span class="o">=</span><span class="mi">2000</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>shared tl   : [1214.55237892    3.28097188]
+per-unit tl : [1242.88503745    3.61465304]
+right tr    : [1256.86632873    3.66811416]
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>window tl,tr: [1256.77737973    3.66548446]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The same columns can live in a DataFrame — <code class="docutils literal notranslate"><span class="pre">c_col</span></code>, <code class="docutils literal notranslate"><span class="pre">n_col</span></code>, <code class="docutils literal notranslate"><span class="pre">tl_col</span></code>
+and <code class="docutils literal notranslate"><span class="pre">tr_col</span></code> are all optional columns you point <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> at:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s1">'x'</span><span class="p">:</span>  <span class="p">[</span><span class="mi">674</span><span class="p">,</span> <span class="mi">792</span><span class="p">,</span> <span class="mi">1153</span><span class="p">,</span> <span class="mi">1450</span><span class="p">,</span> <span class="mi">1555</span><span class="p">,</span> <span class="mi">2000</span><span class="p">],</span>
+    <span class="s1">'c'</span><span class="p">:</span>  <span class="p">[</span><span class="mi">0</span><span class="p">,</span>   <span class="mi">0</span><span class="p">,</span>   <span class="mi">0</span><span class="p">,</span>    <span class="mi">1</span><span class="p">,</span>    <span class="mi">0</span><span class="p">,</span>    <span class="mi">1</span><span class="p">],</span>
+    <span class="s1">'n'</span><span class="p">:</span>  <span class="p">[</span><span class="mi">1</span><span class="p">,</span>   <span class="mi">2</span><span class="p">,</span>   <span class="mi">1</span><span class="p">,</span>    <span class="mi">3</span><span class="p">,</span>    <span class="mi">1</span><span class="p">,</span>    <span class="mi">2</span><span class="p">],</span>
+    <span class="s1">'tl'</span><span class="p">:</span> <span class="p">[</span><span class="mi">500</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span> <span class="mi">500</span><span class="p">,</span>  <span class="mi">500</span><span class="p">,</span>  <span class="mi">500</span><span class="p">,</span>  <span class="mi">500</span><span class="p">],</span>
+<span class="p">})</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s1">'x'</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s1">'c'</span><span class="p">,</span> <span class="n">n_col</span><span class="o">=</span><span class="s1">'n'</span><span class="p">,</span> <span class="n">tl_col</span><span class="o">=</span><span class="s1">'tl'</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 10 units: 5 events at 4 unique times, 5 right censored; 10 left truncated
+Parameters          :
+     alpha: 1456.7683407822517
+      beta: 0.8083364082280747
+</pre></div>
+</div>
+</div>
+</div>
+<p>Data kept as a list of each kind of observation takes its truncation with
+each list: <code class="docutils literal notranslate"><span class="pre">observed_left_truncation</span></code>, <code class="docutils literal notranslate"><span class="pre">right_censored_left_truncation</span></code>
+and so on (and <code class="docutils literal notranslate"><span class="pre">..._right_truncation</span></code>), one number for every item of
+that kind or one bound per item, in the same order. <code class="docutils literal notranslate"><span class="pre">left_truncation</span></code> and
+<code class="docutils literal notranslate"><span class="pre">right_truncation</span></code> are one window shared by everything:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_observations</span><span class="p">(</span>
+    <span class="n">observed</span><span class="o">=</span><span class="p">[</span><span class="mi">674</span><span class="p">,</span> <span class="mi">792</span><span class="p">,</span> <span class="mi">1153</span><span class="p">,</span> <span class="mi">1555</span><span class="p">],</span>
+    <span class="n">observed_left_truncation</span><span class="o">=</span><span class="p">[</span><span class="mi">100</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">300</span><span class="p">,</span> <span class="mi">500</span><span class="p">],</span>
+    <span class="n">right_censored</span><span class="o">=</span><span class="p">[</span><span class="mi">1450</span><span class="p">,</span> <span class="mi">2000</span><span class="p">],</span>
+    <span class="n">right_censored_left_truncation</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">t</span><span class="p">)</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">params</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[[100.  inf]
+ [200.  inf]
+ [300.  inf]
+ [500.  inf]
+ [500.  inf]
+ [500.  inf]]
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([1576.91043392,    1.85786105])
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="from-dates-to-durations">
+<h2>From dates to durations<a class="headerlink" href="#from-dates-to-durations" title="Link to this heading"></a></h2>
+<p>Field data often arrives as a table of dates: when each unit was installed, when (if ever) it was removed, and why. Two decisions turn this into survival data:</p>
+<ul class="simple">
+<li><p><strong>The value</strong> is the time in service: removal date minus install date, or, for units still in service, the end of the study minus the install date.</p></li>
+<li><p><strong>The flag</strong> is <code class="docutils literal notranslate"><span class="pre">0</span></code> only when the unit was removed <em>because it failed</em>. A unit still in service is right censored, and so is a unit removed for any other reason (a preventive replacement, an upgrade, a sale): all we know is that it had not failed by then.</p></li>
+</ul>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">log</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">"unit"</span><span class="p">:</span>      <span class="p">[</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">,</span> <span class="s2">"C"</span><span class="p">,</span> <span class="s2">"D"</span><span class="p">,</span> <span class="s2">"E"</span><span class="p">,</span> <span class="s2">"F"</span><span class="p">],</span>
+    <span class="s2">"installed"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"2020-01-10"</span><span class="p">,</span> <span class="s2">"2020-03-01"</span><span class="p">,</span> <span class="s2">"2020-06-15"</span><span class="p">,</span>
+                  <span class="s2">"2021-01-05"</span><span class="p">,</span> <span class="s2">"2021-02-20"</span><span class="p">,</span> <span class="s2">"2021-07-01"</span><span class="p">],</span>
+    <span class="s2">"removed"</span><span class="p">:</span>   <span class="p">[</span><span class="s2">"2021-05-01"</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"2022-01-10"</span><span class="p">,</span>
+                  <span class="kc">None</span><span class="p">,</span> <span class="s2">"2022-03-01"</span><span class="p">,</span> <span class="s2">"2022-02-14"</span><span class="p">],</span>
+    <span class="s2">"reason"</span><span class="p">:</span>    <span class="p">[</span><span class="s2">"failure"</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">"failure"</span><span class="p">,</span>
+                  <span class="kc">None</span><span class="p">,</span> <span class="s2">"preventive"</span><span class="p">,</span> <span class="s2">"failure"</span><span class="p">],</span>
+<span class="p">})</span>
+<span class="n">log</span><span class="p">[</span><span class="s2">"installed"</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">log</span><span class="p">[</span><span class="s2">"installed"</span><span class="p">])</span>
+<span class="n">log</span><span class="p">[</span><span class="s2">"removed"</span><span class="p">]</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">to_datetime</span><span class="p">(</span><span class="n">log</span><span class="p">[</span><span class="s2">"removed"</span><span class="p">])</span>
+
+<span class="n">study_end</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Timestamp</span><span class="p">(</span><span class="s2">"2022-06-30"</span><span class="p">)</span>
+<span class="n">log</span><span class="p">[</span><span class="s2">"x"</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">log</span><span class="p">[</span><span class="s2">"removed"</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="n">study_end</span><span class="p">)</span> <span class="o">-</span> <span class="n">log</span><span class="p">[</span><span class="s2">"installed"</span><span class="p">])</span><span class="o">.</span><span class="n">dt</span><span class="o">.</span><span class="n">days</span>
+<span class="n">log</span><span class="p">[</span><span class="s2">"c"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">log</span><span class="p">[</span><span class="s2">"reason"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"failure"</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">log</span><span class="p">[[</span><span class="s2">"unit"</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">,</span> <span class="s2">"c"</span><span class="p">]])</span>
+
+<span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"x"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>  unit    x  c
+0    A  477  0
+1    B  851  1
+2    C  574  0
+3    D  541  1
+4    E  374  1
+5    F  228  0
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Parametric SurPyval Model
+=========================
+Distribution        : Weibull
+Fitted by           : MLE
+Data                : 6 units: 3 events at 3 unique times, 3 right censored
+Parameters          :
+     alpha: 752.8542314352945
+      beta: 2.193855150884995
+</pre></div>
+</div>
+</div>
+</div>
+<p>A common mistake is to count the preventive replacement of unit E as a failure. It was not one, and counting it as one makes the item look less reliable than it is. Another is to leave units B and D out because they “have no failure date”: they are the survivors, and they carry most of the information about how long the units last.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>If units only came under observation some time after they were installed (for example, records only start at the date a database was set up), each unit’s age on that date is its left truncation value, <code class="docutils literal notranslate"><span class="pre">tl</span></code>.</p>
+<p>Inspection data needs one more step. A failure found at the first inspection after the records begin is interval censored from the unit’s last good inspection, <code class="docutils literal notranslate"><span class="pre">xl</span></code>, which came <em>before</em> the records begin. Its age when the records begin is then not its <code class="docutils literal notranslate"><span class="pre">tl</span></code>: the unit is in the data because its failure was detected after that date, and all that is known is that it was working at its last good inspection, so that inspection is its left truncation time (<code class="docutils literal notranslate"><span class="pre">tl</span> <span class="pre">=</span> <span class="pre">xl</span></code>). Given the age at the start of the records instead, the fit refuses the row (an interval cannot start below its own left truncation time) and the message says this. Do not repair it by moving <code class="docutils literal notranslate"><span class="pre">xl</span></code> up to <code class="docutils literal notranslate"><span class="pre">tl</span></code>: that claims the unit was seen working when it was not, and biases the fit.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">inspections</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">"last_ok"</span><span class="p">:</span>   <span class="p">[</span><span class="mf">80.0</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="mf">210.0</span><span class="p">,</span> <span class="mf">260.0</span><span class="p">],</span>   <span class="c1"># age at the last good inspection</span>
+    <span class="s2">"found"</span><span class="p">:</span>     <span class="p">[</span><span class="mf">120.0</span><span class="p">,</span> <span class="mf">190.0</span><span class="p">,</span> <span class="mf">250.0</span><span class="p">,</span> <span class="mf">300.0</span><span class="p">],</span>  <span class="c1"># age when found failed</span>
+    <span class="s2">"age_at_start"</span><span class="p">:</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">],</span>
+<span class="p">})</span>
+<span class="c1"># Found failed at the first inspection after the records began</span>
+<span class="n">straddles</span> <span class="o">=</span> <span class="n">inspections</span><span class="p">[</span><span class="s2">"last_ok"</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">inspections</span><span class="p">[</span><span class="s2">"age_at_start"</span><span class="p">]</span>
+<span class="n">inspections</span><span class="p">[</span><span class="s2">"tl"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">straddles</span><span class="p">,</span> <span class="n">inspections</span><span class="p">[</span><span class="s2">"last_ok"</span><span class="p">],</span>
+                             <span class="n">inspections</span><span class="p">[</span><span class="s2">"age_at_start"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">inspections</span><span class="p">)</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span><span class="n">inspections</span><span class="p">,</span> <span class="n">xl_col</span><span class="o">=</span><span class="s2">"last_ok"</span><span class="p">,</span> <span class="n">xr_col</span><span class="o">=</span><span class="s2">"found"</span><span class="p">,</span>
+                         <span class="n">tl_col</span><span class="o">=</span><span class="s2">"tl"</span><span class="p">)</span><span class="o">.</span><span class="n">params</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>   last_ok  found  age_at_start     tl
+0     80.0  120.0         100.0   80.0
+1    150.0  190.0         100.0  100.0
+2    210.0  250.0         100.0  100.0
+3    260.0  300.0         100.0  100.0
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([197.864624  ,   2.48244027])
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="counts-found-at-inspections">
+<h2>Counts found at inspections<a class="headerlink" href="#counts-found-at-inspections" title="Link to this heading"></a></h2>
+<p>When units are only checked periodically, the data is a count of failures found at each inspection: a life table. Each count is interval censored between the previous inspection and the one at which it was found, and the units still working at the last inspection are right censored there. The counts go in <code class="docutils literal notranslate"><span class="pre">n</span></code>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">inspections</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">200</span><span class="p">,</span> <span class="mi">300</span><span class="p">,</span> <span class="mi">400</span><span class="p">]</span>
+<span class="n">found_failed</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">4</span><span class="p">]</span>        <span class="c1"># failures found at 100, 200, 300, 400</span>
+<span class="n">still_working</span> <span class="o">=</span> <span class="mi">12</span>                 <span class="c1"># at the last inspection</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[[</span><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">]</span> <span class="k">for</span> <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">inspections</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">inspections</span><span class="p">[</span><span class="mi">1</span><span class="p">:])]</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="p">[</span><span class="n">inspections</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span>
+<span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">found_failed</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">found_failed</span> <span class="o">+</span> <span class="p">[</span><span class="n">still_working</span><span class="p">]</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+
+<span class="n">life_table</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">life_table</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">surv</span><span class="o">.</span><span class="n">Turnbull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="n">inspections</span><span class="p">[</span><span class="mi">1</span><span class="p">:]))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[[0, 100], [100, 200], [200, 300], [300, 400], 400]
+[376.6627073    1.69651666]
+[0.9154988  0.71833213 0.46484446 0.35219484]
+</pre></div>
+</div>
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">from_observations</span></code> reads the table as it is written, with a count for
+each item (an interval in which nothing was found can stay in, counted 0):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">data</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_observations</span><span class="p">(</span>
+    <span class="n">interval_censored</span><span class="o">=</span><span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">100</span><span class="p">],</span> <span class="p">[</span><span class="mi">100</span><span class="p">,</span> <span class="mi">200</span><span class="p">],</span> <span class="p">[</span><span class="mi">200</span><span class="p">,</span> <span class="mi">300</span><span class="p">],</span> <span class="p">[</span><span class="mi">300</span><span class="p">,</span> <span class="mi">400</span><span class="p">]],</span>
+    <span class="n">interval_censored_counts</span><span class="o">=</span><span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span>
+    <span class="n">right_censored</span><span class="o">=</span><span class="p">[</span><span class="mi">400</span><span class="p">],</span>
+    <span class="n">right_censored_counts</span><span class="o">=</span><span class="mi">12</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">params</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[376.6627073    1.69651666]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Resist the temptation to put each failure at the inspection time at which it was found (or at the midpoint of the interval). Doing so invents precision the data does not have, and pushes every failure later (or to an arbitrary point) within its interval. Interval censoring uses exactly what was observed. Turnbull, the non-parametric estimator that handles interval censoring, is a good check on the parametric fit.</p>
+</section>
+<section id="recurrent-events-from-a-maintenance-log">
+<h2>Recurrent events from a maintenance log<a class="headerlink" href="#recurrent-events-from-a-maintenance-log" title="Link to this heading"></a></h2>
+<p>For repairable items, each item can fail many times. The recurrent event models take one row per event, with the item identifier <code class="docutils literal notranslate"><span class="pre">i</span></code>, the <strong>cumulative</strong> age of the item at the event in <code class="docutils literal notranslate"><span class="pre">x</span></code>, and one extra row per item, flagged <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>, giving how far that item has been observed. A maintenance log with hour-meter readings at each failure, plus each machine’s current reading, is exactly this:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">NonParametricCounting</span>
+
+<span class="n">failures</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"machine"</span><span class="p">:</span>    <span class="p">[</span><span class="s2">"M1"</span><span class="p">,</span> <span class="s2">"M1"</span><span class="p">,</span> <span class="s2">"M1"</span><span class="p">,</span> <span class="s2">"M2"</span><span class="p">,</span> <span class="s2">"M2"</span><span class="p">,</span> <span class="s2">"M3"</span><span class="p">],</span>
+                         <span class="s2">"hour_meter"</span><span class="p">:</span> <span class="p">[</span><span class="mi">420</span><span class="p">,</span> <span class="mi">1310</span><span class="p">,</span> <span class="mi">2050</span><span class="p">,</span> <span class="mi">980</span><span class="p">,</span> <span class="mi">2400</span><span class="p">,</span> <span class="mi">1720</span><span class="p">]})</span>
+<span class="n">current</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"machine"</span><span class="p">:</span>    <span class="p">[</span><span class="s2">"M1"</span><span class="p">,</span> <span class="s2">"M2"</span><span class="p">,</span> <span class="s2">"M3"</span><span class="p">],</span>
+                        <span class="s2">"hour_meter"</span><span class="p">:</span> <span class="p">[</span><span class="mi">2600</span><span class="p">,</span> <span class="mi">2900</span><span class="p">,</span> <span class="mi">3100</span><span class="p">]})</span>
+
+<span class="n">events</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">concat</span><span class="p">([</span><span class="n">failures</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">c</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">current</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">c</span><span class="o">=</span><span class="mi">1</span><span class="p">)],</span>
+                   <span class="n">ignore_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="n">mcf</span> <span class="o">=</span> <span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">events</span><span class="p">[</span><span class="s2">"hour_meter"</span><span class="p">],</span>
+                                <span class="n">i</span><span class="o">=</span><span class="n">events</span><span class="p">[</span><span class="s2">"machine"</span><span class="p">],</span>
+                                <span class="n">c</span><span class="o">=</span><span class="n">events</span><span class="p">[</span><span class="s2">"c"</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">mcf</span><span class="o">.</span><span class="n">mcf</span><span class="p">([</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">2000</span><span class="p">,</span> <span class="mi">2600</span><span class="p">]))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.66666667 1.33333333 2.        ]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The same log, written as each machine’s history keyed by its id, is read by
+<code class="docutils literal notranslate"><span class="pre">EventHistoryData.from_histories</span></code>: <code class="docutils literal notranslate"><span class="pre">observed</span></code> holds each machine’s age
+at its failures and <code class="docutils literal notranslate"><span class="pre">right_censored</span></code> its current reading. Every recurrent
+<code class="docutils literal notranslate"><span class="pre">fit</span></code> takes the result in place of the arrays:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">EventHistoryData</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">EventHistoryData</span><span class="o">.</span><span class="n">from_histories</span><span class="p">(</span>
+    <span class="n">observed</span><span class="o">=</span><span class="p">{</span><span class="s2">"M1"</span><span class="p">:</span> <span class="p">[</span><span class="mi">420</span><span class="p">,</span> <span class="mi">1310</span><span class="p">,</span> <span class="mi">2050</span><span class="p">],</span> <span class="s2">"M2"</span><span class="p">:</span> <span class="p">[</span><span class="mi">980</span><span class="p">,</span> <span class="mi">2400</span><span class="p">],</span> <span class="s2">"M3"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1720</span><span class="p">]},</span>
+    <span class="n">right_censored</span><span class="o">=</span><span class="p">{</span><span class="s2">"M1"</span><span class="p">:</span> <span class="mi">2600</span><span class="p">,</span> <span class="s2">"M2"</span><span class="p">:</span> <span class="mi">2900</span><span class="p">,</span> <span class="s2">"M3"</span><span class="p">:</span> <span class="mi">3100</span><span class="p">},</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">NonParametricCounting</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">mcf</span><span class="p">([</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">2000</span><span class="p">,</span> <span class="mi">2600</span><span class="p">]))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[0.66666667 1.33333333 2.        ]
+</pre></div>
+</div>
+</div>
+</div>
+<p>A machine left out of <code class="docutils literal notranslate"><span class="pre">right_censored</span></code> is taken to have been observed
+until its last failure. <code class="docutils literal notranslate"><span class="pre">left_truncation</span></code> (the age at which a machine came
+under observation) and <code class="docutils literal notranslate"><span class="pre">covariates</span></code> (one row per machine, for the
+proportional intensity models) are keyed the same way, and <code class="docutils literal notranslate"><span class="pre">gaps=True</span></code>
+reads the times between failures, adding them up within each machine.
+<code class="docutils literal notranslate"><span class="pre">data.to_histories()</span></code> gives the dictionaries back.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The same histories give lifetime data for the lifetime models:
+<code class="docutils literal notranslate"><span class="pre">to_first_events()</span></code> is each machine’s time to its first failure (right
+censored where it has none), and <code class="docutils literal notranslate"><span class="pre">to_gaps()</span></code> the times between its
+failures, each repair taken to make it as good as new, its last gap right
+censored at the end of its observation. Both keep each machine’s delayed
+entry, covariates and ids (<code class="docutils literal notranslate"><span class="pre">(&quot;M1&quot;,</span> <span class="pre">2)</span></code> for M1’s second gap):</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">to_first_events</span><span class="p">()</span><span class="o">.</span><span class="n">x</span><span class="p">)</span>
+<span class="n">surv</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">to_gaps</span><span class="p">())</span><span class="o">.</span><span class="n">params</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>[ 420.  980. 1720.]
+</pre></div>
+</div>
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>array([1287.75682813,    2.7395412 ])
+</pre></div>
+</div>
+</div>
+</div>
+<p>When an item’s history holds more than exact failures (failures found
+between inspections, a count of failures before the first look, what each
+failure was, a window it was watched in, covariates), describe each item
+with an <code class="docutils literal notranslate"><span class="pre">ItemHistory</span></code> and build the dataset from the list:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">ItemHistory</span>
+
+<span class="n">pump</span> <span class="o">=</span> <span class="n">ItemHistory</span><span class="p">(</span>
+    <span class="s2">"P1"</span><span class="p">,</span>
+    <span class="n">observed</span><span class="o">=</span><span class="p">[</span><span class="mi">420</span><span class="p">,</span> <span class="mi">1310</span><span class="p">],</span>
+    <span class="n">observed_event_types</span><span class="o">=</span><span class="p">[</span><span class="s2">"seal"</span><span class="p">,</span> <span class="s2">"bearing"</span><span class="p">],</span>
+    <span class="n">interval_censored</span><span class="o">=</span><span class="p">[[</span><span class="mi">2100</span><span class="p">,</span> <span class="mi">2300</span><span class="p">]],</span>   <span class="c1"># found failed at an inspection</span>
+    <span class="n">interval_censored_counts</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+    <span class="n">interval_censored_event_types</span><span class="o">=</span><span class="s2">"seal"</span><span class="p">,</span>
+    <span class="n">right_censored</span><span class="o">=</span><span class="mi">2600</span><span class="p">,</span>
+    <span class="n">left_truncation</span><span class="o">=</span><span class="mi">150</span><span class="p">,</span>                <span class="c1"># records start at 150 hours</span>
+<span class="p">)</span>
+<span class="n">fan</span> <span class="o">=</span> <span class="n">ItemHistory</span><span class="p">(</span><span class="s2">"F1"</span><span class="p">,</span> <span class="n">observed</span><span class="o">=</span><span class="p">[</span><span class="mi">800</span><span class="p">],</span> <span class="n">observed_event_types</span><span class="o">=</span><span class="s2">"bearing"</span><span class="p">,</span>
+                  <span class="n">right_censored</span><span class="o">=</span><span class="mi">3000</span><span class="p">)</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">EventHistoryData</span><span class="o">.</span><span class="n">from_items</span><span class="p">([</span><span class="n">pump</span><span class="p">,</span> <span class="n">fan</span><span class="p">])</span>
+<span class="n">data</span><span class="o">.</span><span class="n">to_items</span><span class="p">()[</span><span class="mi">1</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>ItemHistory(
+    'P1',
+    observed=[420.0, 1310.0],
+    observed_event_types=['seal', 'bearing'],
+    right_censored=2600.0,
+    interval_censored=[[2100.0, 2300.0]],
+    interval_censored_counts=[2],
+    interval_censored_event_types=['seal'],
+    left_truncation=150.0
+)
+</pre></div>
+</div>
+</div>
+</div>
+<p>Every check names the item and says what is wrong with its history, and
+<code class="docutils literal notranslate"><span class="pre">data.to_items()</span></code> gives the items back. Two kinds of history are kept with
+the data for the models that will use them, and refused by every fit until
+then:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">time_varying_covariates</span></code> (#905): <code class="docutils literal notranslate"><span class="pre">{age:</span> <span class="pre">values}</span></code>, a <code class="docutils literal notranslate"><span class="pre">StepSchedule</span></code>
+or a continuously varying <code class="docutils literal notranslate"><span class="pre">CovariatePath</span></code>.</p></li>
+<li><p>The item’s path through states (#887), recorded like its failures: an
+<code class="docutils literal notranslate"><span class="pre">initial_state</span></code>, changes seen as they happened (<code class="docutils literal notranslate"><span class="pre">observed_states={age:</span>
+<span class="pre">state}</span></code>), changes between two inspections (<code class="docutils literal notranslate"><span class="pre">interval_censored_states=</span>
+<span class="pre">[[lower,</span> <span class="pre">upper,</span> <span class="pre">state]]</span></code>) and a state already reached at the first look
+(<code class="docutils literal notranslate"><span class="pre">left_censored_states</span></code>).</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">markers</span></code> (repeated measurements, #891) are reserved for joint models of
+histories; a lifetime’s record, <code class="docutils literal notranslate"><span class="pre">ItemLifetime</span></code>, takes them now (see
+<a class="reference internal" href="Joint%20Models.html"><span class="doc">Joint Models</span></a>).</p>
+<p>A log held in a DataFrame, one row per failure, is read by
+<code class="docutils literal notranslate"><span class="pre">EventHistoryData.from_dataframe</span></code>: the item and age columns, the type of
+each failure, and each item’s end of observation as a <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code> row, a
+column (<code class="docutils literal notranslate"><span class="pre">end_col</span></code>) or <code class="docutils literal notranslate"><span class="pre">ends={item:</span> <span class="pre">age}</span></code>, which also names the items
+that never failed and so have no row:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">log</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+    <span class="s2">"machine"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"M1"</span><span class="p">,</span> <span class="s2">"M1"</span><span class="p">,</span> <span class="s2">"M1"</span><span class="p">,</span> <span class="s2">"M2"</span><span class="p">,</span> <span class="s2">"M2"</span><span class="p">],</span>
+    <span class="s2">"hours"</span><span class="p">:</span>   <span class="p">[</span><span class="mi">420</span><span class="p">,</span> <span class="mi">1310</span><span class="p">,</span> <span class="mi">2050</span><span class="p">,</span> <span class="mi">980</span><span class="p">,</span> <span class="mi">2400</span><span class="p">],</span>
+    <span class="s2">"part"</span><span class="p">:</span>    <span class="p">[</span><span class="s2">"seal"</span><span class="p">,</span> <span class="s2">"bearing"</span><span class="p">,</span> <span class="s2">"seal"</span><span class="p">,</span> <span class="s2">"seal"</span><span class="p">,</span> <span class="s2">"bearing"</span><span class="p">],</span>
+<span class="p">})</span>
+<span class="n">data</span> <span class="o">=</span> <span class="n">EventHistoryData</span><span class="o">.</span><span class="n">from_dataframe</span><span class="p">(</span>
+    <span class="n">log</span><span class="p">,</span> <span class="n">i_col</span><span class="o">=</span><span class="s2">"machine"</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">e_col</span><span class="o">=</span><span class="s2">"part"</span><span class="p">,</span>
+    <span class="n">ends</span><span class="o">=</span><span class="p">{</span><span class="s2">"M1"</span><span class="p">:</span> <span class="mi">2600</span><span class="p">,</span> <span class="s2">"M2"</span><span class="p">:</span> <span class="mi">2900</span><span class="p">,</span> <span class="s2">"M3"</span><span class="p">:</span> <span class="mi">3100</span><span class="p">},</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">summary</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>EventHistoryData: 3 items, 8 rows
+  events: 5 observed
+  ends of observation: 3
+  event types: bearing (2), seal (3)
+</pre></div>
+</div>
+</div>
+</div>
+<p>If your log records the time <em>between</em> failures instead, take a cumulative sum within each item first, for example <code class="docutils literal notranslate"><span class="pre">df.groupby(&quot;machine&quot;)[&quot;hours_between&quot;].cumsum()</span></code>. Leaving out the end-of-observation rows is a mistake: without them the models cannot know that M3, for example, has run a further 1,380 hours without failing since its failure at 1,720 hours, and would treat it as if it had been scrapped straight after that failure. See <a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Modelling with SurPyval</span></a> for the models that use this data.</p>
+</section>
+<section id="format-converters">
+<h2>Format converters<a class="headerlink" href="#format-converters" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> reads the common layouts and writes them back out, and the
+non-parametric estimators’ “at risk / deaths” (<code class="docutils literal notranslate"><span class="pre">xrd</span></code>) form too:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 40.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Method</p></th>
+<th class="head"><p>Converts</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData(x,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">t,</span> <span class="pre">xl,</span> <span class="pre">xr,</span> <span class="pre">tl,</span> <span class="pre">tr,</span> <span class="pre">Z)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">xcnt</span></code> arrays (or <code class="docutils literal notranslate"><span class="pre">xl</span></code> / <code class="docutils literal notranslate"><span class="pre">xr</span></code> columns) → data, validated,
+grouped and sorted as the fitters see it</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_observations(observed,</span> <span class="pre">right_censored,</span>
+<span class="pre">left_censored,</span> <span class="pre">interval_censored,</span> <span class="pre">left_truncation=,</span>
+<span class="pre">right_truncation=)</span></code></p></td>
+<td><p>a list of each kind of observation (the <code class="docutils literal notranslate"><span class="pre">fsli</span></code> layout), each
+with counts (<code class="docutils literal notranslate"><span class="pre">observed_counts=</span></code>, …), covariates
+(<code class="docutils literal notranslate"><span class="pre">observed_covariates=</span></code>, …) and truncation bounds
+(<code class="docutils literal notranslate"><span class="pre">observed_left_truncation=</span></code>, …) of its own, one per item, or
+one truncation window shared by all → data</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_xrd(x,</span> <span class="pre">r,</span> <span class="pre">d)</span></code></p></td>
+<td><p>at-risk / deaths (<code class="docutils literal notranslate"><span class="pre">xrd</span></code>) → data</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">data.to_xcnt()</span></code></p></td>
+<td><p>data → the arrays <code class="docutils literal notranslate"><span class="pre">x,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">t</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">data.to_observations()</span></code></p></td>
+<td><p>data → the lists <code class="docutils literal notranslate"><span class="pre">from_observations</span></code> reads: each value once,
+with each kind’s counts, truncation bounds and covariates where the
+data has them</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">data.to_xrd()</span></code></p></td>
+<td><p>data → <code class="docutils literal notranslate"><span class="pre">x,</span> <span class="pre">r,</span> <span class="pre">d</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_dataframe(df,</span> <span class="pre">x_col=...,</span> <span class="pre">c_col=...</span> <span class="pre">|</span> <span class="pre">event_col=...,</span>
+<span class="pre">i_col=...,</span> <span class="pre">e_col=...,</span> <span class="pre">Z_cols=[...])</span></code></p></td>
+<td><p>one row per item from a DataFrame (<code class="docutils literal notranslate"><span class="pre">xl_col</span></code> / <code class="docutils literal notranslate"><span class="pre">xr_col</span></code> for last
+seen working / first seen failed, blanks allowed);
+<code class="docutils literal notranslate"><span class="pre">data.to_dataframe()</span></code> gives it back</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">data.to_json()</span></code>, <code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_json(...)</span></code></p></td>
+<td><p>save and restore the data, as JSON text or a file (<code class="docutils literal notranslate"><span class="pre">to_dict</span></code> /
+<code class="docutils literal notranslate"><span class="pre">from_dict</span></code> give the dictionary; <code class="docutils literal notranslate"><span class="pre">surpyval.from_json</span></code> reads it
+too; every data class has them)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">handle_xicn(x,</span> <span class="pre">i,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">...)</span></code></p></td>
+<td><p>validates recurrent event data (<code class="docutils literal notranslate"><span class="pre">xicnt</span></code>) and returns the
+<code class="docutils literal notranslate"><span class="pre">EventHistoryData</span></code> object the recurrent models use</p></td>
+</tr>
+</tbody>
+</table>
+<p>The conversions are not all lossless, and it pays to know where they drop
+information:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">to_xrd</span></code> is exact for observed and right censored data without right
+truncation; left truncation is allowed, and is used to build the risk
+sets. Left or interval censored values have no single time at which to
+count a death, so for those (or for right truncated data) it fits the
+Turnbull estimator and returns its numbers at risk and deaths, which can
+be fractional.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">from_xrd</span></code> cannot recover left truncation, and raises an error if the
+risk set ever grows from one time to the next. xrd data must list each
+time once; rows given out of order are sorted by time (keeping their
+<code class="docutils literal notranslate"><span class="pre">r</span></code> and <code class="docutils literal notranslate"><span class="pre">d</span></code>), and a time listed twice is an error. More deaths than
+items at risk is an error too.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">to_observations</span></code> and <code class="docutils literal notranslate"><span class="pre">from_observations</span></code> lose nothing:
+<code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_observations(**data.to_observations())</span></code> is the same
+data, counts, truncation and covariates included.</p></li>
+</ul>
+<p>Observed and right censored data folds into the <code class="docutils literal notranslate"><span class="pre">xrd</span></code> form, the count at
+risk and the number of deaths at each distinct time:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="n">times</span><span class="p">,</span> <span class="n">at_risk</span><span class="p">,</span> <span class="n">deaths</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span><span class="o">.</span><span class="n">to_xrd</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"times  :"</span><span class="p">,</span> <span class="n">times</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"at risk:"</span><span class="p">,</span> <span class="n">at_risk</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"deaths :"</span><span class="p">,</span> <span class="n">deaths</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>times  : [1. 2. 3. 4. 5.]
+at risk: [8 6 5 4 1]
+deaths : [2 1 0 3 0]
+</pre></div>
+</div>
+</div>
+</div>
+<p>Going back with <code class="docutils literal notranslate"><span class="pre">from_xrd</span></code> recovers the same rows here. The number
+censored at each time is what is left of the risk set after the deaths,
+<code class="docutils literal notranslate"><span class="pre">r[j]</span> <span class="pre">-</span> <span class="pre">d[j]</span> <span class="pre">-</span> <span class="pre">r[j</span> <span class="pre">+</span> <span class="pre">1]</span></code>, and it is placed at that time:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">x_back</span><span class="p">,</span> <span class="n">c_back</span><span class="p">,</span> <span class="n">n_back</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_xrd</span><span class="p">(</span>
+    <span class="n">times</span><span class="p">,</span> <span class="n">at_risk</span><span class="p">,</span> <span class="n">deaths</span>
+<span class="p">)</span><span class="o">.</span><span class="n">to_xcnt</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"x:"</span><span class="p">,</span> <span class="n">x_back</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"c:"</span><span class="p">,</span> <span class="n">c_back</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"n:"</span><span class="p">,</span> <span class="n">n_back</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>x: [1. 2. 3. 4. 5.]
+c: [0 0 1 0 1]
+n: [2 1 1 3 1]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Before version 0.25 these conversions were functions at the top level of
+<code class="docutils literal notranslate"><span class="pre">surpyval</span></code>. They still work, with a warning, until 2027-04-12, and the
+first release on or after that date removes them:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Deprecated</p></th>
+<th class="head"><p>Use</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fs_to_xcnt(f,</span> <span class="pre">s)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_observations(observed=f,</span> <span class="pre">right_censored=s)</span></code>
+(<code class="docutils literal notranslate"><span class="pre">.to_xcnt()</span></code> for the arrays)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fsl_to_xcnt(f,</span> <span class="pre">s,</span> <span class="pre">l)</span></code>, <code class="docutils literal notranslate"><span class="pre">fsli_to_xcnt(f,</span> <span class="pre">s,</span> <span class="pre">l,</span> <span class="pre">i)</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fsli_handler(f,</span> <span class="pre">s,</span> <span class="pre">l,</span> <span class="pre">i)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_observations(...)</span></code> with <code class="docutils literal notranslate"><span class="pre">left_censored=l</span></code>
+and <code class="docutils literal notranslate"><span class="pre">interval_censored=i</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fs_to_xrd(f,</span> <span class="pre">s)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_observations(observed=f,</span>
+<span class="pre">right_censored=s).to_xrd()</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">xcnt_handler(x,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">t,</span> <span class="pre">...)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData(x,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">t,</span> <span class="pre">...)</span></code> (<code class="docutils literal notranslate"><span class="pre">.to_xcnt()</span></code> for the arrays)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">xcnt_to_xrd(x,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">t)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData(x,</span> <span class="pre">c,</span> <span class="pre">n,</span> <span class="pre">t).to_xrd()</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">xrd_to_xcnt(x,</span> <span class="pre">r,</span> <span class="pre">d)</span></code>, <code class="docutils literal notranslate"><span class="pre">xrd_handler(x,</span> <span class="pre">r,</span> <span class="pre">d)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData.from_xrd(x,</span> <span class="pre">r,</span> <span class="pre">d)</span></code> (<code class="docutils literal notranslate"><span class="pre">.to_xcnt()</span></code> for the arrays)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">xcn_to_fs(x,</span> <span class="pre">c,</span> <span class="pre">n)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData(x,</span> <span class="pre">c,</span> <span class="pre">n).to_observations()</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>If the risk set ever grows from one time to the next, some items entered
+late (left truncation). <code class="docutils literal notranslate"><span class="pre">xrd</span></code> has no record of when each item entered,
+so the conversion cannot be undone, and SurPyval refuses rather than
+guessing:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">try</span><span class="p">:</span>
+    <span class="n">SurpyvalData</span><span class="o">.</span><span class="n">from_xrd</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">])</span>
+<span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">err</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>The risk set increases between observation times (late entry / left truncation), and the xrd format has no record of when each item entered, so this data cannot be read from it: give it as SurpyvalData(x, c, n, tl=...) instead.
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Handy%20References%20-%20Aide-m%C3%A9moire.html" class="btn btn-neutral float-left" title="Handy References - Aide-mémoire" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Weighted%20Data.html" class="btn btn-neutral float-right" title="Weighted Data" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

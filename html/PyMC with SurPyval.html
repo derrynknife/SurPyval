@@ -1,0 +1,741 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PyMC with SurPyval &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Torch with SurPyval" href="Torch%20with%20SurPyval.html" />
+    <link rel="prev" title="Test Planning with SurPyval" href="Test%20Planning%20with%20SurPyval.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">PyMC with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#from-an-old-fleet-to-a-new-design">From an old fleet to a new design</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-each-row-adds">What each row adds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#covariates">Covariates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#priors-from-surpyval">Priors from SurPyval</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api">API</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.pymc.censored_likelihood"><code class="docutils literal notranslate"><span class="pre">censored_likelihood()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.pymc.log_likelihood"><code class="docutils literal notranslate"><span class="pre">log_likelihood()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.pymc.prior_from_model"><code class="docutils literal notranslate"><span class="pre">prior_from_model()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.pymc.prior_from_spec"><code class="docutils literal notranslate"><span class="pre">prior_from_spec()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.pymc.to_surpyval"><code class="docutils literal notranslate"><span class="pre">to_surpyval()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">PyMC with SurPyval</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/PyMC with SurPyval.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pymc-with-surpyval">
+<h1>PyMC with SurPyval<a class="headerlink" href="#pymc-with-surpyval" title="Link to this heading"></a></h1>
+<p>If you already build Bayesian models in <a class="reference external" href="https://www.pymc.io">PyMC</a>,
+<code class="docutils literal notranslate"><span class="pre">surpyval.pymc</span></code> lets you use SurPyval’s handling of lifetime data inside
+them. You write the model as usual – your priors, your hierarchy, your
+sampler settings – and one call adds the likelihood of your data: every
+failure, survivor, inspection interval and truncation window, counted
+exactly as SurPyval’s <code class="docutils literal notranslate"><span class="pre">fit</span></code> counts them.</p>
+<p>In plain words: a censored or truncated lifetime is not an ordinary data
+point, so it cannot go into <code class="docutils literal notranslate"><span class="pre">observed=</span></code> of a PyMC distribution. A unit
+still running at 3,000 hours tells you only that its life is longer than
+3,000 hours; a unit found failed at an inspection tells you only that it
+failed between two inspections; a unit you only heard about because it
+survived to 1,000 hours is from a population cut off at 1,000 hours. Each
+needs its own term in the likelihood. <code class="docutils literal notranslate"><span class="pre">censored_likelihood</span></code> writes those
+terms for you.</p>
+<p>SurPyval does not install PyMC and does not depend on it. <code class="docutils literal notranslate"><span class="pre">import</span>
+<span class="pre">surpyval</span></code> never imports it. The helpers import it when you call them, and
+if it is not installed they stop with a message saying to install it
+(<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">pymc</span></code>).</p>
+<p>The helpers are:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#surpyval.pymc.censored_likelihood" title="surpyval.pymc.censored_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">censored_likelihood()</span></code></a>: add the likelihood of a data
+set to the open model, as a <code class="docutils literal notranslate"><span class="pre">pm.Potential</span></code>;</p></li>
+<li><p><a class="reference internal" href="#surpyval.pymc.log_likelihood" title="surpyval.pymc.log_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">log_likelihood()</span></code></a>: the same term as a pytensor
+expression, to combine yourself;</p></li>
+<li><p><a class="reference internal" href="#surpyval.pymc.prior_from_model" title="surpyval.pymc.prior_from_model"><code class="xref py py-func docutils literal notranslate"><span class="pre">prior_from_model()</span></code></a>: a prior from a SurPyval fit
+(last year’s data, another fleet), keeping its uncertainty;</p></li>
+<li><p><a class="reference internal" href="#surpyval.pymc.prior_from_spec" title="surpyval.pymc.prior_from_spec"><code class="xref py py-func docutils literal notranslate"><span class="pre">prior_from_spec()</span></code></a>: priors from a plain description
+that can be stored as JSON;</p></li>
+<li><p><a class="reference internal" href="#surpyval.pymc.to_surpyval" title="surpyval.pymc.to_surpyval"><code class="xref py py-func docutils literal notranslate"><span class="pre">to_surpyval()</span></code></a>: the posterior draws back into a
+SurPyval model, with its functions, credible intervals and plots.</p></li>
+</ul>
+<p>They support the Weibull, Exponential, LogNormal, Gamma, LogLogistic,
+Normal, Gumbel, Logistic and Rayleigh distributions
+(<code class="docutils literal notranslate"><span class="pre">surpyval.pymc.SUPPORTED</span></code>); any other is refused with that list.</p>
+<section id="from-an-old-fleet-to-a-new-design">
+<h2>From an old fleet to a new design<a class="headerlink" href="#from-an-old-fleet-to-a-new-design" title="Link to this heading"></a></h2>
+<p>A fleet of pumps of an old design has years of records, and a new design
+has a handful. The question is the new design’s B10 life. With six
+records, the new design’s shape parameter is barely known; the old
+fleet’s is. A hierarchical model lets the two designs share the shape and
+pull their scales towards a common value, so the new design borrows
+strength from the old without being forced to be the same.</p>
+<p>The old fleet’s records are of every kind: failures, pumps still running,
+pumps found failed at an inspection (an interval), and pumps that were
+already in service when records began at 2,000 hours (left truncated:
+pumps that failed before then never made it into the records).</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pymc</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.pymc</span><span class="w"> </span><span class="kn">import</span> <span class="n">censored_likelihood</span>
+
+<span class="c1"># The old design: x is a time, or [lower, upper] for an interval;</span>
+<span class="c1"># c is 0 failed, 1 still running, 2 failed between the two times;</span>
+<span class="c1"># n counts identical rows; tl is when each pump entered the records.</span>
+<span class="n">old</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">SurpyvalData</span><span class="p">(</span>
+    <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">12_400</span><span class="p">,</span> <span class="mi">15_900</span><span class="p">,</span> <span class="p">[</span><span class="mi">17_000</span><span class="p">,</span> <span class="mi">21_000</span><span class="p">],</span> <span class="mi">19_800</span><span class="p">,</span> <span class="mi">22_000</span><span class="p">,</span> <span class="mi">24_500</span><span class="p">,</span>
+       <span class="p">[</span><span class="mi">9_000</span><span class="p">,</span> <span class="mi">13_000</span><span class="p">],</span> <span class="mi">26_000</span><span class="p">,</span> <span class="mi">8_700</span><span class="p">,</span> <span class="mi">30_000</span><span class="p">],</span>
+    <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+    <span class="n">n</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">14</span><span class="p">],</span>
+    <span class="n">tl</span><span class="o">=</span><span class="p">[</span><span class="mi">2_000</span><span class="p">,</span> <span class="mi">2_000</span><span class="p">,</span> <span class="mi">2_000</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2_000</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2_000</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2_000</span><span class="p">],</span>
+<span class="p">)</span>
+
+<span class="c1"># The new design: three failures and three pumps still running.</span>
+<span class="n">x_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">6_100</span><span class="p">,</span> <span class="mi">9_800</span><span class="p">,</span> <span class="mi">11_500</span><span class="p">,</span> <span class="mi">8_000</span><span class="p">,</span> <span class="mi">10_000</span><span class="p">,</span> <span class="mi">12_000</span><span class="p">])</span>
+<span class="n">c_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+
+<span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">()</span> <span class="k">as</span> <span class="n">model</span><span class="p">:</span>
+    <span class="n">beta</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">LogNormal</span><span class="p">(</span><span class="s2">"beta"</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">0.3</span><span class="p">)</span>  <span class="c1"># shared shape</span>
+    <span class="n">mu</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="s2">"mu"</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">9.8</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>         <span class="c1"># typical log scale</span>
+    <span class="n">tau</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">HalfNormal</span><span class="p">(</span><span class="s2">"tau"</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>           <span class="c1"># how far designs differ</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="s2">"z"</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># non-centred</span>
+    <span class="n">log_alpha</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Deterministic</span><span class="p">(</span><span class="s2">"log_alpha"</span><span class="p">,</span> <span class="n">mu</span> <span class="o">+</span> <span class="n">tau</span> <span class="o">*</span> <span class="n">z</span><span class="p">)</span>
+
+    <span class="n">censored_likelihood</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">old</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"old"</span><span class="p">,</span>
+                        <span class="n">alpha</span><span class="o">=</span><span class="n">pm</span><span class="o">.</span><span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_alpha</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">beta</span><span class="o">=</span><span class="n">beta</span><span class="p">)</span>
+    <span class="n">censored_likelihood</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="n">x_new</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c_new</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"new"</span><span class="p">,</span>
+                        <span class="n">alpha</span><span class="o">=</span><span class="n">pm</span><span class="o">.</span><span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">log_alpha</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="n">beta</span><span class="o">=</span><span class="n">beta</span><span class="p">)</span>
+
+    <span class="n">trace</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">target_accept</span><span class="o">=</span><span class="mf">0.95</span><span class="p">,</span> <span class="n">random_seed</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Everything else is ordinary PyMC and ArviZ: <code class="docutils literal notranslate"><span class="pre">az.summary(trace)</span></code>,
+<code class="docutils literal notranslate"><span class="pre">az.plot_trace(trace)</span></code>, <code class="docutils literal notranslate"><span class="pre">pm.find_MAP()</span></code>. (The scales are written
+non-centred, <code class="docutils literal notranslate"><span class="pre">mu</span> <span class="pre">+</span> <span class="pre">tau</span> <span class="pre">*</span> <span class="pre">z</span></code>, as usual for a hierarchy with few groups:
+the centred form gives divergences here.) The B10 of the new design, for each posterior draw, is
+the Weibull quantile at 0.1:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">alpha_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">trace</span><span class="o">.</span><span class="n">posterior</span><span class="p">[</span><span class="s2">"log_alpha"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+<span class="n">beta_draws</span> <span class="o">=</span> <span class="n">trace</span><span class="o">.</span><span class="n">posterior</span><span class="p">[</span><span class="s2">"beta"</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+<span class="n">b10</span> <span class="o">=</span> <span class="n">alpha_new</span> <span class="o">*</span> <span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mf">0.9</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">beta_draws</span><span class="p">)</span>
+<span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">(</span><span class="n">b10</span><span class="p">,</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">95</span><span class="p">])</span>   <span class="c1"># a 90% credible interval and median</span>
+</pre></div>
+</div>
+<p>In one run with PyMC 6.3 this gave a median B10 of about 5,900 hours,
+with a 90% credible interval of about 3,300 to 11,600 hours: wide, as six
+records of a new design should leave it, with the shape borrowed from the
+old fleet. (These numbers are illustrative: PyMC is not installed when
+the documentation is built, so the code on this page is not run, and
+another sampler version or seed gives slightly different draws.)</p>
+<p>To use the posterior as a SurPyval model, turn the trace back into one with
+<a class="reference internal" href="#surpyval.pymc.to_surpyval" title="surpyval.pymc.to_surpyval"><code class="xref py py-func docutils literal notranslate"><span class="pre">to_surpyval()</span></code></a>, naming the variable that holds each
+parameter (with an index for an element of a vector) and how to get from
+it to the parameter:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.pymc</span><span class="w"> </span><span class="kn">import</span> <span class="n">to_surpyval</span>
+
+<span class="n">new_design</span> <span class="o">=</span> <span class="n">to_surpyval</span><span class="p">(</span><span class="n">trace</span><span class="p">,</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span>
+                         <span class="n">alpha</span><span class="o">=</span><span class="s2">"log_alpha[1]"</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="s2">"exp"</span><span class="p">},</span>
+                         <span class="n">beta</span><span class="o">=</span><span class="s2">"beta"</span><span class="p">,</span> <span class="n">data</span><span class="o">=</span><span class="p">(</span><span class="n">x_new</span><span class="p">,</span> <span class="n">c_new</span><span class="p">))</span>
+<span class="n">new_design</span><span class="o">.</span><span class="n">quantile_cri</span><span class="p">(</span><span class="mf">0.10</span><span class="p">)</span>   <span class="c1"># the B10's credible interval</span>
+<span class="n">new_design</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="mi">10_000</span><span class="p">)</span>           <span class="c1"># the chance a new pump survives 10,000 h</span>
+<span class="n">new_design</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>               <span class="c1"># its data, the curve and its band</span>
+</pre></div>
+</div>
+<p>The result is a <a class="reference internal" href="surpyval.bayes.html#surpyval.bayes.BayesianParametric" title="surpyval.bayes.BayesianParametric"><code class="xref py py-class docutils literal notranslate"><span class="pre">BayesianParametric</span></code></a>, the same
+model <code class="docutils literal notranslate"><span class="pre">fit_bayes</span></code> returns: its <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code> and <code class="docutils literal notranslate"><span class="pre">mean</span></code> are
+those of a new unit with the uncertainty in the parameters averaged in,
+and <code class="docutils literal notranslate"><span class="pre">cri</span></code>, <code class="docutils literal notranslate"><span class="pre">quantile_cri</span></code>, <code class="docutils literal notranslate"><span class="pre">mean_cri</span></code> and <code class="docutils literal notranslate"><span class="pre">param_cri</span></code> give
+credible intervals. A parameter left out is the variable of its own name;
+a transform is <code class="docutils literal notranslate"><span class="pre">&quot;exp&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;log&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;inverse&quot;</span></code> or a function of the
+draws. Draws outside a parameter’s bounds (a log scale passed without
+<code class="docutils literal notranslate"><span class="pre">transform={&quot;alpha&quot;:</span> <span class="pre">&quot;exp&quot;}</span></code>) are refused.</p>
+<p>The data can be a <code class="xref py py-class docutils literal notranslate"><span class="pre">SurpyvalData</span></code> (from arrays,
+<code class="docutils literal notranslate"><span class="pre">from_items</span></code>, <code class="docutils literal notranslate"><span class="pre">from_dataframe</span></code> …) or the arrays themselves, in any of
+the forms <code class="docutils literal notranslate"><span class="pre">fit</span></code> takes: <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code> with <code class="docutils literal notranslate"><span class="pre">t</span></code> or <code class="docutils literal notranslate"><span class="pre">tl</span></code> and
+<code class="docutils literal notranslate"><span class="pre">tr</span></code>, or <code class="docutils literal notranslate"><span class="pre">xl</span></code> and <code class="docutils literal notranslate"><span class="pre">xr</span></code> for intervals. They are checked exactly as
+<code class="docutils literal notranslate"><span class="pre">fit</span></code> checks them, so a mistake (a censoring flag of 3, a time outside
+its truncation window, a negative time for a Weibull) is refused with the
+same message <code class="docutils literal notranslate"><span class="pre">fit</span></code> gives.</p>
+</section>
+<section id="what-each-row-adds">
+<h2>What each row adds<a class="headerlink" href="#what-each-row-adds" title="Link to this heading"></a></h2>
+<p>Each row adds one term to the log-likelihood, multiplied by its count
+<code class="docutils literal notranslate"><span class="pre">n</span></code>. Writing <span class="math notranslate nohighlight">\(f\)</span> for the density, <span class="math notranslate nohighlight">\(F\)</span> for the CDF and
+<span class="math notranslate nohighlight">\(S = 1 - F\)</span> for the survival function:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>row</p></th>
+<th class="head"><p>term</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>failure at <code class="docutils literal notranslate"><span class="pre">x</span></code> (<code class="docutils literal notranslate"><span class="pre">c=0</span></code>)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\log f(x)\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>running at <code class="docutils literal notranslate"><span class="pre">x</span></code> (<code class="docutils literal notranslate"><span class="pre">c=1</span></code>)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\log S(x)\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>failed before <code class="docutils literal notranslate"><span class="pre">x</span></code> (<code class="docutils literal notranslate"><span class="pre">c=-1</span></code>)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\log F(x)\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p>failed in <code class="docutils literal notranslate"><span class="pre">[xl,</span> <span class="pre">xr]</span></code> (<code class="docutils literal notranslate"><span class="pre">c=2</span></code>)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\log[F(x_r) - F(x_l)]\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>seen only in <code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">tr]</span></code></p></td>
+<td><p>minus <span class="math notranslate nohighlight">\(\log[F(t_r) - F(t_l)]\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<p>A truncation window is the condition for a row to be in the data at all,
+so its probability divides every row it applies to. A censored row with a
+truncation bound on its censored side becomes an interval ending at that
+bound (a pump running at 9,000 hours in a study that ends at 10,000 can
+only have failed between the two), as in <code class="docutils literal notranslate"><span class="pre">fit</span></code>.</p>
+<p>The terms are written in the stable forms SurPyval uses itself, so they
+stay accurate far into the tails: <span class="math notranslate nohighlight">\(\log F\)</span> of a Weibull is
+<span class="math notranslate nohighlight">\(\log(1 - e^{-H})\)</span> computed without cancellation, a window whose
+lower end is in the upper tail is taken from the survival function
+(<span class="math notranslate nohighlight">\(\log S(t_l) + \log(1 - S(t_r) / S(t_l))\)</span>), and the normal tails
+use the scaled complementary error function. At fixed parameters the term
+equals SurPyval’s own log-likelihood to 1e-10 or better, for every family,
+row type and truncation pattern, and its gradient, which PyMC’s samplers
+use, matches a numerical derivative of SurPyval’s (both are tested).</p>
+<p>The term is a <code class="docutils literal notranslate"><span class="pre">pm.Potential</span></code>. It counts in <code class="docutils literal notranslate"><span class="pre">pm.sample</span></code> and
+<code class="docutils literal notranslate"><span class="pre">pm.find_MAP</span></code> as an observed variable would, but, like any potential, it
+is not drawn by the prior or posterior predictive samplers and is not in
+the <code class="docutils literal notranslate"><span class="pre">log_likelihood</span></code> group that LOO and WAIC read.</p>
+</section>
+<section id="covariates">
+<h2>Covariates<a class="headerlink" href="#covariates" title="Link to this heading"></a></h2>
+<p>A parameter can be one value for every row, or one value per row. Per-row
+values give each row its own distribution, which is how covariates enter:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">Z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">load</span><span class="p">,</span> <span class="n">temperature</span><span class="p">])</span>   <span class="c1"># one row per data row</span>
+<span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">():</span>
+    <span class="n">b0</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="s2">"b0"</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">9.0</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">2.0</span><span class="p">)</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">Normal</span><span class="p">(</span><span class="s2">"b"</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">shape</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">beta</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">LogNormal</span><span class="p">(</span><span class="s2">"beta"</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+    <span class="c1"># A Weibull accelerated-failure-time model: log(alpha) linear in Z</span>
+    <span class="n">censored_likelihood</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">,</span>
+                        <span class="n">alpha</span><span class="o">=</span><span class="n">pm</span><span class="o">.</span><span class="n">math</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">b0</span> <span class="o">+</span> <span class="n">Z</span> <span class="o">@</span> <span class="n">b</span><span class="p">),</span> <span class="n">beta</span><span class="o">=</span><span class="n">beta</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The rules:</p>
+<ul class="simple">
+<li><p>a parameter is a number, a PyMC variable or a pytensor expression, of
+shape <code class="docutils literal notranslate"><span class="pre">()</span></code> (every row) or <code class="docutils literal notranslate"><span class="pre">(len(data),)</span></code> (one per row); anything
+else is refused;</p></li>
+<li><p>per-row values follow the data’s rows in order. Arrays passed as <code class="docutils literal notranslate"><span class="pre">x</span></code>,
+<code class="docutils literal notranslate"><span class="pre">c</span></code>, … keep the order you give them. A <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> built from
+arrays without covariates merges identical rows and sorts them, so for
+per-row values pass the arrays, or build the <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> with
+<code class="docutils literal notranslate"><span class="pre">Z=</span></code> (which keeps the order) and use <code class="docutils literal notranslate"><span class="pre">data.Z</span></code>;</p></li>
+<li><p>a length that is only known when the model runs is checked then.</p></li>
+</ul>
+</section>
+<section id="priors-from-surpyval">
+<h2>Priors from SurPyval<a class="headerlink" href="#priors-from-surpyval" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">prior_from_model</span></code> turns a fitted SurPyval model into a joint prior: a
+multivariate normal on the log of each positive parameter (a real-line
+parameter as it is), centred on the fit’s estimates with its covariance.
+It keeps how sure the old fit was, and how its parameters moved together.
+<code class="docutils literal notranslate"><span class="pre">weight</span></code> counts the old fit as a share of its information: <code class="docutils literal notranslate"><span class="pre">weight=0.5</span></code>
+doubles its covariance, for data only partly like the new.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.pymc</span><span class="w"> </span><span class="kn">import</span> <span class="n">prior_from_model</span><span class="p">,</span> <span class="n">prior_from_spec</span>
+
+<span class="n">last_year</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x_2025</span><span class="p">,</span> <span class="n">c_2025</span><span class="p">)</span>
+<span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">():</span>
+    <span class="n">prior</span> <span class="o">=</span> <span class="n">prior_from_model</span><span class="p">(</span><span class="n">last_year</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"fleet"</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">censored_likelihood</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="n">x_2026</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c_2026</span><span class="p">,</span> <span class="o">**</span><span class="n">prior</span><span class="p">)</span>
+    <span class="n">trace</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">random_seed</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The variables are <code class="docutils literal notranslate"><span class="pre">fleet_z</span></code> (the unconstrained vector) and
+<code class="docutils literal notranslate"><span class="pre">fleet_alpha</span></code>, <code class="docutils literal notranslate"><span class="pre">fleet_beta</span></code>. A model with no covariance (one built
+with <code class="docutils literal notranslate"><span class="pre">from_params</span></code>) is refused; say how sure you are with
+<code class="docutils literal notranslate"><span class="pre">prior_from_spec</span></code> instead.</p>
+<p><code class="docutils literal notranslate"><span class="pre">prior_from_spec</span></code> builds independent priors from a description of each
+parameter’s prior: a SurPyval distribution, or the same as a tuple or a
+dict, which can be stored as JSON. The parameters are SurPyval’s, in
+SurPyval’s order, whatever PyMC calls them (a Weibull prior is <code class="docutils literal notranslate"><span class="pre">(scale,</span>
+<span class="pre">shape)</span></code>, a Gamma prior’s second parameter is its rate):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">():</span>
+    <span class="n">prior</span> <span class="o">=</span> <span class="n">prior_from_spec</span><span class="p">(</span>
+        <span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="p">(</span><span class="s2">"lognormal"</span><span class="p">,</span> <span class="mf">9.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span>
+         <span class="s2">"beta"</span><span class="p">:</span> <span class="n">sp</span><span class="o">.</span><span class="n">LogNormal</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">])},</span>
+        <span class="n">dist</span><span class="o">=</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">censored_likelihood</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="o">**</span><span class="n">prior</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>With <code class="docutils literal notranslate"><span class="pre">dist</span></code> given, every name must be one of its parameters, and a
+prior that puts mass below zero on a positive parameter (a Normal on a
+Weibull shape) is refused. The priors it builds are Normal, LogNormal,
+Gamma, Weibull, Exponential, Uniform, Beta and Logistic.</p>
+</section>
+<section id="api">
+<h2>API<a class="headerlink" href="#api" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.pymc.censored_likelihood">
+<span class="sig-prename descclassname"><span class="pre">surpyval.pymc.</span></span><span class="sig-name descname"><span class="pre">censored_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'likelihood'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.pymc.censored_likelihood" title="Link to this definition"></a></dt>
+<dd><p>Add SurPyval’s censored and truncated likelihood of the data to the
+open PyMC model, as a <code class="docutils literal notranslate"><span class="pre">pm.Potential</span></code> called <code class="docutils literal notranslate"><span class="pre">name</span></code>.</p>
+<p>The term is <a class="reference internal" href="#surpyval.pymc.log_likelihood" title="surpyval.pymc.log_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">log_likelihood()</span></code></a>: every row type SurPyval fits
+(failures, right, left and interval censoring, left and right
+truncation, counts) with the distribution’s own stable formulas. The
+parameters are anything PyMC can build on: random variables,
+expressions of them (<code class="docutils literal notranslate"><span class="pre">pm.math.exp(log_alpha[0])</span></code>), or numbers.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dist</strong> (<em>distribution</em>) – One of <code class="xref py py-data docutils literal notranslate"><span class="pre">SUPPORTED</span></code>, such as <code class="docutils literal notranslate"><span class="pre">surpyval.Weibull</span></code>.</p></li>
+<li><p><strong>data</strong> (<a class="reference internal" href="surpyval.utilities.html#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData"><em>SurpyvalData</em></a><em> or </em><em>array-like</em><em>, </em><em>optional</em>) – The data; an array is taken as <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p></li>
+<li><p><strong>name</strong> (<em>str</em><em>, </em><em>default &quot;likelihood&quot;</em>) – The name of the Potential in the model; give each data set its
+own.</p></li>
+<li><p><strong>x</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms, checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code>
+checks them, and kept in the order given.</p></li>
+<li><p><strong>c</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms, checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code>
+checks them, and kept in the order given.</p></li>
+<li><p><strong>n</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms, checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code>
+checks them, and kept in the order given.</p></li>
+<li><p><strong>t</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms, checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code>
+checks them, and kept in the order given.</p></li>
+<li><p><strong>xl</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms, checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code>
+checks them, and kept in the order given.</p></li>
+<li><p><strong>xr</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms, checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code>
+checks them, and kept in the order given.</p></li>
+<li><p><strong>tl</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms, checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code>
+checks them, and kept in the order given.</p></li>
+<li><p><strong>tr</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms, checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code>
+checks them, and kept in the order given.</p></li>
+<li><p><strong>**params</strong> – Every parameter of <code class="docutils literal notranslate"><span class="pre">dist</span></code> by name: a scalar applies to every
+row, a vector of one value per row (<code class="docutils literal notranslate"><span class="pre">len(data)</span></code>, in the data’s
+row order) gives each row its own, as with covariates
+(<code class="docutils literal notranslate"><span class="pre">alpha=pm.math.exp(Z</span> <span class="pre">&#64;</span> <span class="pre">b)</span></code>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The Potential. It counts in sampling and in <code class="docutils literal notranslate"><span class="pre">pm.find_MAP</span></code>, as
+an observed variable would; like any Potential it is not drawn by
+<code class="docutils literal notranslate"><span class="pre">pm.sample_prior_predictive</span></code> or <code class="docutils literal notranslate"><span class="pre">sample_posterior_predictive</span></code>
+and is not in the <code class="docutils literal notranslate"><span class="pre">log_likelihood</span></code> group LOO and WAIC read.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>TensorVariable</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span><span class="p">;</span> <span class="n">pm</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s2">"pymc"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.pymc</span><span class="w"> </span><span class="kn">import</span> <span class="n">censored_likelihood</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">()</span> <span class="k">as</span> <span class="n">m</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="n">beta</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">LogNormal</span><span class="p">(</span><span class="s2">"beta"</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">alpha</span> <span class="o">=</span> <span class="n">pm</span><span class="o">.</span><span class="n">LogNormal</span><span class="p">(</span><span class="s2">"alpha"</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span> <span class="n">sigma</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+<span class="gp">... </span>    <span class="n">term</span> <span class="o">=</span> <span class="n">censored_likelihood</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">12</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">30</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="gp">... </span>        <span class="n">alpha</span><span class="o">=</span><span class="n">alpha</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="n">beta</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"tests"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="p">[</span><span class="n">p</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">m</span><span class="o">.</span><span class="n">potentials</span><span class="p">]</span>
+<span class="go">['tests']</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.pymc.log_likelihood">
+<span class="sig-prename descclassname"><span class="pre">surpyval.pymc.</span></span><span class="sig-name descname"><span class="pre">log_likelihood</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.pymc.log_likelihood" title="Link to this definition"></a></dt>
+<dd><p>SurPyval’s log-likelihood of the data as a pytensor expression of
+the parameters, the term <a class="reference internal" href="#surpyval.pymc.censored_likelihood" title="surpyval.pymc.censored_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">censored_likelihood()</span></code></a> adds to a model.</p>
+<p>Each row contributes its own term, times its count <code class="docutils literal notranslate"><span class="pre">n</span></code>: <code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">f(x)</span></code>
+for a failure (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">0</span></code>), <code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">S(x)</span></code> right censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>),
+<code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">F(x)</span></code> left censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code>) and <code class="docutils literal notranslate"><span class="pre">log[F(xr)</span> <span class="pre">-</span> <span class="pre">F(xl)]</span></code>
+interval censored (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>); a row observed only inside the window
+<code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">tr]</span></code> subtracts <code class="docutils literal notranslate"><span class="pre">log[F(tr)</span> <span class="pre">-</span> <span class="pre">F(tl)]</span></code>. A censored row with a
+finite truncation bound on its censored side is an interval ending at
+that bound, as in <code class="docutils literal notranslate"><span class="pre">fit</span></code>. This is the likelihood <code class="docutils literal notranslate"><span class="pre">fit</span></code> maximises,
+equal to the distribution’s to rounding.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dist</strong> (<em>distribution</em>) – One of <code class="xref py py-data docutils literal notranslate"><span class="pre">SUPPORTED</span></code>, such as <code class="docutils literal notranslate"><span class="pre">surpyval.Weibull</span></code>.</p></li>
+<li><p><strong>data</strong> (<a class="reference internal" href="surpyval.utilities.html#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData"><em>SurpyvalData</em></a><em> or </em><em>array-like</em><em>, </em><em>optional</em>) – The data; an array is taken as <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p></li>
+<li><p><strong>x</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>), checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code> checks them, and kept in
+the order given.</p></li>
+<li><p><strong>c</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>), checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code> checks them, and kept in
+the order given.</p></li>
+<li><p><strong>n</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>), checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code> checks them, and kept in
+the order given.</p></li>
+<li><p><strong>t</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>), checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code> checks them, and kept in
+the order given.</p></li>
+<li><p><strong>xl</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>), checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code> checks them, and kept in
+the order given.</p></li>
+<li><p><strong>xr</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>), checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code> checks them, and kept in
+the order given.</p></li>
+<li><p><strong>tl</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>), checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code> checks them, and kept in
+the order given.</p></li>
+<li><p><strong>tr</strong> (<em>array-like</em><em>, </em><em>optional</em>) – The data as arrays in SurPyval’s usual forms (see
+<a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>), checked as <code class="docutils literal notranslate"><span class="pre">fit</span></code> checks them, and kept in
+the order given.</p></li>
+<li><p><strong>**params</strong> – Every parameter of <code class="docutils literal notranslate"><span class="pre">dist</span></code> by name (<code class="docutils literal notranslate"><span class="pre">alpha=...,</span> <span class="pre">beta=...</span></code>): a
+number, a PyMC variable or a pytensor expression. A scalar applies
+to every row; a vector of one value per row (<code class="docutils literal notranslate"><span class="pre">len(data)</span></code>, in the
+data’s row order) gives each row its own, for covariates.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A scalar: the sum of the rows’ terms.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>TensorVariable</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span><span class="p">;</span> <span class="n">pt</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s2">"pytensor.tensor"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.pymc</span><span class="w"> </span><span class="kn">import</span> <span class="n">log_likelihood</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ll</span> <span class="o">=</span> <span class="n">log_likelihood</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">]],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+<span class="gp">... </span>                    <span class="n">alpha</span><span class="o">=</span><span class="mf">3.0</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mf">1.5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">ll</span><span class="o">.</span><span class="n">eval</span><span class="p">()),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">-3.440673</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">SurpyvalData</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">]],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">_log_likelihood</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="mf">3.0</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)),</span> <span class="mi">6</span><span class="p">)</span>
+<span class="go">-3.440673</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.pymc.prior_from_model">
+<span class="sig-prename descclassname"><span class="pre">surpyval.pymc.</span></span><span class="sig-name descname"><span class="pre">prior_from_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weight</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.pymc.prior_from_model" title="Link to this definition"></a></dt>
+<dd><p>A joint PyMC prior from a fitted SurPyval model: its estimates and
+covariance, as a multivariate normal on the unconstrained scale (the
+log of a positive parameter, a real-line parameter as it is).</p>
+<p>In plain words: last time’s fit becomes what you believe before the
+new data, as sure of each parameter as that fit was, and keeping how
+the parameters moved together. <code class="docutils literal notranslate"><span class="pre">weight</span></code> discounts it: 0.5 counts
+the old fit as half as much information (its covariance is divided
+by 0.5), for data that are only partly like the new.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<a class="reference internal" href="univariate/parametric_class.html#surpyval.univariate.parametric.parametric.Parametric" title="surpyval.univariate.parametric.parametric.Parametric"><em>Parametric</em></a>) – A fitted model with a covariance (<code class="docutils literal notranslate"><span class="pre">model.covariance()</span></code>), such as
+<code class="docutils literal notranslate"><span class="pre">surpyval.Weibull.fit(x,</span> <span class="pre">c)</span></code>; not one with an offset, a
+limited-failure proportion or zero inflation.</p></li>
+<li><p><strong>name</strong> (<em>str</em><em>, </em><em>optional</em>) – The prefix of the variables added; default the distribution’s
+name in lower case (<code class="docutils literal notranslate"><span class="pre">&quot;weibull&quot;</span></code>). The prior is <code class="docutils literal notranslate"><span class="pre">{name}_z</span></code>, the
+unconstrained vector, and <code class="docutils literal notranslate"><span class="pre">{name}_{parameter}</span></code> each parameter.</p></li>
+<li><p><strong>weight</strong> (<em>float</em><em>, </em><em>default 1.0</em>) – The share of the old fit’s information to keep, in (0, 1].</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">{parameter:</span> <span class="pre">variable}</span></code>, ready for
+<a class="reference internal" href="#surpyval.pymc.censored_likelihood" title="surpyval.pymc.censored_likelihood"><code class="xref py py-func docutils literal notranslate"><span class="pre">censored_likelihood()</span></code></a> as <code class="docutils literal notranslate"><span class="pre">**prior</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span><span class="p">;</span> <span class="n">pm</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s2">"pymc"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.pymc</span><span class="w"> </span><span class="kn">import</span> <span class="n">prior_from_model</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">old</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">310</span><span class="p">,</span> <span class="mi">520</span><span class="p">,</span> <span class="mi">640</span><span class="p">,</span> <span class="mi">790</span><span class="p">,</span> <span class="mi">905</span><span class="p">,</span> <span class="mi">1100</span><span class="p">,</span> <span class="mi">1240</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">()</span> <span class="k">as</span> <span class="n">m</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="n">prior</span> <span class="o">=</span> <span class="n">prior_from_model</span><span class="p">(</span><span class="n">old</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"fleet"</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">sorted</span><span class="p">(</span><span class="n">prior</span><span class="p">)</span>
+<span class="go">['alpha', 'beta']</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">prior</span><span class="p">[</span><span class="s2">"alpha"</span><span class="p">]</span><span class="o">.</span><span class="n">name</span>
+<span class="go">'fleet_alpha'</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.pymc.prior_from_spec">
+<span class="sig-prename descclassname"><span class="pre">surpyval.pymc.</span></span><span class="sig-name descname"><span class="pre">prior_from_spec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.pymc.prior_from_spec" title="Link to this definition"></a></dt>
+<dd><p>Independent PyMC priors, one per parameter, from a plain description
+that can be stored as JSON.</p>
+<p>Each entry is a SurPyval distribution with its parameters
+(<code class="docutils literal notranslate"><span class="pre">sp.LogNormal.from_params([0.8,</span> <span class="pre">0.3])</span></code>), the same as a sequence
+<code class="docutils literal notranslate"><span class="pre">(&quot;lognormal&quot;,</span> <span class="pre">0.8,</span> <span class="pre">0.3)</span></code>, or <code class="docutils literal notranslate"><span class="pre">{&quot;dist&quot;:</span> <span class="pre">&quot;lognormal&quot;,</span> <span class="pre">&quot;params&quot;:</span>
+<span class="pre">[0.8,</span> <span class="pre">0.3]}</span></code>. The parameters are SurPyval’s, in SurPyval’s order
+(a Weibull prior is <code class="docutils literal notranslate"><span class="pre">(&quot;weibull&quot;,</span> <span class="pre">scale,</span> <span class="pre">shape)</span></code>; a Gamma prior’s
+second parameter is its rate), whatever PyMC calls them.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>spec</strong> (<em>mapping</em>) – <code class="docutils literal notranslate"><span class="pre">{parameter:</span> <span class="pre">prior}</span></code>.</p></li>
+<li><p><strong>dist</strong> (<em>distribution</em><em>, </em><em>optional</em>) – The distribution the priors are for (<code class="docutils literal notranslate"><span class="pre">surpyval.Weibull</span></code>): then
+every name must be one of its parameters, and a prior on a
+positive parameter must be on positive values.</p></li>
+<li><p><strong>name</strong> (<em>str</em><em>, </em><em>optional</em>) – A prefix for the variables’ names (<code class="docutils literal notranslate"><span class="pre">{name}_{parameter}</span></code>);
+default none, so each variable is named after its parameter.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">{parameter:</span> <span class="pre">variable}</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span><span class="p">;</span> <span class="n">pm</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s2">"pymc"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.pymc</span><span class="w"> </span><span class="kn">import</span> <span class="n">prior_from_spec</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">pm</span><span class="o">.</span><span class="n">Model</span><span class="p">()</span> <span class="k">as</span> <span class="n">m</span><span class="p">:</span>
+<span class="gp">... </span>    <span class="n">prior</span> <span class="o">=</span> <span class="n">prior_from_spec</span><span class="p">(</span>
+<span class="gp">... </span>        <span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="p">(</span><span class="s2">"lognormal"</span><span class="p">,</span> <span class="mf">7.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span>
+<span class="gp">... </span>         <span class="s2">"beta"</span><span class="p">:</span> <span class="n">sp</span><span class="o">.</span><span class="n">LogNormal</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">])},</span>
+<span class="gp">... </span>        <span class="n">dist</span><span class="o">=</span><span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">sorted</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">m</span><span class="o">.</span><span class="n">free_RVs</span><span class="p">)</span>
+<span class="go">['alpha', 'beta']</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.pymc.to_surpyval">
+<span class="sig-prename descclassname"><span class="pre">surpyval.pymc.</span></span><span class="sig-name descname"><span class="pre">to_surpyval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">trace</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dist</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">transform</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Mapping</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">priors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">param_map</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.pymc.to_surpyval" title="Link to this definition"></a></dt>
+<dd><p>A SurPyval Bayesian model from PyMC’s posterior draws: the
+distribution with each draw’s parameters, with <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">qf</span></code>,
+credible intervals (<code class="docutils literal notranslate"><span class="pre">cri</span></code>, <code class="docutils literal notranslate"><span class="pre">quantile_cri</span></code>), <code class="docutils literal notranslate"><span class="pre">plot</span></code> and the rest
+of <a class="reference internal" href="surpyval.bayes.html#surpyval.bayes.BayesianParametric" title="surpyval.bayes.BayesianParametric"><code class="xref py py-class docutils literal notranslate"><span class="pre">BayesianParametric</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>trace</strong> (<em>InferenceData</em><em> or </em><em>MultiTrace</em>) – What <code class="docutils literal notranslate"><span class="pre">pm.sample</span></code> returned.</p></li>
+<li><p><strong>dist</strong> (<em>distribution</em>) – The SurPyval distribution the draws are for, such as
+<code class="docutils literal notranslate"><span class="pre">surpyval.Weibull</span></code>.</p></li>
+<li><p><strong>transform</strong> (<em>mapping</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">{parameter:</span> <span class="pre">&quot;exp&quot;</span> <span class="pre">|</span> <span class="pre">&quot;log&quot;</span> <span class="pre">|</span> <span class="pre">&quot;inverse&quot;</span> <span class="pre">|</span> <span class="pre">function}</span></code>, applied to
+the draws of a variable that is not the parameter itself (a log
+scale sampled as <code class="docutils literal notranslate"><span class="pre">log_alpha</span></code>: <code class="docutils literal notranslate"><span class="pre">transform={&quot;alpha&quot;:</span> <span class="pre">&quot;exp&quot;}</span></code>).</p></li>
+<li><p><strong>data</strong> (<a class="reference internal" href="surpyval.utilities.html#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData"><em>SurpyvalData</em></a><em> or </em><em>array-like</em><em>, </em><em>optional</em>) – The data, for <code class="docutils literal notranslate"><span class="pre">plot</span></code> and <code class="docutils literal notranslate"><span class="pre">compare</span></code>.</p></li>
+<li><p><strong>priors</strong> (<em>optional</em>) – The priors, kept with the model for its summary.</p></li>
+<li><p><strong>**param_map</strong> – Each parameter’s variable in the trace, by name, with integer
+indices for an element of a vector (<code class="docutils literal notranslate"><span class="pre">alpha=&quot;log_alpha[1]&quot;</span></code>); a
+parameter not given is the variable of its own name.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Its <code class="docutils literal notranslate"><span class="pre">diagnostics</span></code> record the sampler and the variables used.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="surpyval.bayes.html#surpyval.bayes.BayesianParametric" title="surpyval.bayes.BayesianParametric">BayesianParametric</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pytest</span><span class="p">;</span> <span class="n">az</span> <span class="o">=</span> <span class="n">pytest</span><span class="o">.</span><span class="n">importorskip</span><span class="p">(</span><span class="s2">"arviz"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.pymc</span><span class="w"> </span><span class="kn">import</span> <span class="n">to_surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">trace</span> <span class="o">=</span> <span class="n">az</span><span class="o">.</span><span class="n">from_dict</span><span class="p">({</span><span class="s2">"posterior"</span><span class="p">:</span> <span class="p">{</span>
+<span class="gp">... </span>    <span class="s2">"log_alpha"</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">100</span><span class="p">),</span> <span class="mf">0.05</span><span class="p">,</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1000</span><span class="p">)),</span>
+<span class="gp">... </span>    <span class="s2">"beta"</span><span class="p">:</span> <span class="n">rng</span><span class="o">.</span><span class="n">lognormal</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">2</span><span class="p">),</span> <span class="mf">0.05</span><span class="p">,</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1000</span><span class="p">))}})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">to_surpyval</span><span class="p">(</span><span class="n">trace</span><span class="p">,</span> <span class="n">sp</span><span class="o">.</span><span class="n">Weibull</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="s2">"log_alpha"</span><span class="p">,</span>
+<span class="gp">... </span>                    <span class="n">transform</span><span class="o">=</span><span class="p">{</span><span class="s2">"alpha"</span><span class="p">:</span> <span class="s2">"exp"</span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="go">array([100.,   2.])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Test%20Planning%20with%20SurPyval.html" class="btn btn-neutral float-left" title="Test Planning with SurPyval" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Torch%20with%20SurPyval.html" class="btn btn-neutral float-right" title="Torch with SurPyval" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

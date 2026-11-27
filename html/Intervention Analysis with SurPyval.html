@@ -1,0 +1,689 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intervention Analysis with SurPyval &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Software Reliability Growth" href="Software%20Reliability%20Growth.html" />
+    <link rel="prev" title="Recurrent Event Regression Modelling with SurPyval" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Intervention Analysis with SurPyval</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#one-system">One system</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#how-the-test-works">How the test works</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#is-the-evidence-enough">Is the evidence enough?</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fleets">Fleets</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#when-the-rate-trends">When the rate trends</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#saving-the-result">Saving the result</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-test-cannot-tell">What the test cannot tell</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Intervention Analysis with SurPyval</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Intervention Analysis with SurPyval.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="intervention-analysis-with-surpyval">
+<h1>Intervention Analysis with SurPyval<a class="headerlink" href="#intervention-analysis-with-surpyval" title="Link to this heading"></a></h1>
+<p>A failure mode keeps coming back, so something is changed: a redesigned
+seal, a new lubricant, a revised procedure, a corrective action. Months
+later the question is whether it worked:</p>
+<ul class="simple">
+<li><p><strong>Did the failure rate fall?</strong> And by how much, with what uncertainty?</p></li>
+<li><p><strong>Is the evidence enough to say?</strong> If no change is seen, was there
+enough operating time since the change to have seen one? If not, how
+much more is needed?</p></li>
+</ul>
+<p><a class="reference internal" href="counting/intervention.html#surpyval.recurrent.intervention_test" title="surpyval.recurrent.intervention_test"><code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.recurrent.intervention_test()</span></code></a> answers both from the failure
+records of one repairable system or a fleet, each with its own observation
+window and its own date of change. It compares the rate of failures after
+the intervention with the rate before it, and reports the <em>ratio</em> of the
+rates (after over before: 0.5 means the rate halved), its confidence
+interval, the p-value of no change, and the evidence: the power the
+exposure had to detect the change hoped for, the smallest change it could
+detect, and the exposure that would be needed. The functions behind the
+evidence are in <a class="reference internal" href="surpyval.test_planning.html#module-surpyval.test_planning" title="surpyval.test_planning"><code class="xref py py-mod docutils literal notranslate"><span class="pre">surpyval.test_planning</span></code></a>, for planning before the
+data are in. The models of the rate (homogeneous and power-law Poisson
+processes) are explained in <a class="reference internal" href="Recurrent%20Event%20Analysis.html"><span class="doc">Recurrent Event Analysis</span></a>.</p>
+<section id="one-system">
+<h2>One system<a class="headerlink" href="#one-system" title="Link to this heading"></a></h2>
+<p>A pump failed eight times in its first 50 weeks of service. Its seals were
+changed at week 50, and it failed three times in the next 50 weeks. The
+failure times are the pump’s age at each failure, as for every recurrent
+model in SurPyval; <code class="docutils literal notranslate"><span class="pre">T</span></code> is the end of its observation (today), and
+<code class="docutils literal notranslate"><span class="pre">intervention</span></code> the time of the change:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">intervention_test</span>
+
+<span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">26</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">44</span><span class="p">,</span> <span class="mi">52</span><span class="p">,</span> <span class="mi">77</span><span class="p">,</span> <span class="mi">95</span><span class="p">]</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Intervention test (HPP, per-system)
+===================================
+Systems          : 1 (1 compared)
+Before           : 8 failures in 50
+After            : 3 failures in 50 (5.5 expected with no change)
+Rate ratio       : 0.375, 95% CI [0.06408, 1.562]
+Test             : exact (two-sided), p-value 0.2266
+Power            : 0.134 to detect a ratio of 0.5 (0.8 required)
+Detectable ratio : 0.004185
+Verdict          : inconclusive
+  - Not enough evidence yet: the test had only 13% power to detect a ratio of 0.5 with this exposure.
+  - No exposure after the intervention can give 80% power: the 8 failures before it are too few to pin down the earlier rate. Only more history before the intervention, or a larger change, would.
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The rate after the change is estimated at 0.375 times the rate before it
+(3 failures in 50 weeks against 8 in 50), a 62% reduction. But the 95%
+confidence interval of the ratio runs from 0.064 to 1.56: the data are as
+consistent with no change as with a large one, and the p-value of no change
+is 0.23. The verdict is not “no change”: it is <em>inconclusive</em>, because the
+test only had a 13% chance of detecting even a halving of the rate. The
+notes say why, and it is worth knowing: with only eight failures before the
+change, the earlier rate itself is too uncertain for <em>any</em> amount of
+operating time after it to show a halving reliably. Only a longer history
+before the change, or pooling with other pumps, would.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">verdict</span></code> is one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;decrease&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;increase&quot;</span></code>: the test found a change
+(<code class="docutils literal notranslate"><span class="pre">p_value</span> <span class="pre">&lt;</span> <span class="pre">alpha_ci</span></code>);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;no</span> <span class="pre">change</span> <span class="pre">detected&quot;</span></code>: it found none, and it had at least
+<code class="docutils literal notranslate"><span class="pre">power_required</span></code> (80%) power to detect the change <code class="docutils literal notranslate"><span class="pre">target_ratio</span></code>
+(0.5, a halving) – so the change most likely did not achieve that;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;inconclusive&quot;</span></code>: it found none, but the evidence was too little to
+tell;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">&quot;untestable&quot;</span></code>: the data cannot answer (no exposure after the change
+yet, no failures at all, …), with a note saying why.</p></li>
+</ul>
+<p>A test of “did it work?” is one-sided: <code class="docutils literal notranslate"><span class="pre">alternative=&quot;decrease&quot;</span></code> asks only
+whether the rate fell, and its interval is a one-sided upper bound on the
+ratio, “the rate is now at most this fraction of what it was”:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">one_sided</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+                              <span class="n">alternative</span><span class="o">=</span><span class="s2">"decrease"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">one_sided</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">one_sided</span><span class="o">.</span><span class="n">ratio_cb</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>0.113 [0.    1.296]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<section id="how-the-test-works">
+<h3>How the test works<a class="headerlink" href="#how-the-test-works" title="Link to this heading"></a></h3>
+<p>With <code class="docutils literal notranslate"><span class="pre">model=&quot;hpp&quot;</span></code> (the default) the rate is taken as constant before the
+change and constant after it. Let <span class="math notranslate nohighlight">\(E_b\)</span> and <span class="math notranslate nohighlight">\(E_a\)</span> be the
+operating time (the <em>exposure</em>) before and after, <span class="math notranslate nohighlight">\(N_b\)</span> and
+<span class="math notranslate nohighlight">\(N_a\)</span> the failures, and <span class="math notranslate nohighlight">\(\rho = \lambda_a / \lambda_b\)</span> the
+ratio of the rates. Given the <span class="math notranslate nohighlight">\(N = N_b + N_a\)</span> failures in all, the
+number after the change is binomial,</p>
+<div class="math notranslate nohighlight">
+\[N_a \mid N \sim \text{Bin}\!\left(N,\ \pi(\rho) =
+\frac{\rho E_a}{E_b + \rho E_a}\right),\]</div>
+<p>whatever the rates are (Cox and Lewis 1966, section 9.4). So no change,
+<span class="math notranslate nohighlight">\(\rho = 1\)</span>, is tested by the binomial tail at <span class="math notranslate nohighlight">\(\pi(1) = E_a /
+(E_b + E_a)\)</span>, which is exact for any number of failures, however few. The
+confidence interval inverts the test: it is the Clopper-Pearson interval of
+<span class="math notranslate nohighlight">\(\pi\)</span>, mapped to <span class="math notranslate nohighlight">\(\rho = (\pi / (1 - \pi)) (E_b / E_a)\)</span>. Here
+<span class="math notranslate nohighlight">\(N = 11\)</span> and <span class="math notranslate nohighlight">\(\pi(1) = 0.5\)</span>:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">scipy</span><span class="w"> </span><span class="kn">import</span> <span class="n">stats</span>
+
+<span class="n">lower_tail</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">binom</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">lower_tail</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">one_sided</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>0.2266 0.1133
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>An exact test of a count is conservative: its real level is below the 5%
+asked for (2.9% for one system expecting 10 failures before the change and
+10 after), and its interval covers more often than 95%. <code class="docutils literal notranslate"><span class="pre">method=&quot;mid-p&quot;</span></code> gives the mid-p test and interval
+(Lancaster 1961), which count half the probability of the observed count:
+their level and coverage are close to 5% and 95% on average, at the price
+of no longer being guaranteed. The calibration studies in SurPyval’s test
+suite check both, by simulation against the exact sums.</p>
+</section>
+</section>
+<section id="is-the-evidence-enough">
+<h2>Is the evidence enough?<a class="headerlink" href="#is-the-evidence-enough" title="Link to this heading"></a></h2>
+<p>The evidence is judged against a change worth detecting, <code class="docutils literal notranslate"><span class="pre">target_ratio</span></code>
+(a halving unless given), with the power wanted, <code class="docutils literal notranslate"><span class="pre">power</span></code> (80% unless
+given). The result carries:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">power</span></code>: the chance that a test on this exposure would detect
+<code class="docutils literal notranslate"><span class="pre">target_ratio</span></code>, taking the rate before the change as the rate of its
+failures;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">detectable_ratio</span></code>: the ratio nearest 1 that this exposure detects
+with 80% power (the <em>minimum detectable improvement</em> is one minus it);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">exposure_needed</span></code>: the exposure after the change, in all, that would
+detect <code class="docutils literal notranslate"><span class="pre">target_ratio</span></code> with 80% power, <code class="docutils literal notranslate"><span class="pre">additional_exposure</span></code> how much
+more that is, and <code class="docutils literal notranslate"><span class="pre">events_needed</span></code> the failures to expect by then at
+the improved rate;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">zero_failure_exposure</span></code>: the exposure after the change at which, with
+no further failure at all, a decrease would be shown.</p></li>
+</ul>
+<p>A fleet of four pumps had the new seals fitted at different times, and the
+records were pulled 800 hours after each change:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">failures</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"A"</span><span class="p">:</span> <span class="p">[</span><span class="mi">682</span><span class="p">,</span> <span class="mi">1112</span><span class="p">,</span> <span class="mi">1330</span><span class="p">,</span> <span class="mi">1351</span><span class="p">,</span> <span class="mi">1664</span><span class="p">,</span> <span class="mi">1932</span><span class="p">,</span> <span class="mi">2468</span><span class="p">,</span> <span class="mi">2780</span><span class="p">],</span>
+    <span class="s2">"B"</span><span class="p">:</span> <span class="p">[</span><span class="mi">184</span><span class="p">,</span> <span class="mi">648</span><span class="p">,</span> <span class="mi">817</span><span class="p">,</span> <span class="mi">1368</span><span class="p">,</span> <span class="mi">1489</span><span class="p">,</span> <span class="mi">1556</span><span class="p">,</span> <span class="mi">1960</span><span class="p">,</span> <span class="mi">2869</span><span class="p">,</span> <span class="mi">3128</span><span class="p">,</span> <span class="mi">3184</span><span class="p">,</span>
+          <span class="mi">3269</span><span class="p">,</span> <span class="mi">3751</span><span class="p">,</span> <span class="mi">4064</span><span class="p">,</span> <span class="mi">4077</span><span class="p">,</span> <span class="mi">4835</span><span class="p">,</span> <span class="mi">5532</span><span class="p">],</span>
+    <span class="s2">"C"</span><span class="p">:</span> <span class="p">[</span><span class="mi">721</span><span class="p">,</span> <span class="mi">969</span><span class="p">,</span> <span class="mi">2012</span><span class="p">,</span> <span class="mi">2081</span><span class="p">,</span> <span class="mi">3300</span><span class="p">],</span>
+    <span class="s2">"D"</span><span class="p">:</span> <span class="p">[</span><span class="mi">412</span><span class="p">,</span> <span class="mi">503</span><span class="p">,</span> <span class="mi">1696</span><span class="p">,</span> <span class="mi">2035</span><span class="p">,</span> <span class="mi">2406</span><span class="p">,</span> <span class="mi">2754</span><span class="p">,</span> <span class="mi">3705</span><span class="p">,</span> <span class="mi">4330</span><span class="p">,</span> <span class="mi">5085</span><span class="p">],</span>
+<span class="p">}</span>
+<span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">failures</span><span class="p">[</span><span class="n">q</span><span class="p">]</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">failures</span><span class="p">])</span>
+<span class="n">i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([[</span><span class="n">q</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">failures</span><span class="p">[</span><span class="n">q</span><span class="p">])</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">failures</span><span class="p">])</span>
+<span class="n">change</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"A"</span><span class="p">:</span> <span class="mi">3000</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">:</span> <span class="mi">4200</span><span class="p">,</span> <span class="s2">"C"</span><span class="p">:</span> <span class="mi">2500</span><span class="p">,</span> <span class="s2">"D"</span><span class="p">:</span> <span class="mi">3600</span><span class="p">}</span>
+
+<span class="n">early</span> <span class="o">=</span> <span class="p">{</span><span class="n">q</span><span class="p">:</span> <span class="n">change</span><span class="p">[</span><span class="n">q</span><span class="p">]</span> <span class="o">+</span> <span class="mi">800</span> <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="n">change</span><span class="p">}</span>
+<span class="n">seen</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">t</span> <span class="o">&lt;=</span> <span class="n">early</span><span class="p">[</span><span class="n">q</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span><span class="p">,</span> <span class="n">q</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">)])</span>
+<span class="n">first_look</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="n">seen</span><span class="p">],</span> <span class="n">i</span><span class="p">[</span><span class="n">seen</span><span class="p">],</span> <span class="n">T</span><span class="o">=</span><span class="n">early</span><span class="p">,</span>
+                               <span class="n">intervention</span><span class="o">=</span><span class="n">change</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">first_look</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Intervention test (HPP, per-system)
+===================================
+Systems          : 4 (4 compared)
+Before           : 32 failures in 13300
+After            : 4 failures in 3200 (6.751 expected with no change)
+Rate ratio       : 0.54, 95% CI [0.1385, 1.527]
+Test             : exact (two-sided), p-value 0.3359
+Power            : 0.186 to detect a ratio of 0.5 (0.8 required)
+Detectable ratio : 0.1198
+Verdict          : inconclusive
+  - Not enough evidence yet: the test had only 19% power to detect a ratio of 0.5 with this exposure.
+  - 41,395 exposure after the intervention in all (38,195 more), with about 49.8 failures expected at that rate, would give 80% power.
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Four failures in the 3200 pump-hours since the change, against 32 in the
+13300 before it: the rate looks lower, but 3200 hours could only have
+detected a halving 19% of the time. About 41000 hours after the change
+would give 80% power. The full records, to the end of the study:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">end</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"A"</span><span class="p">:</span> <span class="mi">7000</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">:</span> <span class="mi">7000</span><span class="p">,</span> <span class="s2">"C"</span><span class="p">:</span> <span class="mi">6500</span><span class="p">,</span> <span class="s2">"D"</span><span class="p">:</span> <span class="mi">7000</span><span class="p">}</span>
+<span class="n">final</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="n">end</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="n">change</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">final</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Intervention test (HPP, per-system)
+===================================
+Systems          : 4 (4 compared)
+Before           : 32 failures in 13300
+After            : 6 failures in 14200 (18.42 expected with no change)
+Rate ratio       : 0.1919, 95% CI [0.06513, 0.4696]
+Test             : exact (two-sided), p-value 4.24e-05
+Power            : 0.607 to detect a ratio of 0.5 (0.8 required)
+Detectable ratio : 0.4041
+Verdict          : decrease
+  - The failure rate fell to 0.192 times its earlier rate, a reduction of 81% (95% confidence interval of the ratio 0.0651 to 0.47).
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The rate fell to about a fifth of its earlier value. The interval of the
+reduction, <code class="docutils literal notranslate"><span class="pre">final.reduction_cb</span></code> (53% to 93%), says the seals removed at
+least half of the failures. <code class="docutils literal notranslate"><span class="pre">final.power</span></code> (61%) is below 80%: the
+exposure was still short of what detecting a mere <em>halving</em> needs, but the
+reduction was larger than a halving, and the test found it. The note about
+power matters most when nothing is found.</p>
+<p>The same calculations plan a study before the data are in.
+<a class="reference internal" href="surpyval.test_planning.html#surpyval.test_planning.rate_ratio_design" title="surpyval.test_planning.rate_ratio_design"><code class="xref py py-func docutils literal notranslate"><span class="pre">rate_ratio_design()</span></code></a> takes the rate before the
+change and the exposures, and solves for whichever of the ratio, the
+exposure after and the power is left <code class="docutils literal notranslate"><span class="pre">None</span></code>. With 30 failures in 10000
+hours before a change, 5000 hours after it would detect a halving about a
+third of the time, and 41000 hours would be needed for 80%:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.test_planning</span><span class="w"> </span><span class="kn">import</span> <span class="n">rate_ratio_design</span>
+
+<span class="n">rate</span> <span class="o">=</span> <span class="mi">30</span> <span class="o">/</span> <span class="mi">10000</span>
+<span class="n">before</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">rate</span><span class="o">=</span><span class="n">rate</span><span class="p">,</span> <span class="n">exposure_before</span><span class="o">=</span><span class="mi">10000</span><span class="p">)</span>
+<span class="n">power</span> <span class="o">=</span> <span class="n">rate_ratio_design</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">exposure_after</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span> <span class="o">**</span><span class="n">before</span><span class="p">)</span><span class="o">.</span><span class="n">power</span>
+<span class="n">smallest</span> <span class="o">=</span> <span class="n">rate_ratio_design</span><span class="p">(</span><span class="n">exposure_after</span><span class="o">=</span><span class="mi">5000</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="o">**</span><span class="n">before</span><span class="p">)</span><span class="o">.</span><span class="n">value</span>
+<span class="n">needed</span> <span class="o">=</span> <span class="n">rate_ratio_design</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">,</span> <span class="o">**</span><span class="n">before</span><span class="p">)</span><span class="o">.</span><span class="n">value</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">power</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">smallest</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">needed</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">rate_ratio_design</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">rate</span><span class="o">=</span><span class="mi">12</span> <span class="o">/</span> <span class="mi">10000</span><span class="p">,</span> <span class="n">exposure_before</span><span class="o">=</span><span class="mi">10000</span><span class="p">,</span>
+                 <span class="n">power</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>0.356 0.263 41188
+inf
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The last line is the limit seen for the single pump: however long the
+pumps run after the change, the rate after it becomes known exactly, but
+the rate before it stays as uncertain as its 12 failures make it. Twelve
+failures cannot show a halving with 80% power; the exact test needs about
+24 (the normal approximation’s 16 is far too few). The
+power is the exact sum over the possible counts of failures, not a normal
+approximation, which is poor for the handful of failures a corrective
+action is usually judged on.</p>
+</section>
+<section id="fleets">
+<h2>Fleets<a class="headerlink" href="#fleets" title="Link to this heading"></a></h2>
+<p>Systems differ: some fail far more often than others. With
+<code class="docutils literal notranslate"><span class="pre">baseline=&quot;per-system&quot;</span></code> (the default) each system keeps its own rate and
+only the ratio is shared, and the test is the exact stratified test: the
+failures after the change, summed over the systems, whose exact
+distribution given each system’s total is the sum of the systems’
+binomials (Breslow and Day 1987, chapter 3). <code class="docutils literal notranslate"><span class="pre">baseline=&quot;common&quot;</span></code> pools
+the exposures and the failures of every system, as if they shared one rate.</p>
+<p>Pooling can mislead badly when systems with different rates have different
+shares of their exposure after the change. Here system <code class="docutils literal notranslate"><span class="pre">a</span></code> fails often
+and was changed late, so almost all its exposure, and its failures, are
+before the change; system <code class="docutils literal notranslate"><span class="pre">b</span></code> fails rarely and was changed early. Neither
+rate changed at all:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">100</span><span class="p">,</span> <span class="mi">42</span><span class="p">)[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>            <span class="c1"># 40 failures to 100</span>
+<span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">40.0</span><span class="p">,</span> <span class="mf">60.0</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="mf">130.0</span><span class="p">,</span> <span class="mf">160.0</span><span class="p">,</span> <span class="mf">190.0</span><span class="p">])</span>
+<span class="n">x2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">])</span>
+<span class="n">i2</span> <span class="o">=</span> <span class="p">[</span><span class="s2">"a"</span><span class="p">]</span> <span class="o">*</span> <span class="n">a</span><span class="o">.</span><span class="n">size</span> <span class="o">+</span> <span class="p">[</span><span class="s2">"b"</span><span class="p">]</span> <span class="o">*</span> <span class="n">b</span><span class="o">.</span><span class="n">size</span>
+<span class="n">ends</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mf">100.0</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">:</span> <span class="mf">200.0</span><span class="p">}</span>
+<span class="n">changed</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"a"</span><span class="p">:</span> <span class="mf">80.0</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">:</span> <span class="mf">20.0</span><span class="p">}</span>
+
+<span class="n">pooled</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span><span class="n">x2</span><span class="p">,</span> <span class="n">i2</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="n">ends</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="n">changed</span><span class="p">,</span>
+                           <span class="n">baseline</span><span class="o">=</span><span class="s2">"common"</span><span class="p">)</span>
+<span class="n">per_system</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span><span class="n">x2</span><span class="p">,</span> <span class="n">i2</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="n">ends</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="n">changed</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"pooled    :"</span><span class="p">,</span> <span class="n">pooled</span><span class="o">.</span><span class="n">verdict</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">pooled</span><span class="o">.</span><span class="n">ratio</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"per system:"</span><span class="p">,</span> <span class="n">per_system</span><span class="o">.</span><span class="n">verdict</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">per_system</span><span class="o">.</span><span class="n">ratio</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>pooled    : decrease 0.219
+per system: inconclusive 1.088
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Pooled, the period before the change is mostly the busy system’s and the
+period after mostly the quiet one’s, so the rate seems to fall by nearly
+80%; each
+system compared with itself shows no change. In the calibration study of a
+fleet like this, the pooled test finds a “decrease” 73% of the time when
+nothing changed, and the per-system test 4% of the time. Use <code class="docutils literal notranslate"><span class="pre">&quot;common&quot;</span></code>
+only when the systems are known to share one rate (identical units in the
+same duty); it is then more powerful, and it uses systems seen on one side
+of the change only, which a per-system comparison cannot.</p>
+<p>Each system’s change time is given in <code class="docutils literal notranslate"><span class="pre">intervention</span></code> as a dict (or an
+array in the sorted order of the system ids); <code class="docutils literal notranslate"><span class="pre">inf</span></code> marks a system never
+changed, and a time at or before a system’s start one that had the change
+from new. A dict <code class="docutils literal notranslate"><span class="pre">T</span></code> may name systems with no failure at all, so that
+their exposure counts. The observation can also be given in the fitters’
+form, a <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code> row ending each system (<code class="docutils literal notranslate"><span class="pre">c=</span></code>), with a later start of
+observation (<code class="docutils literal notranslate"><span class="pre">tl=</span></code>, delayed entry), or as separate windows of
+observation (<code class="docutils literal notranslate"><span class="pre">windows=</span></code>). The time since a system’s last failure is
+evidence about the change, so the end of observation is always required.</p>
+</section>
+<section id="when-the-rate-trends">
+<h2>When the rate trends<a class="headerlink" href="#when-the-rate-trends" title="Link to this heading"></a></h2>
+<p>A constant rate on each side of the change is often not true: a system
+wearing out fails more often as it ages, and a comparison of average rates
+then takes the ageing for an effect of the change (a worsening after it, or
+a hidden improvement). The HPP result checks for this: <code class="docutils literal notranslate"><span class="pre">trend_p_value</span></code> is
+the Laplace test of a trend within the periods before and after the change,
+and a note recommends the power law when it is small.</p>
+<p><code class="docutils literal notranslate"><span class="pre">model=&quot;power-law&quot;</span></code> lets the rate trend with age as the Crow-AMSAA power
+law, <span class="math notranslate nohighlight">\(u(t) = \lambda \beta t^{\beta - 1}\)</span>, and the change multiplies
+it by <span class="math notranslate nohighlight">\(\rho\)</span>, keeping its shape. The ratio is tested by the
+likelihood ratio, with the scale (each system’s, per system) and the shape
+profiled out, and its interval is the profile-likelihood interval. These
+pumps wear out (shape 3), and nothing changed at week 50:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">wearing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="mi">100</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">3</span><span class="p">))</span>
+<span class="n">hpp</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span><span class="n">wearing</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+<span class="n">power_law</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span><span class="n">wearing</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+                              <span class="n">model</span><span class="o">=</span><span class="s2">"power-law"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"HPP      :"</span><span class="p">,</span> <span class="n">hpp</span><span class="o">.</span><span class="n">verdict</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">hpp</span><span class="o">.</span><span class="n">ratio</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+      <span class="s2">"- trend p-value"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">hpp</span><span class="o">.</span><span class="n">trend_p_value</span><span class="p">,</span> <span class="mi">4</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"power law:"</span><span class="p">,</span> <span class="n">power_law</span><span class="o">.</span><span class="n">verdict</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">power_law</span><span class="o">.</span><span class="n">ratio</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
+      <span class="s2">"- shape"</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">power_law</span><span class="o">.</span><span class="n">shape</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>HPP      : increase 7.57 - trend p-value 0.0005
+power law: inconclusive 1.02 - shape 3.07
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The HPP comparison finds a large “increase”, and flags the trend; the power
+law finds the shape (about 3) and no change at the intervention. In the
+calibration study of five such systems, the HPP comparison finds a change
+54% of the time when there is none, and the likelihood-ratio test 5%. The
+power law’s evidence is judged in the scale of its cumulative intensity,
+where the process has a constant rate, taking the shape as known; it is
+therefore a little optimistic, and its <code class="docutils literal notranslate"><span class="pre">exposure_needed</span></code> (in that scale,
+not in hours) is left out: <code class="docutils literal notranslate"><span class="pre">events_needed</span></code> gives the failures to expect
+after the change instead.</p>
+</section>
+<section id="saving-the-result">
+<h2>Saving the result<a class="headerlink" href="#saving-the-result" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">to_dict</span></code> gives the result as strict JSON (an infinite bound or a missing
+value is written as <code class="docutils literal notranslate"><span class="pre">null</span></code> and recorded under <code class="docutils literal notranslate"><span class="pre">&quot;non_finite&quot;</span></code>, as for
+every SurPyval model), and <code class="docutils literal notranslate"><span class="pre">InterventionTestResult.from_dict</span></code> restores
+it:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">InterventionTestResult</span>
+
+<span class="n">text</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">final</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+<span class="n">again</span> <span class="o">=</span> <span class="n">InterventionTestResult</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">text</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">again</span><span class="o">.</span><span class="n">verdict</span><span class="p">,</span> <span class="n">again</span><span class="o">.</span><span class="n">ratio_cb</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>decrease [0.065 0.47 ]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+</section>
+<section id="what-the-test-cannot-tell">
+<h2>What the test cannot tell<a class="headerlink" href="#what-the-test-cannot-tell" title="Link to this heading"></a></h2>
+<p>The comparison is of the periods before and after the change, so anything
+else that changed between them is attributed to the intervention:</p>
+<ul class="simple">
+<li><p><strong>Regression to the mean.</strong> A change is usually made <em>because</em> of a run
+of failures, and a run of bad luck tends to be followed by fewer
+failures whether or not anything is done. Count the run that prompted
+the change as “before”, fix the intervention time from the records of
+the work, not from the failure data, and judge the period after it on
+its own exposure.</p></li>
+<li><p><strong>Other changes.</strong> A new duty cycle, a season, a different operator or
+a change in how failures are recorded at the same time is
+indistinguishable from the intervention. Systems never changed (<code class="docutils literal notranslate"><span class="pre">inf</span></code>)
+observed over the same calendar time show whether the rate moved for
+everyone; they enter the per-system comparison only through the
+systems that were changed, so compare them separately.</p></li>
+<li><p><strong>The failure mode.</strong> Test the failures the change was meant to remove:
+a change that halves one mode among several can be lost among the
+others.</p></li>
+<li><p><strong>Exposure.</strong> The exposure is in the units of <code class="docutils literal notranslate"><span class="pre">x</span></code>. Operating hours
+are better than calendar time when the systems’ use varies.</p></li>
+</ul>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<p>Breslow, N. E. and Day, N. E. (1987), <em>Statistical Methods in Cancer
+Research, Volume II: The Design and Analysis of Cohort Studies</em>, IARC,
+chapter 3.</p>
+<p>Cook, R. J. and Lawless, J. F. (2007), <em>The Statistical Analysis of
+Recurrent Events</em>, Springer.</p>
+<p>Cox, D. R. and Lewis, P. A. W. (1966), <em>The Statistical Analysis of Series
+of Events</em>, Methuen, section 9.4.</p>
+<p>Gu, K., Ng, H. K. T., Tang, M. L. and Schucany, W. R. (2008), “Testing the
+ratio of two Poisson rates”, <em>Biometrical Journal</em> 50, 283-298.</p>
+<p>Lancaster, H. O. (1961), “Significance tests in discrete distributions”,
+<em>Journal of the American Statistical Association</em> 56, 223-234.</p>
+<p>Przyborowski, J. and Wilenski, H. (1940), “Homogeneity of results in
+testing samples from Poisson series”, <em>Biometrika</em> 31, 313-323.</p>
+<p>Rigdon, S. E. and Basu, A. P. (2000), <em>Statistical Methods for the
+Reliability of Repairable Systems</em>, Wiley.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html" class="btn btn-neutral float-left" title="Recurrent Event Regression Modelling with SurPyval" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Software%20Reliability%20Growth.html" class="btn btn-neutral float-right" title="Software Reliability Growth" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

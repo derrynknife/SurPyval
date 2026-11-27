@@ -1,0 +1,852 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recurrent Event Regression Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Degradation Analysis" href="Degradation%20Analysis.html" />
+    <link rel="prev" title="Recurrent Event Analysis" href="Recurrent%20Event%20Analysis.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Recurrent Event Regression Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#without-a-baseline-shape-four-ways-to-treat-a-repeat-event">Without a baseline shape: four ways to treat a repeat event</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#model-checking">Model checking</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-terminal-event-that-depends-on-the-recurrences-the-joint-frailty-model">A terminal event that depends on the recurrences: the joint frailty model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Recurrent Event Regression Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Recurrent Event Regression Analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="recurrent-event-regression-analysis">
+<h1>Recurrent Event Regression Analysis<a class="headerlink" href="#recurrent-event-regression-analysis" title="Link to this heading"></a></h1>
+<p>In the same way that we want to understand the relationship between a
+single event outcome and a set of covariates, we may want to understand the
+relationship between a recurrent event process and a set of covariates. For example,
+we may want to understand the relationship between the number of times an
+item needs repairing based on the environment, the duty cycle, and the
+types of inputs it receives. For example, an electric motor in a hot and humid
+environment may need more repairs than one in a cool and dry environment.
+Additionally, a motor that is used more often may need more repairs than one
+that is used less often. Finally, a motor that is used in a factory that
+produces a lot of dust may need more repairs than one that is used in a
+cleaner environment. We can use recurrent event regression to understand
+the relationship between these covariates and the number of repairs that
+a motor needs.</p>
+<p>This page builds on the counting-process ideas — the intensity
+<span class="math notranslate nohighlight">\(\lambda(t)\)</span>, the cumulative intensity <span class="math notranslate nohighlight">\(\Lambda(t)\)</span> and the
+Poisson-process likelihood — explained on the <a class="reference internal" href="Recurrent%20Event%20Analysis.html"><span class="doc">Recurrent Event Analysis</span></a>
+page. Runnable examples of everything here are on the
+<a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Regression Modelling with SurPyval</span></a> page, and the API
+is documented under <a class="reference internal" href="surpyval.counting.html"><span class="doc">Recurrent Event Models</span></a>.</p>
+<p class="rubric">From a rate to a rate that depends on covariates</p>
+<p>We can start with the simplest version of recurrent event regression, a
+Homogeneous Poisson Process Regression. In this case we have a regular
+Homogeneous Poisson Process, whose expected number of events by time
+<span class="math notranslate nohighlight">\(t\)</span> is given by:</p>
+<div class="math notranslate nohighlight">
+\[\Lambda(t) = \mathbb{E}\left[N(t)\right] = \lambda t\]</div>
+<p>But we extend this to include the impact that additional factors have on the
+cumulative count. So the model becomes:</p>
+<div class="math notranslate nohighlight">
+\[\Lambda(t \mid Z) = \phi\left( Z \right) \lambda t\]</div>
+<p>Here <span class="math notranslate nohighlight">\(Z\)</span> is the row vector of an item’s covariates (for example
+<span class="math notranslate nohighlight">\(Z = [\text{humid}, \text{duty cycle}]\)</span>) and <span class="math notranslate nohighlight">\(\phi\)</span> is a positive
+function of them. In this case, just as was the case with single event
+proportional hazard models, there is a factor that relates the covariates to
+the counting function. In doing so we can now model jointly the cumulative
+event process with factors that are likely to impact the rate at which the
+events occur. Again, repeating the lessons from single event survival
+analysis, a logical choice for the phi function would be the exponential
+function. This is because it ensures there is never a negative number and so
+will always provide a valid rate even during optimisation. That is, our model
+will be:</p>
+<div class="math notranslate nohighlight">
+\[\Lambda(t \mid Z) = e^{Z \beta} \lambda t\]</div>
+<p>This is the proportional intensity HPP model. The log-linear (exponential)
+link function <span class="math notranslate nohighlight">\(e^{Z\beta}\)</span> is the standard choice because it guarantees
+a positive rate regardless of the sign of <span class="math notranslate nohighlight">\(\beta\)</span>, mirrors the Cox model
+for single events, and gives regression coefficients a direct multiplicative
+interpretation on the rate. Here <span class="math notranslate nohighlight">\(\beta\)</span> is the column vector of
+regression coefficients, one per covariate, so
+<span class="math notranslate nohighlight">\(Z\beta = \beta_0 z_0 + \beta_1 z_1 + \dots\)</span>. (SurPyval names each
+coefficient by its column of <span class="math notranslate nohighlight">\(Z\)</span> where the fit has the columns’
+names – <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> or a DataFrame <code class="docutils literal notranslate"><span class="pre">Z</span></code> – and <code class="docutils literal notranslate"><span class="pre">coef_0</span></code>,
+<code class="docutils literal notranslate"><span class="pre">coef_1</span></code>, … in the order of the columns otherwise.)</p>
+<p class="rubric">Time-varying baselines: the Duane example</p>
+<p>A constant rate is often too simple: a system under development gets more
+reliable as its faults are found and fixed, and an ageing one fails more and
+more often. The Duane process, particularly relevant in reliability
+engineering, is the classic model of such a trend. It is a non-homogeneous
+Poisson process (NHPP) whose expected number of events is a power of time;
+the parameterisation SurPyval uses is</p>
+<div class="math notranslate nohighlight">
+\[\Lambda(t) = b\, t^{\alpha},
+\qquad
+\lambda(t) = \frac{d\Lambda(t)}{dt} = \alpha\, b\, t^{\alpha - 1} .\]</div>
+<p>The exponent <span class="math notranslate nohighlight">\(\alpha\)</span> controls the trend — below one the rate of events
+falls over time (reliability growth, the case Duane studied), above one it
+rises (wear-out) — and <span class="math notranslate nohighlight">\(b\)</span> is the expected number of events by
+<span class="math notranslate nohighlight">\(t = 1\)</span>. (Many textbooks swap the letters, writing
+<span class="math notranslate nohighlight">\(\alpha t^{\beta}\)</span>; the parameters that SurPyval prints are <code class="docutils literal notranslate"><span class="pre">alpha</span></code>
+for the exponent and <code class="docutils literal notranslate"><span class="pre">b</span></code> for the scale.)</p>
+<p>To add covariates we keep this trend as a <em>baseline</em> intensity
+<span class="math notranslate nohighlight">\(\lambda_0(t)\)</span> and scale it by the same factor as before, exactly as the
+proportional hazards model scales a baseline hazard:</p>
+<div class="math notranslate nohighlight">
+\[\lambda(t \mid Z) = \lambda_0(t)\, e^{Z\beta}
+= \alpha\, b\, t^{\alpha - 1} e^{Z\beta} .\]</div>
+<p>Every item shares the power-law trend; its covariates only make its events
+more or less frequent at every age.</p>
+<p class="rubric">The general proportional-intensity model</p>
+<p>More generally, any of SurPyval’s counting-process baselines can play the role
+of <span class="math notranslate nohighlight">\(\lambda_0(t)\)</span>. The proportional-intensity model multiplies that
+baseline by the covariate factor <span class="math notranslate nohighlight">\(e^{Z\beta}\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\lambda(t \mid Z) = \lambda_0(t)\, e^{Z\beta},
+\qquad
+\Lambda(t \mid Z) = \Lambda_0(t)\, e^{Z\beta}.\]</div>
+<p>With a constant baseline this is the proportional-intensity HPP; with a
+power-law (Duane / Crow-AMSAA) or log-linear (Cox-Lewis) baseline it is the
+proportional-intensity NHPP. Because the covariate factor scales the whole
+cumulative intensity, the ratio of expected event counts between two covariate
+settings is the constant <span class="math notranslate nohighlight">\(e^{(Z_2 - Z_1)\beta}\)</span> at every time — the
+recurrent-event analogue of a hazard ratio <a class="reference internal" href="#cook2007r" id="id1"><span>[Cook2007r]</span></a>, and the reason the
+coefficients <span class="math notranslate nohighlight">\(\beta\)</span> read directly as multiplicative effects on the event
+rate.</p>
+<p>The baseline <span class="math notranslate nohighlight">\(\lambda_0(t)\)</span> is the intensity of an item whose covariates
+are all zero. The covariates change <em>how many</em> events an item has, never the
+<em>shape</em> of its intensity over time: every item shares the same trend, scaled up
+or down. Each item’s events still form a Poisson process — given its
+covariates, an item’s intensity does not depend on its own past events.</p>
+<p class="rubric">Estimation</p>
+<p>The parameters are estimated jointly by maximum likelihood <a class="reference internal" href="#lawless1987" id="id2"><span>[Lawless1987]</span></a>,
+maximising the NHPP log-likelihood with the covariate-scaled intensity
+substituted in. For item <span class="math notranslate nohighlight">\(i\)</span> with covariates <span class="math notranslate nohighlight">\(Z_i\)</span>, observed from
+<span class="math notranslate nohighlight">\(s_i\)</span> to <span class="math notranslate nohighlight">\(\tau_i\)</span> with events at <span class="math notranslate nohighlight">\(t_{i1}, t_{i2}, \dots\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[\ell(\theta, \beta) = \sum_i \left\{ \sum_j \left[\ln \lambda_0(t_{ij};
+\theta) + Z_i\beta\right] - e^{Z_i\beta}\left[\Lambda_0(\tau_i; \theta)
+- \Lambda_0(s_i; \theta)\right] \right\},\]</div>
+<p>where <span class="math notranslate nohighlight">\(\theta\)</span> are the baseline parameters. Exactly as for the models
+without covariates, the window end <span class="math notranslate nohighlight">\(\tau_i\)</span> is the item’s
+right-censoring time (time-truncated) or its last event (failure-truncated),
+the start <span class="math notranslate nohighlight">\(s_i\)</span> is its left-truncation time or zero, and counts of
+events over inspection intervals enter as Poisson terms. The static, per-item
+covariates enter through <span class="math notranslate nohighlight">\(e^{Z\beta}\)</span>, so an item in a harsher
+environment simply accumulates events faster. This proportional-intensity
+framing is standard in the reliability-growth literature <a class="reference internal" href="#rigdon2000r" id="id3"><span>[Rigdon2000r]</span></a>.</p>
+<p>The baseline parameters and the coefficients are estimated together, and
+their joint covariance (the inverse observed information) gives standard
+errors for every parameter and delta-method confidence bounds on
+<span class="math notranslate nohighlight">\(\Lambda(t \mid Z)\)</span> at any covariate setting.</p>
+<p class="rubric">Covariates that change over time</p>
+<p>So far a covariate has been a property of the item. Often it is a property
+of a <em>period</em> of the item’s life instead: a pump runs at high load in some
+months and at low load in others, a machine is overhauled part of the way
+through its life, a vehicle moves to a harsher route. Using one number per
+item for such a covariate (its first value, or its average) gives the wrong
+answer: it credits failures to conditions that were not in force when they
+happened, and it throws away the timing that carries most of the
+information about the covariate’s effect.</p>
+<p>The proportional-intensity model extends to this case with one assumption:
+the value the covariate has <em>now</em> multiplies the intensity <em>now</em>. In words,
+while the pump is on high load its failure rate is the baseline rate for
+its present age times the high-load factor, and when it returns to low load
+the rate returns to the baseline. The model has no memory of earlier
+values; if accumulated exposure matters, it has to be supplied as a
+covariate of its own. With <span class="math notranslate nohighlight">\(Z_i(t)\)</span> the covariates of item <span class="math notranslate nohighlight">\(i\)</span>
+in force at time <span class="math notranslate nohighlight">\(t\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[\lambda_i(t) = \lambda_0(t)\, e^{Z_i(t)\beta} .\]</div>
+<p>SurPyval takes covariates that are piecewise constant: item <span class="math notranslate nohighlight">\(i\)</span>’s
+history is cut into intervals <span class="math notranslate nohighlight">\((a_{ik}, b_{ik}]\)</span>, on each of which
+its covariates hold one value <span class="math notranslate nohighlight">\(Z_{ik}\)</span>. Two facts then give the
+likelihood. The expected number of failures in an interval is the
+baseline’s expected number over that interval times the factor for the
+covariates holding then, <span class="math notranslate nohighlight">\(e^{Z_{ik}\beta}\left[\Lambda_0(b_{ik}) -
+\Lambda_0(a_{ik})\right]\)</span>. And each failure contributes the intensity at
+its time, with the covariates holding then. The log-likelihood is the sum
+over failures of the log intensity minus the sum over intervals of the
+expected counts:</p>
+<div class="math notranslate nohighlight">
+\[\ell(\theta, \beta) = \sum_i \left\{ \sum_j \left[\ln
+\lambda_0(t_{ij}; \theta) + Z_i(t_{ij})\beta\right] - \sum_k
+e^{Z_{ik}\beta}\left[\Lambda_0(b_{ik}; \theta) - \Lambda_0(a_{ik};
+\theta)\right] \right\} .\]</div>
+<p>When every item has a single covariate value this is exactly the
+likelihood of the previous section, so the two fits agree; and cutting an
+interval in two with the same covariates on both pieces changes nothing,
+because the two expected counts add up to the original one. An item need
+not be watched from time zero (its first interval can start later: delayed
+entry) or without a break (a gap between intervals is time it was not at
+risk). Failures that were only counted over an interval, <span class="math notranslate nohighlight">\(n\)</span> of them
+somewhere in <span class="math notranslate nohighlight">\((a, b]\)</span>, enter as the Poisson probability of that count,
+whose mean is the interval’s expected count.</p>
+<p>A prediction now depends on the whole <em>schedule</em> of covariates, not on one
+value. The expected number of failures by time <span class="math notranslate nohighlight">\(t\)</span> for an item that
+follows a schedule with segments <span class="math notranslate nohighlight">\((a_k, b_k]\)</span> and values <span class="math notranslate nohighlight">\(z_k\)</span>
+adds up the same pieces,</p>
+<div class="math notranslate nohighlight">
+\[\Lambda\bigl(t \mid Z(\cdot)\bigr) = \sum_k e^{z_k\beta}
+\left[\Lambda_0(\min(t, b_k)) - \Lambda_0(a_k)\right]
+\quad \text{over the segments with } a_k &lt; t,\]</div>
+<p>and the intensity at <span class="math notranslate nohighlight">\(t\)</span> is <span class="math notranslate nohighlight">\(\lambda_0(t)\, e^{Z(t)\beta}\)</span>. Its
+confidence bounds come from the same delta method, on the log scale, as
+those at a fixed covariate setting. The number of failures an item actually
+has over a period is Poisson distributed about the expected number, as
+before. The worked example is on the
+<a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Regression Modelling with SurPyval</span></a> page.</p>
+<p class="rubric">Several event types, each with its own effects</p>
+<p>When the events come in several mutually exclusive types (the failure modes
+of a machine), each type can be given its own baseline and its own
+coefficients. In words: the rate of type <span class="math notranslate nohighlight">\(k\)</span> events on an item is that
+type’s baseline rate at the item’s age, times that type’s own factor for
+the item’s covariates. A covariate can then raise one type’s rate and leave
+another’s alone. For <span class="math notranslate nohighlight">\(K\)</span> types,</p>
+<div class="math notranslate nohighlight">
+\[\lambda_k(t \mid Z) = \lambda_{0k}(t; \theta_k)\, e^{Z\beta_k},
+\qquad k = 1, \dots, K .\]</div>
+<p>If the types arrive as independent Poisson processes (an event of one type
+neither hastens nor delays an event of another), the log-likelihood is a sum
+of <span class="math notranslate nohighlight">\(K\)</span> terms, the <span class="math notranslate nohighlight">\(k\)</span>-th involving only <span class="math notranslate nohighlight">\(\theta_k\)</span> and
+<span class="math notranslate nohighlight">\(\beta_k\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\ell = \sum_{k=1}^{K} \ell_k(\theta_k, \beta_k),\]</div>
+<p>where <span class="math notranslate nohighlight">\(\ell_k\)</span> is the proportional-intensity log-likelihood above for
+the events of type <span class="math notranslate nohighlight">\(k\)</span> alone, over the whole time each item was
+observed. So each type is estimated by fitting the ordinary model to its own
+events, with the other types’ events left out (not censored: the item stays
+under observation through them), and the estimates of different types are
+independent. <span class="math notranslate nohighlight">\(e^{\beta_{kj}}\)</span> is the rate ratio of covariate <span class="math notranslate nohighlight">\(j\)</span>
+for type <span class="math notranslate nohighlight">\(k\)</span>.</p>
+<p>The rate of events of any type is the sum of the types’ rates, and the
+expected number of events of any type is the sum of their expected numbers:</p>
+<div class="math notranslate nohighlight">
+\[\lambda_\bullet(t \mid Z) = \sum_k \lambda_k(t \mid Z), \qquad
+\Lambda_\bullet(t \mid Z) = \sum_k \Lambda_k(t \mid Z) .\]</div>
+<p>Because the types’ estimates are independent, the variance of an estimated
+total is the sum of the types’ delta-method variances,
+<span class="math notranslate nohighlight">\(\operatorname{Var}\hat\Lambda_\bullet = \sum_k
+\operatorname{Var}\hat\Lambda_k\)</span>, and the confidence bounds are formed from
+it on the log scale, as each type’s are. Note that the total does <em>not</em>
+follow a proportional-intensity model of its own unless every type has the
+same coefficients: its rate ratio for a covariate is a mixture of the types’
+ratios, weighted by their shares of the events, which is why one model
+fitted to all the events can report a small effect for a covariate that is
+strong for one type. The information criteria of the whole model use the
+summed log-likelihood, the parameters of every type and the events of every
+type. In SurPyval this is <code class="docutils literal notranslate"><span class="pre">CauseSpecificProportionalIntensity</span></code>; with
+covariates that change over time each <span class="math notranslate nohighlight">\(\ell_k\)</span> is the time-varying
+likelihood of the previous section. The worked example is on the
+<a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Regression Modelling with SurPyval</span></a> page.</p>
+<p class="rubric">Interpreting the coefficients</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(e^{\beta_k}\)</span> is the <strong>rate ratio</strong> for a one-unit increase in
+covariate <span class="math notranslate nohighlight">\(k\)</span>, holding the others fixed: <span class="math notranslate nohighlight">\(\beta_k = 0.7\)</span> means
+about twice as many events (<span class="math notranslate nohighlight">\(e^{0.7} \approx 2.0\)</span>) at every age.
+Because the ratio is the same at every time, it is also the ratio of the
+expected number of events by any time <span class="math notranslate nohighlight">\(t\)</span>.</p></li>
+<li><p>A confidence interval for <span class="math notranslate nohighlight">\(\beta_k\)</span> becomes one for the rate ratio by
+exponentiating its end points.</p></li>
+<li><p>The baseline describes <span class="math notranslate nohighlight">\(Z = 0\)</span>. Coding a two-level factor as 0/1 makes
+the baseline one of the levels; <em>centring</em> a continuous covariate (subtracting
+its mean) makes the baseline a typical item and usually makes the
+optimisation better behaved too.</p></li>
+<li><p>A factor with <span class="math notranslate nohighlight">\(L\)</span> levels needs <span class="math notranslate nohighlight">\(L - 1\)</span> indicator columns; a
+column of ones would duplicate the baseline’s scale parameter, and the model
+would not be identifiable.</p></li>
+</ul>
+<p class="rubric">Choosing the baseline</p>
+<p>The choice of baseline is the choice of the <em>shared</em> trend over time, and the
+same reasoning applies as without covariates: use a constant baseline (the
+HPP) if there is no trend, and an NHPP baseline — a power law (<code class="docutils literal notranslate"><span class="pre">Duane</span></code>, the
+default, or <code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code>) or the log-linear <code class="docutils literal notranslate"><span class="pre">CoxLewis</span></code> — if there is.
+Duane and Crow-AMSAA are the same power-law process in two parameterisations,
+so as baselines they describe the same model, and their fits should agree.
+(Likewise <code class="docutils literal notranslate"><span class="pre">ProportionalIntensityNHPP</span></code> with an <code class="docutils literal notranslate"><span class="pre">HPP</span></code> baseline is the same
+model as <code class="docutils literal notranslate"><span class="pre">ProportionalIntensityHPP</span></code>.)
+Compare candidate baselines with the information criteria and the diagnostics
+below.</p>
+<p>A useful fact: when every item is observed over the <em>same</em> window, the
+coefficient estimates do not depend on the shape of the baseline at all —
+only the total expected count over the window enters the part of the
+likelihood that involves <span class="math notranslate nohighlight">\(\beta\)</span>. The baseline then matters for
+prediction over time but not for the covariate effects. When the windows
+differ (items entered service at different times, say), the two are
+estimated jointly and a wrong baseline can bias the coefficients.</p>
+<p class="rubric">Assumptions and limitations</p>
+<ul class="simple">
+<li><p><strong>Static covariates in</strong> <code class="docutils literal notranslate"><span class="pre">fit</span></code>. There the covariates are properties of
+the item, constant over its observation. Supply them one row per event
+row (repeating the item’s values) or as a dictionary keyed by item. The
+residuals and the goodness-of-fit test take each item’s covariates from
+its first row.</p></li>
+<li><p><strong>Covariates that change over time</strong> (<code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code>) must be piecewise
+constant, and act only through their current value. The residuals, the
+trend and goodness-of-fit tests, <code class="docutils literal notranslate"><span class="pre">diagnose</span></code>, <code class="docutils literal notranslate"><span class="pre">plot</span></code> and simulation
+along a schedule are not available for such a fit yet; each refuses,
+saying so.</p></li>
+<li><p><strong>Proportionality.</strong> Every item follows the same trend, scaled by its
+covariates. If harsh-environment motors <em>wear out faster</em> (a different
+shape), rather than simply failing more often, a single proportional model
+is the wrong tool; fit the groups separately and compare their shapes.</p></li>
+<li><p><strong>Poisson behaviour and heterogeneity.</strong> The model assumes the covariates
+explain all systematic differences between items. If items differ in ways
+the covariates do not capture (extra-Poisson variation), the coefficient
+estimates remain sensible but the model-based standard errors tend to be
+too small, and the goodness-of-fit test and martingale residuals are the
+place to look for it.</p></li>
+<li><p><strong>Scope.</strong> Covariates are available for the HPP and NHPP intensity models,
+and for the models with an unspecified baseline in the next section.
+The imperfect-repair (renewal) models and gapped (multi-window)
+observation of the parametric models do not take covariates.</p></li>
+</ul>
+<section id="without-a-baseline-shape-four-ways-to-treat-a-repeat-event">
+<h2>Without a baseline shape: four ways to treat a repeat event<a class="headerlink" href="#without-a-baseline-shape-four-ways-to-treat-a-repeat-event" title="Link to this heading"></a></h2>
+<p>The models above give the baseline intensity a formula. When you only care
+how the covariates change the rate, and would rather not say what the
+baseline looks like, the baseline can be left unspecified, exactly as a Cox
+model leaves the baseline hazard of a single event unspecified. The
+coefficients are then estimated from the <em>order</em> in which the items had
+their events: at each event the model asks which of the items that could
+have had it did.</p>
+<p>“Could have had it” is the whole question, because an item that has had an
+event is still there and can have another. There are four standard answers.
+They are four different statements about what a repeat event is, so they
+answer different questions, and choosing between them is a matter of the
+subject, not of fit.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 41.0%" />
+<col style="width: 41.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Model</p></th>
+<th class="head"><p>What it says about repeat events</p></th>
+<th class="head"><p>The question it answers</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Andersen-Gill <a class="reference internal" href="#andersengill1982" id="id4"><span>[AndersenGill1982]</span></a></p></td>
+<td><p>An event does not change the item. Its rate at any age depends on
+its covariates and its age, not on how many events it has had or
+when. One baseline for every event.</p></td>
+<td><p>How do the covariates change the <em>rate of events</em>?</p></td>
+</tr>
+<tr class="row-odd"><td><p>Prentice-Williams-Peterson, total time</p></td>
+<td><p>An event changes the item. The rate of a second event is its own
+function of age, different from that of a first; an item cannot have
+a second before its first.</p></td>
+<td><p>Among items that have had <span class="math notranslate nohighlight">\(k - 1\)</span> events, how do the covariates
+change the rate of the <span class="math notranslate nohighlight">\(k\)</span>-th, at a given age?</p></td>
+</tr>
+<tr class="row-even"><td><p>Prentice-Williams-Peterson, gap time</p></td>
+<td><p>The same, but the clock restarts at each event: what matters is the
+time since the last event, not the age.</p></td>
+<td><p>How do the covariates change the <em>time between</em> one event and the
+next?</p></td>
+</tr>
+<tr class="row-odd"><td><p>Wei-Lin-Weissfeld</p></td>
+<td><p>Nothing about how one event leads to the next. Each of “the time
+from the start to the first event”, “… to the second event”, and
+so on, is modelled on its own.</p></td>
+<td><p>How do the covariates change the time, <em>from the start</em>, until the
+<span class="math notranslate nohighlight">\(k\)</span>-th event?</p></td>
+</tr>
+</tbody>
+</table>
+<p>Two examples make the difference concrete.</p>
+<p><em>A fleet of pumps.</em> Pumps trip and are restarted. If a restart leaves a
+pump as it was, the number of earlier trips tells you nothing more than
+its age and duty do, and the Andersen-Gill model is the natural one: “an
+abrasive duty multiplies the trip rate by 1.8”. If instead each trip is
+followed by a repair that changes the pump, so that a pump on its third
+repair is not the machine it was when new, each repair number deserves a
+baseline of its own: the gap-time Prentice-Williams-Peterson model says
+“an abrasive duty shortens the time from one repair to the next”, with a
+different typical gap after the first, second and third repair.</p>
+<p><em>A trial of a treatment for a relapsing illness.</em> Patients are randomised
+at time 0 and may relapse several times. The Andersen-Gill model answers
+“does the treatment lower the relapse rate?”. The conditional models answer
+“among patients who have relapsed once, does the treatment delay the
+second relapse?”, which is a question about a selected group: patients who
+relapsed early despite treatment are not like those who relapsed on
+placebo. The Wei-Lin-Weissfeld model keeps the comparison the trial
+randomised: every patient counts towards “time from randomisation to the
+second relapse”, whether or not they have had the first.</p>
+<p>In formulas, with <span class="math notranslate nohighlight">\(Y_i(t)\)</span> equal to 1 while item <span class="math notranslate nohighlight">\(i\)</span> is “at
+risk” and 0 otherwise, each model is</p>
+<div class="math notranslate nohighlight">
+\[\lambda_{ik}(t \mid Z_i) = Y_{ik}(t)\, \lambda_{0k}(t)\, e^{\beta' Z_i}\]</div>
+<p>and they differ in the baseline and in the risk indicator:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 26.0%" />
+<col style="width: 52.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Model</p></th>
+<th class="head"><p>Baseline</p></th>
+<th class="head"><p>Item <span class="math notranslate nohighlight">\(i\)</span> is at risk of event <span class="math notranslate nohighlight">\(k\)</span> …</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Andersen-Gill</p></td>
+<td><p><span class="math notranslate nohighlight">\(\lambda_0(t)\)</span>, shared</p></td>
+<td><p>whenever it is under observation.</p></td>
+</tr>
+<tr class="row-odd"><td><p>PWP, total time</p></td>
+<td><p><span class="math notranslate nohighlight">\(\lambda_{0k}(t)\)</span>, <span class="math notranslate nohighlight">\(t\)</span> the age</p></td>
+<td><p>from its <span class="math notranslate nohighlight">\((k-1)\)</span>-th event to its <span class="math notranslate nohighlight">\(k\)</span>-th.</p></td>
+</tr>
+<tr class="row-even"><td><p>PWP, gap time</p></td>
+<td><p><span class="math notranslate nohighlight">\(\lambda_{0k}(u)\)</span>, <span class="math notranslate nohighlight">\(u\)</span> the time since the last event</p></td>
+<td><p>from its <span class="math notranslate nohighlight">\((k-1)\)</span>-th event to its <span class="math notranslate nohighlight">\(k\)</span>-th.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Wei-Lin-Weissfeld</p></td>
+<td><p><span class="math notranslate nohighlight">\(\lambda_{0k}(t)\)</span>, <span class="math notranslate nohighlight">\(t\)</span> from the start</p></td>
+<td><p>from the start until its <span class="math notranslate nohighlight">\(k\)</span>-th event.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Each is fitted by the Cox partial likelihood on rows laid out to match:
+one row per interval at risk, in the stratum of its event number where the
+baseline depends on it <a class="reference internal" href="#therneau2000" id="id5"><span>[Therneau2000]</span></a>. So the tie handling, the treatment
+of a coefficient the data cannot determine and the check that a maximum
+was reached are those of the Cox model.</p>
+<p class="rubric">Why the standard errors are “robust”</p>
+<p>One item contributes several rows, and they are not independent: a pump
+that trips often does so for reasons the covariates do not record (its
+installation, its operator), and a patient who relapses early tends to
+relapse again. The partial likelihood’s own standard errors take every row
+as a separate piece of evidence, so when items differ in such unrecorded
+ways they are too small, often by a wide margin. The remedy keeps the
+estimates and replaces the standard errors: add up, item by item, how much
+each item pulls the estimate (its score residuals), and measure the spread
+of those pulls <em>between items</em>. Items are independent of each other even
+when an item’s events are not.</p>
+<p>This is the sandwich estimator with each item a cluster <a class="reference internal" href="#linwei1989" id="id6"><span>[LinWei1989]</span></a>. If
+<span class="math notranslate nohighlight">\(A\)</span> is the information of the partial likelihood and <span class="math notranslate nohighlight">\(s_i\)</span> is
+item <span class="math notranslate nohighlight">\(i\)</span>’s summed score residual,</p>
+<div class="math notranslate nohighlight">
+\[V_{robust} = A^{-1} \Big( \sum_i s_i s_i^{\top} \Big) A^{-1},\]</div>
+<p>where the model-based covariance is <span class="math notranslate nohighlight">\(A^{-1}\)</span> alone. With it the
+Andersen-Gill coefficients remain valid as effects on the <em>mean number of
+events</em> even when events are not Poisson <a class="reference internal" href="#linweiyangying2000" id="id7"><span>[LinWeiYangYing2000]</span></a>, and it is
+what makes the Wei-Lin-Weissfeld model usable at all, since there every
+item appears in every stratum <a class="reference internal" href="#weilinweissfeld1989" id="id8"><span>[WeiLinWeissfeld1989]</span></a>. SurPyval reports the
+robust standard errors by default for all four models, and the model-based
+ones beside them; the two being close is itself a finding (the covariates
+explain the differences between items).</p>
+<p class="rubric">What these models do not give</p>
+<ul class="simple">
+<li><p><strong>A formula for the baseline.</strong> The cumulative baseline is a step
+function known only up to the last event, so it cannot be extrapolated.
+To forecast beyond the data, use the parametric proportional-intensity
+models above.</p></li>
+<li><p><strong>A simple expected count from the conditional and marginal models.</strong>
+The Andersen-Gill cumulative baseline, scaled by the covariates, is the
+expected number of events by an age. The others give the cumulative
+hazard of one event number, not a count.</p></li>
+<li><p><strong>Later events for free.</strong> A baseline per event number is estimated from
+the items that reached that number, which soon become few. It is usual
+to model the first few events only <a class="reference internal" href="#prenticewilliamspeterson1981" id="id9"><span>[PrenticeWilliamsPeterson1981]</span></a>.</p></li>
+</ul>
+</section>
+<section id="model-checking">
+<h2>Model checking<a class="headerlink" href="#model-checking" title="Link to this heading"></a></h2>
+<p>The fitted regression model carries the same diagnostics as the unconditional
+intensity models, applied <em>per item</em> with each item’s intensity scaled by its
+own covariate factor. The time-rescaling residuals pool the rescaled
+inter-arrival increments across items (i.i.d. Exp(1) under a well-specified
+model), the trend test checks whether a time-varying baseline was warranted at
+all, and the Cramér–von Mises test provides a bootstrapped goodness-of-fit
+p-value. Confidence bounds on the fitted cumulative intensity at a covariate
+setting come from the delta method via <code class="docutils literal notranslate"><span class="pre">cif_cb</span></code>.</p>
+<p>A few points are specific to the regression setting:</p>
+<ul class="simple">
+<li><p>The <strong>martingale residuals</strong> (observed minus expected events per item) are
+the most direct check of the covariate model. Plotted against a covariate,
+a trend in them suggests the covariate’s effect is not log-linear, and
+against a covariate left <em>out</em> of the model, a trend suggests it should be
+in.</p></li>
+<li><p>The cumulative-hazard residuals only include the gaps that ended in an
+event; each item’s final, right-censored gap is left out. With only a few
+events per item that selection pulls their average below one even when the
+model is right, so judge their <em>pattern</em> rather than insisting on a mean of
+exactly one.</p></li>
+<li><p>The <strong>trend test</strong> uses only the event times and observation windows, not
+the covariates. It answers “is there a common trend over time?”, which is
+the question that separates the HPP and NHPP baselines.</p></li>
+<li><p>The <strong>Cramér–von Mises</strong> bootstrap resimulates every item from its own
+covariate-scaled intensity and refits the whole regression each time, so it
+checks the baseline shape and the covariate effects together.</p></li>
+</ul>
+<p>These methods form a comprehensive toolkit for researchers and practitioners
+working with recurrent event data, enabling detailed analysis and prediction of
+event occurrences.</p>
+<p>For worked examples — fitting the proportional-intensity HPP and NHPP models,
+reading off the event-count ratio between covariate settings, and plotting the
+covariate-conditional cumulative intensity with confidence bounds — see the
+<a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Regression Modelling with SurPyval</span></a> page.</p>
+</section>
+<section id="a-terminal-event-that-depends-on-the-recurrences-the-joint-frailty-model">
+<h2>A terminal event that depends on the recurrences: the joint frailty model<a class="headerlink" href="#a-terminal-event-that-depends-on-the-recurrences-the-joint-frailty-model" title="Link to this heading"></a></h2>
+<p>Every model above ends an item’s history with a right-censored row, and
+takes that end to say nothing about the item’s events: the observation
+stopped because the study did. Often it stopped because of an event
+that ends the history for good – a machine scrapped after one repair
+too many, a patient who dies after repeated hospital admissions – and
+the items with many recurrences are the ones that reach it sooner. That
+end is then informative, and a model of the recurrences alone is biased:
+the items with the highest rates leave the data early, so the rate looks
+lower than it is.</p>
+<p>The <strong>joint frailty model</strong> <a class="reference internal" href="#liuwolfehuang2004" id="id10"><span>[LiuWolfeHuang2004]</span></a> <a class="reference internal" href="#rondeau2007" id="id11"><span>[Rondeau2007]</span></a> models
+the two kinds of event together. Each item has its own unobserved
+<em>frailty</em> <span class="math notranslate nohighlight">\(u\)</span> – how prone it is to events, beyond what its
+covariates say – which multiplies its rate of recurrent events, and,
+raised to a power <span class="math notranslate nohighlight">\(\alpha\)</span>, its hazard of the terminal event:</p>
+<div class="math notranslate nohighlight">
+\[r_i(t \mid u) = u\, r_0(t)\, e^{\beta' Z_i}, \qquad
+\lambda_i(t \mid u) = u^{\alpha}\, \lambda_0(t)\, e^{\gamma' Z_i}.\]</div>
+<p>In words:</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(\theta\)</span>, the variance of the frailty, says how much the items
+differ: 0 is no difference beyond the covariates, and the two kinds of
+event are then independent.</p></li>
+<li><p><span class="math notranslate nohighlight">\(\alpha\)</span> says how the terminal event depends on that difference:
+positive when the items with more recurrences reach it sooner, 0 when
+the terminal event does not depend on the recurrences (given the
+covariates), negative when the frail items last longer.</p></li>
+<li><p><span class="math notranslate nohighlight">\(\beta\)</span> and <span class="math notranslate nohighlight">\(\gamma\)</span> are the covariates’ effects on each
+kind of event, as log rate ratios given the frailty.</p></li>
+</ul>
+<p>The frailty is gamma with mean 1 (<code class="docutils literal notranslate"><span class="pre">family=&quot;gamma&quot;</span></code>, the default) or
+log-normal with <span class="math notranslate nohighlight">\(\log u \sim N(0, \theta)\)</span>
+(<code class="docutils literal notranslate"><span class="pre">family=&quot;lognormal&quot;</span></code>). The baselines are Weibull:
+<span class="math notranslate nohighlight">\(R_0(t) = (t / \eta_r)^{k_r}\)</span>, the power-law (Crow-AMSAA)
+intensity, and <span class="math notranslate nohighlight">\(\Lambda_0(t) = (t / \eta_t)^{k_t}\)</span>. The recurrent
+intensity runs on the item’s age (<code class="docutils literal notranslate"><span class="pre">time_scale=&quot;calendar&quot;</span></code>, the
+Andersen-Gill form) or on the time since its last event
+(<code class="docutils literal notranslate"><span class="pre">time_scale=&quot;gap&quot;</span></code>: each event renews the baseline); the terminal
+hazard is always on the age. An item seen only from an age <span class="math notranslate nohighlight">\(e\)</span>
+(delayed entry, <code class="docutils literal notranslate"><span class="pre">tl</span></code>) is one that had not reached the terminal event
+by then, and the likelihood divides by the chance of that, which
+depends on the frailty.</p>
+<p>The fit maximises the marginal likelihood, the frailty integrated out of
+each item’s likelihood,</p>
+<div class="math notranslate nohighlight">
+\[L_i = \frac{\int_0^\infty \prod_j u\, r_0(t_{ij}) e^{\beta' Z_i}
+\, e^{-u R_i e^{\beta' Z_i}} \,
+\big(u^\alpha \lambda_0(X_i) e^{\gamma' Z_i}\big)^{\delta_i}
+e^{-u^\alpha \Lambda_0(X_i) e^{\gamma' Z_i}} \, dG_\theta(u)}
+{\int_0^\infty e^{-u^\alpha \Lambda_0(e_i) e^{\gamma' Z_i}}
+\, dG_\theta(u)},\]</div>
+<p>with <span class="math notranslate nohighlight">\(R_i\)</span> the item’s cumulative baseline intensity over its
+observation and <span class="math notranslate nohighlight">\(\delta_i\)</span> 1 if the terminal event ended it. The
+integral has no closed form unless <span class="math notranslate nohighlight">\(\alpha = 1\)</span>, and is computed
+in <span class="math notranslate nohighlight">\(w = \log u\)</span> over each item’s own range, from the integrand’s
+peak out to where it has fallen by <span class="math notranslate nohighlight">\(e^{-36}\)</span>, by a trapezoid rule,
+which on an integrand this smooth is exact to rounding. The parameters’
+covariance is the inverse of the exact (automatic-derivative) Hessian;
+<code class="docutils literal notranslate"><span class="pre">param_cb</span></code> gives Wald or profile-likelihood bounds.</p>
+<p>What the model gives:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">frailty_tests()</span></code>: the likelihood-ratio test of <span class="math notranslate nohighlight">\(\theta = 0\)</span>
+(no frailty: the two parts fitted separately), whose p-value is that of
+an even mixture of <span class="math notranslate nohighlight">\(\chi^2_1\)</span> and <span class="math notranslate nohighlight">\(\chi^2_2\)</span>: near the
+null the frailty acts through two variances on the edge of their range,
+<span class="math notranslate nohighlight">\(\theta\)</span> in the recurrent part and <span class="math notranslate nohighlight">\(\alpha^2 \theta\)</span> in the
+terminal part (the reference for one such variance, half a
+<span class="math notranslate nohighlight">\(\chi^2_1\)</span>, rejected a true null 18% of the time at the 5% level
+in a simulation study; this mixture held 5.0% there and 4.6% in a
+second study of a different design); and of
+<span class="math notranslate nohighlight">\(\alpha = 0\)</span> (the terminal event independent of the
+recurrences), against <span class="math notranslate nohighlight">\(\chi^2_1\)</span>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">frailties</span></code>: each item’s predicted frailty, its mean given its own
+history.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cif</span></code> and <code class="docutils literal notranslate"><span class="pre">iif</span></code>: the recurrent events’ cumulative intensity and
+intensity with no terminal event to stop them; <code class="docutils literal notranslate"><span class="pre">mcf</span></code>: the expected
+number of recurrences by an age, the terminal event stopping them,
+<span class="math notranslate nohighlight">\(e^{\beta' Z} \int_0^t r_0(s)\, E[u\, S(s \mid u)]\, ds\)</span>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code>: the terminal event’s functions.
+Each prediction is for the population of items with the covariates
+(<code class="docutils literal notranslate"><span class="pre">frailty=None</span></code>, averaged over the frailty) or for one item of known
+frailty (<code class="docutils literal notranslate"><span class="pre">frailty=u</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">random</span></code>: items simulated from the model, as rows <code class="docutils literal notranslate"><span class="pre">fit</span></code> takes.</p></li>
+</ul>
+<p>R’s <code class="docutils literal notranslate"><span class="pre">frailtypack</span></code> (<code class="docutils literal notranslate"><span class="pre">frailtyPenal</span></code> with <code class="docutils literal notranslate"><span class="pre">terminal()</span></code>) fits the same
+model; SurPyval’s agrees with its log-normal fits to three or four figures.
+With the gamma frailty the two integrate the frailty differently (a fixed
+Gauss-Laguerre rule there; here a rule checked against scipy’s adaptive
+quadrature to 1e-10), so their estimates agree to a few per cent. Not built: spline (penalised) baselines, covariates that
+change over time, several terminal events, and frailties shared by
+groups of items (a fleet, a hospital).</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<div role="list" class="citation-list">
+<div class="citation" id="andersengill1982" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">AndersenGill1982</a><span class="fn-bracket">]</span></span>
+<p>Andersen, P.K. and Gill, R.D., 1982. Cox’s regression
+model for counting processes: a large sample study. <em>The Annals of
+Statistics</em>, 10(4), pp.1100-1120.</p>
+</div>
+<div class="citation" id="cook2007r" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">Cook2007r</a><span class="fn-bracket">]</span></span>
+<p>Cook, R.J. and Lawless, J.F., 2007. <em>The Statistical Analysis of
+Recurrent Events</em>. Springer.</p>
+</div>
+<div class="citation" id="lawless1987" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">Lawless1987</a><span class="fn-bracket">]</span></span>
+<p>Lawless, J.F., 1987. Regression methods for Poisson process
+data. <em>Journal of the American Statistical Association</em>, 82(399),
+pp.808-815.</p>
+</div>
+<div class="citation" id="rigdon2000r" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">Rigdon2000r</a><span class="fn-bracket">]</span></span>
+<p>Rigdon, S.E. and Basu, A.P., 2000. <em>Statistical Methods for the
+Reliability of Repairable Systems</em>. John Wiley &amp; Sons.</p>
+</div>
+<div class="citation" id="linwei1989" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id6">LinWei1989</a><span class="fn-bracket">]</span></span>
+<p>Lin, D.Y. and Wei, L.J., 1989. The robust inference for the
+Cox proportional hazards model. <em>Journal of the American Statistical
+Association</em>, 84(408), pp.1074-1078.</p>
+</div>
+<div class="citation" id="linweiyangying2000" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id7">LinWeiYangYing2000</a><span class="fn-bracket">]</span></span>
+<p>Lin, D.Y., Wei, L.J., Yang, I. and Ying, Z., 2000.
+Semiparametric regression for the mean and rate functions of recurrent
+events. <em>Journal of the Royal Statistical Society: Series B</em>, 62(4),
+pp.711-730.</p>
+</div>
+<div class="citation" id="prenticewilliamspeterson1981" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id9">PrenticeWilliamsPeterson1981</a><span class="fn-bracket">]</span></span>
+<p>Prentice, R.L., Williams, B.J. and
+Peterson, A.V., 1981. On the regression analysis of multivariate failure
+time data. <em>Biometrika</em>, 68(2), pp.373-379.</p>
+</div>
+<div class="citation" id="therneau2000" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id5">Therneau2000</a><span class="fn-bracket">]</span></span>
+<p>Therneau, T.M. and Grambsch, P.M., 2000. <em>Modeling
+Survival Data: Extending the Cox Model</em>. Springer. (Chapter 8.)</p>
+</div>
+<div class="citation" id="weilinweissfeld1989" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id8">WeiLinWeissfeld1989</a><span class="fn-bracket">]</span></span>
+<p>Wei, L.J., Lin, D.Y. and Weissfeld, L., 1989.
+Regression analysis of multivariate incomplete failure time data by
+modeling marginal distributions. <em>Journal of the American Statistical
+Association</em>, 84(408), pp.1065-1073.</p>
+</div>
+<div class="citation" id="liuwolfehuang2004" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id10">LiuWolfeHuang2004</a><span class="fn-bracket">]</span></span>
+<p>Liu, L., Wolfe, R.A. and Huang, X., 2004. Shared
+frailty models for recurrent events and a terminal event.
+<em>Biometrics</em>, 60(3), pp.747-756.</p>
+</div>
+<div class="citation" id="rondeau2007" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id11">Rondeau2007</a><span class="fn-bracket">]</span></span>
+<p>Rondeau, V., Mathoulin-Pelissier, S., Jacqmin-Gadda, H.,
+Brouste, V. and Soubeyran, P., 2007. Joint frailty models for recurring
+events and death using maximum penalized likelihood estimation:
+application on cancer events. <em>Biostatistics</em>, 8(4), pp.708-721.</p>
+</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Recurrent%20Event%20Analysis.html" class="btn btn-neutral float-left" title="Recurrent Event Analysis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Degradation%20Analysis.html" class="btn btn-neutral float-right" title="Degradation Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

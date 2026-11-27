@@ -1,0 +1,888 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Adjusted Survival Curves &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Relative Survival" href="Relative%20Survival.html" />
+    <link rel="prev" title="Pseudo-Observations" href="Pseudo-Observations.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Adjusted Survival Curves</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#two-ways-to-adjust">Two ways to adjust</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#an-engineering-example-two-suppliers-different-duty">An engineering example: two suppliers, different duty</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#direct-adjustment">Direct adjustment</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#weighting">Weighting</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#when-the-two-disagree">When the two disagree</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-medical-example-lung-cancer-survival-by-sex">A medical example: lung cancer survival by sex</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-the-uncertainty-is-computed">How the uncertainty is computed</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-is-not-built">What is not built</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Adjusted Survival Curves</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Adjusted Survival Curves.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="adjusted-survival-curves">
+<h1>Adjusted Survival Curves<a class="headerlink" href="#adjusted-survival-curves" title="Link to this heading"></a></h1>
+<p>Two groups are compared: two suppliers, two designs, treated and untreated
+patients. Nobody assigned the groups at random, so they differ in other
+ways as well: one supplier’s parts went mostly to the heavy-duty sites, the
+treated patients were older. The plain Kaplan-Meier curve of each group
+then shows two things at once, the effect of the group and the effect of
+everything else that differs between the groups, and cannot tell them
+apart.</p>
+<p>An <strong>adjusted survival curve</strong> answers a sharper question:</p>
+<blockquote>
+<div><p><em>What would the survival curve be if every unit in the sample had been
+in this group?</em></p>
+</div></blockquote>
+<p>Each group’s adjusted curve is about the same set of units, with the same
+mix of duty, age and so on. A difference between two adjusted curves is
+then a difference between the groups, and not between the units that
+happened to be in them. From the curves come the two summaries people ask
+for: the difference in the chance of surviving to a given time, and the
+difference in the restricted mean survival time (the average time lived
+within a horizon), each with an interval.</p>
+<p>This page shows the two standard ways of getting adjusted curves, what to
+check, and when the two disagree. The functions are documented in
+<a class="reference internal" href="comparison_and_validation.html"><span class="doc">Comparison Tests and Validation Metrics</span></a>.</p>
+<section id="two-ways-to-adjust">
+<h2>Two ways to adjust<a class="headerlink" href="#two-ways-to-adjust" title="Link to this heading"></a></h2>
+<p><strong>Weighting.</strong> Give each unit a weight of one over the probability of
+being in its own group, given its covariates (a <em>propensity</em> weight). A
+light-duty part from the supplier that rarely got light duty counts for
+several parts; a heavy-duty part from the same supplier counts for about
+one. In the weighted sample each group has the whole sample’s mix of
+covariates, and the weighted Kaplan-Meier curve of each group is its
+adjusted curve. The Kaplan-Meier estimator takes the weights as <code class="docutils literal notranslate"><span class="pre">w</span></code> (see
+<a class="reference internal" href="Weighted%20Data.html"><span class="doc">Weighted Data</span></a>); <code class="docutils literal notranslate"><span class="pre">sf_diff</span></code> and <code class="docutils literal notranslate"><span class="pre">rmst_diff</span></code> compare two weighted
+curves with robust variances; and <code class="docutils literal notranslate"><span class="pre">weight_diagnostics</span></code> checks the
+weights. SurPyval does not fit the propensity model: the weights are
+yours.</p>
+<p><strong>Direct adjustment</strong> (also called standardisation, or g-computation). Fit
+a regression model for the lifetime with the group and the other
+covariates in it. Then, for each group, predict every unit’s survival curve
+<em>as if it were in that group</em>, leaving its other covariates as they are,
+and average the predictions over the sample:</p>
+<div class="math notranslate nohighlight">
+\[\bar S_g(t) = \frac{1}{N} \sum_{i=1}^{N} \hat S(t \mid g, Z_i).\]</div>
+<p><code class="docutils literal notranslate"><span class="pre">direct_adjustment</span></code> does this for a fitted parametric regression
+(<code class="docutils literal notranslate"><span class="pre">WeibullAFT</span></code>, <code class="docutils literal notranslate"><span class="pre">LogNormalAFT</span></code>, <code class="docutils literal notranslate"><span class="pre">WeibullPH</span></code> and the rest) or <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>.</p>
+<p>Both need the same thing from you: the covariates that drive <em>both</em> the
+group a unit ended up in and how long it lasts (the confounders) must be
+measured and used. Neither can adjust for something that was not recorded.</p>
+</section>
+<section id="an-engineering-example-two-suppliers-different-duty">
+<h2>An engineering example: two suppliers, different duty<a class="headerlink" href="#an-engineering-example-two-suppliers-different-duty" title="Link to this heading"></a></h2>
+<p>A plant buys a seal from suppliers A and B. Supplier B’s seals went mostly
+to the light-duty pumps, supplier A’s mostly to the heavy-duty ones. The
+data below are simulated so that the truth is known: heavy duty halves the
+life, and supplier B’s seals last about 16% longer on the same duty. Units
+still running at 1,500 hours are censored.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+<span class="n">n</span> <span class="o">=</span> <span class="mi">600</span>
+<span class="n">heavy</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">is_b</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">heavy</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">,</span> <span class="mf">0.75</span><span class="p">))</span>
+<span class="n">life</span> <span class="o">=</span> <span class="mi">1000</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.7</span> <span class="o">*</span> <span class="n">heavy</span> <span class="o">+</span> <span class="mf">0.15</span> <span class="o">*</span> <span class="n">is_b</span><span class="p">)</span> <span class="o">*</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+<span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+    <span class="p">{</span>
+        <span class="s2">"hours"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">life</span><span class="p">,</span> <span class="mi">1500</span><span class="p">),</span>
+        <span class="s2">"c"</span><span class="p">:</span> <span class="p">(</span><span class="n">life</span> <span class="o">&gt;</span> <span class="mi">1500</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">),</span>
+        <span class="s2">"supplier"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">is_b</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">),</span>
+        <span class="s2">"heavy"</span><span class="p">:</span> <span class="n">heavy</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+<span class="n">pd</span><span class="o">.</span><span class="n">crosstab</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"supplier"</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="s2">"heavy"</span><span class="p">])</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>heavy</th>
+      <th>0</th>
+      <th>1</th>
+    </tr>
+    <tr>
+      <th>supplier</th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>A</th>
+      <td>82</td>
+      <td>221</td>
+    </tr>
+    <tr>
+      <th>B</th>
+      <td>218</td>
+      <td>79</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+<p>The plain comparison, a Kaplan-Meier curve per supplier, says that 34
+percentage points more of supplier B’s seals are still running at 800
+hours:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"supplier"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"A"</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"supplier"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"B"</span><span class="p">]</span>
+<span class="n">km_a</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="s2">"hours"</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="n">a</span><span class="p">[</span><span class="s2">"c"</span><span class="p">])</span>
+<span class="n">km_b</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">b</span><span class="p">[</span><span class="s2">"hours"</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="n">b</span><span class="p">[</span><span class="s2">"c"</span><span class="p">])</span>
+<span class="n">naive</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">sf_diff</span><span class="p">(</span><span class="n">km_b</span><span class="p">,</span> <span class="n">km_a</span><span class="p">,</span> <span class="mi">800</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="s2">"linear"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="nb">round</span><span class="p">(</span><span class="n">naive</span><span class="p">[</span><span class="s2">"difference"</span><span class="p">],</span> <span class="mi">3</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>0.337
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Most of that is duty, not the supplier. On the same duty mix the true
+difference at 800 hours is 8 points.</p>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<section id="direct-adjustment">
+<h3>Direct adjustment<a class="headerlink" href="#direct-adjustment" title="Link to this heading"></a></h3>
+<p>Fit a regression with the supplier and the duty, and hand it to
+<code class="docutils literal notranslate"><span class="pre">direct_adjustment</span></code> with the name of the group. A model fitted with a
+formula needs the data frame as <code class="docutils literal notranslate"><span class="pre">Z</span></code>, so that the supplier can be set in
+it and the formula’s columns rebuilt:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">WeibullAFT</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+    <span class="n">df</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span><span class="p">,</span> <span class="n">formula</span><span class="o">=</span><span class="s2">"C(supplier) + heavy"</span>
+<span class="p">)</span>
+<span class="n">adjusted</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">direct_adjustment</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="s2">"supplier"</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">df</span><span class="p">)</span>
+<span class="n">adjusted</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>Directly adjusted survival curves
+  model     : ParametricRegressionModel
+  group     : 'supplier', levels ['A', 'B']
+  population: 600 units (600 rows), covariates sampled
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">res</span> <span class="o">=</span> <span class="n">adjusted</span><span class="o">.</span><span class="n">sf_diff</span><span class="p">(</span><span class="mi">800</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span>
+    <span class="s2">"difference at 800 h: </span><span class="si">{:.3f}</span><span class="s2"> (</span><span class="si">{:.3f}</span><span class="s2"> to </span><span class="si">{:.3f}</span><span class="s2">)"</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+        <span class="n">res</span><span class="p">[</span><span class="s2">"difference"</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s2">"lower"</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s2">"upper"</span><span class="p">]</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>difference at 800 h: 0.128 (0.068 to 0.187)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The adjusted difference is 13 points, with an interval that holds the true
+8 and lies well below the plain comparison’s 34. The restricted mean says
+the same in hours: on the plant’s duty mix, a seal from B runs for more of
+the first 1,500 hours than one from A.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rm</span> <span class="o">=</span> <span class="n">adjusted</span><span class="o">.</span><span class="n">rmst_diff</span><span class="p">(</span><span class="mi">1500</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">,</span> <span class="s2">"A"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span>
+    <span class="s2">"extra hours within 1,500: </span><span class="si">{:.0f}</span><span class="s2"> (</span><span class="si">{:.0f}</span><span class="s2"> to </span><span class="si">{:.0f}</span><span class="s2">)"</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+        <span class="n">rm</span><span class="p">[</span><span class="s2">"difference"</span><span class="p">],</span> <span class="n">rm</span><span class="p">[</span><span class="s2">"lower"</span><span class="p">],</span> <span class="n">rm</span><span class="p">[</span><span class="s2">"upper"</span><span class="p">]</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>extra hours within 1,500: 129 (72 to 187)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ax</span> <span class="o">=</span> <span class="n">adjusted</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Adjusted%20Survival%20Curves_8_0.png" src="_images/Adjusted%20Survival%20Curves_8_0.png" />
+</div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">adjusted.sf(x,</span> <span class="pre">level)</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code> and <code class="docutils literal notranslate"><span class="pre">cb</span></code> give one group’s adjusted
+curve and its confidence bounds, and <code class="docutils literal notranslate"><span class="pre">rmst(tau,</span> <span class="pre">level)</span></code> its restricted
+mean.</p>
+<p>By default the curves are averaged over the units the model was fitted to
+(with their counts and weights). Pass <code class="docutils literal notranslate"><span class="pre">Z</span></code> to average over another
+population, for example next year’s planned duty mix, and <code class="docutils literal notranslate"><span class="pre">w</span></code> to weight
+its rows.</p>
+</section>
+<section id="weighting">
+<h3>Weighting<a class="headerlink" href="#weighting" title="Link to this heading"></a></h3>
+<p>For weighting, each seal needs the probability that a seal on its duty
+came from its supplier. With one yes/no covariate that is just a
+proportion within each duty class; with several covariates it would come
+from a logistic regression fitted elsewhere.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">share_b</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s2">"heavy"</span><span class="p">)[</span><span class="s2">"supplier"</span><span class="p">]</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span>
+    <span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="p">(</span><span class="n">s</span> <span class="o">==</span> <span class="s2">"B"</span><span class="p">)</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+<span class="p">)</span>
+<span class="n">df</span><span class="p">[</span><span class="s2">"w"</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"supplier"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"B"</span><span class="p">,</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">share_b</span><span class="p">,</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">share_b</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Check the weights before using them:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">check</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">weight_diagnostics</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s2">"w"</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="s2">"supplier"</span><span class="p">],</span> <span class="n">df</span><span class="p">[[</span><span class="s2">"heavy"</span><span class="p">]])</span>
+<span class="n">check</span><span class="p">[</span><span class="s2">"groups"</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>n</th>
+      <th>sum_w</th>
+      <th>ess</th>
+      <th>ess_ratio</th>
+      <th>max_w</th>
+      <th>max_share</th>
+      <th>n_extreme</th>
+    </tr>
+    <tr>
+      <th>group</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>A</th>
+      <td>303</td>
+      <td>600.0</td>
+      <td>239.234</td>
+      <td>0.790</td>
+      <td>3.659</td>
+      <td>0.006</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>B</th>
+      <td>297</td>
+      <td>600.0</td>
+      <td>231.946</td>
+      <td>0.781</td>
+      <td>3.797</td>
+      <td>0.006</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">check</span><span class="p">[</span><span class="s2">"balance"</span><span class="p">]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_html"><div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>covariate</th>
+      <th>group_a</th>
+      <th>group_b</th>
+      <th>smd_unweighted</th>
+      <th>smd_weighted</th>
+      <th>variance_ratio</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>heavy</td>
+      <td>A</td>
+      <td>B</td>
+      <td>1.044</td>
+      <td>-0.0</td>
+      <td>1.0</td>
+    </tr>
+  </tbody>
+</table>
+</div></div></div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">check</span><span class="p">[</span><span class="s2">"flags"</span><span class="p">]</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>[]
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>Three things to read:</p>
+<ul class="simple">
+<li><p><strong>Effective sample size</strong> (<code class="docutils literal notranslate"><span class="pre">ess</span></code>): the number of equally weighted
+units that would carry the same information. Here each supplier keeps
+nearly 80% of its units. A group left with a small fraction has uneven
+weights, and wide intervals to match.</p></li>
+<li><p><strong>Extreme weights</strong> (<code class="docutils literal notranslate"><span class="pre">max_share</span></code>, <code class="docutils literal notranslate"><span class="pre">n_extreme</span></code>): the largest weight’s
+share of its group’s total, and the number of weights more than ten
+times the group’s mean. One unit carrying a tenth of its group means the
+adjusted curve is close to that unit’s own history.</p></li>
+<li><p><strong>Balance</strong>: the standardised mean difference of each covariate between
+the groups, before and after weighting. Before, duty differs between the
+suppliers by a full standard deviation; after, by nothing. Below 0.1
+after weighting is the usual rule.</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">flags</span></code> lists, in plain sentences, anything outside those rules; here it
+is empty. The weighted comparison:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">a</span><span class="p">,</span> <span class="n">b</span> <span class="o">=</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"supplier"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"A"</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="n">df</span><span class="p">[</span><span class="s2">"supplier"</span><span class="p">]</span> <span class="o">==</span> <span class="s2">"B"</span><span class="p">]</span>
+<span class="n">kw_a</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="s2">"hours"</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="n">a</span><span class="p">[</span><span class="s2">"c"</span><span class="p">],</span> <span class="n">w</span><span class="o">=</span><span class="n">a</span><span class="p">[</span><span class="s2">"w"</span><span class="p">])</span>
+<span class="n">kw_b</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">b</span><span class="p">[</span><span class="s2">"hours"</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="n">b</span><span class="p">[</span><span class="s2">"c"</span><span class="p">],</span> <span class="n">w</span><span class="o">=</span><span class="n">b</span><span class="p">[</span><span class="s2">"w"</span><span class="p">])</span>
+<span class="n">weighted</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">sf_diff</span><span class="p">(</span><span class="n">kw_b</span><span class="p">,</span> <span class="n">kw_a</span><span class="p">,</span> <span class="mi">800</span><span class="p">,</span> <span class="n">transform</span><span class="o">=</span><span class="s2">"linear"</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span>
+    <span class="s2">"difference at 800 h: </span><span class="si">{:.3f}</span><span class="s2"> (</span><span class="si">{:.3f}</span><span class="s2"> to </span><span class="si">{:.3f}</span><span class="s2">)"</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+        <span class="n">weighted</span><span class="p">[</span><span class="s2">"difference"</span><span class="p">],</span> <span class="n">weighted</span><span class="p">[</span><span class="s2">"lower"</span><span class="p">],</span> <span class="n">weighted</span><span class="p">[</span><span class="s2">"upper"</span><span class="p">]</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>difference at 800 h: 0.108 (0.021 to 0.195)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>The two routes agree: 11 points by weighting, 13 by direct adjustment, and
+both intervals hold the truth. The weighted interval is wider. That is the
+usual trade: weighting assumes nothing about the shape of the lifetime
+distribution and pays for it in precision. <code class="docutils literal notranslate"><span class="pre">sp.rmst_diff(kw_b,</span> <span class="pre">kw_a,</span>
+<span class="pre">1500)</span></code> is the weighted counterpart of the restricted-mean difference.</p>
+</section>
+</section>
+<section id="when-the-two-disagree">
+<h2>When the two disagree<a class="headerlink" href="#when-the-two-disagree" title="Link to this heading"></a></h2>
+<p>Each route leans on a different model, and each fails in its own way.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 39.0%" />
+<col style="width: 39.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"></th>
+<th class="head"><p>Direct adjustment</p></th>
+<th class="head"><p>Weighting</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>What must be right</p></td>
+<td><p>The model for the <em>lifetime</em> given the group and the covariates</p></td>
+<td><p>The model for the <em>group</em> given the covariates (the propensity)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Typical failure</p></td>
+<td><p>A missing interaction or curvature; proportional hazards assumed
+where they do not hold; predictions for covariate values a group
+never had (extrapolation, which the model does without complaint)</p></td>
+<td><p>A wrong propensity model, seen as imbalance after weighting; groups
+that barely overlap, seen as extreme weights and a small effective
+sample size</p></td>
+</tr>
+<tr class="row-even"><td><p>Precision</p></td>
+<td><p>Higher: the model lends strength</p></td>
+<td><p>Lower, and much lower with extreme weights</p></td>
+</tr>
+<tr class="row-odd"><td><p>How to check</p></td>
+<td><p>The model’s own diagnostics (<code class="docutils literal notranslate"><span class="pre">model.diagnose()</span></code>, residuals, an
+interaction term, a different family)</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">weight_diagnostics</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>When the two answers agree, as above, each supports the other. When they
+do not, something specific is wrong, and the checks say where to look:</p>
+<ul class="simple">
+<li><p>Balance is poor after weighting: the propensity model is wrong. Fix the
+weights before reading anything into the difference.</p></li>
+<li><p>The weights are extreme: the groups hardly overlap on some covariate.
+There are units in one group with no counterpart in the other.
+Weighting shows it (through the diagnostics); direct adjustment hides
+it, by extrapolating the regression into the gap. Neither answer is
+trustworthy there. Restrict the comparison to where the groups overlap
+and say so.</p></li>
+<li><p>Balance is good and the weights are mild, yet the answers differ: look
+at the lifetime model. Add the interaction of the group with the
+covariates, try another family, and compare the model’s curve for each
+group with the weighted Kaplan-Meier curve.</p></li>
+</ul>
+</section>
+<section id="a-medical-example-lung-cancer-survival-by-sex">
+<h2>A medical example: lung cancer survival by sex<a class="headerlink" href="#a-medical-example-lung-cancer-survival-by-sex" title="Link to this heading"></a></h2>
+<p>In the North Central Cancer Treatment Group lung cancer data (<code class="docutils literal notranslate"><span class="pre">lung</span></code> in
+R’s <code class="docutils literal notranslate"><span class="pre">survival</span></code>), women live longer than men. Women in the study were also
+slightly younger and in slightly better condition (ECOG performance
+score). How much of the difference is left once age and condition are
+held equal?</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_lung</span>
+
+<span class="n">lung</span> <span class="o">=</span> <span class="n">load_lung</span><span class="p">()</span><span class="o">.</span><span class="n">dropna</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="p">[</span><span class="s2">"ph.ecog"</span><span class="p">])</span>
+<span class="n">Z</span> <span class="o">=</span> <span class="n">lung</span><span class="p">[[</span><span class="s2">"sex"</span><span class="p">,</span> <span class="s2">"age"</span><span class="p">,</span> <span class="s2">"ph.ecog"</span><span class="p">]]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+<span class="n">cox</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">CoxPH</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">lung</span><span class="p">[</span><span class="s2">"time"</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">(),</span> <span class="n">Z</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="mi">1</span> <span class="o">-</span> <span class="n">lung</span><span class="p">[</span><span class="s2">"status"</span><span class="p">])</span>
+<span class="n">by_sex</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">direct_adjustment</span><span class="p">(</span><span class="n">cox</span><span class="p">,</span> <span class="n">group</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">by_sex</span><span class="o">.</span><span class="n">levels</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output text_plain highlight-none notranslate"><div class="highlight"><pre><span></span>[1.0, 2.0]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The group is column 0 of <code class="docutils literal notranslate"><span class="pre">Z</span></code> (sex, 1 for men and 2 for women). The
+adjusted chance of living a year, and the difference:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">res</span> <span class="o">=</span> <span class="n">by_sex</span><span class="o">.</span><span class="n">sf_diff</span><span class="p">(</span><span class="mi">365</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="s2">"men </span><span class="si">{:.3f}</span><span class="s2">, women </span><span class="si">{:.3f}</span><span class="s2">"</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">res</span><span class="p">[</span><span class="s2">"sf_b"</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s2">"sf_a"</span><span class="p">]))</span>
+<span class="nb">print</span><span class="p">(</span>
+    <span class="s2">"difference: </span><span class="si">{:.3f}</span><span class="s2"> (</span><span class="si">{:.3f}</span><span class="s2"> to </span><span class="si">{:.3f}</span><span class="s2">), p = </span><span class="si">{:.4f}</span><span class="s2">"</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+        <span class="n">res</span><span class="p">[</span><span class="s2">"difference"</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s2">"lower"</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s2">"upper"</span><span class="p">],</span> <span class="n">res</span><span class="p">[</span><span class="s2">"p_value"</span><span class="p">]</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>men 0.337, women 0.525
+difference: 0.187 (0.079 to 0.296), p = 0.0007
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>If every patient were a woman, 52% would be alive at one year; if every
+patient were a man, 34%: with age and condition held equal, the gap
+remains. Over the first 700 days:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">rm</span> <span class="o">=</span> <span class="n">by_sex</span><span class="o">.</span><span class="n">rmst_diff</span><span class="p">(</span><span class="mi">700</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span>
+    <span class="s2">"extra days within 700: </span><span class="si">{:.0f}</span><span class="s2"> (</span><span class="si">{:.0f}</span><span class="s2"> to </span><span class="si">{:.0f}</span><span class="s2">)"</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+        <span class="n">rm</span><span class="p">[</span><span class="s2">"difference"</span><span class="p">],</span> <span class="n">rm</span><span class="p">[</span><span class="s2">"lower"</span><span class="p">],</span> <span class="n">rm</span><span class="p">[</span><span class="s2">"upper"</span><span class="p">]</span>
+    <span class="p">)</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>extra days within 700: 99 (42 to 157)
+</pre></div>
+</div>
+</div>
+</div>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">ax</span> <span class="o">=</span> <span class="n">by_sex</span><span class="o">.</span><span class="n">plot</span><span class="p">()</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<img alt="_images/Adjusted%20Survival%20Curves_20_0.png" src="_images/Adjusted%20Survival%20Curves_20_0.png" />
+</div>
+</div>
+<div class="jupyter_cell docutils container">
+<div class="cell_output docutils container">
+</div>
+</div>
+<p>A Cox model’s baseline ends at the last observed time, so its restricted
+mean refuses a horizon beyond it; a parametric regression extrapolates and
+takes any horizon.</p>
+<p>This is an adjusted <em>association</em>. Sex was not assigned, and the
+adjustment covers age and ECOG score only; whatever else differs between
+the men and women in the study is still in the difference.</p>
+</section>
+<section id="how-the-uncertainty-is-computed">
+<h2>How the uncertainty is computed<a class="headerlink" href="#how-the-uncertainty-is-computed" title="Link to this heading"></a></h2>
+<p>An adjusted curve is uncertain for two reasons.</p>
+<ol class="arabic simple">
+<li><p><strong>The model was estimated.</strong> For a parametric regression the standard
+error comes from the delta method: the gradient <span class="math notranslate nohighlight">\(g\)</span> of the
+averaged quantity in the model’s parameters and their covariance
+<span class="math notranslate nohighlight">\(\Sigma\)</span> give <span class="math notranslate nohighlight">\(g^\top \Sigma\, g\)</span>. For a Cox model it is
+the variance of the baseline hazard plus the coefficients’ part, the
+same two parts as the bounds of its own predicted curve
+(<code class="docutils literal notranslate"><span class="pre">CoxPH.cb</span></code>), carried through the average.</p></li>
+<li><p><strong>The units are a sample.</strong> The average is over the units that happened
+to be studied. Another sample would have other covariates, so the
+average of even a perfectly known model would move. This adds the
+spread of the units’ own predictions,
+<span class="math notranslate nohighlight">\(\sum_i (v_i - \bar v)^2 / N^2\)</span>, where <span class="math notranslate nohighlight">\(v_i\)</span> is unit
+<span class="math notranslate nohighlight">\(i\)</span>’s predicted survival (or difference, or restricted mean).</p></li>
+</ol>
+<p><code class="docutils literal notranslate"><span class="pre">covariates=&quot;sampled&quot;</span></code>, the default, includes both. Use
+<code class="docutils literal notranslate"><span class="pre">covariates=&quot;fixed&quot;</span></code> when the rows <em>are</em> the population of interest (a
+reference duty mix, or exactly this fleet): only the first part is then
+counted.</p>
+<p>The two curves being compared come from one model and one set of units,
+so they are not independent. <code class="docutils literal notranslate"><span class="pre">sf_diff</span></code> and <code class="docutils literal notranslate"><span class="pre">rmst_diff</span></code> take the
+standard error of the difference itself, not the sum of two separate
+variances. Intervals for a curve are formed on the logit scale, so they
+stay between 0 and 1; intervals for a difference are the difference plus
+or minus a normal quantile times its standard error. <code class="docutils literal notranslate"><span class="pre">robust=True</span></code> uses
+the model’s robust (sandwich) covariance in the first part.</p>
+<p>The curves are checked against R: a Cox model’s adjusted curves equal the
+row means of <code class="docutils literal notranslate"><span class="pre">survival::survfit</span></code> with <code class="docutils literal notranslate"><span class="pre">newdata</span></code>, and a Weibull model’s
+curves, differences, restricted means and delta-method standard errors
+match <code class="docutils literal notranslate"><span class="pre">survival::survreg</span></code> worked by hand. The Cox curves also match
+<code class="docutils literal notranslate"><span class="pre">riskRegression::ate</span></code> (the G-formula behind <code class="docutils literal notranslate"><span class="pre">adjustedCurves</span></code>’ direct
+method). Its standard errors can differ from the ones here, by 4% to 13%
+on the <code class="docutils literal notranslate"><span class="pre">lung</span></code> data, and the reason is the estimator, not the averaging.
+Both count the sampling of the covariates the same way (that part agrees
+exactly). For the model’s own uncertainty, <code class="docutils literal notranslate"><span class="pre">ate</span></code> uses the empirical
+(sandwich) influence function of the Cox fit, and SurPyval uses the
+model-based variance that <code class="docutils literal notranslate"><span class="pre">survfit</span></code> reports for a single curve. The two
+agree when the proportional hazards model holds, and drift apart when it
+fits less well. On <code class="docutils literal notranslate"><span class="pre">lung</span></code> the same gap shows for a single patient:
+<code class="docutils literal notranslate"><span class="pre">riskRegression</span></code>’s standard error of one curve is 10% below
+<code class="docutils literal notranslate"><span class="pre">survfit</span></code>’s for one sex and 8% above it for the other.</p>
+<p>For the weighted route, the variance is the weighted Kaplan-Meier’s robust
+one (see <a class="reference internal" href="Weighted%20Data.html"><span class="doc">Weighted Data</span></a>). It treats the weights as known. Weights
+estimated from the same data usually make the true variance a little
+smaller, so those intervals are, if anything, conservative.</p>
+</section>
+<section id="what-is-not-built">
+<h2>What is not built<a class="headerlink" href="#what-is-not-built" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Fitting the propensity model.</strong> Bring the weights; any logistic
+regression will produce them.</p></li>
+<li><p><strong>Bounds for other model families.</strong> <code class="docutils literal notranslate"><span class="pre">direct_adjustment</span></code> averages the
+predictions of any regression model with <code class="docutils literal notranslate"><span class="pre">sf(x,</span> <span class="pre">Z)</span></code>, but the variance
+is built for the parametric regression families and <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>. For
+another family, <code class="docutils literal notranslate"><span class="pre">cb</span></code>, <code class="docutils literal notranslate"><span class="pre">sf_diff</span></code>, <code class="docutils literal notranslate"><span class="pre">rmst</span></code> and <code class="docutils literal notranslate"><span class="pre">rmst_diff</span></code> refuse
+and say so; refit the model to resampled rows for a bootstrap.</p></li>
+<li><p><strong>Stratified Cox models</strong> are refused: put the stratifying variable in
+the model as a covariate, or use a parametric regression.</p></li>
+<li><p><strong>Doubly robust estimators</strong> (which combine the two routes) and
+adjusted cumulative incidence under competing risks.</p></li>
+</ul>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Makuch, R. W. (1982). Adjusted survival curve estimation using
+covariates. <em>Journal of Chronic Diseases</em> 35, 437-443.</p></li>
+<li><p>Cole, S. R. and Hernán, M. A. (2004). Adjusted survival curves with
+inverse probability weights. <em>Computer Methods and Programs in
+Biomedicine</em> 75, 45-49.</p></li>
+<li><p>Austin, P. C. (2014). The use of propensity score methods with survival
+or time-to-event outcomes: reporting measures of effect similar to those
+used in randomized experiments. <em>Statistics in Medicine</em> 33, 1242-1258.</p></li>
+<li><p>Austin, P. C. and Stuart, E. A. (2015). Moving towards best practice
+when using inverse probability of treatment weighting (IPTW) using the
+propensity score to estimate causal treatment effects in observational
+studies. <em>Statistics in Medicine</em> 34, 3661-3679.</p></li>
+<li><p>Hernán, M. A. and Robins, J. M. (2020). <em>Causal Inference: What If</em>.
+Chapman &amp; Hall/CRC.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Pseudo-Observations.html" class="btn btn-neutral float-left" title="Pseudo-Observations" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Relative%20Survival.html" class="btn btn-neutral float-right" title="Relative Survival" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

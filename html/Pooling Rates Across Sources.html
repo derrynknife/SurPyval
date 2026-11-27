@@ -1,0 +1,524 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pooling Rates Across Sources &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Regression Modelling with SurPyval" href="Regression%20Modelling%20with%20SurPyval.html" />
+    <link rel="prev" title="Bayesian Fitting with SurPyval" href="Bayesian%20Fitting%20with%20SurPyval.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Pooling Rates Across Sources</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#in-plain-words">In plain words</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#rates-and-probabilities">Rates and probabilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#an-example">An example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#updating-with-a-new-source-s-own-data">Updating with a new source’s own data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#a-rate-example">A rate example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#bayes-or-maximum-likelihood">Bayes or maximum likelihood</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-maths">The maths</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Pooling Rates Across Sources</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Pooling Rates Across Sources.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="pooling-rates-across-sources">
+<h1>Pooling Rates Across Sources<a class="headerlink" href="#pooling-rates-across-sources" title="Link to this heading"></a></h1>
+<p>Often the evidence about how often something happens comes from several
+places, each with its own count: infections at several hospitals with the
+patient-days at each, failures of one kind of pump at several plants with
+their running hours, adverse events in several trials with the doses
+given, failures to start out of the starts attempted at several sites.
+<code class="docutils literal notranslate"><span class="pre">surv.pooled_rate</span></code> combines them.</p>
+<section id="in-plain-words">
+<h2>In plain words<a class="headerlink" href="#in-plain-words" title="Link to this heading"></a></h2>
+<p><strong>The sources really differ.</strong> A hospital in one city and a hospital in
+another do not share one true infection rate, and neither do two plants
+running the same pump in different service. Adding every count and every
+exposure into one pot assumes they do. When they don’t, the one-pot answer
+is dominated by the biggest source and reports a precision nobody has.</p>
+<p><strong>So ask a different question.</strong> Not “what is the one rate?”, but “across
+sources like these, how are the rates spread?” The sources are treated as
+a sample from a population of sources, each with its own rate. The method
+estimates that population from the counts, and every source still counts
+for as much as its exposure says: a source with ten events in a million
+hours speaks louder than one with one event in a hundred thousand, and a
+source with no events in a long exposure is real evidence of a low rate.</p>
+<p><strong>It gives two different ranges, and says which is which.</strong></p>
+<ul class="simple">
+<li><p><strong>The average across sources</strong>: how well the middle of the spread is
+known. This narrows as sources are added.</p></li>
+<li><p><strong>A new source like these</strong>: where the rate of one more source, about
+which nothing else is known, probably lies. This is the population’s own
+spread (plus the uncertainty in it), so it stays wide however many
+sources there are if they really differ. It is the one to use as a
+starting belief for a new site, hospital or study.</p></li>
+</ul>
+<p><strong>Each source gets two estimates.</strong> Its own (its events over its exposure)
+and a <em>shrunk</em> one, pulled towards the others: a source with little
+exposure is pulled a long way, one with a lot hardly at all. The shrunk
+estimates are usually better guesses of each source’s true rate than the
+raw ones, especially for small sources.</p>
+<p><strong>Do the sources differ at all?</strong> A heterogeneity test (Pearson’s
+chi-square that every source has one rate) and <span class="math notranslate nohighlight">\(I^2\)</span>, the share of
+the variation that is more than chance, say how much the sources disagree.</p>
+<p><strong>At least four sources.</strong> With two or three sources, how different a
+fourth would be cannot be estimated: the range for a new source comes out
+either absurdly wide or wrongly narrow. Below <code class="docutils literal notranslate"><span class="pre">min_sources</span></code> (default 4)
+the function gives the sources side by side, each with its own interval,
+the one-pot estimate and the heterogeneity test, and no population, with a
+warning saying so. With one source it gives that source’s own (Jeffreys)
+interval.</p>
+</section>
+<section id="rates-and-probabilities">
+<h2>Rates and probabilities<a class="headerlink" href="#rates-and-probabilities" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">kind=&quot;rate&quot;</span></code> (the default) is for events in a time at risk: patient-days,
+operating hours, person-years, kilometres. <code class="docutils literal notranslate"><span class="pre">kind=&quot;probability&quot;</span></code> is for
+events out of a number of trials or demands: failures to start out of
+starts, adverse events out of doses, defects out of items inspected.
+The two are never converted into each other.</p>
+</section>
+<section id="an-example">
+<h2>An example<a class="headerlink" href="#an-example" title="Link to this heading"></a></h2>
+<p>Six sources of failures to start, out of the starts (demands) attempted.
+The first is a large modern data set; the others are older and smaller.
+These inputs are illustrative.</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">surv</span>
+
+<span class="n">failures</span> <span class="o">=</span> <span class="p">[</span><span class="mi">227</span><span class="p">,</span> <span class="mi">137</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">42</span><span class="p">,</span> <span class="mi">6</span><span class="p">]</span>
+<span class="n">demands</span> <span class="o">=</span> <span class="p">[</span><span class="mi">410593</span><span class="p">,</span> <span class="mi">49000</span><span class="p">,</span> <span class="mi">2100</span><span class="p">,</span> <span class="mi">260</span><span class="p">,</span> <span class="mi">3700</span><span class="p">,</span> <span class="mi">2400</span><span class="p">]</span>
+<span class="n">pooled</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">pooled_rate</span><span class="p">(</span>
+    <span class="n">failures</span><span class="p">,</span> <span class="n">demands</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">"probability"</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+    <span class="n">labels</span><span class="o">=</span><span class="p">[</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">,</span> <span class="s2">"C"</span><span class="p">,</span> <span class="s2">"D"</span><span class="p">,</span> <span class="s2">"E"</span><span class="p">,</span> <span class="s2">"F"</span><span class="p">],</span>
+<span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pooled</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Pooled probability from 6 sources (Bayes, 90% intervals)
+  One pot (assumes one probability for all): 0.0009401 (0.0008686 to 0.001016)
+  Average across sources: 0.006681 (0.003372 to 0.01667)
+  A new source like these: median 0.00458, mean 0.00809 (0.0001693 to 0.026)
+  Heterogeneity: chi-square 978.4 on 5 df, p = 2.84e-209, I2 = 99%
+</pre></div>
+</div>
+</div>
+</div>
+<p>Read the three answers in turn:</p>
+<ul class="simple">
+<li><p><strong>One pot</strong>: about 0.00094 per demand, with a range of 1.2 times from
+end to end. It is dominated by source A’s huge exposure, and no other
+source’s own range comes near it.</p></li>
+<li><p><strong>The average across sources</strong>: about 0.0067, known to within about 5
+times.</p></li>
+<li><p><strong>A new source like these</strong>: median about 0.0046, but anywhere from
+about 0.00017 to 0.026, a range of about 150 times. That is the method
+saying, correctly, that these sources disagree by a lot. A range this
+wide is a cue to split the sources into groups that are more alike (here,
+the modern source and the older ones) and pool each group.</p></li>
+</ul>
+<p>The sources side by side, alone and shrunk:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">pooled</span><span class="o">.</span><span class="n">sources</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span><span class="o">.</span><span class="n">to_string</span><span class="p">())</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>        events  exposure      own  own_lower  own_upper   shrunk  shrunk_lower  shrunk_upper
+source                                                                                      
+A        227.0  410593.0  0.00055    0.00050    0.00062  0.00056       0.00050       0.00062
+B        137.0   49000.0  0.00280    0.00242    0.00321  0.00281       0.00243       0.00321
+C         25.0    2100.0  0.01190    0.00849    0.01631  0.01147       0.00801       0.01546
+D          3.0     260.0  0.01154    0.00418    0.02682  0.00972       0.00321       0.01952
+E         42.0    3700.0  0.01135    0.00876    0.01451  0.01112       0.00847       0.01406
+F          6.0    2400.0  0.00250    0.00123    0.00465  0.00276       0.00129       0.00466
+</pre></div>
+</div>
+</div>
+</div>
+<p>Source D, with only 260 demands, is pulled furthest towards the others;
+source A, with 410,593, does not move.</p>
+<p>The population (between-source) distribution, as a SurPyval <code class="docutils literal notranslate"><span class="pre">Beta</span></code> here
+(a <code class="docutils literal notranslate"><span class="pre">Gamma</span></code> for rates), and its parameters:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">pooled</span><span class="o">.</span><span class="n">population_params</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">pooled</span><span class="o">.</span><span class="n">population</span><span class="o">.</span><span class="n">qf</span><span class="p">([</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.95</span><span class="p">]))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'a': 0.7140031099715378, 'b': 91.73817809146365, 'mean': 0.007722944993756988, 'cv': 1.1725470611654194}
+[0.0001455  0.00457994 0.02599987]
+</pre></div>
+</div>
+</div>
+</div>
+<p>The heterogeneity test:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="nb">print</span><span class="p">(</span><span class="n">pooled</span><span class="o">.</span><span class="n">heterogeneity</span><span class="p">)</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>{'chi2': 978.4086813358686, 'df': 5, 'p_value': 2.839125112563973e-209, 'I2': 0.9948896610430998}
+</pre></div>
+</div>
+</div>
+</div>
+</section>
+<section id="updating-with-a-new-source-s-own-data">
+<h2>Updating with a new source’s own data<a class="headerlink" href="#updating-with-a-new-source-s-own-data" title="Link to this heading"></a></h2>
+<p>The pooled population is a starting belief for a new source; its own
+counts then update it (the “second stage”). <code class="docutils literal notranslate"><span class="pre">update</span></code> gives the new
+source’s estimate from its own events and exposure:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">for</span> <span class="n">own_failures</span> <span class="ow">in</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">4</span><span class="p">):</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">own_failures</span><span class="p">,</span> <span class="s2">"in 400:"</span><span class="p">,</span> <span class="n">pooled</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">own_failures</span><span class="p">,</span> <span class="mi">400</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>0 in 400: {'mean': 0.0016261703880023775, 'median': 0.0010492503746074083, 'lower': 1.5002928594896567e-05, 'upper': 0.005205415113740026}
+</pre></div>
+</div>
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>1 in 400: {'mean': 0.0035975324019048207, 'median': 0.003037873826112358, 'lower': 0.0006081915898039653, 'upper': 0.008498203498305837}
+4 in 400: {'mean': 0.009076172831618951, 'median': 0.008420728855243458, 'lower': 0.0035633470197417704, 'upper': 0.01682536738966712}
+</pre></div>
+</div>
+</div>
+</div>
+<p>With a wide population the new source’s own data quickly take over; with a
+narrow one they barely move it. Compare the update with the source’s own
+data alone before relying on it: a narrow population from the wrong kind
+of source can hold the answer far from what the new source’s data say.</p>
+</section>
+<section id="a-rate-example">
+<h2>A rate example<a class="headerlink" href="#a-rate-example" title="Link to this heading"></a></h2>
+<p>Infections and patient-days at eight hospitals (illustrative), one with no
+infections:</p>
+<div class="jupyter_cell jupyter_container docutils container">
+<div class="cell_input code_cell docutils container">
+<div class="highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="n">infections</span> <span class="o">=</span> <span class="p">[</span><span class="mi">12</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">21</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">15</span><span class="p">]</span>
+<span class="n">patient_days</span> <span class="o">=</span> <span class="p">[</span><span class="mi">8000</span><span class="p">,</span> <span class="mi">5200</span><span class="p">,</span> <span class="mi">1900</span><span class="p">,</span> <span class="mi">4100</span><span class="p">,</span> <span class="mi">9800</span><span class="p">,</span> <span class="mi">3500</span><span class="p">,</span> <span class="mi">6100</span><span class="p">,</span> <span class="mi">7300</span><span class="p">]</span>
+<span class="n">hosp</span> <span class="o">=</span> <span class="n">surv</span><span class="o">.</span><span class="n">pooled_rate</span><span class="p">(</span><span class="n">infections</span><span class="p">,</span> <span class="n">patient_days</span><span class="p">,</span> <span class="n">alpha_ci</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">hosp</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">hosp</span><span class="o">.</span><span class="n">sources</span><span class="p">[[</span><span class="s2">"own"</span><span class="p">,</span> <span class="s2">"shrunk"</span><span class="p">,</span> <span class="s2">"shrunk_lower"</span><span class="p">,</span> <span class="s2">"shrunk_upper"</span><span class="p">]]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">5</span><span class="p">))</span>
+</pre></div>
+</div>
+</div>
+<div class="cell_output docutils container">
+<div class="output stream highlight-none notranslate"><div class="highlight"><pre><span></span>Pooled rate from 8 sources (Bayes, 90% intervals)
+  One pot (assumes one rate for all): 0.001547 (0.001268 to 0.001873)
+  Average across sources: 0.001462 (0.001003 to 0.002094)
+  A new source like these: median 0.001378, mean 0.0015 (0.0003906 to 0.002981)
+  Heterogeneity: chi-square 11.27 on 7 df, p = 0.127, I2 = 38%
+              own   shrunk  shrunk_lower  shrunk_upper
+source                                                
+source 1  0.00150  0.00149       0.00095       0.00212
+source 2  0.00077  0.00108       0.00049       0.00174
+source 3  0.00000  0.00095       0.00016       0.00180
+source 4  0.00220  0.00184       0.00111       0.00283
+source 5  0.00214  0.00192       0.00133       0.00265
+source 6  0.00086  0.00118       0.00051       0.00192
+source 7  0.00115  0.00128       0.00071       0.00192
+source 8  0.00205  0.00183       0.00121       0.00262
+</pre></div>
+</div>
+</div>
+</div>
+<p>The hospital with no infections gets a shrunk rate above zero, with a range,
+because 1,900 patient-days is not enough to show that its rate is zero.</p>
+</section>
+<section id="bayes-or-maximum-likelihood">
+<h2>Bayes or maximum likelihood<a class="headerlink" href="#bayes-or-maximum-likelihood" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">method=&quot;Bayes&quot;</span></code> (the default) puts a weak prior on the population’s two
+parameters and averages every interval over their posterior, computed on a
+grid (exact up to the grid, and deterministic). <code class="docutils literal notranslate"><span class="pre">method=&quot;MLE&quot;</span></code> fits them
+by marginal maximum likelihood (the “empirical Bayes” estimate), with a
+profile-likelihood interval for the average and a parametric bootstrap for
+the others.</p>
+<p>With few sources the difference matters. The MLE treats the population’s
+spread as known once estimated, and with four to ten sources that spread
+is itself very uncertain. In a simulation with six sources, the nominal
+90% range for a new source covered the new source’s rate 88% of the time
+under <code class="docutils literal notranslate"><span class="pre">&quot;Bayes&quot;</span></code> and 72% under <code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code>; the average’s interval covered
+the true mean 91% and 85% of the time. Use <code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code> for many sources, or
+to compare with an empirical-Bayes analysis.</p>
+</section>
+<section id="the-maths">
+<h2>The maths<a class="headerlink" href="#the-maths" title="Link to this heading"></a></h2>
+<p><strong>Rates.</strong> Source <span class="math notranslate nohighlight">\(i\)</span> has <span class="math notranslate nohighlight">\(x_i\)</span> events in exposure <span class="math notranslate nohighlight">\(T_i\)</span>
+with its own rate <span class="math notranslate nohighlight">\(\lambda_i\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[x_i \sim \text{Poisson}(\lambda_i T_i), \qquad
+\lambda_i \sim \text{Gamma}(a, b),\]</div>
+<p>shape <span class="math notranslate nohighlight">\(a\)</span>, rate <span class="math notranslate nohighlight">\(b\)</span>, mean <span class="math notranslate nohighlight">\(a / b\)</span>. With
+<span class="math notranslate nohighlight">\(\lambda_i\)</span> integrated out each <span class="math notranslate nohighlight">\(x_i\)</span> is negative binomial,</p>
+<div class="math notranslate nohighlight">
+\[P(x_i \mid a, b) = \frac{\Gamma(x_i + a)}{\Gamma(a)\, x_i!}
+\left(\frac{b}{b + T_i}\right)^{a}
+\left(\frac{T_i}{b + T_i}\right)^{x_i},\]</div>
+<p>and the likelihood of <span class="math notranslate nohighlight">\((a, b)\)</span> is the product over the sources.</p>
+<p><strong>Probabilities.</strong> <span class="math notranslate nohighlight">\(x_i \sim \text{Binomial}(n_i, p_i)\)</span> and
+<span class="math notranslate nohighlight">\(p_i \sim \text{Beta}(a, b)\)</span>, so <span class="math notranslate nohighlight">\(x_i\)</span> is beta-binomial,
+<span class="math notranslate nohighlight">\(P(x_i \mid a, b) = \binom{n_i}{x_i} B(x_i + a, n_i - x_i + b) /
+B(a, b)\)</span>.</p>
+<p><strong>Estimating the population.</strong> Under <code class="docutils literal notranslate"><span class="pre">&quot;Bayes&quot;</span></code> the prior is flat on the
+log of the mean rate <span class="math notranslate nohighlight">\(a / b\)</span> (the logit of the mean probability) and
+<span class="math notranslate nohighlight">\(p(a) \propto (1 + a)^{-2}\)</span> on the shape, a proper, weak prior that
+does not depend on the unit of time. The posterior of the mean and the
+shape is computed on a grid of 161 by 161 points, refined once around
+where it has weight. Under <code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code> the same likelihood is maximised; the
+likelihood can be largest with no spread at all (<span class="math notranslate nohighlight">\(a \to \infty\)</span>,
+every source one rate), and the MLE then says so (an infinite shape).</p>
+<p><strong>The results.</strong></p>
+<ul class="simple">
+<li><p>The population mean’s interval: the quantiles of its posterior
+(<code class="docutils literal notranslate"><span class="pre">&quot;Bayes&quot;</span></code>); the profile-likelihood interval (<code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code>).</p></li>
+<li><p>A new source: its rate is a draw from the population,
+<span class="math notranslate nohighlight">\(\text{Gamma}(a, b)\)</span>, averaged over the posterior of
+<span class="math notranslate nohighlight">\((a, b)\)</span> (<code class="docutils literal notranslate"><span class="pre">&quot;Bayes&quot;</span></code>) or over the bootstrap refits (<code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code>).
+This is the predictive distribution; the population “averaged over the
+uncertainty” is not exactly a gamma, so <code class="xref py py-attr docutils literal notranslate"><span class="pre">population</span></code> is the gamma
+(or beta) with the same median and upper quantile, which keeps the
+upper side honest.</p></li>
+<li><p>A source’s shrunk estimate: given the population, its rate has the
+conjugate posterior <span class="math notranslate nohighlight">\(\text{Gamma}(a + x_i, b + T_i)\)</span>
+(<span class="math notranslate nohighlight">\(\text{Beta}(a + x_i, b + n_i - x_i)\)</span>), again averaged over
+<span class="math notranslate nohighlight">\((a, b)\)</span>.</p></li>
+<li><p>A source’s own interval: Jeffreys, <span class="math notranslate nohighlight">\(\text{Gamma}(x_i + 1/2, T_i)\)</span>
+or <span class="math notranslate nohighlight">\(\text{Beta}(x_i + 1/2, n_i - x_i + 1/2)\)</span>, which is defined with
+no events.</p></li>
+<li><p>Heterogeneity: Pearson’s
+<span class="math notranslate nohighlight">\(Q = \sum_i (x_i - T_i \hat r)^2 / (T_i \hat r)\)</span> with
+<span class="math notranslate nohighlight">\(\hat r = \sum x_i / \sum T_i\)</span>, on <span class="math notranslate nohighlight">\(k - 1\)</span> degrees of
+freedom (the 2 by <span class="math notranslate nohighlight">\(k\)</span> table’s chi-square for probabilities), and
+<span class="math notranslate nohighlight">\(I^2 = \max(0, (Q - (k - 1)) / Q)\)</span>.</p></li>
+</ul>
+<p>This is the “two-stage” or hierarchical Bayes treatment of generic data in
+probabilistic risk assessment (NUREG/CR-6823, chapter 8), and the
+empirical-Bayes analysis of event rates of Gaver and O’Muircheartaigh
+(1987). Averaging over the posterior of <span class="math notranslate nohighlight">\((a, b)\)</span> does directly what
+the Kass-Steffey correction to the empirical-Bayes intervals approximates.</p>
+<p><strong>Checks.</strong> The tests reproduce the BUGS “Pumps” example (ten pumps’
+failures and operating times, with that example’s own prior), whose
+published posterior means of <span class="math notranslate nohighlight">\(a\)</span> and <span class="math notranslate nohighlight">\(b\)</span> are about 0.70 and
+0.93, and its per-pump posterior means to 0.2% of an independent numerical
+integration; the MLE agrees with SciPy’s negative binomial and
+beta-binomial likelihoods maximised directly; and a simulation study checks
+the coverage of the intervals.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<p>Atwood, C. L. et al. (2003), <em>Handbook of Parameter Estimation for
+Probabilistic Risk Assessment</em>, NUREG/CR-6823, US Nuclear Regulatory
+Commission.</p>
+<p>Gaver, D. P. and O’Muircheartaigh, I. G. (1987), “Robust empirical Bayes
+analyses of event rates”, <em>Technometrics</em> 29, 1-15.</p>
+<p>Gelfand, A. E. and Smith, A. F. M. (1990), “Sampling-based approaches to
+calculating marginal densities”, <em>Journal of the American Statistical
+Association</em> 85, 398-409.</p>
+<p>Higgins, J. P. T. and Thompson, S. G. (2002), “Quantifying heterogeneity
+in a meta-analysis”, <em>Statistics in Medicine</em> 21, 1539-1558.</p>
+<p>API: <a class="reference internal" href="univariate/pooled_rate.html"><span class="doc">Pooled Rates Across Sources</span></a>.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Bayesian%20Fitting%20with%20SurPyval.html" class="btn btn-neutral float-left" title="Bayesian Fitting with SurPyval" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Regression%20Modelling%20with%20SurPyval.html" class="btn btn-neutral float-right" title="Regression Modelling with SurPyval" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

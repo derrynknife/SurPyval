@@ -1,0 +1,1428 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recurrent Event Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Recurrent Event Regression Analysis" href="Recurrent%20Event%20Regression%20Analysis.html" />
+    <link rel="prev" title="Competing Risks Analysis" href="Competing%20Risks%20Analysis.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Recurrent Event Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#recurrent-event-modelling">Recurrent Event Modelling</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#counting-processes-the-intensity-and-the-mcf">Counting processes, the intensity and the MCF</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#non-parametric-mean-cumulative-function">Non-Parametric - Mean Cumulative Function</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#parametric-recurrent-event-models">Parametric Recurrent Event Models</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#homogeneous-poisson-process-hpp">Homogeneous Poisson Process (HPP)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#crow-amsaa-power-law">Crow-AMSAA (power law)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#duane">Duane</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#cox-lewis-log-linear">Cox-Lewis (log-linear)</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#renewal-modelling">Renewal Modelling</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#repair-assumptions-perfect-minimal-and-imperfect">Repair assumptions: perfect, minimal and imperfect</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#generalised-renewal-process">Generalised Renewal Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#g1-renewal-process">G1 Renewal Process</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#arithmetic-reduction-of-age-and-intensity-ara-ari">Arithmetic Reduction of Age and Intensity (ARA/ARI)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-geometric-process">The Geometric Process</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#parameter-estimation">Parameter Estimation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-intensity-model-likelihood">The intensity-model likelihood</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#time-versus-failure-truncated-observation">Time- versus failure-truncated observation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#grouped-interval-counts">Grouped (interval) counts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#imperfect-repair-likelihoods">Imperfect-repair likelihoods</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#uncertainty-standard-errors-and-confidence-bounds">Uncertainty: standard errors and confidence bounds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#prediction-expected-counts-and-future-counts">Prediction: expected counts and future counts</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#truncation-and-delayed-entry">Truncation and Delayed Entry</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#model-checking-residuals-trend-tests-and-goodness-of-fit">Model Checking: Residuals, Trend Tests, and Goodness of Fit</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#trend-tests">Trend tests</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#goodness-of-fit">Goodness of fit</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#choosing-a-model">Choosing a model</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#competing-risks-marked-recurrent-events">Competing Risks: Marked Recurrent Events</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#gapped-multi-window-observation">Gapped (Multi-Window) Observation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#panel-counts-events-counted-at-inspections">Panel Counts: Events Counted at Inspections</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Recurrent Event Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Recurrent Event Analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="recurrent-event-analysis">
+<h1>Recurrent Event Analysis<a class="headerlink" href="#recurrent-event-analysis" title="Link to this heading"></a></h1>
+<p>This section is about those events that occur but do not “kill” the subject.
+For example, in engineering an item may fail and be repaired instead of replaced.
+In medicine, a patient may have multiple heart attacks which are not fatal.
+In single-event (univariate) survival analysis one is interested in only the
+time to the first, and only, event: once it happens the subject leaves the
+study. In recurrent event analysis the subject stays under observation after
+each event, so one is interested in the time to the first, second, third, etc.
+event, and in how the <em>rate</em> of events changes as the subject ages and is
+repaired or treated. We therefore need a way to describe how many events have
+occurred by time <span class="math notranslate nohighlight">\(t\)</span>. For a comprehensive, book-length treatment of
+recurrent-event analysis, see <a class="reference internal" href="#cook2007" id="id1"><span>[Cook2007]</span></a>; for the repairable-systems view
+used throughout reliability engineering, see <a class="reference internal" href="#rigdon2000" id="id2"><span>[Rigdon2000]</span></a>.</p>
+<p>Recurrent events are modelled using counting processes and point processes.
+The underlying mathematical framework — martingale theory and stochastic
+integrals — is known as the counting-process formulation, but that is an
+implementation detail. Users navigate by their data type: “do my subjects
+experience repeated events?” If yes, this section applies.</p>
+<p>The two broad families of recurrent-event model, which differ in their methods,
+are:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>Recurrent Event (counting-process) Modelling</p></li>
+<li><p>Renewal Modelling</p></li>
+</ol>
+</div></blockquote>
+<p>In a recurrent event model the events arrive at some underlying <em>rate</em> (an
+intensity) that is a function of calendar time, whereas in a renewal model
+there is an underlying <em>lifetime distribution</em> and, after each event, the
+apparent age of the subject is changed by the repair or treatment. The two
+families meet at their extremes: as the sections below show, “repair that
+leaves the item exactly as it was” is a Poisson-process model, and “repair
+that makes the item as good as new” is an ordinary renewal process.</p>
+<p>This page explains the ideas and the mathematics. Every model described here
+has a worked, runnable example on the <a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Modelling with SurPyval</span></a> page, and the full API is documented under
+<a class="reference internal" href="surpyval.counting.html"><span class="doc">Recurrent Event Models</span></a>.</p>
+<section id="recurrent-event-modelling">
+<h2>Recurrent Event Modelling<a class="headerlink" href="#recurrent-event-modelling" title="Link to this heading"></a></h2>
+<p>Recurrent event models aim to find a rate at which events occur. This is done by
+estimating the intensity (the recurrent-event analogue of the hazard rate) of
+the process. This can be done parametrically or non-parametrically. Before
+either, we need three definitions.</p>
+<section id="counting-processes-the-intensity-and-the-mcf">
+<h3>Counting processes, the intensity and the MCF<a class="headerlink" href="#counting-processes-the-intensity-and-the-mcf" title="Link to this heading"></a></h3>
+<p><strong>The counting process.</strong> For a single item, let <span class="math notranslate nohighlight">\(N(t)\)</span> be the number of
+events it has experienced in <span class="math notranslate nohighlight">\((0, t]\)</span>. As a function of time
+<span class="math notranslate nohighlight">\(N(t)\)</span> is a staircase: it starts at zero and steps up by one at each
+event time <span class="math notranslate nohighlight">\(t_1 &lt; t_2 &lt; \dots\)</span>. Everything in recurrent-event analysis
+is a statement about how this staircase grows.</p>
+<p><strong>The intensity.</strong> The intensity function answers the question “how likely is
+an event in the next instant, given everything that has happened so far?”:</p>
+<div class="math notranslate nohighlight">
+\[\lambda(t \mid \mathcal{H}_{t}) = \lim_{\Delta t \to 0}
+\frac{\Pr\left(\text{event in } [t, t + \Delta t) \mid
+\mathcal{H}_{t}\right)}{\Delta t}\]</div>
+<p>where <span class="math notranslate nohighlight">\(\mathcal{H}_{t}\)</span> is the history of the process up to (but not
+including) <span class="math notranslate nohighlight">\(t\)</span> — the times of all earlier events. In reliability this is
+also called the <em>rate of occurrence of failures</em> (ROCOF). It plays exactly the
+role the hazard rate plays for a single event: over a short interval of length
+<span class="math notranslate nohighlight">\(\Delta t\)</span> the chance of an event is approximately
+<span class="math notranslate nohighlight">\(\lambda(t)\,\Delta t\)</span>. The difference is that the hazard rate of a
+lifetime distribution describes the <em>first</em> (and only) event, whereas the
+intensity keeps going after each event.</p>
+<p><strong>Poisson processes.</strong> The simplest, and most important, recurrent-event
+models are those in which the intensity does <em>not</em> depend on the history —
+only on the current time, <span class="math notranslate nohighlight">\(\lambda(t \mid \mathcal{H}_t) = \lambda(t)\)</span>.
+These are the Poisson processes. Their defining property is that the numbers
+of events in disjoint time intervals are independent, and the number of
+events in any interval is Poisson distributed:</p>
+<div class="math notranslate nohighlight">
+\[N(b) - N(a) \sim \text{Poisson}\left(\Lambda(b) - \Lambda(a)\right),
+\qquad
+\Lambda(t) = \int_0^t \lambda(u)\, du .\]</div>
+<p><span class="math notranslate nohighlight">\(\Lambda(t)\)</span> is the <strong>cumulative intensity function</strong> (CIF), which
+SurPyval exposes as <code class="docutils literal notranslate"><span class="pre">cif</span></code> (and <span class="math notranslate nohighlight">\(\lambda(t)\)</span> as <code class="docutils literal notranslate"><span class="pre">iif</span></code>, the
+<em>instantaneous</em> intensity function). For a Poisson process the CIF is the
+expected number of events by <span class="math notranslate nohighlight">\(t\)</span>: <span class="math notranslate nohighlight">\(\mathbb{E}[N(t)] = \Lambda(t)\)</span>.</p>
+<p><strong>The mean cumulative function.</strong> When we observe many items we are usually
+interested in the population average,</p>
+<div class="math notranslate nohighlight">
+\[M(t) = \mathbb{E}\left[N(t)\right],\]</div>
+<p>the <strong>mean cumulative function</strong> (MCF) <a class="reference internal" href="#nelson2003" id="id3"><span>[Nelson2003]</span></a> — “how many repairs will
+the average unit have needed by age <span class="math notranslate nohighlight">\(t\)</span>?”. The MCF is defined for <em>any</em>
+recurrent process, not just Poisson ones, which is why the non-parametric
+estimator below makes no model assumptions. For a Poisson process
+<span class="math notranslate nohighlight">\(M(t) = \Lambda(t)\)</span>, so the MCF and the CIF coincide and SurPyval’s
+parametric models answer <code class="docutils literal notranslate"><span class="pre">mcf</span></code> and <code class="docutils literal notranslate"><span class="pre">cif</span></code> with the same numbers.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>A common pitfall is to treat the slope of the MCF as the hazard rate of a
+lifetime distribution. It is not: it is the rate at which <em>repeat</em> events
+accumulate across the population. An increasing MCF slope means events
+are arriving more often as the units age (deterioration, a “sad” system);
+a decreasing slope means they are arriving less often (reliability
+growth, a “happy” system); a straight line means the rate is constant.</p>
+</div>
+</section>
+<section id="non-parametric-mean-cumulative-function">
+<h3>Non-Parametric - Mean Cumulative Function<a class="headerlink" href="#non-parametric-mean-cumulative-function" title="Link to this heading"></a></h3>
+<p>The mean cumulative function is the average number of events that have occurred
+by time t. It is estimated by:</p>
+<div class="math notranslate nohighlight">
+\[\hat{M}(x) = \sum_{i:x_{i} \leq x}^{} \frac{d_{i} }{r_{i}}\]</div>
+<p>where the <span class="math notranslate nohighlight">\(x_i\)</span> are the distinct event times (pooled over all items),
+<span class="math notranslate nohighlight">\(d_i\)</span> is the number of events observed at <span class="math notranslate nohighlight">\(x_i\)</span> and <span class="math notranslate nohighlight">\(r_i\)</span>
+is the number of items <em>at risk</em> (under observation) at <span class="math notranslate nohighlight">\(x_i\)</span>. Each
+term <span class="math notranslate nohighlight">\(d_i / r_i\)</span> is the average number of events per observed item at
+that instant, and the MCF simply adds these up.</p>
+<p>This equation looks the same as the cumulative hazard estimate of the
+Nelson-Aalen estimator. That’s because it is, the only difference is that when
+we do this for single events the number of items at risk decreases after each
+failure. Whereas with recurrent events the item continues to be observed until
+more events occur. Therefore the number of items in the risk set does not
+always decrease after each observed event. When doing recurrent event analysis
+an item will remain in the at risk set since it will be healed/repaired and
+returned to service/health to continue with life. In SurPyval an item is in
+the risk set from its entry time (zero, or its left-truncation time) up to and
+including the end of its observation — its last recorded time (its
+right-censoring time, or its last event if it has no censoring row). An item therefore only leaves the risk
+set when it leaves <em>observation</em>, never because it had an event.</p>
+<p>The MCF function is the non-parametric estimator of the number of events that
+will occur up to x. So once we fit a model we can then estimate the expected
+number of events that will occur up to time x by using the MCF function.</p>
+<p>SurPyval attaches the Lawless-Nadeau robust variance to <span class="math notranslate nohighlight">\(\hat{M}\)</span>
+<a class="reference internal" href="#lawlessnadeau1995" id="id4"><span>[LawlessNadeau1995]</span></a>. Write <span class="math notranslate nohighlight">\(\delta_k(t)\)</span> for whether item <span class="math notranslate nohighlight">\(k\)</span> is
+at risk at <span class="math notranslate nohighlight">\(t\)</span>, <span class="math notranslate nohighlight">\(n_k(t)\)</span> for its events there and
+<span class="math notranslate nohighlight">\(\hat{m}(t) = d(t)/r(t)\)</span> for the MCF’s jump. Then</p>
+<div class="math notranslate nohighlight">
+\[\widehat{\text{Var}}\,\hat{M}(t) = \sum_k \Big[ \sum_{t_j \le t}
+\frac{\delta_k(t_j)}{r(t_j)} \big( n_k(t_j) - \hat{m}(t_j) \big)
+\Big]^2 .\]</div>
+<p>Each item’s deviations from the average are added up over time <em>before</em> they
+are squared. An item that fails more often than average does so at every
+step, and those deviations reinforce each other; the variance includes that
+within-item covariance, so it stays honest when items differ in their rates
+and does not assume the events form a Poisson process. (A per-step variance
+that squares each step on its own misses this and can be several times too
+small.) With a single item there is nothing to compare the item with, and the
+variance is zero.</p>
+<p>By default the confidence bounds are computed on the log scale,
+<span class="math notranslate nohighlight">\(\hat{M} \exp(\pm z \sqrt{\widehat{\text{Var}}} / \hat{M})\)</span>, so that
+the bounds cannot go below zero; <code class="docutils literal notranslate"><span class="pre">bound_type=&quot;normal&quot;</span></code> gives the plain
+<span class="math notranslate nohighlight">\(\hat{M} \pm z \sqrt{\widehat{\text{Var}}}\)</span>. These are <em>pointwise</em>
+bounds: each one covers the MCF at a single time, not the whole curve at once.</p>
+<p>Non-Parametric estimation for recurrent events has the same limitations as does
+single event survival analysis. The main one being that it is not possible to
+extrapolate an estimate of the MCF function beyond the last observed event. This
+is because when doing non-parametric analysis we make no assumptions about the
+shape of the curve and cannot therefore extrapolate beyond the last observed event.
+SurPyval returns <code class="docutils literal notranslate"><span class="pre">nan</span></code> for times beyond the last observed time (the latest
+event or end-of-observation row of any item), unless
+you give the estimate an explicit support with <code class="docutils literal notranslate"><span class="pre">set_support(lower,</span> <span class="pre">upper)</span></code>,
+which holds the last value up to <code class="docutils literal notranslate"><span class="pre">upper</span></code> – your assumption, not the data’s
+(see <a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Modelling with SurPyval</span></a>). Two further
+assumptions are worth stating:</p>
+<ul class="simple">
+<li><p><strong>Independent end of observation.</strong> Items must not leave observation <em>because</em>
+they were about to have an event (or because they had many). If units with a
+bad record are withdrawn early, the remaining risk set is healthier than the
+population and the MCF is biased downwards.</p></li>
+<li><p><strong>Few items at the end.</strong> As the risk set shrinks towards the end of
+follow-up, each event moves the MCF by <span class="math notranslate nohighlight">\(1/r_i\)</span>, so the right-hand tail
+of the curve is noisy. The widening confidence bounds show this.</p></li>
+</ul>
+<p>The non-parametric MCF currently accepts exact event times, right-censored
+end-of-observation rows, left truncation (delayed entry) and gapped
+observation windows. Interval-counted data, left-censored counts and right
+truncation (a selection, see <a class="reference internal" href="#truncation-and-delayed-entry">Truncation and Delayed Entry</a>) are rejected
+rather than silently mishandled; use a parametric intensity model for those.</p>
+<p>The risk-set counts <span class="math notranslate nohighlight">\(d_i\)</span> and <span class="math notranslate nohighlight">\(r_i\)</span> alone only support a simpler,
+per-step variance, which squares each step’s deviations on its own and so
+treats every step as independent of every other. Assuming the <span class="math notranslate nohighlight">\(d_i\)</span>
+events at a time all happened to different items, a step’s deviations sum to
+<span class="math notranslate nohighlight">\(d_i (r_i - d_i) / r_i^3\)</span>. That is the right answer for a Poisson
+process but understates the uncertainty whenever items differ in their rates.
+SurPyval uses it only for an MCF built directly from <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">r,</span> <span class="pre">d)</span></code> arrays
+(<code class="docutils literal notranslate"><span class="pre">NonParametricCounting.from_xrd</span></code>), which do not record which item had each
+event.</p>
+</section>
+<section id="parametric-recurrent-event-models">
+<h3>Parametric Recurrent Event Models<a class="headerlink" href="#parametric-recurrent-event-models" title="Link to this heading"></a></h3>
+<p>SurPyval has several parametric models for recurrent event analysis. These can
+be categorised as either:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Homogeneous Poisson Process, or</p></li>
+<li><p>Non-Homogeneous Poisson Process</p></li>
+</ul>
+</div></blockquote>
+<p>The Homogeneous Poisson Process is one where the rate of events is constant over time.
+This is the simplest model. A Non-Homogeneous Poisson Process is one where the
+rate of events is not constant over time.</p>
+<p>SurPyval has a series of available Non-Homogeneous Poisson Process models available
+for use. These are:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Duane</p></li>
+<li><p>Cox-Lewis</p></li>
+<li><p>Crow-AMSAA</p></li>
+</ul>
+</div></blockquote>
+<p>The key point is that each of these is a parametric representation of the
+intensity of the process — a formula for <span class="math notranslate nohighlight">\(\lambda(t)\)</span> with a small number
+of parameters — and because they are Poisson processes, the intensity depends
+only on time and not on the history. The formulas below use SurPyval’s own
+parameter names (the names printed when you fit the model), which in one case
+differ from the textbook letters. Each model’s API page is linked from
+<a class="reference internal" href="surpyval.counting.html"><span class="doc">Recurrent Event Models</span></a>.</p>
+<section id="homogeneous-poisson-process-hpp">
+<h4>Homogeneous Poisson Process (HPP)<a class="headerlink" href="#homogeneous-poisson-process-hpp" title="Link to this heading"></a></h4>
+<div class="math notranslate nohighlight">
+\[\lambda(t) = \lambda, \qquad \Lambda(t) = \lambda t .\]</div>
+<p>One parameter, <code class="docutils literal notranslate"><span class="pre">lambda</span></code>, the constant event rate (events per unit time). The
+times between events are independent exponential random variables with mean
+<span class="math notranslate nohighlight">\(1/\lambda\)</span>. The HPP is the “no trend” model: the system is neither
+improving nor deteriorating. Its maximum-likelihood estimate is the intuitive
+one, the total number of events divided by the total time under observation.</p>
+</section>
+<section id="crow-amsaa-power-law">
+<h4>Crow-AMSAA (power law)<a class="headerlink" href="#crow-amsaa-power-law" title="Link to this heading"></a></h4>
+<div class="math notranslate nohighlight">
+\[\Lambda(t) = \left(\frac{t}{\alpha}\right)^{\beta}, \qquad
+\lambda(t) = \frac{\beta}{\alpha^{\beta}}\, t^{\beta - 1} .\]</div>
+<p>This is the power-law process popularised for reliability growth by Crow
+<a class="reference internal" href="#crow1974" id="id5"><span>[Crow1974]</span></a> (AMSAA is the US Army Materiel Systems Analysis Activity).</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">beta</span></code> is the <em>shape</em>: <span class="math notranslate nohighlight">\(\beta &gt; 1\)</span> means the intensity increases with
+time (deterioration), <span class="math notranslate nohighlight">\(\beta &lt; 1\)</span> means it decreases (reliability
+growth), and <span class="math notranslate nohighlight">\(\beta = 1\)</span> is an HPP with rate <span class="math notranslate nohighlight">\(1/\alpha\)</span>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">alpha</span></code> is the <em>scale</em>: it is the time by which one event is expected,
+since <span class="math notranslate nohighlight">\(\Lambda(\alpha) = 1\)</span>.</p></li>
+</ul>
+<p>The power law is the workhorse NHPP because <span class="math notranslate nohighlight">\(\log \Lambda(t)\)</span> is a
+straight line in <span class="math notranslate nohighlight">\(\log t\)</span>, so it describes any trend that looks linear
+on a log-log MCF plot. It also has a neat physical reading: its intensity is
+exactly the hazard function of a Weibull distribution with the same
+<span class="math notranslate nohighlight">\(\alpha\)</span> and <span class="math notranslate nohighlight">\(\beta\)</span>, so a Crow-AMSAA process is what you get when
+a Weibull-lifetime unit is <em>minimally</em> repaired after every failure (see
+<a class="reference internal" href="#renewal-modelling">Renewal Modelling</a> below).</p>
+</section>
+<section id="duane">
+<h4>Duane<a class="headerlink" href="#duane" title="Link to this heading"></a></h4>
+<div class="math notranslate nohighlight">
+\[\Lambda(t) = b\, t^{\alpha}, \qquad
+\lambda(t) = \alpha\, b\, t^{\alpha - 1} .\]</div>
+<p>Duane <a class="reference internal" href="#duane1964" id="id6"><span>[Duane1964]</span></a> observed that, during reliability-growth programmes, the
+<em>cumulative</em> mean time between failures <span class="math notranslate nohighlight">\(t / \Lambda(t) = t^{1-\alpha}/b\)</span>
+plots as a straight line on log-log paper. The Duane model is the same
+power-law process as Crow-AMSAA written differently. Note SurPyval’s naming:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">alpha</span></code> is the <em>exponent</em> (the role played by Crow-AMSAA’s <code class="docutils literal notranslate"><span class="pre">beta</span></code>):
+<span class="math notranslate nohighlight">\(\alpha &lt; 1\)</span> is reliability growth, <span class="math notranslate nohighlight">\(\alpha &gt; 1\)</span> deterioration;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">b</span></code> is the expected number of events by <span class="math notranslate nohighlight">\(t = 1\)</span>.</p></li>
+</ul>
+<p>The two parameterisations are related by <span class="math notranslate nohighlight">\(\alpha_{\text{Duane}} =
+\beta_{\text{CA}}\)</span> and <span class="math notranslate nohighlight">\(b = \alpha_{\text{CA}}^{-\beta_{\text{CA}}}\)</span>, so
+fitting either to the same data gives the same fitted curve. Use whichever
+parameters you find easier to communicate.</p>
+</section>
+<section id="cox-lewis-log-linear">
+<h4>Cox-Lewis (log-linear)<a class="headerlink" href="#cox-lewis-log-linear" title="Link to this heading"></a></h4>
+<div class="math notranslate nohighlight">
+\[\lambda(t) = e^{\alpha + \beta t}, \qquad
+\Lambda(t) = \frac{e^{\alpha}}{\beta}\left(e^{\beta t} - 1\right) .\]</div>
+<p>The Cox-Lewis model <a class="reference internal" href="#coxlewis1966" id="id7"><span>[CoxLewis1966]</span></a> makes the <em>logarithm</em> of the intensity a
+straight line in time.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">alpha</span></code> is the log of the intensity at <span class="math notranslate nohighlight">\(t = 0\)</span> (so it is negative
+whenever the starting rate is below one event per time unit);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">beta</span></code> is the proportional change in the intensity per unit time:
+<span class="math notranslate nohighlight">\(\beta &gt; 0\)</span> deteriorating, <span class="math notranslate nohighlight">\(\beta &lt; 0\)</span> improving.</p></li>
+</ul>
+<p>Unlike the power law, the Cox-Lewis intensity is finite and non-zero at
+<span class="math notranslate nohighlight">\(t = 0\)</span>, which suits systems that start with a definite event rate.
+When <span class="math notranslate nohighlight">\(\beta &lt; 0\)</span> the cumulative intensity levels off at
+<span class="math notranslate nohighlight">\(e^{\alpha} / (-\beta)\)</span>: the model predicts a <em>finite</em> expected number of
+events in total, and <code class="docutils literal notranslate"><span class="pre">inv_cif</span></code> returns <code class="docutils literal notranslate"><span class="pre">inf</span></code> for counts beyond that
+asymptote.</p>
+<p>Parametric recurrent event models can be estimated in similar ways to single event
+survival analysis. That is, we can use a simple mean square error estimation
+or, more powerfully, we can use maximum likelihood estimation. The latter is
+the default in SurPyval (see <a class="reference internal" href="#parameter-estimation">Parameter Estimation</a>).</p>
+<p>MLE for recurrent event models is done by understanding that the likelihood
+between events is actually just the conditional likelihood of the next event
+given the previous event. That is the equivalent to a left truncated
+observation: having reached <span class="math notranslate nohighlight">\(t_{k-1}\)</span>, the density of the next event at
+<span class="math notranslate nohighlight">\(t_k\)</span> is <span class="math notranslate nohighlight">\(\lambda(t_k)\exp\{-[\Lambda(t_k) - \Lambda(t_{k-1})]\}\)</span>,
+exactly the density of a lifetime with hazard <span class="math notranslate nohighlight">\(\lambda\)</span> that is
+left-truncated at <span class="math notranslate nohighlight">\(t_{k-1}\)</span>.</p>
+<p>The benefit of parametric models is that they can be extrapolated beyond the
+last observed event. This is because we have made assumptions about the shape
+of the curve and can therefore extrapolate beyond the last observed event. The
+price is that the extrapolation is only as good as that assumption: a power
+law and a log-linear intensity can fit the observed period equally well and
+then diverge sharply. Always look at the fitted curve over the non-parametric
+MCF before trusting a forecast.</p>
+</section>
+</section>
+</section>
+<section id="renewal-modelling">
+<h2>Renewal Modelling<a class="headerlink" href="#renewal-modelling" title="Link to this heading"></a></h2>
+<p>A renewal model is one where recurrent events occur after some intervention has
+restored some of the life of the subject. This is different to a recurrent event
+model where the events occur at some underlying rate. In a renewal model the
+events occur at some underlying distribution. After each event the apparent age
+of the subject is changed.</p>
+<p>In engineering applications a renewal process is one where the item is repaired
+and not replaced. A renewal model captures the effectiveness of the repair
+process. In medicine, a renewal process is one where the patient is treated to
+lessen the impact of some disease, in this case a renewal model captures the
+effectiveness of the treatment.</p>
+<p>In SurPyval there are four such imperfect-repair models, which the sections
+below build up in turn:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Generalised Renewal Process (Kijima virtual age)</p></li>
+<li><p>G1 Renewal Process</p></li>
+<li><p>Arithmetic Reduction of Age (ARA)</p></li>
+<li><p>Arithmetic Reduction of Intensity (ARI)</p></li>
+</ul>
+</div></blockquote>
+<section id="repair-assumptions-perfect-minimal-and-imperfect">
+<h3>Repair assumptions: perfect, minimal and imperfect<a class="headerlink" href="#repair-assumptions-perfect-minimal-and-imperfect" title="Link to this heading"></a></h3>
+<p>The whole of this section rests on one question: <em>what state is the item in
+straight after a repair?</em> Suppose a new item has a lifetime distribution with
+survival function <span class="math notranslate nohighlight">\(S(t)\)</span>, density <span class="math notranslate nohighlight">\(f(t)\)</span> and hazard
+<span class="math notranslate nohighlight">\(h(t) = f(t)/S(t)\)</span>. There are two limiting answers.</p>
+<p><strong>Perfect repair (as-good-as-new).</strong> The repair returns the item to the state
+of a brand-new one — for example, the failed unit is replaced. The times
+between events are then independent draws from the same lifetime distribution:
+an ordinary <em>renewal process</em>. If the lifetime is exponential (constant hazard)
+this is the HPP.</p>
+<p><strong>Minimal repair (as-bad-as-old).</strong> The repair fixes only the failed part and
+leaves the item exactly as it was just before the failure — same age, same
+wear. The chance of the next failure then depends only on the item’s total age,
+so the intensity is the lifetime hazard evaluated at calendar time,
+<span class="math notranslate nohighlight">\(\lambda(t) = h(t)\)</span>. This is precisely a <em>non-homogeneous Poisson
+process</em>: minimal repair of a Weibull unit is the Crow-AMSAA process described
+above.</p>
+<p><strong>Imperfect repair</strong> sits between the two (or, occasionally, outside them): the
+repair helps, but does not make the item new. The imperfect-repair models make
+this precise with one or two extra parameters that measure how effective the
+repair is. Fitting them answers practical questions such as “is our overhaul
+worth doing?” and “how much of the benefit of a new unit does a repair give
+us?”. Two ideas are used to formalise “partly restored”:</p>
+<ul class="simple">
+<li><p>reduce the item’s <strong>virtual age</strong> — its effective age as seen by the lifetime
+distribution (Kijima models and ARA), or rescale its remaining life (G1);</p></li>
+<li><p>reduce the <strong>intensity</strong> directly (ARI).</p></li>
+</ul>
+<p>All of these models share some practical requirements, because the state after
+each repair depends on the full history of the item:</p>
+<ul class="simple">
+<li><p>each item’s state must be known where its observation starts. An item is
+observed <strong>from new</strong> (time zero), or, with delayed entry (<code class="docutils literal notranslate"><span class="pre">tl</span></code>), it is
+taken to be <strong>as new at entry</strong>: virtual age 0 (for ARI, no intensity
+reduction, and the baseline’s clock restarting) at its entry time, as after
+an overhaul, so its times count from there (see <a class="reference internal" href="#truncation-and-delayed-entry">Truncation and Delayed
+Entry</a>). Gapped observation windows are rejected;</p></li>
+<li><p>the event times must be <strong>exact</strong>, with an optional right-censored row at the
+end of observation (<code class="docutils literal notranslate"><span class="pre">c=1</span></code>); interval and left censoring are not supported;</p></li>
+<li><p>the models have no closed-form mean cumulative function, so SurPyval computes
+the MCF, and the curve shown by <code class="docutils literal notranslate"><span class="pre">plot</span></code>, by Monte Carlo simulation.</p></li>
+</ul>
+</section>
+<section id="generalised-renewal-process">
+<h3>Generalised Renewal Process<a class="headerlink" href="#generalised-renewal-process" title="Link to this heading"></a></h3>
+<p>A Generalised Renewal Process (GRP) is one where the intervention can cause the
+item to be:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>as-good-as-new</p></li>
+<li><p>as-bad-as-old</p></li>
+<li><p>better-than-old-but-worse-than-new</p></li>
+<li><p>worse-than-old</p></li>
+</ul>
+</div></blockquote>
+<p>This is possible since by using a notion of “virtual age.” The virtual age can
+be understood to be the apparent age of the subject after the nth intervention.
+An engineering example is the best to illustrate this point. Consider a pump
+that has been operating for 1000 hours and then has a failure. After a technician
+fixes the issue, the pump is returned to service.</p>
+<p>If the pump was repaired
+perfectly it could be considered as-good-as-new and the virtual age would be
+zero. That is, the apparent age of the pump would effectively be as if were straight
+out of the factory.</p>
+<p>If the pump repair was only
+minimal then the virtual age would be exactly 1000 since the pump can be treated
+as if it were exactly the same as it was prior to the repair, just without the
+fault that was fixed.</p>
+<p>If the pump was well repaired, but not perfectly, then the apparent age of the
+pump would be somewhere between 0 and 1000.</p>
+<p>And finally, if the intervention
+repaired the fault while doing some other damage, the age of the pump could be
+above 1000.</p>
+<p>Given a virtual age <span class="math notranslate nohighlight">\(V\)</span> after a repair, the next failure behaves like a
+unit of age <span class="math notranslate nohighlight">\(V\)</span> that has not yet failed: the time <span class="math notranslate nohighlight">\(x\)</span> to the next
+event has survival function <span class="math notranslate nohighlight">\(S(V + x)/S(V)\)</span>. The likelihood contribution
+of an observed inter-arrival time is therefore that of a left-truncated
+lifetime,</p>
+<div class="math notranslate nohighlight">
+\[\frac{f(V_{n-1} + x_n)}{S(V_{n-1})}
+\quad\text{(event)}, \qquad
+\frac{S(V_{n-1} + x_n)}{S(V_{n-1})}
+\quad\text{(right-censored at the end of observation)},\]</div>
+<p>which is how SurPyval fits these models by maximum likelihood, using any of
+its parametric lifetime distributions (Weibull by default).</p>
+<p>A GRP has two ways that the virtual age can be calculated. These are known as
+the Kijima-I and Kijima-II models <a class="reference internal" href="#kijima1989" id="id8"><span>[Kijima1989]</span></a>.</p>
+<p>The Kijima-I model assumes that the repair can only repair damage incurred
+since the last repair. Mathematically, this is defined as:</p>
+<div class="math notranslate nohighlight">
+\[V_{n} = V_{n-1} + qt_{n}\]</div>
+<p>Where <span class="math notranslate nohighlight">\(V_{n}\)</span> is the virtual age after the intervention, <span class="math notranslate nohighlight">\(V_{n-1}\)</span>
+is the virtual age just prior to the intervention, <span class="math notranslate nohighlight">\(t_{n}\)</span> is the time
+since the previous event, i.e. the inter-arrival time, and finally <span class="math notranslate nohighlight">\(q\)</span> is
+the effectiveness of the repair. (Unrolling the recursion, Kijima-I gives
+<span class="math notranslate nohighlight">\(V_n = q\,T_n\)</span>, a fixed fraction of the item’s total age <span class="math notranslate nohighlight">\(T_n\)</span>.)</p>
+<p>The Kijima-II model assumes that the repair can repair all damage incurred
+since the item was new. Mathematically, this is defined as:</p>
+<div class="math notranslate nohighlight">
+\[V_{n} = q(V_{n-1} + t_{n})\]</div>
+<p>Each term here has the same meaning as the Kijima-I model.</p>
+<p>Note that if <span class="math notranslate nohighlight">\(q = 0\)</span> then the Kijima-I and Kijima-II models are
+equivalent. That is the virtual age is always zero. This means that the
+intervention is always perfect. If <span class="math notranslate nohighlight">\(q = 1\)</span> then the Kijima-I and Kijima-II
+models are also equivalent. That is the virtual age is always the same as the
+actual age. This means that the intervention is always as-bad-as-old.</p>
+<p>If <span class="math notranslate nohighlight">\(q\)</span> is anything other than 0 or 1 then the models are different.
+However, if <span class="math notranslate nohighlight">\(0 &lt; q &lt; 1\)</span> then the intervention according to both models
+is better-than-old-but-worse-than-new. Finally if <span class="math notranslate nohighlight">\(q &gt; 1\)</span> then the
+intervention make the item worse-than-old, that is “older” than it was when
+it failed.</p>
+<p>The practical difference between the two is how much the history matters. Under
+Kijima-I the virtual age keeps growing (in proportion to the total age), so an
+item never escapes its past; under Kijima-II every repair discounts <em>all</em> of
+the accumulated age, so with <span class="math notranslate nohighlight">\(q &lt; 1\)</span> old damage is progressively
+forgotten and the virtual age does not keep growing with the item’s total
+age.</p>
+<p>Both these options are available in SurPyval (<code class="docutils literal notranslate"><span class="pre">kijima=&quot;i&quot;</span></code>, the default, or
+<code class="docutils literal notranslate"><span class="pre">kijima=&quot;ii&quot;</span></code>), which estimates <span class="math notranslate nohighlight">\(q \ge 0\)</span> together with the lifetime
+distribution’s parameters. But both have a shortcoming which is that they cannot
+handle cases where the repair makes the item better-than-new, since a virtual
+age cannot be negative. To do this you will need to use the G1 Renewal Process.</p>
+</section>
+<section id="g1-renewal-process">
+<h3>G1 Renewal Process<a class="headerlink" href="#g1-renewal-process" title="Link to this heading"></a></h3>
+<p>A G1 Renewal Process <a class="reference internal" href="#kaminskiy2010" id="id9"><span>[Kaminskiy2010]</span></a> is one where the intervention can be
+better-than-new. The G1 renewal process is able to do this by changing the life
+parameter of the underlying distribution. This is in contrast to the GRP which
+alters the age whereas the G1 process alters the remaining life.</p>
+<p>The G1 Renewal process is able to do this by changing the life parameter of the
+underlying distribution. This is done by using a transformation of the life
+parameter after an event. The transformation is defined as:</p>
+<div class="math notranslate nohighlight">
+\[\alpha_{i} = \alpha(1 + q)^{i - 1}\]</div>
+<p>Where <span class="math notranslate nohighlight">\(\alpha\)</span> is the scale (life) parameter of the lifetime
+distribution, <span class="math notranslate nohighlight">\(\alpha_i\)</span> the one that applies to the <span class="math notranslate nohighlight">\(i\)</span>-th
+inter-arrival time, and <span class="math notranslate nohighlight">\(q\)</span> is the effectiveness of the intervention.
+Unlike what is possible with the G-Renewal process, if <span class="math notranslate nohighlight">\(q\)</span> is greater
+than zero the model captures an intervention that improves the life of the
+subject beyond new. If
+<span class="math notranslate nohighlight">\(q = 0\)</span> then the repair is as-good-as-new. If <span class="math notranslate nohighlight">\(q &lt; 0\)</span> then each
+repair leaves the item <em>worse</em> than before — a partial or harmful repair that
+shortens the subsequent life (a deteriorating system). Note that <span class="math notranslate nohighlight">\(q\)</span>
+cannot be less than -1.</p>
+<p>SurPyval implements this by scaling the whole inter-arrival time rather than a
+named parameter: the <span class="math notranslate nohighlight">\(i\)</span>-th inter-arrival time is the base lifetime
+multiplied by <span class="math notranslate nohighlight">\(c_i = (1 + q)^{i-1}\)</span>, so its density and survival
+function are <span class="math notranslate nohighlight">\(f(x / c_i)/c_i\)</span> and <span class="math notranslate nohighlight">\(S(x / c_i)\)</span>. For a distribution
+with a scale parameter (Weibull, Exponential, Gamma, …) this is exactly the
+scaling of the life parameter above, but it means any non-negative lifetime
+distribution in SurPyval can be used. Distributions whose support includes
+negative values (such as the Normal or Gumbel) are rejected, because a scaled
+inter-arrival time must stay positive.</p>
+<p>As an example, if the life parameter of an items was 100 hours and the repair
+effectiveness was -0.2, then after the first repair the next time to an event
+would have a life parameter of 80 hours. After the second repair the life
+parameter would be 64 hours. After the third repair the life parameter would be
+51.2 hours. And so on.</p>
+<p>If the repair effectiveness was 0.2 then after the first repair the next time
+to an event would have a life parameter of 120 hours. After the second repair
+the life parameter would be 144 hours. After the third repair the life would be
+172.8 hours. And so on.</p>
+<p>The ability of the G1 Renewal Process to capture the behaviour of when the
+intervention can improve the life of the subject is the reason why it is
+a useful model to have available. Note, though, what it does <em>not</em> model: the
+change in life is fixed by the <em>number</em> of repairs, not by how long the item
+has been running, so G1 suits processes that improve or degrade step by step
+with each intervention.</p>
+</section>
+<section id="arithmetic-reduction-of-age-and-intensity-ara-ari">
+<h3>Arithmetic Reduction of Age and Intensity (ARA/ARI)<a class="headerlink" href="#arithmetic-reduction-of-age-and-intensity-ara-ari" title="Link to this heading"></a></h3>
+<p>The Kijima virtual-age models above are the special cases of a more general
+family due to Doyen and Gaudoin <a class="reference internal" href="#doyen2004" id="id10"><span>[Doyen2004]</span></a>. Rather than fold every past
+repair into a single running age, these models make the <em>memory</em> of the repair
+explicit: how many previous failures does an intervention act on?</p>
+<p>Both models are parameterised by a <strong>repair efficiency</strong>
+<span class="math notranslate nohighlight">\(\rho \in (0, 1)\)</span> and an integer <strong>memory</strong> <span class="math notranslate nohighlight">\(m \ge 1\)</span> (or
+<span class="math notranslate nohighlight">\(m = \infty\)</span>). Throughout, <span class="math notranslate nohighlight">\(T_1 &lt; T_2 &lt; \dots\)</span> are the item’s
+failure times.</p>
+<p>The <strong>Arithmetic Reduction of Age</strong> (ARA) model reduces the virtual age.
+Immediately after the <span class="math notranslate nohighlight">\(n\)</span>-th repair the virtual age is</p>
+<div class="math notranslate nohighlight">
+\[V_n = T_n - \rho \sum_{j=0}^{\min(m, n) - 1} (1 - \rho)^{j}\, T_{n-j},\]</div>
+<p>and until the next failure the item ages from there, so its intensity is the
+lifetime hazard evaluated at the virtual age,
+<span class="math notranslate nohighlight">\(\lambda(t) = h\left(V_n + t - T_n\right)\)</span> for
+<span class="math notranslate nohighlight">\(T_n &lt; t \le T_{n+1}\)</span>. The likelihood is the same left-truncated form as
+the Kijima models.</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(\rho = 1\)</span> gives <span class="math notranslate nohighlight">\(V_n = 0\)</span>: as-good-as-new (perfect repair).</p></li>
+<li><p><span class="math notranslate nohighlight">\(\rho = 0\)</span> gives <span class="math notranslate nohighlight">\(V_n = T_n\)</span>: as-bad-as-old (minimal repair), i.e.
+the NHPP whose intensity is the lifetime hazard.</p></li>
+<li><p>With memory <span class="math notranslate nohighlight">\(m = 1\)</span> (ARA<sub>1</sub>) each repair removes a fraction
+<span class="math notranslate nohighlight">\(\rho\)</span> of the wear accumulated <em>since the previous repair</em>; this is
+exactly Kijima-I with <span class="math notranslate nohighlight">\(q = 1 - \rho\)</span>.</p></li>
+<li><p>With infinite memory (ARA<sub>∞</sub>) each repair removes a fraction
+<span class="math notranslate nohighlight">\(\rho\)</span> of the <em>whole</em> current virtual age; this is exactly Kijima-II
+with <span class="math notranslate nohighlight">\(q = 1 - \rho\)</span>.</p></li>
+<li><p>Finite memories <span class="math notranslate nohighlight">\(m \ge 2\)</span> are the genuinely new cases: the repair
+reaches back over the last <span class="math notranslate nohighlight">\(m\)</span> inter-arrival periods and no further.</p></li>
+</ul>
+<p>So the repair efficiency <span class="math notranslate nohighlight">\(\rho\)</span> plays the role of <span class="math notranslate nohighlight">\(1 - q\)</span>. Because
+<span class="math notranslate nohighlight">\(\rho\)</span> is restricted to <span class="math notranslate nohighlight">\((0, 1)\)</span>, the ARA models cover the range
+from as-bad-as-old to as-good-as-new; unlike Kijima with <span class="math notranslate nohighlight">\(q &gt; 1\)</span> they do
+not represent worse-than-old repair.</p>
+<p>The <strong>Arithmetic Reduction of Intensity</strong> (ARI) model instead reduces the
+<em>intensity</em> directly. It starts from a <em>baseline intensity</em>
+<span class="math notranslate nohighlight">\(\lambda_0(t)\)</span> — the intensity the item would have under minimal repair,
+which in SurPyval is one of the NHPP models (Crow-AMSAA by default, or Duane or
+Cox-Lewis) — and after the <span class="math notranslate nohighlight">\(n\)</span>-th repair subtracts a memory-weighted
+fraction of the intensity at the recent failures:</p>
+<div class="math notranslate nohighlight">
+\[\lambda(t) = \lambda_0(t) - \rho \sum_{j=0}^{\min(m, n) - 1}
+(1 - \rho)^{j}\, \lambda_0(T_{n-j}),
+\qquad T_n &lt; t \le T_{n+1}.\]</div>
+<p>So the process acts on the rate of events rather than on an effective age.
+The log-likelihood is the general point-process one,
+<span class="math notranslate nohighlight">\(\sum_k \ln \lambda(T_k) - \int \lambda(u)\,du\)</span>, evaluated with this
+reduced intensity. <span class="math notranslate nohighlight">\(\rho = 0\)</span> recovers the baseline NHPP (minimal
+repair). As with ARA, <span class="math notranslate nohighlight">\(m = 1\)</span> makes each repair act only on the most
+recent failure and <span class="math notranslate nohighlight">\(m = \infty\)</span> on the whole history.</p>
+<p>ARA and ARI therefore answer the same question in different currencies —
+“how much younger does the repair make the item?” versus “how much lower does
+the repair make the failure rate?” — and they generally give different
+predictions. Both are designed for <em>deteriorating</em> systems, where there is
+wear for the repair to remove. With an increasing baseline intensity the
+reduced ARI intensity stays positive; with a decreasing baseline the
+subtraction can drive it to zero or below, which is outside the model (the
+likelihood is infinite there), so ARI is not a natural choice for
+reliability-growth data.</p>
+<p>The memory <span class="math notranslate nohighlight">\(m\)</span> is not estimated — it is a modelling choice you pass in,
+which lets you dial the model from “the last repair undid only the most recent
+wear” (<span class="math notranslate nohighlight">\(m = 1\)</span>) up to “every repair reaches back over the whole history”
+(<span class="math notranslate nohighlight">\(m = \infty\)</span>). A practical approach is to fit a few values and compare
+their information criteria, as shown on the how-to page.</p>
+</section>
+<section id="the-geometric-process">
+<h3>The Geometric Process<a class="headerlink" href="#the-geometric-process" title="Link to this heading"></a></h3>
+<p>A closely related idea is Lam’s <strong>geometric process</strong> <a class="reference internal" href="#lam1988" id="id11"><span>[Lam1988]</span></a>. Here the
+successive inter-arrival times <span class="math notranslate nohighlight">\(X_1, X_2, \ldots\)</span> are scaled so that
+<span class="math notranslate nohighlight">\(a^{\,k-1} X_k\)</span> are independent and identically distributed for a single
+ratio <span class="math notranslate nohighlight">\(a &gt; 0\)</span>. When <span class="math notranslate nohighlight">\(a &gt; 1\)</span> the inter-arrivals shrink
+geometrically (a deteriorating system), when <span class="math notranslate nohighlight">\(a &lt; 1\)</span> they grow
+(reliability growth), and <span class="math notranslate nohighlight">\(a = 1\)</span> is an ordinary renewal process. The
+mean inter-arrival time is then the geometric sequence
+<span class="math notranslate nohighlight">\(\mathbb{E}[X_k] = \mu / a^{\,k-1}\)</span>.</p>
+<p>This is exactly the G1 Renewal Process in a different parameterisation:
+matching the G1 scaling <span class="math notranslate nohighlight">\((1 + q)^{j}\)</span> to <span class="math notranslate nohighlight">\(a^{-j}\)</span> gives
+<span class="math notranslate nohighlight">\(a = 1 / (1 + q)\)</span>. A deteriorating system (<span class="math notranslate nohighlight">\(a &gt; 1\)</span>) therefore
+corresponds to a negative restoration factor, and reliability growth
+(<span class="math notranslate nohighlight">\(a &lt; 1\)</span>) to a positive one. Fitting a
+<a class="reference internal" href="counting/g1_rp.html"><span class="doc">GeneralizedOneRenewal</span></a> gives the geometric process
+with a parametric lifetime distribution.</p>
+</section>
+</section>
+<section id="parameter-estimation">
+<h2>Parameter Estimation<a class="headerlink" href="#parameter-estimation" title="Link to this heading"></a></h2>
+<p>As with regular survival analysis there are several ways one can estimate the
+parameters of the models. Mean Square Error (MSE) is quite straight forward
+for the intensity (Poisson-process) models. For the NHPP models (Crow-AMSAA,
+Duane, Cox-Lewis) SurPyval’s <code class="docutils literal notranslate"><span class="pre">how=&quot;MSE&quot;</span></code> option chooses the parameters that
+make <span class="math notranslate nohighlight">\(\Lambda(t)\)</span> pass as closely as possible (in the least-squares
+sense) through the non-parametric MCF at the observed times,</p>
+<div class="math notranslate nohighlight">
+\[\hat{\theta}_{\text{MSE}} = \arg\min_{\theta} \sum_i
+\left[\Lambda(x_i \mid \theta) - \hat{M}(x_i)\right]^2 .\]</div>
+<p>This is fast and needs no distributional assumptions about the counts, and
+SurPyval uses it as the starting point for the likelihood search of these
+models. It does not produce a likelihood, so the likelihood-based inference
+(AIC/BIC, standard errors, confidence bounds) is not available for an MSE
+fit. The HPP has no MSE option: its maximum-likelihood estimate is already
+the simple ratio of events to exposure. For the
+renewal models the complication is that the MCF has no closed form, so an MSE
+fit would need a Monte Carlo simulation for each set of parameters. This can
+get quite time consuming and expensive; SurPyval fits the renewal models by
+maximum likelihood only.</p>
+<p>Maximum Likelihood Estimation also provides an excellent way to estimate
+parameters, and it is the default. It is a relatively straight forward logical
+step from single event survival analysis to multiple events. For the first
+event, the likelihood of that particular event is the same as for regular
+survival analysis. For recurrent events we tend to use the intensity, as this
+captures the full nature of the circumstances, to define the model.</p>
+<section id="the-intensity-model-likelihood">
+<h3>The intensity-model likelihood<a class="headerlink" href="#the-intensity-model-likelihood" title="Link to this heading"></a></h3>
+<p>The log-likelihood for a non-homogeneous Poisson process observed over
+<span class="math notranslate nohighlight">\([0, T]\)</span> with events at times <span class="math notranslate nohighlight">\(x_1, x_2, \ldots, x_n\)</span> is:</p>
+<div class="math notranslate nohighlight">
+\[\ell(\theta) = \sum_{i=1}^{n} \ln \lambda(x_i \mid \theta) - \int_0^T \lambda(u \mid \theta)\, du\]</div>
+<p>where <span class="math notranslate nohighlight">\(\lambda(t \mid \theta)\)</span> is the intensity function of the
+process and the integral, <span class="math notranslate nohighlight">\(\Lambda(T \mid \theta)\)</span>, is the expected
+number of events over the observation window. For a homogeneous Poisson
+process <span class="math notranslate nohighlight">\(\lambda\)</span> is constant and the integral reduces to
+<span class="math notranslate nohighlight">\(\lambda T\)</span>.</p>
+<p>The two terms pull in opposite directions, which is what makes the estimate
+sensible: the first rewards a high intensity <em>where events happened</em>, the
+second (the <em>compensator</em>) penalises expecting many events over the whole
+window. It is the sum, over the inter-event intervals, of the left-truncated
+contributions described in <a class="reference internal" href="#parametric-recurrent-event-models">Parametric Recurrent Event Models</a>. With several
+items the log-likelihood is the sum of each item’s contribution over its own
+window.</p>
+</section>
+<section id="time-versus-failure-truncated-observation">
+<h3>Time- versus failure-truncated observation<a class="headerlink" href="#time-versus-failure-truncated-observation" title="Link to this heading"></a></h3>
+<p>The upper limit <span class="math notranslate nohighlight">\(T\)</span> of the integral is <em>when observation stopped</em>, and it
+matters how it was decided:</p>
+<ul class="simple">
+<li><p><strong>Time-truncated</strong> (time-terminated) data: each item is watched for a fixed
+period and observation ends at <span class="math notranslate nohighlight">\(T\)</span> whether or not an event happens
+then. In SurPyval you record this with a right-censored row (<code class="docutils literal notranslate"><span class="pre">c=1</span></code>) at
+<span class="math notranslate nohighlight">\(T\)</span> as the last row of the item.</p></li>
+<li><p><strong>Failure-truncated</strong> (failure-terminated) data: observation stops at an
+event — for example, a test that runs until the <span class="math notranslate nohighlight">\(n\)</span>-th failure. Then
+<span class="math notranslate nohighlight">\(T = x_n\)</span>, and in SurPyval you simply provide the events with no
+censoring row: the integral stops at the last event.</p></li>
+</ul>
+<p>The distinction changes the estimates. For the Crow-AMSAA process the MLEs are
+available in closed form,</p>
+<div class="math notranslate nohighlight">
+\[\hat{\beta} = \frac{n}{\sum_{i} \ln (T / x_i)}, \qquad
+\hat{\alpha} = \frac{T}{n^{1/\hat{\beta}}},\]</div>
+<p>where for time-truncated data the sum runs over all <span class="math notranslate nohighlight">\(n\)</span> events, and for
+failure-truncated data <span class="math notranslate nohighlight">\(T = x_n\)</span> and the sum effectively runs over the
+first <span class="math notranslate nohighlight">\(n-1\)</span> events (the <span class="math notranslate nohighlight">\(n\)</span>-th term is <span class="math notranslate nohighlight">\(\ln 1 = 0\)</span>).
+Forgetting the censoring row when the observation actually ran on past the
+last event therefore shortens the window, making the process look more
+intense (and more strongly increasing) than it is — the most common data
+preparation error in repairable-systems analysis.</p>
+</section>
+<section id="grouped-interval-counts">
+<h3>Grouped (interval) counts<a class="headerlink" href="#grouped-interval-counts" title="Link to this heading"></a></h3>
+<p>Sometimes the exact event times are unknown and only counts are recorded:
+“<span class="math notranslate nohighlight">\(n_k\)</span> failures were found at the inspection covering
+<span class="math notranslate nohighlight">\((a_k, b_k]\)</span>”. Because a Poisson process has independent Poisson
+counts, each such record contributes</p>
+<div class="math notranslate nohighlight">
+\[n_k \ln \left[\Lambda(b_k) - \Lambda(a_k)\right]
+- \left[\Lambda(b_k) - \Lambda(a_k)\right] - \ln n_k! ,\]</div>
+<p>the Poisson log-probability of the observed count. SurPyval’s HPP and NHPP
+models accept these as interval-censored rows (<code class="docutils literal notranslate"><span class="pre">c=2</span></code> with <code class="docutils literal notranslate"><span class="pre">x</span></code> given as
+<code class="docutils literal notranslate"><span class="pre">[a,</span> <span class="pre">b]</span></code> and the count in <code class="docutils literal notranslate"><span class="pre">n</span></code>, which may be 0: an inspection that found
+nothing), and a count of events in <span class="math notranslate nohighlight">\((0, b]\)</span> as a left-censored row
+(<code class="docutils literal notranslate"><span class="pre">c=-1</span></code>). Mixed exact and grouped records are combined in the same
+likelihood. The renewal models and <code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code> do not accept
+grouped counts; for counts alone, <code class="docutils literal notranslate"><span class="pre">PanelCountMCF</span></code> and
+<code class="docutils literal notranslate"><span class="pre">PanelCountRegression</span></code> estimate the mean function without a parametric
+form (see <a class="reference internal" href="#panel-counts-events-counted-at-inspections">Panel Counts: Events Counted at Inspections</a> below).</p>
+</section>
+<section id="imperfect-repair-likelihoods">
+<h3>Imperfect-repair likelihoods<a class="headerlink" href="#imperfect-repair-likelihoods" title="Link to this heading"></a></h3>
+<p>The renewal models are fitted in the same spirit, but each inter-arrival time
+is conditioned on the state left by the previous repair: the left-truncated
+lifetime contributions shown in <a class="reference internal" href="#generalised-renewal-process">Generalised Renewal Process</a> for Kijima and
+ARA (with the virtual age computed from the item’s history and the current
+value of the repair parameter), the rescaled lifetime for G1, and the reduced
+intensity for ARI. SurPyval maximises these jointly over the repair parameter
+and the lifetime (or baseline intensity) parameters, restarting the optimiser
+from several values of the repair parameter because the likelihood surface can
+have more than one local optimum. Each search is BFGS on the likelihood’s
+gradient, written by hand for a Weibull, LogNormal, Gamma, LogLogistic,
+Exponential, Rayleigh, ExpoWeibull, Normal, Gumbel or Logistic life and a
+power-law, Duane, Cox-Lewis or HPP baseline (Nelder-Mead finishes a search BFGS
+does not settle, and carries a repair parameter that stopped next to its bound
+onto it); with any other life (a custom distribution, say) it is Nelder-Mead. The repair parameter is reported as <code class="docutils literal notranslate"><span class="pre">q</span></code> (Kijima, G1) or
+<code class="docutils literal notranslate"><span class="pre">rho</span></code> (ARA, ARI).</p>
+</section>
+<section id="uncertainty-standard-errors-and-confidence-bounds">
+<h3>Uncertainty: standard errors and confidence bounds<a class="headerlink" href="#uncertainty-standard-errors-and-confidence-bounds" title="Link to this heading"></a></h3>
+<p>Every model fitted by maximum likelihood carries the usual large-sample
+machinery. The covariance of the estimates is approximated by the inverse of
+the observed information (the Hessian of the negative log-likelihood at the
+optimum), which gives standard errors. Confidence bounds on a parameter are
+Wald intervals computed on a scale chosen to respect the parameter’s range —
+log scale for a positive parameter, logit scale for one confined to an
+interval such as <span class="math notranslate nohighlight">\(\rho \in (0, 1)\)</span> — so the bounds never leave the
+allowed range. Confidence bounds on the fitted cumulative intensity are
+obtained by the delta method: with <span class="math notranslate nohighlight">\(\hat{\Sigma}\)</span> the parameter
+covariance and <span class="math notranslate nohighlight">\(\nabla_\theta \Lambda\)</span> the gradient of the cumulative
+intensity with respect to the parameters,</p>
+<div class="math notranslate nohighlight">
+\[\widehat{\text{SE}}\big[\hat{\Lambda}(t)\big] \approx
+\sqrt{\nabla_\theta \Lambda(t)^{\top}\, \hat{\Sigma}\,
+\nabla_\theta \Lambda(t)},
+\qquad
+\hat{\Lambda}(t) \exp\left(\pm z\,
+\widehat{\text{SE}} / \hat{\Lambda}(t)\right),\]</div>
+<p>again on the log scale so the bounds stay positive (the same construction as
+the default MCF bounds).</p>
+<p>Two warnings apply. When an estimate sits on the edge of its range — a repair
+parameter estimated as exactly perfect or minimal repair is the usual case —
+the normal approximation does not hold; SurPyval warns when it cannot
+compute a variance and reports the affected standard errors as NaN, but even
+a finite standard error at a boundary estimate should not be trusted. And with few events the approximations
+are rough in any case: treat the bounds as a guide.</p>
+</section>
+<section id="prediction-expected-counts-and-future-counts">
+<h3>Prediction: expected counts and future counts<a class="headerlink" href="#prediction-expected-counts-and-future-counts" title="Link to this heading"></a></h3>
+<p>Two different questions are easily confused when forecasting:</p>
+<ol class="arabic simple">
+<li><p><em>How many events do we expect?</em> This is the cumulative intensity (or MCF),
+and its uncertainty is the confidence band on <span class="math notranslate nohighlight">\(\Lambda(t)\)</span> described
+above. With enough data this band shrinks towards zero width.</p></li>
+<li><p><em>How many events will actually occur?</em> Even if the parameters were known
+exactly, the count is random. For a Poisson process the number of events
+in a future window <span class="math notranslate nohighlight">\((t_1, t_2]\)</span> is
+<span class="math notranslate nohighlight">\(\text{Poisson}(\Lambda(t_2) - \Lambda(t_1))\)</span> whatever happened
+before <span class="math notranslate nohighlight">\(t_1\)</span>, so a <em>prediction interval</em> for the count comes from
+the Poisson quantiles. This interval does not shrink to zero width, however
+much data you have. Plugging in the fitted <span class="math notranslate nohighlight">\(\hat{\Lambda}\)</span> ignores
+the parameter uncertainty, so with little data it is somewhat too narrow.</p></li>
+</ol>
+<p><code class="xref py py-func docutils literal notranslate"><span class="pre">surpyval.forecast()</span></code> gives both for a fleet: each unit’s expected count
+from its current age, <span class="math notranslate nohighlight">\(\Lambda(a + h) - \Lambda(a)\)</span>, and the Poisson
+prediction interval of the fleet’s count. For the renewal models the future
+count depends on the item’s history, so there is no simple formula: each
+unit’s state at the end of its history – its virtual age now, or for ARI the
+intensity reduction in force – gives the distribution of its next failure in
+closed form (<code class="docutils literal notranslate"><span class="pre">next_failure_sf</span></code>), and <code class="docutils literal notranslate"><span class="pre">forecast</span></code> simulates each unit’s
+future from that state for the expected counts and their interval.</p>
+</section>
+</section>
+<section id="truncation-and-delayed-entry">
+<h2>Truncation and Delayed Entry<a class="headerlink" href="#truncation-and-delayed-entry" title="Link to this heading"></a></h2>
+<p>Observation of a recurrent process rarely starts at the origin. A machine may
+already have been in service before monitoring began, or a study may only
+record events after a subject enrols. This is <strong>left truncation</strong> (delayed
+entry): the item is only under observation from an entry time <span class="math notranslate nohighlight">\(t_L\)</span>, and
+its first observed interval is integrated from <span class="math notranslate nohighlight">\(t_L\)</span> rather than from
+zero. <strong>Right truncation</strong> is a selection: the item is in the data because it
+had at least one event by <span class="math notranslate nohighlight">\(t_R\)</span>, as a repair or warranty database
+holds only the units that came back. Its likelihood is then conditional on
+that, divided by the chance of at least one event in <span class="math notranslate nohighlight">\((t_L, t_R]\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[L_i = \frac{\prod_j \lambda(t_{ij})\, e^{-(\Lambda(T_i) - \Lambda(t_L))}}
+      {1 - e^{-(\Lambda(t_R) - \Lambda(t_L))}}\]</div>
+<p>with <span class="math notranslate nohighlight">\(T_i\)</span> the end of its observation, which may be before or after
+<span class="math notranslate nohighlight">\(t_R\)</span>. If its observation ended at <span class="math notranslate nohighlight">\(T_i &lt; t_R\)</span> with no event
+seen, the event that put it in the data came after <span class="math notranslate nohighlight">\(T_i\)</span>, and the
+numerator is multiplied by <span class="math notranslate nohighlight">\(1 - e^{-(\Lambda(t_R) - \Lambda(T_i))}\)</span>.
+Ignoring the selection makes the items look less reliable than they are,
+since the ones that did not fail by <span class="math notranslate nohighlight">\(t_R\)</span> are missing. Right
+truncation is not the end of observation, which is a right-censored row.</p>
+<p>The intensity (Poisson) models handle delayed entry directly, because the
+likelihood over any interval depends only on the intensity over that interval.
+The virtual-age and history-dependent models (Kijima, G1, ARA, ARI) cannot:
+the virtual age at entry depends on the unobserved failures before entry.
+They take each item with delayed entry to be <strong>as new at entry</strong> instead:
+virtual age 0 at <span class="math notranslate nohighlight">\(t_L\)</span> (for ARI, no reduction in force and the
+baseline intensity’s clock restarting there), as it would be after an
+overhaul, so the item’s times are counted from <span class="math notranslate nohighlight">\(t_L\)</span> and its history
+before entry plays no part. That is exact for an item renewed when its
+records start and an assumption otherwise: for an item that entered at an
+advanced virtual age it understates the age, and the fitted lifetime looks
+better than it is. The fitted model’s <code class="docutils literal notranslate"><span class="pre">data</span></code> hold the times since entry.</p>
+<p>The non-parametric MCF handles both through the risk set — an item is only
+counted at risk from its entry time, so early event times are averaged over
+the items actually being watched, and it stays at risk up to the end of its
+observation. The trend tests (below) test each item on its own window, from
+its entry time to the end of its observation. Neither accounts for right
+truncation, which both refuse.</p>
+</section>
+<section id="model-checking-residuals-trend-tests-and-goodness-of-fit">
+<h2>Model Checking: Residuals, Trend Tests, and Goodness of Fit<a class="headerlink" href="#model-checking-residuals-trend-tests-and-goodness-of-fit" title="Link to this heading"></a></h2>
+<p>Having a fitted model is not the same as having a <em>good</em> model, and recurrent
+processes admit the same kind of residual analysis as ordinary regression.</p>
+<p>The key tool is the <strong>time-rescaling theorem</strong> <a class="reference internal" href="#ogata1988" id="id12"><span>[Ogata1988]</span></a> <a class="reference internal" href="#daleyverejones2003" id="id13"><span>[DaleyVereJones2003]</span></a>.
+If events follow a process with cumulative intensity <span class="math notranslate nohighlight">\(\Lambda\)</span>, then
+transforming each event time by its own compensator turns the observed events
+into a <em>unit-rate</em> Poisson process. Concretely, the rescaled inter-arrival
+increments</p>
+<div class="math notranslate nohighlight">
+\[e_k = \Lambda(x_k) - \Lambda(x_{k-1})\]</div>
+<p>are independent Exp(1) random variables when the fitted model is correct. So a
+simple check is whether the residuals <span class="math notranslate nohighlight">\(e_k\)</span> look like an i.i.d. Exp(1)
+sample (mean one); the probability-integral transform <span class="math notranslate nohighlight">\(1 - e^{-e_k}\)</span>
+turns them into U(0, 1) values for a QQ-style check, and a per-item
+<strong>martingale residual</strong> — observed event count minus the compensator over the
+item’s window — flags items the model over- or under-predicts. For the
+virtual-age and renewal models the same construction is applied to the
+<em>conditional</em> intensity (the cumulative hazard accumulated over each interval
+given the model’s virtual age or intensity reduction), so residuals extend to
+those families too.</p>
+<p>One practical caution: the residuals <span class="math notranslate nohighlight">\(e_k\)</span> are only computed for gaps
+that <em>ended in an event</em>. For time-truncated data each item’s final gap, from
+its last event to the end of observation, is censored and left out, and the
+gaps that are kept are (by selection) the shorter ones. When items have many
+events this hardly matters; with only a handful per item it pulls the mean of
+the residuals noticeably below one even for a correct model. Look for
+patterns — residuals drifting with time, or a few very large values — rather
+than insisting on a mean of exactly one, and use the goodness-of-fit test
+below for a calibrated verdict.</p>
+<section id="trend-tests">
+<h3>Trend tests<a class="headerlink" href="#trend-tests" title="Link to this heading"></a></h3>
+<p>A <strong>trend test</strong> asks a more basic question: was a time-varying intensity
+warranted at all? The null hypothesis is a homogeneous Poisson process (no
+trend). The Laplace test and the Military-Handbook (MIL-HDBK-189C) test
+<a class="reference internal" href="#rigdon2000" id="id14"><span>[Rigdon2000]</span></a> both use only the event times and observation windows, not the
+fitted parameters, so they are a useful sanity check before committing to a
+particular parametric form.</p>
+<p>The intuition behind the <strong>Laplace test</strong> is that, under an HPP and given the
+number of events, the event times are scattered uniformly over the observation
+window, so their average should sit near the middle of the window. For systems
+<span class="math notranslate nohighlight">\(q\)</span> observed on <span class="math notranslate nohighlight">\((s_q, T_q]\)</span> with <span class="math notranslate nohighlight">\(n_q\)</span> events at
+<span class="math notranslate nohighlight">\(t_{qj}\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[U = \frac{\sum_q \sum_j t_{qj} - \sum_q n_q (s_q + T_q) / 2}
+         {\sqrt{\sum_q n_q (T_q - s_q)^2 / 12}}\]</div>
+<p>is approximately standard normal under the null <a class="reference internal" href="#ascherfeingold1984" id="id15"><span>[AscherFeingold1984]</span></a>. The
+start <span class="math notranslate nohighlight">\(s_q\)</span> is 0 for an item observed from new and its entry time
+<span class="math notranslate nohighlight">\(t_L\)</span> for one with delayed entry: each window is judged on its own
+scale. Events bunched late
+(<span class="math notranslate nohighlight">\(U &gt; 0\)</span>) point to an increasing intensity, events bunched early
+(<span class="math notranslate nohighlight">\(U &lt; 0\)</span>) to a decreasing one.</p>
+<p>The <strong>MIL-HDBK-189C test</strong> is built from the power-law process:</p>
+<div class="math notranslate nohighlight">
+\[\chi^2 = 2 \sum_q \sum_j \ln\left(\frac{T_q}{t_{qj}}\right)\]</div>
+<p>is chi-squared with <span class="math notranslate nohighlight">\(2N\)</span> degrees of freedom under the HPP (<span class="math notranslate nohighlight">\(N\)</span>
+events in total). It equals <span class="math notranslate nohighlight">\(2N/\hat{\beta}\)</span> for the Crow-AMSAA shape
+estimate, so a <em>small</em> statistic (<span class="math notranslate nohighlight">\(\hat{\beta} &gt; 1\)</span>) indicates an
+increasing intensity and a large one a decreasing intensity. It is the more
+powerful test when the true trend is a power law; the Laplace test is the more
+powerful when it is log-linear (Cox-Lewis-like). With delayed entry, time is
+measured from each item’s entry: the statistic is
+<span class="math notranslate nohighlight">\(2 \sum_q \sum_j \ln\{(T_q - s_q)/(t_{qj} - s_q)\}\)</span>, still exactly
+chi-squared on <span class="math notranslate nohighlight">\(2N\)</span> degrees of freedom under the HPP, because the
+<span class="math notranslate nohighlight">\((t_{qj} - s_q)/(T_q - s_q)\)</span> are then independent uniforms. It no longer
+equals <span class="math notranslate nohighlight">\(2N/\hat{\beta}\)</span> of a power law fitted in age, so for such data
+the Laplace test, which needs no time origin, is the natural first check.</p>
+<p>For failure-truncated data the last event of each system <em>is</em> the end of its
+window rather than a random event, so it is dropped from both statistics. Both
+tests can be run one-sided (<code class="docutils literal notranslate"><span class="pre">&quot;increasing&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;decreasing&quot;</span></code>) when you
+only care about one direction. Each item is tested on its own window, so
+delayed entry is allowed, and gapped data is tested window by window (each
+window counts as a system in <code class="docutils literal notranslate"><span class="pre">n_systems</span></code>). One caution: the direction a test
+reports is simply which side of its null value the
+statistic fell (the sign of <span class="math notranslate nohighlight">\(U\)</span>; <span class="math notranslate nohighlight">\(\chi^2\)</span> below or above its
+<span class="math notranslate nohighlight">\(2N\)</span> degrees of freedom) — only the p-value tells you whether that
+direction is distinguishable from noise. Both are available as standalone
+functions and as a <code class="docutils literal notranslate"><span class="pre">trend_test</span></code> method on every fitted model; see
+<a class="reference internal" href="counting/trend_tests.html"><span class="doc">Trend Tests and Diagnostics</span></a>.</p>
+</section>
+<section id="goodness-of-fit">
+<h3>Goodness of fit<a class="headerlink" href="#goodness-of-fit" title="Link to this heading"></a></h3>
+<p>Finally, a <strong>Cramér–von Mises</strong> goodness-of-fit test <a class="reference internal" href="#daleyverejones2003" id="id16"><span>[DaleyVereJones2003]</span></a>
+measures how far the conditionally-uniform transforms fall from uniformity.
+For a Poisson process observed over a fixed window
+<span class="math notranslate nohighlight">\((s, \tau]\)</span>, and conditional on the number of events the item shows
+there, the normalised compensators</p>
+<div class="math notranslate nohighlight">
+\[u_k = \frac{\Lambda(x_k) - \Lambda(s)}{\Lambda(\tau) - \Lambda(s)}\]</div>
+<p>are i.i.d. U(0, 1) under the true model. For a failure-truncated item the
+window ends at its last event, which is left out (the remaining events,
+normalised by the compensator there, are uniform in the same way). The
+statistic pools the <span class="math notranslate nohighlight">\(u_k\)</span> of all items, sorts them into
+<span class="math notranslate nohighlight">\(u_{(1)} \le \dots \le u_{(M)}\)</span>, and measures their departure from
+uniformity,</p>
+<div class="math notranslate nohighlight">
+\[C_M^2 = \frac{1}{12M} + \sum_{j=1}^{M}
+\left(u_{(j)} - \frac{2j - 1}{2M}\right)^2 .\]</div>
+<p>A large value means the events are not spread over time the way the fitted
+intensity says they should be. Because the parameters were estimated from the
+same data, the p-value is obtained by a parametric bootstrap — resimulating
+every item over its own window from the fitted model, refitting, and
+recomputing the statistic — so it accounts for the estimation. For the
+power-law (Crow-AMSAA) process this is the construction behind Crow’s
+classical goodness-of-fit test.</p>
+<p>For the imperfect-repair models the compensator is the running sum of the
+conditional (virtual-age or reduced-intensity) increments described above.
+Uniformity is then exact for failure-truncated items and only approximate for
+time-truncated ones, whose window close is itself history-dependent. The
+bootstrap resimulates each item the way it was observed — a failure-truncated
+item with its observed number of events, a time-truncated one over its window
+to the same end-of-observation time, with however many events the model gives
+it there — so the bootstrap statistics share that approximation and the
+p-value accounts for it. Every bootstrap replicate is a full refit, so the
+test is slow for the imperfect-repair models; a small number of replicates
+gives only a coarse p-value (with <span class="math notranslate nohighlight">\(B\)</span> replicates the smallest possible
+p-value is <span class="math notranslate nohighlight">\(1/(B + 1)\)</span>).</p>
+</section>
+<section id="choosing-a-model">
+<h3>Choosing a model<a class="headerlink" href="#choosing-a-model" title="Link to this heading"></a></h3>
+<p>There is no single right model, but a sensible order of work is:</p>
+<ol class="arabic simple">
+<li><p><strong>Plot the non-parametric MCF.</strong> Its shape is the evidence: a straight line
+suggests a constant rate, a curve bending up suggests deterioration, a curve
+bending down reliability growth. Items that behave very differently from the
+rest show up here too.</p></li>
+<li><p><strong>Test for a trend.</strong> If neither trend test rejects the HPP, the HPP is the
+simplest defensible model, and extra parameters are likely to be fitting
+noise.</p></li>
+<li><p><strong>If there is a trend, fit an NHPP.</strong> Start with the power law (Crow-AMSAA
+or Duane). Try Cox-Lewis if the rate is clearly non-zero at the start or the
+MCF looks exponential rather than power-like. Compare the fits with AIC/BIC
+and, above all, by plotting them over the MCF.</p></li>
+<li><p><strong>If the repair process itself is the question</strong> — does a repair restore
+the unit, and by how much? — and each item’s history is known from new (or
+from an overhaul at entry), fit
+the imperfect-repair models. Compare the Kijima types, the G1 process and
+several ARA/ARI memories by their information criteria; all are fitted to
+the same event times by maximum likelihood, so their AIC values are on a
+common footing, and so are their BIC values: every recurrent model takes
+BIC’s sample size to be the number of observed events – exact ones plus
+the events in left- and interval-censored counts, with
+end-of-observation rows not counting – the rule of every SurPyval model
+(see <a class="reference internal" href="Parametric%20Estimation.html#information-criteria"><span class="std std-ref">Comparing models: information criteria</span></a>). Check the winner with residuals.</p></li>
+<li><p><strong>If events come from several distinct mechanisms,</strong> analyse them per
+cause (next section); <strong>if items differ systematically</strong> (environment, duty
+cycle, design version), move to the regression models on the
+<a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html"><span class="doc">Recurrent Event Regression Analysis</span></a> page.</p></li>
+</ol>
+<p>Remember that AIC only ranks the models you tried: it cannot tell you that all
+of them are poor. That is the job of the residuals and the goodness-of-fit
+test.</p>
+</section>
+</section>
+<section id="competing-risks-marked-recurrent-events">
+<h2>Competing Risks: Marked Recurrent Events<a class="headerlink" href="#competing-risks-marked-recurrent-events" title="Link to this heading"></a></h2>
+<p>An item can experience events of several <em>mutually exclusive types</em> — a pump
+that suffers seal failures, bearing failures and impeller failures, say. Each
+event carries a <strong>mark</strong> identifying its type, and we usually want a separate
+picture per type.</p>
+<p>Non-parametrically, the <strong>cause-specific mean cumulative function</strong> is the MCF
+restricted to one cause. The at-risk set is shared across causes (an item is at
+risk for every cause until it leaves observation); only the event counts are
+split by type:</p>
+<div class="math notranslate nohighlight">
+\[\hat{M}_k(x) = \sum_{i: x_i \le x} \frac{d_{ik}}{r_i},\]</div>
+<p>where <span class="math notranslate nohighlight">\(d_{ik}\)</span> counts the events of cause <span class="math notranslate nohighlight">\(k\)</span> at <span class="math notranslate nohighlight">\(x_i\)</span>. When
+every event carries a cause, the cause-specific MCFs add up to the overall MCF.
+This is the recurrent-process analogue of the cause-specific cumulative
+incidence in single-event competing risks. There is one simplification:
+because an event of one type does not remove the item from observation, an
+event of another type can still follow it, so no adjustment for the other
+causes is needed.</p>
+<p>Each cause-specific MCF carries the Lawless-Nadeau robust variance (see
+<a class="reference internal" href="#non-parametric-mean-cumulative-function">Non-Parametric - Mean Cumulative Function</a>) of that cause’s events: an event
+of another cause counts as a non-event, while the item stays in the shared
+risk set. So its confidence bounds, like the overall MCF’s, allow for items
+differing in their rates of that cause.</p>
+<p>Parametrically, a marked Poisson process has an elegant structure: the
+cause-specific processes are <strong>independent thinned Poisson processes</strong>. An
+event of one cause neither advances nor interrupts another cause’s intensity,
+so the joint likelihood factorises over causes. Each cause’s intensity is
+therefore just the ordinary NHPP fit to that cause’s events over the full
+observation window of every item, treating other-cause events exactly as a
+censored (unobserved) period. The total intensity is the sum of the
+cause-specific intensities.</p>
+<p>This structure relies on the process being a Poisson process. If a repair
+after one cause changes the risk of another (a seal replacement that also
+disturbs the bearing, say), the causes are no longer independent and the
+cause-specific fits describe the marginal rates only.</p>
+</section>
+<section id="gapped-multi-window-observation">
+<h2>Gapped (Multi-Window) Observation<a class="headerlink" href="#gapped-multi-window-observation" title="Link to this heading"></a></h2>
+<p>Sometimes an item is observed over several <em>disjoint</em> windows with unobserved
+gaps in between — a fleet vehicle tracked only while it is in the depot, or a
+system monitored during business hours. Events may occur during a gap but are
+never recorded, so the analysis must not assume the item was under observation
+throughout.</p>
+<p>For a Poisson (intensity) process this has a clean solution. Because event
+counts over disjoint windows are independent, a gapped item’s likelihood
+factorises over its windows, and each window can be treated as its own
+observation period with its own entry and exit. The intensity likelihood and
+the non-parametric MCF at-risk set then handle the gaps with no special
+machinery: an item is simply absent from the risk set while it is unobserved.
+The virtual-age and renewal models cannot accommodate gaps, because the virtual
+age at the start of a later window depends on the unobserved failures during
+the gap.</p>
+<p>Because SurPyval implements the gaps by treating each window as its own
+observation period, anything computed per item is computed per <em>window</em> for
+gapped data: the martingale residuals come one per window, and the trend
+tests test each window as its own observation period. The covariate (regression) and cause-specific models do not accept windows.</p>
+</section>
+<section id="panel-counts-events-counted-at-inspections">
+<h2>Panel Counts: Events Counted at Inspections<a class="headerlink" href="#panel-counts-events-counted-at-inspections" title="Link to this heading"></a></h2>
+<p>Often the events themselves are never seen. A unit is inspected from time
+to time, and all that is recorded is how many events happened since the
+last inspection: the failures found at each inspection of a machine, or
+the new tumours found at each clinic visit. Each unit has its own
+inspection times, and many inspections find nothing. These are <em>panel
+counts</em>. The question is the same as for exact event times – how many
+events a unit has had, on average, by time <span class="math notranslate nohighlight">\(t\)</span> (the mean function, or
+MCF) – but the Nelson-Aalen MCF cannot be computed, because it needs the
+times of the events.</p>
+<p>The non-parametric answer treats the mean function <span class="math notranslate nohighlight">\(\Lambda(t)\)</span> as
+any non-decreasing curve, and asks which one best fits the counts.</p>
+<p><strong>Pseudo-likelihood (isotonic regression).</strong> Add up each unit’s counts to
+get its cumulative count <span class="math notranslate nohighlight">\(N_{ij}\)</span> at each inspection <span class="math notranslate nohighlight">\(t_{ij}\)</span>.
+The mean of the cumulative counts seen at a time estimates
+<span class="math notranslate nohighlight">\(\Lambda\)</span> there, but those means need not rise with time; the
+estimate is the non-decreasing curve closest to them, each time weighted by
+how many inspections fell on it (an isotonic regression, by the
+pool-adjacent-violators algorithm). It is the maximum of the
+<em>pseudo-likelihood</em> that treats each cumulative count as an independent
+Poisson count with mean <span class="math notranslate nohighlight">\(\Lambda(t_{ij})\)</span> <a class="reference internal" href="#sunkalbfleisch1995" id="id17"><span>[SunKalbfleisch1995]</span></a>:</p>
+<div class="math notranslate nohighlight">
+\[\ell_{ps}(\Lambda) = \sum_{i,j} \left[N_{ij} \ln \Lambda(t_{ij})
+- \Lambda(t_{ij})\right].\]</div>
+<p><strong>Likelihood.</strong> Treat instead each count <span class="math notranslate nohighlight">\(n_{ij}\)</span> in
+<span class="math notranslate nohighlight">\((t_{i,j-1}, t_{ij}]\)</span> as Poisson with mean <span class="math notranslate nohighlight">\(\Lambda(t_{ij}) -
+\Lambda(t_{i,j-1})\)</span>, as for a Poisson process, and maximise</p>
+<div class="math notranslate nohighlight">
+\[\ell(\Lambda) = \sum_{i,j} n_{ij} \ln\left[\Lambda(t_{ij}) -
+\Lambda(t_{i,j-1})\right] - \sum_i \Lambda(t_{i J_i})\]</div>
+<p>over non-decreasing <span class="math notranslate nohighlight">\(\Lambda\)</span> <a class="reference internal" href="#wellnerzhang2000" id="id18"><span>[WellnerZhang2000]</span></a>. This uses
+the counts in each interval, not only their running totals, and is more
+efficient when units are inspected at very different times. It has no
+closed form: SurPyval finds it with the self-consistency (EM) algorithm, the
+iterative convex minorant algorithm and
+Newton steps on the increments, and checks the Karush-Kuhn-Tucker
+conditions of the maximum. The likelihood reads <span class="math notranslate nohighlight">\(\Lambda\)</span> only at
+the ends of the intervals with a count and at each unit’s last inspection;
+between those times it is a step function.</p>
+<p><strong>Neither assumes the Poisson model.</strong> Both likelihoods are working
+models: the estimates are consistent for the mean function of any counting
+process, as long as the inspection times do not depend on the counts.
+When every unit is inspected at the same times, both are simply the mean
+count per unit at each time; when inspections are very frequent, both
+approach the Nelson-Aalen MCF of the exact times. The bounds come from the
+bootstrap: whole units are resampled with replacement and the estimate
+refitted, which keeps each unit’s counts together and so does not assume
+them independent. With inspection times that vary continuously the
+estimate at a fixed time converges more slowly than usual (the cube root
+of the number of units), and the bootstrap is then not guaranteed to give
+the stated coverage; with inspections on a schedule (visits due monthly,
+say, some missed) it is the usual square-root rate.</p>
+<p><strong>Regression: the proportional means model.</strong> With covariates <span class="math notranslate nohighlight">\(Z\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[E[N(t) \mid Z] = \Lambda_0(t)\, e^{\beta' Z},\]</div>
+<p>so <span class="math notranslate nohighlight">\(e^{\beta}\)</span> is the ratio of the expected counts at every time.
+The baseline <span class="math notranslate nohighlight">\(\Lambda_0\)</span> is left as a non-decreasing step function,
+and each likelihood above, with <span class="math notranslate nohighlight">\(\Lambda\)</span> replaced by
+<span class="math notranslate nohighlight">\(\Lambda_0 e^{\beta' Z_i}\)</span>, is maximised over both <a class="reference internal" href="#zhang2002" id="id19"><span>[Zhang2002]</span></a>
+<a class="reference internal" href="#wellnerzhang2007" id="id20"><span>[WellnerZhang2007]</span></a>. Both estimates of <span class="math notranslate nohighlight">\(\beta\)</span> are consistent
+and asymptotically normal without the Poisson assumption; their standard
+errors and intervals come from the same bootstrap of units. The
+pseudo-likelihood is R <code class="docutils literal notranslate"><span class="pre">spef</span></code>’s <code class="docutils literal notranslate"><span class="pre">&quot;MPL&quot;</span></code> method.</p>
+<p><strong>Parametric models.</strong> A parametric mean function (Crow-AMSAA, Cox-Lewis,
+…) is fitted to panel counts by the grouped-count likelihood of the
+previous section: give each inspection interval as <code class="docutils literal notranslate"><span class="pre">[t_{i,j-1},</span> <span class="pre">t_{ij}]</span></code>
+with <code class="docutils literal notranslate"><span class="pre">c=2</span></code> and its count (0 included) in <code class="docutils literal notranslate"><span class="pre">n</span></code>. The fit assumes the
+counts are Poisson; for counts that vary more than that between units,
+the non-parametric estimate is a check on the parametric curve.</p>
+<p>For worked examples — fitting the NHPP, HPP and renewal models, estimating and
+plotting the mean cumulative function, and handling gapped observation — see the
+<a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Modelling with SurPyval</span></a> page. For covariate models see
+the <a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html"><span class="doc">Recurrent Event Regression Analysis</span></a> and
+<a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Regression Modelling with SurPyval</span></a> pages.</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<div role="list" class="citation-list">
+<div class="citation" id="doyen2004" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id10">Doyen2004</a><span class="fn-bracket">]</span></span>
+<p>Doyen, L. and Gaudoin, O., 2004. Classes of imperfect repair
+models based on reduction of failure intensity or virtual age. <em>Reliability
+Engineering &amp; System Safety</em>, 84(1), pp.45-56.</p>
+</div>
+<div class="citation" id="lam1988" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id11">Lam1988</a><span class="fn-bracket">]</span></span>
+<p>Lam, Y., 1988. Geometric processes and replacement problem. <em>Acta
+Mathematicae Applicatae Sinica</em>, 4(4), pp.366-377.</p>
+</div>
+<div class="citation" id="ogata1988" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id12">Ogata1988</a><span class="fn-bracket">]</span></span>
+<p>Ogata, Y., 1988. Statistical models for earthquake occurrences
+and residual analysis for point processes. <em>Journal of the American
+Statistical Association</em>, 83(401), pp.9-27.</p>
+</div>
+<div class="citation" id="daleyverejones2003" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>DaleyVereJones2003<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id13">1</a>,<a role="doc-backlink" href="#id16">2</a>)</span>
+<p>Daley, D.J. and Vere-Jones, D., 2003. <em>An Introduction
+to the Theory of Point Processes, Volume I: Elementary Theory and Methods</em>,
+2nd ed. Springer.</p>
+</div>
+<div class="citation" id="rigdon2000" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>Rigdon2000<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id2">1</a>,<a role="doc-backlink" href="#id14">2</a>)</span>
+<p>Rigdon, S.E. and Basu, A.P., 2000. <em>Statistical Methods for the
+Reliability of Repairable Systems</em>. John Wiley &amp; Sons.</p>
+</div>
+<div class="citation" id="ascherfeingold1984" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id15">AscherFeingold1984</a><span class="fn-bracket">]</span></span>
+<p>Ascher, H. and Feingold, H., 1984. <em>Repairable
+Systems Reliability: Modeling, Inference, Misconceptions and Their
+Causes</em>. Marcel Dekker.</p>
+</div>
+<div class="citation" id="cook2007" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id1">Cook2007</a><span class="fn-bracket">]</span></span>
+<p>Cook, R.J. and Lawless, J.F., 2007. <em>The Statistical Analysis of
+Recurrent Events</em>. Springer.</p>
+</div>
+<div class="citation" id="lawlessnadeau1995" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">LawlessNadeau1995</a><span class="fn-bracket">]</span></span>
+<p>Lawless, J.F. and Nadeau, C., 1995. Some simple robust
+methods for the analysis of recurrent events. <em>Technometrics</em>, 37(2),
+pp.158-168.</p>
+</div>
+<div class="citation" id="nelson2003" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">Nelson2003</a><span class="fn-bracket">]</span></span>
+<p>Nelson, W.B., 2003. <em>Recurrent Events Data Analysis for Product
+Repairs, Disease Recurrences, and Other Applications</em>. ASA-SIAM Series on
+Statistics and Applied Probability. SIAM.</p>
+</div>
+<div class="citation" id="crow1974" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id5">Crow1974</a><span class="fn-bracket">]</span></span>
+<p>Crow, L.H., 1974. Reliability analysis for complex, repairable
+systems. In Proschan, F. and Serfling, R.J. (eds), <em>Reliability and
+Biometry: Statistical Analysis of Lifelength</em>, pp.379-410. SIAM.</p>
+</div>
+<div class="citation" id="duane1964" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id6">Duane1964</a><span class="fn-bracket">]</span></span>
+<p>Duane, J.T., 1964. Learning curve approach to reliability
+monitoring. <em>IEEE Transactions on Aerospace</em>, 2(2), pp.563-566.</p>
+</div>
+<div class="citation" id="coxlewis1966" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id7">CoxLewis1966</a><span class="fn-bracket">]</span></span>
+<p>Cox, D.R. and Lewis, P.A.W., 1966. <em>The Statistical Analysis
+of Series of Events</em>. Methuen.</p>
+</div>
+<div class="citation" id="kijima1989" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id8">Kijima1989</a><span class="fn-bracket">]</span></span>
+<p>Kijima, M., 1989. Some results for repairable systems with
+general repair. <em>Journal of Applied Probability</em>, 26(1), pp.89-102.</p>
+</div>
+<div class="citation" id="kaminskiy2010" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id9">Kaminskiy2010</a><span class="fn-bracket">]</span></span>
+<p>Kaminskiy, M.P. and Krivtsov, V.V., 2010. G1-renewal process
+as repairable system model. <em>Reliability: Theory &amp; Applications</em>, 1(3)
+(issue 18). arXiv:1006.3718.</p>
+</div>
+<div class="citation" id="sunkalbfleisch1995" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id17">SunKalbfleisch1995</a><span class="fn-bracket">]</span></span>
+<p>Sun, J. and Kalbfleisch, J.D., 1995. Estimation of the
+mean function of point processes based on panel count data. <em>Statistica
+Sinica</em>, 5(1), pp.279-289.</p>
+</div>
+<div class="citation" id="wellnerzhang2000" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id18">WellnerZhang2000</a><span class="fn-bracket">]</span></span>
+<p>Wellner, J.A. and Zhang, Y., 2000. Two estimators of the
+mean of a counting process with panel count data. <em>Annals of Statistics</em>,
+28(3), pp.779-814.</p>
+</div>
+<div class="citation" id="wellnerzhang2007" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id20">WellnerZhang2007</a><span class="fn-bracket">]</span></span>
+<p>Wellner, J.A. and Zhang, Y., 2007. Two likelihood-based
+semiparametric estimation methods for panel count data with covariates.
+<em>Annals of Statistics</em>, 35(5), pp.2106-2142.</p>
+</div>
+<div class="citation" id="zhang2002" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id19">Zhang2002</a><span class="fn-bracket">]</span></span>
+<p>Zhang, Y., 2002. A semiparametric pseudolikelihood estimation
+method for panel count data. <em>Biometrika</em>, 89(1), pp.39-48.</p>
+</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Competing%20Risks%20Analysis.html" class="btn btn-neutral float-left" title="Competing Risks Analysis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Recurrent%20Event%20Regression%20Analysis.html" class="btn btn-neutral float-right" title="Recurrent Event Regression Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,818 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intervention Test &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Degradation Analysis" href="../surpyval.degradation.html" />
+    <link rel="prev" title="Trend Tests and Diagnostics" href="trend_tests.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#software-reliability-growth-models">Software Reliability Growth Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#models-of-the-times-between-failures">Models of the Times Between Failures</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#panel-counts">Panel Counts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#trend-tests-and-diagnostics">Trend Tests and Diagnostics</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#interventions">Interventions</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Intervention Test</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">Intervention Test</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/intervention.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="intervention-test">
+<h1>Intervention Test<a class="headerlink" href="#intervention-test" title="Link to this heading"></a></h1>
+<p>Did an intervention – a design change, a new procedure, a corrective
+action – change the rate of failures of one repairable system or a
+fleet, and is the evidence enough to say? Worked examples are in
+<a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html"><span class="doc">Intervention Analysis with SurPyval</span></a>; the power and exposure
+functions behind the evidence are in <a class="reference internal" href="../surpyval.test_planning.html"><span class="doc">Test Planning</span></a>.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.recurrent.intervention_test">
+<span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.</span></span><span class="sig-name descname"><span class="pre">intervention_test</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">T</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">intervention</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">windows</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'hpp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">baseline</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'per-system'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alternative</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_ratio</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.8</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.InterventionTestResult" title="surpyval.recurrent.intervention.InterventionTestResult"><span class="pre">InterventionTestResult</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.intervention_test" title="Link to this definition"></a></dt>
+<dd><p>Test whether an intervention changed the rate of failures, and judge
+whether the evidence is enough.</p>
+<p>The failure records of one or more repairable systems are split at the
+time of the intervention on each (a design change, a new procedure, a
+corrective action), and the rate after it is compared with the rate
+before it. The answer is the ratio of the rates, after over before,
+with a confidence interval and the p-value of no change; the power the
+exposure had to detect the change hoped for (<code class="docutils literal notranslate"><span class="pre">target_ratio</span></code>); the
+smallest change it could detect; and the exposure that would be
+needed. A failure at the intervention time counts before it.</p>
+<p><code class="docutils literal notranslate"><span class="pre">model=&quot;hpp&quot;</span></code> (the default) takes the rate as constant on each side,
+and runs the exact conditional test: given the failures in all, the
+number after the intervention is binomial with probability
+<span class="math notranslate nohighlight">\(\pi = \rho E_a / (E_b + \rho E_a)\)</span> (exposures <span class="math notranslate nohighlight">\(E_b\)</span> and
+<span class="math notranslate nohighlight">\(E_a\)</span>), whatever the rates, so the p-value and the interval
+(the Clopper-Pearson interval for <span class="math notranslate nohighlight">\(\pi\)</span>, transformed to
+<span class="math notranslate nohighlight">\(\rho\)</span>) are exact; <code class="docutils literal notranslate"><span class="pre">method=&quot;mid-p&quot;</span></code> gives their mid-p versions,
+closer to the nominal level on average but no longer guaranteed. With
+<code class="docutils literal notranslate"><span class="pre">baseline=&quot;per-system&quot;</span></code> (the default) each system has its own rate
+and only the ratio is shared: the statistic is the failures after the
+intervention summed over the systems, whose exact distribution is the
+sum of the systems’ binomials (Breslow and Day 1987, chapter 3), so
+systems with different rates and different shares of exposure after
+the intervention do not confound the comparison. With
+<code class="docutils literal notranslate"><span class="pre">baseline=&quot;common&quot;</span></code> the exposures and failures of every system are
+pooled (more powerful, if the systems do share one rate).</p>
+<p><code class="docutils literal notranslate"><span class="pre">model=&quot;power-law&quot;</span></code> lets the rate trend with age as the Crow-AMSAA
+power law, <span class="math notranslate nohighlight">\(u(t) = \lambda \beta t^{\beta - 1}\)</span>, multiplied by
+<span class="math notranslate nohighlight">\(\rho\)</span> after the intervention, the shape kept. The test is the
+likelihood ratio, with the scale (each system’s, for
+<code class="docutils literal notranslate"><span class="pre">&quot;per-system&quot;</span></code>) and the shape profiled out, and the interval is the
+profile-likelihood interval. Use it when the rate trends with age
+(wear-out, or growth from earlier fixes), which an HPP comparison
+mistakes for an effect of the intervention; the HPP result’s
+<code class="docutils literal notranslate"><span class="pre">trend_p_value</span></code> flags such data. Here <code class="docutils literal notranslate"><span class="pre">x</span></code> is each system’s age,
+and observation must start at an age of 0 or more.</p>
+<p>The evidence is judged by the exact power of the HPP test, with the
+rate before the intervention taken as the rate of its failures (for
+the power law, in the scale of the cumulative intensity, where the
+process is an HPP; this ignores the uncertainty in the shape, so it is
+optimistic). For <code class="docutils literal notranslate"><span class="pre">&quot;per-system&quot;</span></code> the power is that of the pooled
+test, an approximation. The power cannot be raised without limit by
+exposure after the intervention: the failures before it fix how well
+the earlier rate is known, and when they are too few no exposure
+after it is enough (<code class="docutils literal notranslate"><span class="pre">exposure_needed</span></code> is then <code class="docutils literal notranslate"><span class="pre">inf</span></code>).</p>
+<p>The comparison assumes the intervention is the only change between
+the periods. An intervention made <em>because</em> of a run of failures
+tends to be followed by fewer, by chance alone (regression to the
+mean); count the period that prompted it as before, and judge the
+after period on its own exposure, not on the first quiet weeks.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – Failure times, measured from each system’s start of life for the
+power law. For several systems, the times of every system are
+concatenated and identified by <code class="docutils literal notranslate"><span class="pre">i</span></code>. With <code class="docutils literal notranslate"><span class="pre">c</span></code>, the rows in the
+fitters’ form (failures, and each system’s end of observation).</p></li>
+<li><p><strong>i</strong> (<em>array_like</em><em>, </em><em>optional</em>) – The system each row belongs to. Defaults to one system.</p></li>
+<li><p><strong>T</strong> (<em>scalar</em><em>, </em><em>array_like</em><em> or </em><em>dict</em><em>, </em><em>optional</em>) – The end of each system’s observation: a scalar for every system,
+an array with one value per system (in the sorted order of the
+system ids), or a dict keyed by system (which may name systems
+with no failure). Give the observation as one of <code class="docutils literal notranslate"><span class="pre">T</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code> or
+<code class="docutils literal notranslate"><span class="pre">windows</span></code>: the time since a system’s last failure is evidence
+about the intervention, so it is required.</p></li>
+<li><p><strong>intervention</strong> (<em>scalar</em><em>, </em><em>array_like</em><em> or </em><em>dict</em>) – Keyword only, required: the time of the intervention on each
+system, in the forms <code class="docutils literal notranslate"><span class="pre">T</span></code> takes. <code class="docutils literal notranslate"><span class="pre">inf</span></code> marks a system never
+changed, and a time at or before a system’s start one changed
+before it was observed.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Keyword only: censoring flags in the fitters’ form, in place of
+<code class="docutils literal notranslate"><span class="pre">T</span></code>: 0 a failure, 1 the end of the system’s observation (one
+per system, so a system with no failure is a single <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">1</span></code>
+row).</p></li>
+<li><p><strong>tl</strong> (<em>scalar</em><em>, </em><em>array_like</em><em> or </em><em>dict</em><em>, </em><em>optional</em>) – Keyword only: the start of each system’s observation (delayed
+entry, left truncation), in the forms <code class="docutils literal notranslate"><span class="pre">T</span></code> takes. Default 0.</p></li>
+<li><p><strong>windows</strong> (<em>dict</em><em>, </em><em>optional</em>) – Keyword only: each system’s observation windows, <code class="docutils literal notranslate"><span class="pre">{system:</span>
+<span class="pre">[(start,</span> <span class="pre">end),</span> <span class="pre">...]}</span></code>, for systems observed over separate
+periods; in place of <code class="docutils literal notranslate"><span class="pre">T</span></code> (or <code class="docutils literal notranslate"><span class="pre">c</span></code>) and <code class="docutils literal notranslate"><span class="pre">tl</span></code>. Every row of
+<code class="docutils literal notranslate"><span class="pre">x</span></code> is then a failure.</p></li>
+<li><p><strong>model</strong> (<em>str</em><em>, </em><em>optional</em>) – Keyword only: <code class="docutils literal notranslate"><span class="pre">&quot;hpp&quot;</span></code> (the default) or <code class="docutils literal notranslate"><span class="pre">&quot;power-law&quot;</span></code>.</p></li>
+<li><p><strong>baseline</strong> (<em>str</em><em>, </em><em>optional</em>) – Keyword only: <code class="docutils literal notranslate"><span class="pre">&quot;per-system&quot;</span></code> (the default; each system its own
+rate) or <code class="docutils literal notranslate"><span class="pre">&quot;common&quot;</span></code> (one rate for every system).</p></li>
+<li><p><strong>alternative</strong> (<em>str</em><em>, </em><em>optional</em>) – Keyword only: <code class="docutils literal notranslate"><span class="pre">&quot;two-sided&quot;</span></code> (the default), <code class="docutils literal notranslate"><span class="pre">&quot;decrease&quot;</span></code> (the
+one-sided test that the rate fell: the question “did the action
+work?”) or <code class="docutils literal notranslate"><span class="pre">&quot;increase&quot;</span></code>.</p></li>
+<li><p><strong>method</strong> (<em>str</em><em>, </em><em>optional</em>) – Keyword only: for the HPP, <code class="docutils literal notranslate"><span class="pre">&quot;exact&quot;</span></code> (the default) or
+<code class="docutils literal notranslate"><span class="pre">&quot;mid-p&quot;</span></code>; for the power law, <code class="docutils literal notranslate"><span class="pre">&quot;likelihood-ratio&quot;</span></code> (its only
+test).</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – Keyword only: the significance level, and one minus the
+confidence level of the interval (default 0.05).</p></li>
+<li><p><strong>target_ratio</strong> (<em>float</em><em>, </em><em>optional</em>) – Keyword only: the change the evidence is judged against, as a
+ratio of the rates: 0.5 (a halving) by default, 2 for
+<code class="docutils literal notranslate"><span class="pre">alternative=&quot;increase&quot;</span></code>.</p></li>
+<li><p><strong>power</strong> (<em>float</em><em>, </em><em>optional</em>) – Keyword only: the power the evidence should have to detect
+<code class="docutils literal notranslate"><span class="pre">target_ratio</span></code>, by default 0.8.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The ratio and its interval, the p-value, the verdict, the
+evidence, and notes saying what to do when it is short.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.recurrent.InterventionTestResult" title="surpyval.recurrent.InterventionTestResult">InterventionTestResult</a></p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – If the data or an option is invalid. Data that are valid but
+    cannot answer the question (no exposure after the intervention,
+    no failure at all) give a result with the verdict
+    <code class="docutils literal notranslate"><span class="pre">&quot;untestable&quot;</span></code> and a note saying why, rather than an error.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>A pump failed eight times in its first 50 weeks, and three times in
+the 50 weeks after its seals were changed:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">intervention_test</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">26</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">44</span><span class="p">,</span> <span class="mi">52</span><span class="p">,</span> <span class="mi">77</span><span class="p">,</span> <span class="mi">95</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">ratio</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="go">(0.375, 0.227)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span><span class="o">.</span><span class="n">ratio_cb</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([0.064, 1.562])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span><span class="o">.</span><span class="n">verdict</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">power</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="go">('inconclusive', 0.134)</span>
+</pre></div>
+</div>
+<p>The one-sided test asks only whether the rate fell:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">one_sided</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">x</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">alternative</span><span class="o">=</span><span class="s2">"decrease"</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">one_sided</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="n">one_sided</span><span class="o">.</span><span class="n">ratio_cb</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">(0.113, array([0.   , 1.296]))</span>
+</pre></div>
+</div>
+<p>A fleet of three pumps, changed at different times and observed for
+different lengths, each with its own failure rate:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">18</span><span class="p">,</span> <span class="mi">26</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">22</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">52</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">33</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="mi">70</span><span class="p">,</span> <span class="mi">3</span><span class="p">:</span> <span class="mi">50</span><span class="p">},</span> <span class="n">intervention</span><span class="o">=</span><span class="p">{</span><span class="mi">1</span><span class="p">:</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">2</span><span class="p">:</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">3</span><span class="p">:</span> <span class="mi">20</span><span class="p">}</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span><span class="o">.</span><span class="n">events_before</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">events_after</span>
+<span class="go">(10, 4)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">ratio</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="go">(0.277, 0.044)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span><span class="o">.</span><span class="n">verdict</span>
+<span class="go">'decrease'</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.</span></span><span class="sig-name descname"><span class="pre">InterventionTestResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">baseline:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alternative:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">events_before:</span> <span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">events_after:</span> <span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exposure_before:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exposure_after:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">expected_after:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ratio:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ratio_cb:</span> <span class="pre">NDArray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">p_value:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">statistic:</span> <span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">change:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verdict:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">notes:</span> <span class="pre">list</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_systems:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_systems_compared:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_ratio:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">nan</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_required:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0.8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">detectable_ratio:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">nan</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exposure_needed:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">nan</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">events_needed:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">nan</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zero_failure_exposure:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">nan</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shape:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">nan</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trend_p_value:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">nan</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>The result of <a class="reference internal" href="#surpyval.recurrent.intervention_test" title="surpyval.recurrent.intervention_test"><code class="xref py py-func docutils literal notranslate"><span class="pre">intervention_test()</span></code></a>: did the rate of failures
+change at the intervention, and was there enough evidence to tell?</p>
+<p>The ratio is the rate after the intervention over the rate before:
+below 1 is an improvement, and <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">ratio</span></code> is the reduction.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.model">
+<span class="sig-name descname"><span class="pre">model</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.model" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">&quot;hpp&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;power-law&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.baseline">
+<span class="sig-name descname"><span class="pre">baseline</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.baseline" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">&quot;per-system&quot;</span></code> (each system its own rate, the ratio shared) or
+<code class="docutils literal notranslate"><span class="pre">&quot;common&quot;</span></code> (one rate for every system).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.method">
+<span class="sig-name descname"><span class="pre">method</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.method" title="Link to this definition"></a></dt>
+<dd><p>The test: <code class="docutils literal notranslate"><span class="pre">&quot;exact&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;mid-p&quot;</span></code> (the HPP), or
+<code class="docutils literal notranslate"><span class="pre">&quot;likelihood-ratio&quot;</span></code> (the power law).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.alternative">
+<span class="sig-name descname"><span class="pre">alternative</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.alternative" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">&quot;two-sided&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;decrease&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;increase&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.alpha_ci">
+<span class="sig-name descname"><span class="pre">alpha_ci</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.alpha_ci" title="Link to this definition"></a></dt>
+<dd><p>The significance level of the test, and one minus the confidence
+level of <code class="docutils literal notranslate"><span class="pre">ratio_cb</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">events_before,</span> <span class="pre">events_after</span></span></dt>
+<dd><p>The failures before and after the intervention, of the systems
+compared.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">exposure_before,</span> <span class="pre">exposure_after</span></span></dt>
+<dd><p>The observed time before and after the intervention, of the
+systems compared.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.expected_after">
+<span class="sig-name descname"><span class="pre">expected_after</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.expected_after" title="Link to this definition"></a></dt>
+<dd><p>The failures expected after the intervention had the rate not
+changed, given the failures seen.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.ratio">
+<span class="sig-name descname"><span class="pre">ratio</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.ratio" title="Link to this definition"></a></dt>
+<dd><p>The estimated ratio of the rates (<code class="docutils literal notranslate"><span class="pre">nan</span></code> when untestable; 0 with
+no failure after the intervention).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.ratio_cb">
+<span class="sig-name descname"><span class="pre">ratio_cb</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.ratio_cb" title="Link to this definition"></a></dt>
+<dd><p>Its confidence interval, <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>: two-sided for a
+two-sided test, <code class="docutils literal notranslate"><span class="pre">[0,</span> <span class="pre">upper]</span></code> for <code class="docutils literal notranslate"><span class="pre">alternative=&quot;decrease&quot;</span></code> and
+<code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">inf]</span></code> for <code class="docutils literal notranslate"><span class="pre">&quot;increase&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.p_value">
+<span class="sig-name descname"><span class="pre">p_value</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.p_value" title="Link to this definition"></a></dt>
+<dd><p>The p-value of the test of no change.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.statistic">
+<span class="sig-name descname"><span class="pre">statistic</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.statistic" title="Link to this definition"></a></dt>
+<dd><p>The test statistic: the failures after the intervention (the HPP
+tests), or the likelihood-ratio statistic (the power law).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.change">
+<span class="sig-name descname"><span class="pre">change</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.change" title="Link to this definition"></a></dt>
+<dd><p>The test’s conclusion at <code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>: <code class="docutils literal notranslate"><span class="pre">&quot;decrease&quot;</span></code> or
+<code class="docutils literal notranslate"><span class="pre">&quot;increase&quot;</span></code> when it finds a change, <code class="docutils literal notranslate"><span class="pre">&quot;none&quot;</span></code> otherwise.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.verdict">
+<span class="sig-name descname"><span class="pre">verdict</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.verdict" title="Link to this definition"></a></dt>
+<dd><p>The conclusion, evidence included: <code class="docutils literal notranslate"><span class="pre">&quot;decrease&quot;</span></code> or
+<code class="docutils literal notranslate"><span class="pre">&quot;increase&quot;</span></code> (the rate changed); <code class="docutils literal notranslate"><span class="pre">&quot;no</span> <span class="pre">change</span> <span class="pre">detected&quot;</span></code> (it
+did not, and the test had at least <code class="docutils literal notranslate"><span class="pre">power_required</span></code> power to
+detect the change <code class="docutils literal notranslate"><span class="pre">target_ratio</span></code>); <code class="docutils literal notranslate"><span class="pre">&quot;inconclusive&quot;</span></code> (it did
+not, but the evidence was too little to tell); <code class="docutils literal notranslate"><span class="pre">&quot;untestable&quot;</span></code>
+(the data cannot answer: see <code class="docutils literal notranslate"><span class="pre">notes</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.notes">
+<span class="sig-name descname"><span class="pre">notes</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.notes" title="Link to this definition"></a></dt>
+<dd><p>What the result means, and what to do when the evidence is short.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list of str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.n_systems">
+<span class="sig-name descname"><span class="pre">n_systems</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.n_systems" title="Link to this definition"></a></dt>
+<dd><p>The systems in the data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.n_systems_compared">
+<span class="sig-name descname"><span class="pre">n_systems_compared</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.n_systems_compared" title="Link to this definition"></a></dt>
+<dd><p>The systems that inform the comparison: with <code class="docutils literal notranslate"><span class="pre">&quot;per-system&quot;</span></code>,
+those observed both before and after the intervention.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.target_ratio">
+<span class="sig-name descname"><span class="pre">target_ratio</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.target_ratio" title="Link to this definition"></a></dt>
+<dd><p>The change the evidence is judged against (0.5, a halving of the
+rate, unless given).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.power">
+<span class="sig-name descname"><span class="pre">power</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.power" title="Link to this definition"></a></dt>
+<dd><p>The chance that a test on this exposure detects <code class="docutils literal notranslate"><span class="pre">target_ratio</span></code>
+(the exact power of the HPP test, from the rate before the
+intervention).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.power_required">
+<span class="sig-name descname"><span class="pre">power_required</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.power_required" title="Link to this definition"></a></dt>
+<dd><p>The power the evidence is judged against (0.8 unless given).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.detectable_ratio">
+<span class="sig-name descname"><span class="pre">detectable_ratio</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.detectable_ratio" title="Link to this definition"></a></dt>
+<dd><p>The ratio nearest 1 detectable with <code class="docutils literal notranslate"><span class="pre">power_required</span></code> on this
+exposure; <code class="docutils literal notranslate"><span class="pre">nan</span></code> when none is (too few failures before).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.exposure_needed">
+<span class="sig-name descname"><span class="pre">exposure_needed</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.exposure_needed" title="Link to this definition"></a></dt>
+<dd><p>The exposure after the intervention, in all, that would detect
+<code class="docutils literal notranslate"><span class="pre">target_ratio</span></code> with <code class="docutils literal notranslate"><span class="pre">power_required</span></code>; <code class="docutils literal notranslate"><span class="pre">inf</span></code> when none would
+(more failures before are needed); <code class="docutils literal notranslate"><span class="pre">nan</span></code> for the power law,
+whose exposure is not in time units (see <code class="docutils literal notranslate"><span class="pre">events_needed</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.events_needed">
+<span class="sig-name descname"><span class="pre">events_needed</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.events_needed" title="Link to this definition"></a></dt>
+<dd><p>The failures after the intervention to expect, at the rate
+<code class="docutils literal notranslate"><span class="pre">target_ratio</span></code> times the rate before, by the time the exposure
+is enough.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.zero_failure_exposure">
+<span class="sig-name descname"><span class="pre">zero_failure_exposure</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.zero_failure_exposure" title="Link to this definition"></a></dt>
+<dd><p>The exposure after the intervention, in all, at which the test
+would find a decrease were there no further failure (the HPP);
+<code class="docutils literal notranslate"><span class="pre">nan</span></code> for the power law and when no exposure would.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.shape">
+<span class="sig-name descname"><span class="pre">shape</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.shape" title="Link to this definition"></a></dt>
+<dd><p>The power law’s shape <span class="math notranslate nohighlight">\(\beta\)</span> (<code class="docutils literal notranslate"><span class="pre">nan</span></code> for the HPP).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.trend_p_value">
+<span class="sig-name descname"><span class="pre">trend_p_value</span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.trend_p_value" title="Link to this definition"></a></dt>
+<dd><p>A check of the model: for the HPP, the Laplace test of a trend
+within the periods before and after the intervention; for the
+power law, the likelihood-ratio test of <span class="math notranslate nohighlight">\(\beta = 1\)</span> (no
+trend). A small value says the rate trends with age.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">intervention_test</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">15</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">26</span><span class="p">,</span> <span class="mi">30</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">44</span><span class="p">,</span> <span class="mi">52</span><span class="p">,</span> <span class="mi">77</span><span class="p">,</span> <span class="mi">95</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span><span class="o">.</span><span class="n">events_before</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">events_after</span>
+<span class="go">(8, 3)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">ratio</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="nb">round</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+<span class="go">(0.375, 0.227)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span><span class="o">.</span><span class="n">verdict</span>
+<span class="go">'inconclusive'</span>
+</pre></div>
+</div>
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.additional_exposure">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">additional_exposure</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.additional_exposure" title="Link to this definition"></a></dt>
+<dd><p>The exposure still needed after the intervention,
+<code class="docutils literal notranslate"><span class="pre">exposure_needed</span> <span class="pre">-</span> <span class="pre">exposure_after</span></code> (0 when it is already
+enough).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.from_dict">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">result_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.recurrent.InterventionTestResult" title="surpyval.recurrent.intervention.InterventionTestResult"><span class="pre">InterventionTestResult</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.from_dict" title="Link to this definition"></a></dt>
+<dd><p>The result <a class="reference internal" href="#surpyval.recurrent.InterventionTestResult.to_dict" title="surpyval.recurrent.InterventionTestResult.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> wrote.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+<span class="gp">... </span>    <span class="n">InterventionTestResult</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">intervention_test</span><span class="p">,</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">33</span><span class="p">],</span> <span class="n">T</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="mi">40</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">again</span> <span class="o">=</span> <span class="n">InterventionTestResult</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">again</span><span class="o">.</span><span class="n">exposure_needed</span><span class="p">,</span> <span class="n">again</span><span class="o">.</span><span class="n">verdict</span> <span class="o">==</span> <span class="n">result</span><span class="o">.</span><span class="n">verdict</span>
+<span class="go">(inf, True)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.rate_after">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">rate_after</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.rate_after" title="Link to this definition"></a></dt>
+<dd><p>The average rate after the intervention,
+<code class="docutils literal notranslate"><span class="pre">events_after</span> <span class="pre">/</span> <span class="pre">exposure_after</span></code>.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.rate_before">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">rate_before</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.rate_before" title="Link to this definition"></a></dt>
+<dd><p>The average rate before the intervention,
+<code class="docutils literal notranslate"><span class="pre">events_before</span> <span class="pre">/</span> <span class="pre">exposure_before</span></code>.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.reduction">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">reduction</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.reduction" title="Link to this definition"></a></dt>
+<dd><p>The estimated reduction in the rate, <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">ratio</span></code> (negative
+for an increase).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.reduction_cb">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">reduction_cb</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.reduction_cb" title="Link to this definition"></a></dt>
+<dd><p>The confidence interval of the reduction, <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">ratio_cb</span></code>,
+as <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.sufficient">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">sufficient</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.sufficient" title="Link to this definition"></a></dt>
+<dd><p>Whether the exposure gave at least <code class="docutils literal notranslate"><span class="pre">power_required</span></code> power to
+detect <code class="docutils literal notranslate"><span class="pre">target_ratio</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.InterventionTestResult.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.recurrent.InterventionTestResult.to_dict" title="Link to this definition"></a></dt>
+<dd><p>The result as a dict of native Python values, strict JSON: an
+infinite or missing number is written as <code class="docutils literal notranslate"><span class="pre">None</span></code>, and recorded
+under <code class="docutils literal notranslate"><span class="pre">&quot;non_finite&quot;</span></code> (as every SurPyval <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> does) so
+that <a class="reference internal" href="#surpyval.recurrent.InterventionTestResult.from_dict" title="surpyval.recurrent.InterventionTestResult.from_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">from_dict()</span></code></a> restores it.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">intervention_test</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">result</span> <span class="o">=</span> <span class="n">intervention_test</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">33</span><span class="p">],</span> <span class="n">T</span><span class="o">=</span><span class="mi">60</span><span class="p">,</span> <span class="n">intervention</span><span class="o">=</span><span class="mi">40</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">d</span><span class="p">[</span><span class="s2">"exposure_needed"</span><span class="p">],</span> <span class="n">d</span><span class="p">[</span><span class="s2">"non_finite"</span><span class="p">][</span><span class="s2">"inf"</span><span class="p">]</span>
+<span class="go">(None, ['/exposure_needed', '/events_needed'])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">isinstance</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">allow_nan</span><span class="o">=</span><span class="kc">False</span><span class="p">),</span> <span class="nb">str</span><span class="p">)</span>
+<span class="go">True</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="trend_tests.html" class="btn btn-neutral float-left" title="Trend Tests and Diagnostics" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../surpyval.degradation.html" class="btn btn-neutral float-right" title="Degradation Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

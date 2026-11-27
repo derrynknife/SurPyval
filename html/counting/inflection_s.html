@@ -1,0 +1,513 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inflection S-Shaped &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Musa-Okumoto" href="musa_okumoto.html" />
+    <link rel="prev" title="Yamada Delayed S-Shaped" href="yamada_delayed_s.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.counting.html#software-reliability-growth-models">Software Reliability Growth Models</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="goel_okumoto.html">Goel-Okumoto</a></li>
+<li class="toctree-l4"><a class="reference internal" href="yamada_delayed_s.html">Yamada Delayed S-Shaped</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Inflection S-Shaped</a></li>
+<li class="toctree-l4"><a class="reference internal" href="musa_okumoto.html">Musa-Okumoto</a></li>
+<li class="toctree-l4"><a class="reference internal" href="rayleigh_defects.html">Rayleigh Defects</a></li>
+<li class="toctree-l4"><a class="reference internal" href="clocks.html">Testing Effort and Change Points</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#models-of-the-times-between-failures">Models of the Times Between Failures</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#non-parametric-models">Non-Parametric Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#panel-counts">Panel Counts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#renewal-models">Renewal Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#competing-risks-marked-models">Competing Risks (Marked) Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#recurrent-event-regression-models">Recurrent Event Regression Models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#trend-tests-and-diagnostics">Trend Tests and Diagnostics</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.counting.html#interventions">Interventions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.counting.html">Recurrent Event Models</a></li>
+      <li class="breadcrumb-item active">Inflection S-Shaped</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/counting/inflection_s.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="inflection-s-shaped">
+<h1>Inflection S-Shaped<a class="headerlink" href="#inflection-s-shaped" title="Link to this heading"></a></h1>
+<p>Ohba’s inflection S-shaped software reliability growth model, an NHPP
+with <span class="math notranslate nohighlight">\(\Lambda(t) = a (1 - e^{-b t}) / (1 + \psi e^{-b t})\)</span>: a
+finite number of faults <code class="docutils literal notranslate"><span class="pre">a</span></code>, with the inflection parameter <code class="docutils literal notranslate"><span class="pre">psi</span></code>
+(0 is Goel-Okumoto).
+<code class="docutils literal notranslate"><span class="pre">InflectionS.fit</span></code> returns a
+<a class="reference internal" href="parametric_recurrence_model.html"><span class="doc">ParametricRecurrenceModel</span></a>; data
+that show no reliability growth are refused.</p>
+<dl class="py data">
+<dt class="sig sig-object py" id="surpyval.recurrent.parametric.inflection_s.InflectionS">
+<span class="sig-prename descclassname"><span class="pre">surpyval.recurrent.parametric.inflection_s.</span></span><span class="sig-name descname"><span class="pre">InflectionS</span></span><a class="headerlink" href="#surpyval.recurrent.parametric.inflection_s.InflectionS" title="Link to this definition"></a></dt>
+<dd><p>Ohba’s inflection S-shaped software reliability growth model, a
+non-homogeneous Poisson process with</p>
+<div class="math notranslate nohighlight">
+\[\Lambda(t) = a\, \frac{1 - e^{-b t}}{1 + \psi e^{-b t}},
+\qquad
+\lambda(t) = \frac{a b (1 + \psi)\, e^{-b t}}
+{\left(1 + \psi e^{-b t}\right)^{2}}.\]</div>
+<p><code class="docutils literal notranslate"><span class="pre">a</span></code> is the expected number of faults that would be found in all,
+<code class="docutils literal notranslate"><span class="pre">b</span></code> a rate per unit of testing time and <code class="docutils literal notranslate"><span class="pre">psi</span></code> the inflection
+parameter: Ohba’s <code class="docutils literal notranslate"><span class="pre">(1</span> <span class="pre">-</span> <span class="pre">r)</span> <span class="pre">/</span> <span class="pre">r</span></code>, where <code class="docutils literal notranslate"><span class="pre">r</span></code> is the share of the
+faults that can be found from the start (the rest are found only
+once others have been removed). With <code class="docutils literal notranslate"><span class="pre">psi</span> <span class="pre">=</span> <span class="pre">0</span></code> it is
+<code class="docutils literal notranslate"><span class="pre">GoelOkumoto</span></code>; with <code class="docutils literal notranslate"><span class="pre">psi</span> <span class="pre">&gt;</span> <span class="pre">1</span></code> the intensity rises to a peak at
+<code class="docutils literal notranslate"><span class="pre">t</span> <span class="pre">=</span> <span class="pre">log(psi)</span> <span class="pre">/</span> <span class="pre">b</span></code> before it falls, so the count is S-shaped.
+<code class="docutils literal notranslate"><span class="pre">psi</span></code> may be as low as -1 (below 0 the intensity falls faster at
+first than Goel-Okumoto’s), so that a Goel-Okumoto shape is inside
+the model’s range and not on its edge. <code class="docutils literal notranslate"><span class="pre">InflectionS</span></code> is an instance
+of this class; <code class="docutils literal notranslate"><span class="pre">fit</span></code> and <code class="docutils literal notranslate"><span class="pre">from_params</span></code> return a
+<code class="docutils literal notranslate"><span class="pre">ParametricRecurrenceModel</span></code>.</p>
+<p>Three parameters need more data than two: with few failures <code class="docutils literal notranslate"><span class="pre">psi</span></code>
+is poorly determined (see its standard error), and <code class="docutils literal notranslate"><span class="pre">GoelOkumoto</span></code> or
+<code class="docutils literal notranslate"><span class="pre">YamadaDelayedS</span></code> may do as well (compare <code class="docutils literal notranslate"><span class="pre">aic()</span></code>). Data that show
+no growth are fitted no better than by a constant or an exponentially
+rising rate, the model’s limits, and the fit is refused, saying so.
+<code class="docutils literal notranslate"><span class="pre">inv_cif</span></code> is <code class="docutils literal notranslate"><span class="pre">inf</span></code> for a count of <code class="docutils literal notranslate"><span class="pre">a</span></code> or more.</p>
+<p class="rubric">References</p>
+<p>Ohba, M. (1984), “Inflection S-shaped software reliability growth
+model”, in Stochastic Models in Reliability Theory (eds S. Osaki and
+Y. Hatoyama), Springer, 144-162.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">InflectionS</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">InflectionS</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mi">100</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">cif</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">50</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([11.48 , 25.593, 96.719])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">iif</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">50</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([2.584, 3.011, 0.319])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">inv_cif</span><span class="p">([</span><span class="mf">11.48</span><span class="p">,</span> <span class="mf">25.593</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="go">array([ 5., 10.])</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.parametric.inflection_s.InflectionS.fit">
+<span class="sig-prename descclassname"><span class="pre">InflectionS.</span></span><span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">how</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'MLE'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">windows</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">frailty</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cluster</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="Link to this definition"></a></dt>
+<dd><p>Fit the NHPP model from the provided data. This function prepares the
+data to ensure that it is in the correct format for the fitting.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array_like</em>) – The event times, pooled over items (each row belongs to the item
+named in <code class="docutils literal notranslate"><span class="pre">i</span></code>), measured from the start of each item’s life.
+The power-law models (<code class="docutils literal notranslate"><span class="pre">CrowAMSAA</span></code>, <code class="docutils literal notranslate"><span class="pre">Duane</span></code>) are defined for
+times from 0 and need events at positive times; <code class="docutils literal notranslate"><span class="pre">CoxLewis</span></code>
+also takes negative times inside a negative <code class="docutils literal notranslate"><span class="pre">tl</span></code> window.
+Data with no events, or with a single event and no observation
+after it, raise a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.
+Or a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> with each row’s unit <code class="docutils literal notranslate"><span class="pre">i</span></code>, which
+holds the data: <code class="docutils literal notranslate"><span class="pre">fit(data)</span></code>, with the other data
+arguments left out. Its rows are read as each unit’s
+history (gaps as <code class="docutils literal notranslate"><span class="pre">windows</span></code>, covariates that change
+within a unit by <code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code> where the model has one),
+and the model’s <code class="docutils literal notranslate"><span class="pre">notes</span></code> say what was made of the
+terminal flags <code class="docutils literal notranslate"><span class="pre">a</span></code>.</p></li>
+<li><p><strong>i</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Identity of the item each row belongs to. Defaults to all rows
+belonging to one item.</p></li>
+<li><p><strong>c</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Censoring indicators: 0 an observed event, 1 the right-censored
+end of an item’s observation (the time it was last seen), -1
+left-censored and 2 interval-censored counts (with <code class="docutils literal notranslate"><span class="pre">n</span></code>).
+Defaults to all observed.</p></li>
+<li><p><strong>n</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Number of events in each row: a count on a left- or
+interval-censored row (<code class="docutils literal notranslate"><span class="pre">c=-1</span></code> or <code class="docutils literal notranslate"><span class="pre">c=2</span></code>). An exact event
+(<code class="docutils literal notranslate"><span class="pre">c=0</span></code>) and an end-of-observation row (<code class="docutils literal notranslate"><span class="pre">c=1</span></code>) stand for one,
+so <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">&gt;</span> <span class="pre">1</span></code> there is refused: repeat the row for simultaneous
+events. Defaults to 1.</p></li>
+<li><p><strong>t</strong> (<em>array_like</em><em>, </em><em>optional</em>) – (N, 2) array of [left, right] truncation bounds per observation.</p></li>
+<li><p><strong>tl</strong> (<em>array_like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Left truncation (delayed entry) time of each item; the
+observation of each item begins here. A scalar applies to every
+item; an array has one value per row (the same on every row of
+an item) or one value per item, in the sorted order of the item
+ids (<code class="docutils literal notranslate"><span class="pre">np.unique(i)</span></code>; read per row when there are as many rows
+as items).</p></li>
+<li><p><strong>tr</strong> (<em>array_like</em><em> or </em><em>scalar</em><em>, </em><em>optional</em>) – Right truncation time of each item, given like <code class="docutils literal notranslate"><span class="pre">tl</span></code>; the
+observation window closes there, as a <code class="docutils literal notranslate"><span class="pre">c=1</span></code> row would close it.</p></li>
+<li><p><strong>how</strong> (<em>str</em><em>, </em><em>optional</em>) – Specifies the fitting method to use, either ‘MLE’ for Maximum
+Likelihood Estimation or ‘MSE’ for Mean Square Error (least
+squares between the model’s cumulative intensity and the
+non-parametric MCF of the data). Default is ‘MLE’; the MLE
+search starts from the MSE fit.</p></li>
+<li><p><strong>init</strong> (<em>array_like</em><em>, </em><em>optional</em>) – Initial parameters for optimization. The default start is
+tried too, and the better fit kept.</p></li>
+<li><p><strong>windows</strong> (<em>dict</em><em>, </em><em>optional</em>) – Gapped (multi-window) observation: a mapping <code class="docutils literal notranslate"><span class="pre">{item:</span> <span class="pre">[(start,</span>
+<span class="pre">end),</span> <span class="pre">...]}</span></code> giving each item’s disjoint observation windows,
+with unobserved gaps between them. When given, every row in <code class="docutils literal notranslate"><span class="pre">x</span></code>
+must be an observed event (<code class="docutils literal notranslate"><span class="pre">c=0</span></code>); the windows supply the
+end-of-window censoring rows. Because event counts over disjoint
+windows are independent for an NHPP, each window is fitted as its
+own observation period. Mutually exclusive with <code class="docutils literal notranslate"><span class="pre">t</span></code>/<code class="docutils literal notranslate"><span class="pre">tl</span></code>/
+<code class="docutils literal notranslate"><span class="pre">tr</span></code>.</p></li>
+<li><p><strong>frailty</strong> (<em>{'gamma'</em><em>, </em><em>'lognormal'}</em><em>, </em><em>optional</em>) – Give each cluster of items an unobserved frailty that
+multiplies its intensity, for a fleet whose items differ by
+more than a Poisson process allows: gamma with mean 1 and
+variance <code class="docutils literal notranslate"><span class="pre">theta</span></code>, or log-normal with <code class="docutils literal notranslate"><span class="pre">log</span> <span class="pre">u</span> <span class="pre">~</span> <span class="pre">N(0,</span>
+<span class="pre">theta)</span></code>. <code class="docutils literal notranslate"><span class="pre">theta</span></code> is estimated with the intensity’s
+parameters, and the fit is a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">SharedFrailtyModel</span></code>. It needs at
+least two clusters and each event’s time (no <code class="docutils literal notranslate"><span class="pre">c=-1</span></code> or
+<code class="docutils literal notranslate"><span class="pre">c=2</span></code> counts, no right truncation), by maximum likelihood.
+Default <code class="docutils literal notranslate"><span class="pre">None</span></code>: no frailty.</p></li>
+<li><p><strong>cluster</strong> (<em>mapping</em><em> or </em><em>array_like</em><em>, </em><em>optional</em>) – With <code class="docutils literal notranslate"><span class="pre">frailty</span></code>, the items that share one: <code class="docutils literal notranslate"><span class="pre">{item:</span>
+<span class="pre">cluster}</span></code>, or one label per row of <code class="docutils literal notranslate"><span class="pre">x</span></code> (the same on every
+row of an item). By default each item has its own.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The fitted model (a <code class="docutils literal notranslate"><span class="pre">SharedFrailtyModel</span></code> with <code class="docutils literal notranslate"><span class="pre">frailty</span></code>).</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="parametric_recurrence_model.html#surpyval.recurrent.parametric.parametric_recurrence.ParametricRecurrenceModel" title="surpyval.recurrent.parametric.parametric_recurrence.ParametricRecurrenceModel">ParametricRecurrenceModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Two systems, each observed to t = 60 (the <code class="docutils literal notranslate"><span class="pre">c=1</span></code> rows), whose
+failures become less frequent over time (<code class="docutils literal notranslate"><span class="pre">beta</span> <span class="pre">&lt;</span> <span class="pre">1</span></code>):</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">CrowAMSAA</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">20</span><span class="p">,</span> <span class="mi">35</span><span class="p">,</span> <span class="mi">56</span><span class="p">,</span> <span class="mi">60</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">44</span><span class="p">,</span> <span class="mi">60</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">i</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">CrowAMSAA</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">params</span>
+<span class="go">array([7.82423499, 0.73833571])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">cif</span><span class="p">(</span><span class="mi">60</span><span class="p">)</span>
+<span class="go">np.float64(4.5)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.parametric.inflection_s.InflectionS.fit_from_df">
+<span class="sig-prename descclassname"><span class="pre">InflectionS.</span></span><span class="sig-name descname"><span class="pre">fit_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">pd.DataFrame</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tr_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">a_col</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">fit_options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit_from_df" title="Link to this definition"></a></dt>
+<dd><p>Fit to an event log held in the columns of a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">pandas.DataFrame</span></code>.</p>
+<p>The column names are passed in place of the arrays <a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>
+takes, with the names every recurrent <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> uses
+(<code class="docutils literal notranslate"><span class="pre">CauseSpecificNHPP.fit_from_df</span></code> too); every other <a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>
+option (<code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">dist</span></code>, <code class="docutils literal notranslate"><span class="pre">init</span></code>, <code class="docutils literal notranslate"><span class="pre">windows</span></code>, …) is passed to
+it unchanged. The columns are handed to <a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> as they are,
+so the result, and the refusal of a missing value in a unit’s
+history, is that of <a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> on the same arrays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>df</strong> (<em>pandas.DataFrame</em>) – The event log.</p></li>
+<li><p><strong>x_col</strong> (<em>str</em>) – Column of event (and end-of-observation) times.</p></li>
+<li><p><strong>i_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Column of item / unit ids. Defaults to a single item.</p></li>
+<li><p><strong>c_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Column of censoring flags (0 an event, 1 the end of a unit’s
+observation).</p></li>
+<li><p><strong>n_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Column of event counts per row.</p></li>
+<li><p><strong>tl_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Columns of per-row left / right truncation (the start and end
+of each unit’s observation window), for a fitter whose
+<a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> takes <code class="docutils literal notranslate"><span class="pre">tl</span></code> / <code class="docutils literal notranslate"><span class="pre">tr</span></code>.</p></li>
+<li><p><strong>tr_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Columns of per-row left / right truncation (the start and end
+of each unit’s observation window), for a fitter whose
+<a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> takes <code class="docutils literal notranslate"><span class="pre">tl</span></code> / <code class="docutils literal notranslate"><span class="pre">tr</span></code>.</p></li>
+<li><p><strong>a_col</strong> (<em>str</em><em>, </em><em>optional</em>) – Column of terminal flags: 1 where the row’s event ended the
+unit’s history for good, 0 or blank elsewhere (a blank event
+on a unit’s last row is read as 1). It does not change the
+fit: the model’s <code class="docutils literal notranslate"><span class="pre">notes</span></code> say that each terminal event is
+fitted as an event followed by the end of that unit’s
+observation.</p></li>
+<li><p><strong>**fit_options</strong> – Every other option of <a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The model <a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> returns.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>model</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>ValueError</strong> – If <code class="docutils literal notranslate"><span class="pre">df</span></code> is not a DataFrame, a name is not one of its columns,
+    or a column is given that <a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> has no argument for.</p></li>
+<li><p><strong>TypeError</strong> – If a column is named with <a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>’s argument (<code class="docutils literal notranslate"><span class="pre">c=</span></code> for
+    <code class="docutils literal notranslate"><span class="pre">c_col=</span></code>, likewise <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, and <code class="docutils literal notranslate"><span class="pre">tl</span></code> / <code class="docutils literal notranslate"><span class="pre">tr</span></code>
+    given a column label); a number for <code class="docutils literal notranslate"><span class="pre">tl</span></code> / <code class="docutils literal notranslate"><span class="pre">tr</span></code> is passed
+    on to <a class="reference internal" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.fit" title="surpyval.recurrent.parametric.inflection_s.InflectionS.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p></li>
+</ul>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">CrowAMSAA</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">log</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+<span class="gp">... </span>    <span class="s2">"hours"</span><span class="p">:</span> <span class="p">[</span><span class="mi">120</span><span class="p">,</span> <span class="mi">380</span><span class="p">,</span> <span class="mi">610</span><span class="p">,</span> <span class="mi">700</span><span class="p">,</span> <span class="mi">90</span><span class="p">,</span> <span class="mi">400</span><span class="p">,</span> <span class="mi">520</span><span class="p">,</span> <span class="mi">650</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"truck"</span><span class="p">:</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span>
+<span class="gp">... </span>    <span class="s2">"c"</span><span class="p">:</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="gp">... </span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">CrowAMSAA</span><span class="o">.</span><span class="n">fit_from_df</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">log</span><span class="p">,</span> <span class="n">x_col</span><span class="o">=</span><span class="s2">"hours"</span><span class="p">,</span> <span class="n">i_col</span><span class="o">=</span><span class="s2">"truck"</span><span class="p">,</span> <span class="n">c_col</span><span class="o">=</span><span class="s2">"c"</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">array([260.1738,   1.1522])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.parametric.inflection_s.InflectionS.from_params">
+<span class="sig-prename descclassname"><span class="pre">InflectionS.</span></span><span class="sig-name descname"><span class="pre">from_params</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="parametric_recurrence_model.html#surpyval.recurrent.parametric.parametric_recurrence.ParametricRecurrenceModel" title="surpyval.recurrent.parametric.parametric_recurrence.ParametricRecurrenceModel"><span class="pre">ParametricRecurrenceModel</span></a></span></span><a class="headerlink" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.from_params" title="Link to this definition"></a></dt>
+<dd><p>Create a model instance directly from parameters without fitting.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>params</strong> (<em>array_like</em>) – Parameters to be used directly to create the model.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>An instance of the ParametricRecurrenceModel class initialized with
+the provided parameters.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="parametric_recurrence_model.html#surpyval.recurrent.parametric.parametric_recurrence.ParametricRecurrenceModel" title="surpyval.recurrent.parametric.parametric_recurrence.ParametricRecurrenceModel">ParametricRecurrenceModel</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.recurrent</span><span class="w"> </span><span class="kn">import</span> <span class="n">CrowAMSAA</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">CrowAMSAA</span><span class="o">.</span><span class="n">from_params</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mf">1.5</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">cif</span><span class="p">([</span><span class="mi">10</span><span class="p">,</span> <span class="mi">20</span><span class="p">])</span>
+<span class="go">array([1.        , 2.82842712])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.parametric.inflection_s.InflectionS.cif">
+<span class="sig-prename descclassname"><span class="pre">InflectionS.</span></span><span class="sig-name descname"><span class="pre">cif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.cif" title="Link to this definition"></a></dt>
+<dd><p>Cumulative intensity (expected event count) by <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.parametric.inflection_s.InflectionS.iif">
+<span class="sig-prename descclassname"><span class="pre">InflectionS.</span></span><span class="sig-name descname"><span class="pre">iif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.iif" title="Link to this definition"></a></dt>
+<dd><p>Instantaneous intensity function (event rate) at <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.parametric.inflection_s.InflectionS.log_iif">
+<span class="sig-prename descclassname"><span class="pre">InflectionS.</span></span><span class="sig-name descname"><span class="pre">log_iif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.log_iif" title="Link to this definition"></a></dt>
+<dd><p>Natural logarithm of the instantaneous intensity at <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.recurrent.parametric.inflection_s.InflectionS.inv_cif">
+<span class="sig-prename descclassname"><span class="pre">InflectionS.</span></span><span class="sig-name descname"><span class="pre">inv_cif</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">N</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">params</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">ArrayBox</span></span></span><a class="headerlink" href="#surpyval.recurrent.parametric.inflection_s.InflectionS.inv_cif" title="Link to this definition"></a></dt>
+<dd><p>Time by which <code class="docutils literal notranslate"><span class="pre">N</span></code> events are expected; the inverse of <code class="docutils literal notranslate"><span class="pre">cif</span></code>.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="yamada_delayed_s.html" class="btn btn-neutral float-left" title="Yamada Delayed S-Shaped" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="musa_okumoto.html" class="btn btn-neutral float-right" title="Musa-Okumoto" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

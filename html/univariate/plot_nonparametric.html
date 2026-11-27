@@ -1,0 +1,633 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plotting Non-Parametric Estimates &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/thebelab.css" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=30646c52"></script>
+      <script src="../_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Success Run" href="success_run.html" />
+    <link rel="prev" title="Relative Survival" href="relative_survival.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="../index.html">
+            
+              <img src="../_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../surpyval.html">API</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="../surpyval.nonparametric.html">Non-Parametric</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#non-parametric-class">Non-Parametric Class</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#non-parametric-estimators">Non-Parametric Estimators</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#relative-survival">Relative Survival</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="../surpyval.nonparametric.html#plotting">Plotting</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">Plotting Non-Parametric Estimates</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="../surpyval.nonparametric.html#other-non-parametric-functions">Other Non-Parametric Functions</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.html">API</a></li>
+          <li class="breadcrumb-item"><a href="../surpyval.nonparametric.html">Non-Parametric</a></li>
+      <li class="breadcrumb-item active">Plotting Non-Parametric Estimates</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/univariate/plot_nonparametric.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="plotting-non-parametric-estimates">
+<h1>Plotting Non-Parametric Estimates<a class="headerlink" href="#plotting-non-parametric-estimates" title="Link to this heading"></a></h1>
+<p>One figure of one or more non-parametric estimates, with their bounds,
+censoring ticks, quantile lines and a number-at-risk table under the x
+axis. Import it as <code class="docutils literal notranslate"><span class="pre">surpyval.plot_nonparametric</span></code>; worked examples are
+in <a class="reference internal" href="../Non-Parametric%20SurPyval%20Modelling.html"><span class="doc">Non-Parametric SurPyval Modelling</span></a>.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.plot_nonparametric">
+<span class="sig-prename descclassname"><span class="pre">surpyval.</span></span><span class="sig-name descname"><span class="pre">plot_nonparametric</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">models</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'sf'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Axes</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">colors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">band_method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'hall-wellner'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ci_style</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'fill'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">show_censors</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">quantiles</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xlim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log_x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hf_bandwidth</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">at_risk</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">at_risk_times</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">at_risk_rows</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">('At</span> <span class="pre">risk',)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">counts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'cumulative'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">xlabel</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ylabel</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">title</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">legend</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.nonparametric.NonParametricPlot" title="surpyval.univariate.nonparametric.NonParametricPlot"><span class="pre">NonParametricPlot</span></a></span></span><a class="headerlink" href="#surpyval.plot_nonparametric" title="Link to this definition"></a></dt>
+<dd><p>Plot one or more non-parametric estimates on one axes, with their
+confidence bounds, censoring ticks, chosen quantiles and a
+number-at-risk table under the x axis.</p>
+<p>Any fitted non-parametric model can be drawn: a Kaplan-Meier,
+Nelson-Aalen, Fleming-Harrington or Turnbull fit, with or without
+truncation. Groups are drawn by passing a list of models or a dict
+<code class="docutils literal notranslate"><span class="pre">{label:</span> <span class="pre">model}</span></code>, for example one fit per level of a
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">SurpyvalData.groupby</span></code> split.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>models</strong> (<a class="reference internal" href="non_parametric_class.html#surpyval.univariate.nonparametric.nonparametric.NonParametric" title="surpyval.univariate.nonparametric.nonparametric.NonParametric"><em>NonParametric</em></a><em>, </em><em>list</em><em> or </em><em>dict</em>) – One fitted model, a list of them, or <code class="docutils literal notranslate"><span class="pre">{label:</span> <span class="pre">model}</span></code>.</p></li>
+<li><p><strong>on</strong> (<em>(</em><em>'sf'</em><em>, </em><em>'ff'</em><em>, </em><em>'Hf'</em><em>, </em><em>'hf'</em><em>)</em><em>, </em><em>optional</em>) – What to draw: the survival function (default), the cumulative
+incidence <code class="docutils literal notranslate"><span class="pre">ff</span></code> (one minus the survival), the cumulative hazard
+<code class="docutils literal notranslate"><span class="pre">Hf</span></code>, or the hazard rate <code class="docutils literal notranslate"><span class="pre">hf</span></code>, which is drawn as the
+kernel-smoothed rate of <code class="docutils literal notranslate"><span class="pre">smoothed_hf</span></code> (the step estimate has no
+rate of its own, so it has no bounds, ticks or quantiles).
+<code class="docutils literal notranslate"><span class="pre">&quot;R&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;F&quot;</span></code> are accepted spellings of <code class="docutils literal notranslate"><span class="pre">&quot;sf&quot;</span></code> and
+<code class="docutils literal notranslate"><span class="pre">&quot;ff&quot;</span></code>.</p></li>
+<li><p><strong>ax</strong> (<em>matplotlib Axes</em><em>, </em><em>optional</em>) – The axes to draw on. Without one a new figure is made, with room
+for the table. On axes of your own, save with
+<code class="docutils literal notranslate"><span class="pre">bbox_inches=&quot;tight&quot;</span></code> (or use a constrained layout) so that the
+table below the axes is not cut off.</p></li>
+<li><p><strong>labels</strong> (<em>list</em><em> of </em><em>str</em><em>, </em><em>optional</em>) – One label per model, in order; the keys of a dict otherwise, and
+the estimator’s name (or “Group 1”, “Group 2”, … when names
+repeat) for a list.</p></li>
+<li><p><strong>colors</strong> (<em>list</em><em> or </em><em>dict</em><em>, </em><em>optional</em>) – One matplotlib colour per model, or <code class="docutils literal notranslate"><span class="pre">{label:</span> <span class="pre">colour}</span></code>. Without
+them the models take SurPyval’s palette in order.</p></li>
+<li><p><strong>ci</strong> (<em>(</em><em>'pointwise'</em><em>, </em><em>'band'</em><em>) or </em><em>bool</em><em>, </em><em>optional</em>) – The confidence bounds to draw: <code class="docutils literal notranslate"><span class="pre">'pointwise'</span></code> the model’s <code class="docutils literal notranslate"><span class="pre">cb</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'band'</span></code> its simultaneous <code class="docutils literal notranslate"><span class="pre">band</span></code> (on <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code> and
+<code class="docutils literal notranslate"><span class="pre">Hf</span></code>: the band on the survival function, carried to the others
+as <code class="docutils literal notranslate"><span class="pre">cb</span></code> carries its bounds), and False none. True means
+<code class="docutils literal notranslate"><span class="pre">'pointwise'</span></code>. Defaults to pointwise bounds where the model has
+them (not on <code class="docutils literal notranslate"><span class="pre">hf</span></code>, nor for a model from <code class="docutils literal notranslate"><span class="pre">fit_from_ecdf</span></code>).</p></li>
+<li><p><strong>alpha_ci</strong> (<em>float</em><em>, </em><em>optional</em>) – The significance level of the bounds. Defaults to 0.05.</p></li>
+<li><p><strong>bound</strong> (<em>(</em><em>'two-sided'</em><em>, </em><em>'lower'</em><em>, </em><em>'upper'</em><em>)</em><em>, </em><em>optional</em>) – Pointwise bounds only: a one-sided bound is drawn as a dashed
+step. Defaults to ‘two-sided’.</p></li>
+<li><p><strong>bound_type</strong> (<em>str</em><em>, </em><em>optional</em>) – The scale of the bounds, as <code class="docutils literal notranslate"><span class="pre">cb</span></code>’s (<code class="docutils literal notranslate"><span class="pre">'exp'</span></code>, the default, or
+<code class="docutils literal notranslate"><span class="pre">'normal'</span></code>) or <code class="docutils literal notranslate"><span class="pre">band</span></code>’s (<code class="docutils literal notranslate"><span class="pre">'arcsine'</span></code>, the default, <code class="docutils literal notranslate"><span class="pre">'exp'</span></code>
+or <code class="docutils literal notranslate"><span class="pre">'normal'</span></code>) <code class="docutils literal notranslate"><span class="pre">bound_type</span></code>.</p></li>
+<li><p><strong>band_method</strong> (<em>(</em><em>'hall-wellner'</em><em>, </em><em>'nair'</em><em>)</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">band</span></code>’s method. Defaults to ‘hall-wellner’.</p></li>
+<li><p><strong>ci_style</strong> (<em>(</em><em>'fill'</em><em>, </em><em>'lines'</em><em>)</em><em>, </em><em>optional</em>) – Two-sided bounds as a shaded wash of the curve’s colour (default)
+or as two dashed steps.</p></li>
+<li><p><strong>show_censors</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to tick the right censored times on the curve. Defaults to
+ticking them for every model that holds its data (not on <code class="docutils literal notranslate"><span class="pre">hf</span></code>).</p></li>
+<li><p><strong>quantiles</strong> (<em>float</em><em> or </em><em>list</em><em> of </em><em>float</em><em>, </em><em>optional</em>) – Probabilities (e.g. 0.5 for the median) at which to draw reference
+lines: a dotted line across at the curve’s level and one down to
+the x axis at each model’s quantile (<code class="docutils literal notranslate"><span class="pre">qf(p)</span></code>), labelled with its
+value. A model whose estimate never reaches <code class="docutils literal notranslate"><span class="pre">p</span></code> gets no line,
+and NaN in the result’s <code class="docutils literal notranslate"><span class="pre">quantiles</span></code>.</p></li>
+<li><p><strong>xlim</strong> (<em>(</em><em>float</em><em>, </em><em>float</em><em>)</em><em>, </em><em>optional</em>) – The time range shown. Defaults to the start (0, or the smallest
+value if negative; the smallest positive value on a log axis) to
+the largest observed value.</p></li>
+<li><p><strong>log_x</strong> (<em>bool</em><em>, </em><em>optional</em>) – Draw time on a log scale. Defaults to False.</p></li>
+<li><p><strong>hf_bandwidth</strong> (<em>float</em><em>, </em><em>optional</em>) – <code class="docutils literal notranslate"><span class="pre">smoothed_hf</span></code>’s bandwidth, for <code class="docutils literal notranslate"><span class="pre">on='hf'</span></code>.</p></li>
+<li><p><strong>at_risk</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to draw the number-at-risk table. Defaults to True.</p></li>
+<li><p><strong>at_risk_times</strong> (<em>array like</em><em>, </em><em>optional</em>) – The times the table counts at. Defaults to the x axis’s major
+ticks within the time range; the axis’s ticks are then fixed at
+these times, so the columns stay under their ticks.</p></li>
+<li><p><strong>at_risk_rows</strong> (<em>str</em><em> or </em><em>list</em><em> of </em><em>str</em><em>, </em><em>optional</em>) – The rows for each model, from <code class="docutils literal notranslate"><span class="pre">'At</span> <span class="pre">risk'</span></code>, <code class="docutils literal notranslate"><span class="pre">'Censored'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'Events'</span></code> and <code class="docutils literal notranslate"><span class="pre">'In</span> <span class="pre">interval'</span></code>, or <code class="docutils literal notranslate"><span class="pre">'all'</span></code> for the first
+three (and <code class="docutils literal notranslate"><span class="pre">'In</span> <span class="pre">interval'</span></code> when any model has left or interval
+censored data). Defaults to <code class="docutils literal notranslate"><span class="pre">('At</span> <span class="pre">risk',)</span></code>.</p></li>
+<li><p><strong>counts</strong> (<em>(</em><em>'cumulative'</em><em>, </em><em>'interval'</em><em>)</em><em>, </em><em>optional</em>) – Whether the ‘Censored’ and ‘Events’ rows count everything up to
+each time (the default, as lifelines’ <code class="docutils literal notranslate"><span class="pre">add_at_risk_counts</span></code>
+does) or only what happened since the previous time.</p></li>
+<li><p><strong>xlabel</strong> (<em>str</em><em>, </em><em>optional</em>) – The axis labels and title. Defaults: “Time” (or what the models’
+unit measures), the quantity drawn, and “&lt;estimator&gt; estimate”
+when every model has the same estimator.</p></li>
+<li><p><strong>ylabel</strong> (<em>str</em><em>, </em><em>optional</em>) – The axis labels and title. Defaults: “Time” (or what the models’
+unit measures), the quantity drawn, and “&lt;estimator&gt; estimate”
+when every model has the same estimator.</p></li>
+<li><p><strong>title</strong> (<em>str</em><em>, </em><em>optional</em>) – The axis labels and title. Defaults: “Time” (or what the models’
+unit measures), the quantity drawn, and “&lt;estimator&gt; estimate”
+when every model has the same estimator.</p></li>
+<li><p><strong>legend</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to draw a legend. Defaults to one when there are two or
+more models, or when labels were given.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">fig</span></code> and <code class="docutils literal notranslate"><span class="pre">ax</span></code> to customise further, the curves <code class="docutils literal notranslate"><span class="pre">lines</span></code>,
+the table’s <code class="docutils literal notranslate"><span class="pre">times</span></code> and <code class="docutils literal notranslate"><span class="pre">counts</span></code> and the <code class="docutils literal notranslate"><span class="pre">quantiles</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="#surpyval.univariate.nonparametric.NonParametricPlot" title="surpyval.univariate.nonparametric.NonParametricPlot">NonParametricPlot</a></p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>The table counts with the same risk sets as the estimators (the
+<code class="docutils literal notranslate"><span class="pre">(entry,</span> <span class="pre">exit]</span></code> convention of R’s <code class="docutils literal notranslate"><span class="pre">survfit</span></code>): a unit is <strong>at
+risk</strong> at <code class="docutils literal notranslate"><span class="pre">t</span></code> if it entered before <code class="docutils literal notranslate"><span class="pre">t</span></code> (its left truncation time
+is below <code class="docutils literal notranslate"><span class="pre">t</span></code>) and its event or censoring time is <code class="docutils literal notranslate"><span class="pre">t</span></code> or later, so
+with left truncation the number at risk can rise as units enter.
+<strong>Censored</strong> and <strong>Events</strong> count the right censored units and the
+events at or before <code class="docutils literal notranslate"><span class="pre">t</span></code>.</p>
+<p>With left or interval censoring (a Turnbull fit) an event time is
+only known to lie in an interval <code class="docutils literal notranslate"><span class="pre">(lower,</span> <span class="pre">upper]</span></code>. The rows then
+count what the data <em>show</em>, not the NPMLE’s fractional expected
+counts: <strong>At risk</strong> is the units known to be event-free at <code class="docutils literal notranslate"><span class="pre">t</span></code>
+(<code class="docutils literal notranslate"><span class="pre">t</span> <span class="pre">&lt;=</span> <span class="pre">lower</span></code>), <strong>Events</strong> the units whose event is known to have
+happened by <code class="docutils literal notranslate"><span class="pre">t</span></code> (<code class="docutils literal notranslate"><span class="pre">upper</span> <span class="pre">&lt;=</span> <span class="pre">t</span></code>), and <strong>In interval</strong> the units
+whose interval spans <code class="docutils literal notranslate"><span class="pre">t</span></code> (<code class="docutils literal notranslate"><span class="pre">lower</span> <span class="pre">&lt;</span> <span class="pre">t</span> <span class="pre">&lt;</span> <span class="pre">upper</span></code>): their event may
+or may not have happened yet. For right censored and exact data these
+are the usual counts.</p>
+<p>A model that does not hold its data (<code class="docutils literal notranslate"><span class="pre">from_xrd</span></code>, or restored
+without <code class="docutils literal notranslate"><span class="pre">with_data=True</span></code>) counts ‘At risk’ and ‘Events’ from its
+risk sets and deaths; one from <code class="docutils literal notranslate"><span class="pre">fit_from_ecdf</span></code> has no counts, so
+pass <code class="docutils literal notranslate"><span class="pre">at_risk=False</span></code> for it.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">matplotlib</span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="s2">"Agg"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">KaplanMeier</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span> <span class="o">=</span> <span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">11</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b</span> <span class="o">=</span> <span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">14</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">out</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">plot_nonparametric</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">{</span><span class="s2">"A"</span><span class="p">:</span> <span class="n">a</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">:</span> <span class="n">b</span><span class="p">},</span> <span class="n">quantiles</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">at_risk_times</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">]</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">out</span><span class="o">.</span><span class="n">counts</span><span class="p">[</span><span class="s2">"A"</span><span class="p">][</span><span class="s2">"At risk"</span><span class="p">],</span> <span class="n">out</span><span class="o">.</span><span class="n">counts</span><span class="p">[</span><span class="s2">"B"</span><span class="p">][</span><span class="s2">"At risk"</span><span class="p">]</span>
+<span class="go">(array([6., 4., 1.]), array([6., 5., 3.]))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">out</span><span class="o">.</span><span class="n">quantiles</span><span class="p">[</span><span class="s2">"A"</span><span class="p">][</span><span class="mf">0.5</span><span class="p">],</span> <span class="n">out</span><span class="o">.</span><span class="n">quantiles</span><span class="p">[</span><span class="s2">"B"</span><span class="p">][</span><span class="mf">0.5</span><span class="p">]</span>
+<span class="go">(np.float64(7.0), np.float64(10.0))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">plt</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">fig</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.NonParametricPlot">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.univariate.nonparametric.</span></span><span class="sig-name descname"><span class="pre">NonParametricPlot</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fig:</span> <span class="pre">Figure</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ax:</span> <span class="pre">Axes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lines:</span> <span class="pre">dict</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">times:</span> <span class="pre">npt.NDArray</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">counts:</span> <span class="pre">dict</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">quantiles:</span> <span class="pre">dict</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#surpyval.univariate.nonparametric.NonParametricPlot" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>What <code class="xref py py-func docutils literal notranslate"><span class="pre">plot_nonparametric()</span></code> drew.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.NonParametricPlot.fig">
+<span class="sig-name descname"><span class="pre">fig</span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.NonParametricPlot.fig" title="Link to this definition"></a></dt>
+<dd><p>The figure the axes are on.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>matplotlib Figure</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.NonParametricPlot.ax">
+<span class="sig-name descname"><span class="pre">ax</span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.NonParametricPlot.ax" title="Link to this definition"></a></dt>
+<dd><p>The axes the estimates are drawn on (the table is text on the same
+axes, below the x axis).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>matplotlib Axes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.NonParametricPlot.lines">
+<span class="sig-name descname"><span class="pre">lines</span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.NonParametricPlot.lines" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">{label:</span> <span class="pre">Line2D}</span></code>: the curve of each estimate.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.NonParametricPlot.times">
+<span class="sig-name descname"><span class="pre">times</span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.NonParametricPlot.times" title="Link to this definition"></a></dt>
+<dd><p>The times the table counts at; None without a table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy array or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.NonParametricPlot.counts">
+<span class="sig-name descname"><span class="pre">counts</span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.NonParametricPlot.counts" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">{label:</span> <span class="pre">{row:</span> <span class="pre">numpy</span> <span class="pre">array}}</span></code>: the numbers in the table, one
+value per time in <code class="docutils literal notranslate"><span class="pre">times</span></code> (empty without a table).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.nonparametric.NonParametricPlot.quantiles">
+<span class="sig-name descname"><span class="pre">quantiles</span></span><a class="headerlink" href="#surpyval.univariate.nonparametric.NonParametricPlot.quantiles" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">{label:</span> <span class="pre">{p:</span> <span class="pre">time}}</span></code>: the quantile of each estimate at each
+probability asked for (NaN where the estimate does not reach it).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">matplotlib</span><span class="o">.</span><span class="n">use</span><span class="p">(</span><span class="s2">"Agg"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">out</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">plot_nonparametric</span><span class="p">(</span><span class="n">km</span><span class="p">,</span> <span class="n">at_risk_times</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">out</span><span class="o">.</span><span class="n">times</span><span class="p">,</span> <span class="n">out</span><span class="o">.</span><span class="n">counts</span><span class="p">[</span><span class="s2">"Kaplan-Meier"</span><span class="p">][</span><span class="s2">"At risk"</span><span class="p">]</span>
+<span class="go">(array([0., 2., 4.]), array([4., 3., 1.]))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">matplotlib</span><span class="o">.</span><span class="n">pyplot</span><span class="o">.</span><span class="n">close</span><span class="p">(</span><span class="n">out</span><span class="o">.</span><span class="n">fig</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<p>The table’s counts without the plot (no plotting library is loaded):</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.at_risk_table">
+<span class="sig-prename descclassname"><span class="pre">surpyval.</span></span><span class="sig-name descname"><span class="pre">at_risk_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">models</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">times</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rows</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">('At</span> <span class="pre">risk',)</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">counts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'cumulative'</span></span></em>, <em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">labels</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Sequence</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="headerlink" href="#surpyval.at_risk_table" title="Link to this definition"></a></dt>
+<dd><p>The number-at-risk table of one or more fitted non-parametric models,
+as data: the counts <a class="reference internal" href="#surpyval.plot_nonparametric" title="surpyval.plot_nonparametric"><code class="xref py py-func docutils literal notranslate"><span class="pre">plot_nonparametric()</span></code></a> draws under
+its plot, without drawing anything (no plotting library is loaded).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>models</strong> (<a class="reference internal" href="non_parametric_class.html#surpyval.univariate.nonparametric.nonparametric.NonParametric" title="surpyval.univariate.nonparametric.nonparametric.NonParametric"><em>NonParametric</em></a><em>, </em><em>list</em><em> or </em><em>dict</em>) – One fitted model (Kaplan-Meier, Nelson-Aalen, Fleming-Harrington
+or Turnbull), a list of them, or <code class="docutils literal notranslate"><span class="pre">{label:</span> <span class="pre">model}</span></code>.</p></li>
+<li><p><strong>times</strong> (<em>array like</em><em>, </em><em>optional</em>) – The times to count at, finite. Defaults to the start of the time
+axis (0, or the smallest value if it is negative) and every
+distinct time in the models’ estimates.</p></li>
+<li><p><strong>rows</strong> (<em>str</em><em> or </em><em>list</em><em> of </em><em>str</em><em>, </em><em>optional</em>) – The rows for each model, from <code class="docutils literal notranslate"><span class="pre">'At</span> <span class="pre">risk'</span></code>, <code class="docutils literal notranslate"><span class="pre">'Censored'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'Events'</span></code> and <code class="docutils literal notranslate"><span class="pre">'In</span> <span class="pre">interval'</span></code>, or <code class="docutils literal notranslate"><span class="pre">'all'</span></code> for the first
+three (and <code class="docutils literal notranslate"><span class="pre">'In</span> <span class="pre">interval'</span></code> when any model has left or interval
+censored data). Defaults to <code class="docutils literal notranslate"><span class="pre">('At</span> <span class="pre">risk',)</span></code>.</p></li>
+<li><p><strong>counts</strong> (<em>(</em><em>'cumulative'</em><em>, </em><em>'interval'</em><em>)</em><em>, </em><em>optional</em>) – Whether the ‘Censored’ and ‘Events’ rows count everything up to
+each time (the default) or only what happened since the previous
+time.</p></li>
+<li><p><strong>labels</strong> (<em>list</em><em> of </em><em>str</em><em>, </em><em>optional</em>) – One label per model, as <a class="reference internal" href="#surpyval.plot_nonparametric" title="surpyval.plot_nonparametric"><code class="xref py py-func docutils literal notranslate"><span class="pre">plot_nonparametric()</span></code></a>
+labels them: the keys of a dict, otherwise the estimator’s name
+(or “Group 1”, “Group 2”, … when names repeat).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">{&quot;times&quot;:</span> <span class="pre">numpy</span> <span class="pre">array,</span> <span class="pre">&quot;rows&quot;:</span> <span class="pre">[row</span> <span class="pre">names],</span> <span class="pre">&quot;counts&quot;:</span> <span class="pre">{label:</span>
+<span class="pre">{row:</span> <span class="pre">numpy</span> <span class="pre">array}}}</span></code>, one count per time. The counts are the
+same as those of <code class="docutils literal notranslate"><span class="pre">plot_nonparametric</span></code> (see its Notes for the
+definitions, including those for left and interval censored
+data). For an estimate with weights <code class="docutils literal notranslate"><span class="pre">w</span></code> they count the units
+themselves, not their weights.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">KaplanMeier</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">a</span> <span class="o">=</span> <span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">11</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">b</span> <span class="o">=</span> <span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">4</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">10</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">14</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">at_risk_table</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">{</span><span class="s2">"A"</span><span class="p">:</span> <span class="n">a</span><span class="p">,</span> <span class="s2">"B"</span><span class="p">:</span> <span class="n">b</span><span class="p">},</span> <span class="n">times</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">10</span><span class="p">],</span> <span class="n">rows</span><span class="o">=</span><span class="s2">"all"</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span><span class="p">[</span><span class="s2">"times"</span><span class="p">],</span> <span class="n">table</span><span class="p">[</span><span class="s2">"rows"</span><span class="p">]</span>
+<span class="go">(array([ 0.,  5., 10.]), ['At risk', 'Censored', 'Events'])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span><span class="p">[</span><span class="s2">"counts"</span><span class="p">][</span><span class="s2">"A"</span><span class="p">][</span><span class="s2">"At risk"</span><span class="p">],</span> <span class="n">table</span><span class="p">[</span><span class="s2">"counts"</span><span class="p">][</span><span class="s2">"A"</span><span class="p">][</span><span class="s2">"Events"</span><span class="p">]</span>
+<span class="go">(array([6., 4., 1.]), array([0., 2., 4.]))</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<p>The actuarial life table of the data, by interval:</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.life_table">
+<span class="sig-prename descclassname"><span class="pre">surpyval.</span></span><span class="sig-name descname"><span class="pre">life_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intervals</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">npt.ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">pd.DataFrame</span></span></span><a class="headerlink" href="#surpyval.life_table" title="Link to this definition"></a></dt>
+<dd><p>The actuarial life table (the Cutler-Ederer estimate) of right
+censored data, with or without late entry: the number entering, at
+risk, censored and having the event in each time interval, and the
+estimated survival, density and hazard there with their standard
+errors, as Klein and Moeschberger (2003, section 5.4) and R’s
+<code class="docutils literal notranslate"><span class="pre">KMsurv::lifetab</span></code> give them.</p>
+<p>The intervals are <code class="docutils literal notranslate"><span class="pre">[start,</span> <span class="pre">end)</span></code>: an event or a censoring at a
+boundary counts in the interval that starts there. Data already
+grouped into intervals (as <code class="docutils literal notranslate"><span class="pre">lifetab</span></code> takes them) is given as one
+row per interval and outcome, at the interval’s start, with the count
+in <code class="docutils literal notranslate"><span class="pre">n</span></code>: <code class="docutils literal notranslate"><span class="pre">x=[0,</span> <span class="pre">0,</span> <span class="pre">2,</span> <span class="pre">2]</span></code>, <code class="docutils literal notranslate"><span class="pre">c=[0,</span> <span class="pre">1,</span> <span class="pre">0,</span> <span class="pre">1]</span></code>, <code class="docutils literal notranslate"><span class="pre">n=[77,</span> <span class="pre">2,</span> <span class="pre">71,</span> <span class="pre">3]</span></code>
+with <code class="docutils literal notranslate"><span class="pre">intervals=[0,</span> <span class="pre">2,</span> <span class="pre">3]</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>x</strong> (<em>array like</em><em>, </em><a class="reference internal" href="../surpyval.utilities.html#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData"><em>SurpyvalData</em></a><em> or </em><a class="reference internal" href="non_parametric_class.html#surpyval.univariate.nonparametric.nonparametric.NonParametric" title="surpyval.univariate.nonparametric.nonparametric.NonParametric"><em>NonParametric</em></a>) – The times of the events or censorings; or a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">SurpyvalData</span></code> holding the data, or a fitted
+non-parametric model (<code class="docutils literal notranslate"><span class="pre">KaplanMeier.fit(...)</span></code>), whose data is
+used. <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code> and <code class="docutils literal notranslate"><span class="pre">tl</span></code> are then left out. Data or a model
+with weights <code class="docutils literal notranslate"><span class="pre">w</span></code> is refused (a weighted life table is not built
+yet; <code class="docutils literal notranslate"><span class="pre">KaplanMeier.fit</span></code> takes the weights).</p></li>
+<li><p><strong>c</strong> (<em>array like</em><em>, </em><em>optional</em>) – The censoring flags: 0 an event, 1 right censored. Left (-1) and
+interval (2) censored data have no life table of counts; estimate
+their survival with <code class="xref py py-class docutils literal notranslate"><span class="pre">Turnbull</span></code> instead.</p></li>
+<li><p><strong>n</strong> (<em>array like</em><em>, </em><em>optional</em>) – The count of each row. Defaults to 1.</p></li>
+<li><p><strong>tl</strong> (<em>array like</em><em> or </em><em>float</em><em>, </em><em>optional</em>) – Each row’s entry time (left truncation): it is at risk on
+<code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">x]</span></code>. Defaults to entry at the start of the table.</p></li>
+<li><p><strong>intervals</strong> (<em>int</em><em> or </em><em>array like</em><em>, </em><em>optional</em>) – The interval boundaries, increasing; or the number of intervals,
+equal in width from the start of the table, the last of which is
+open (<code class="docutils literal notranslate"><span class="pre">[start,</span> <span class="pre">inf)</span></code>). Rows from the last boundary on are put in
+an open last interval, and a last boundary of <code class="docutils literal notranslate"><span class="pre">inf</span></code> makes it
+open. Without it the width is the Freedman-Diaconis rule’s on the
+times, from the start of the table (0, or the smallest time if it
+is negative) past the largest time.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><p>One row per interval, with the columns:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">start</span></code>, <code class="docutils literal notranslate"><span class="pre">end</span></code>: the interval <code class="docutils literal notranslate"><span class="pre">[start,</span> <span class="pre">end)</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">entered</span></code>: the number entering during the interval (<code class="docutils literal notranslate"><span class="pre">start</span> <span class="pre">&lt;</span>
+<span class="pre">tl</span> <span class="pre">&lt;</span> <span class="pre">end</span></code>); those with <code class="docutils literal notranslate"><span class="pre">tl</span> <span class="pre">&lt;=</span> <span class="pre">start</span></code> are at risk from its
+start.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">at_risk_start</span></code>: the number at risk at its start (<code class="docutils literal notranslate"><span class="pre">lifetab</span></code>’s
+<code class="docutils literal notranslate"><span class="pre">nsubs</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">censored</span></code>, <code class="docutils literal notranslate"><span class="pre">events</span></code>: the numbers censored (withdrawn,
+<code class="docutils literal notranslate"><span class="pre">nlost</span></code>) and having the event (<code class="docutils literal notranslate"><span class="pre">nevent</span></code>) in it.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">at_risk</span></code>: the effective number at risk (<code class="docutils literal notranslate"><span class="pre">nrisk</span></code>),
+<code class="docutils literal notranslate"><span class="pre">at_risk_start</span> <span class="pre">-</span> <span class="pre">censored</span> <span class="pre">/</span> <span class="pre">2</span> <span class="pre">+</span> <span class="pre">entered</span> <span class="pre">/</span> <span class="pre">2</span></code>: a unit censored
+or entering during the interval is taken to be at risk for half
+of it.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">q</span></code>, <code class="docutils literal notranslate"><span class="pre">p</span></code>: the conditional probabilities of the event in the
+interval, <code class="docutils literal notranslate"><span class="pre">events</span> <span class="pre">/</span> <span class="pre">at_risk</span></code>, and of surviving it, <code class="docutils literal notranslate"><span class="pre">1</span> <span class="pre">-</span> <span class="pre">q</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">surv</span></code>: the survival at the interval’s start, the product of
+the earlier intervals’ <code class="docutils literal notranslate"><span class="pre">p</span></code>, with its Greenwood standard error
+<code class="docutils literal notranslate"><span class="pre">se_surv</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pdf</span></code>, <code class="docutils literal notranslate"><span class="pre">hazard</span></code>: the density and the hazard rate at the
+interval’s midpoint, per unit of time, <code class="docutils literal notranslate"><span class="pre">surv</span> <span class="pre">*</span> <span class="pre">q</span> <span class="pre">/</span> <span class="pre">width</span></code> and
+<code class="docutils literal notranslate"><span class="pre">events</span> <span class="pre">/</span> <span class="pre">(width</span> <span class="pre">*</span> <span class="pre">(at_risk</span> <span class="pre">-</span> <span class="pre">events</span> <span class="pre">/</span> <span class="pre">2))</span></code>, with their
+standard errors <code class="docutils literal notranslate"><span class="pre">se_pdf</span></code> and <code class="docutils literal notranslate"><span class="pre">se_hazard</span></code>. They are <code class="docutils literal notranslate"><span class="pre">nan</span></code>
+for an open last interval, which has no width.</p></li>
+</ul>
+<p>Where nobody is at risk, <code class="docutils literal notranslate"><span class="pre">q</span></code>, <code class="docutils literal notranslate"><span class="pre">p</span></code>, <code class="docutils literal notranslate"><span class="pre">pdf</span></code> and <code class="docutils literal notranslate"><span class="pre">hazard</span></code> and
+their standard errors are <code class="docutils literal notranslate"><span class="pre">nan</span></code>.</p>
+</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pandas.DataFrame</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>With <code class="docutils literal notranslate"><span class="pre">Y_j</span></code> the effective number at risk in interval <code class="docutils literal notranslate"><span class="pre">j</span></code>,
+<code class="docutils literal notranslate"><span class="pre">d_j</span></code> the events, <code class="docutils literal notranslate"><span class="pre">b_j</span></code> its width, <code class="docutils literal notranslate"><span class="pre">q_j</span> <span class="pre">=</span> <span class="pre">d_j</span> <span class="pre">/</span> <span class="pre">Y_j</span></code> and <code class="docutils literal notranslate"><span class="pre">p_j</span> <span class="pre">=</span>
+<span class="pre">1</span> <span class="pre">-</span> <span class="pre">q_j</span></code>:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}S_j &amp;= \prod_{i &lt; j} p_i, \qquad
+\widehat{\mathrm{Var}}(S_j) = S_j^2 \sum_{i &lt; j}
+\frac{q_i}{Y_i p_i}, \\
+f_j &amp;= \frac{S_j q_j}{b_j}, \qquad
+\widehat{\mathrm{Var}}(f_j) = \left(\frac{S_j}{b_j}\right)^2
+\left(q_j^2 \sum_{i &lt; j} \frac{q_i}{Y_i p_i}
++ \frac{q_j p_j}{Y_j}\right), \\
+h_j &amp;= \frac{2 q_j}{b_j (1 + p_j)}, \qquad
+\widehat{\mathrm{Var}}(h_j) = \frac{h_j^2}{Y_j q_j}
+\left(1 - \left(\frac{h_j b_j}{2}\right)^2\right)\end{split}\]</div>
+<p>(Klein and Moeschberger 2003, equations 5.4.1 to 5.4.6; the
+variances are written so that an interval with no events has a
+standard error of 0). Counting a late entrant as half at risk is the
+actuarial assumption for withdrawals applied to entries; with no
+late entry the table is the classical one.</p>
+<p class="rubric">References</p>
+<p>Klein, J. P. and Moeschberger, M. L. (2003), <em>Survival Analysis:
+Techniques for Censored and Truncated Data</em>, 2nd edition, Springer,
+section 5.4.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">x</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="mi">9</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">c</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">life_table</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">intervals</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">9</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span><span class="p">[[</span><span class="s2">"start"</span><span class="p">,</span> <span class="s2">"end"</span><span class="p">,</span> <span class="s2">"at_risk_start"</span><span class="p">,</span> <span class="s2">"censored"</span><span class="p">,</span> <span class="s2">"events"</span><span class="p">]]</span>
+<span class="go">   start  end  at_risk_start  censored  events</span>
+<span class="go">0    0.0  3.0             10         1       2</span>
+<span class="go">1    3.0  6.0              7         1       2</span>
+<span class="go">2    6.0  9.0              4         1       2</span>
+<span class="go">3    9.0  inf              1         0       1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">table</span><span class="p">[[</span><span class="s2">"at_risk"</span><span class="p">,</span> <span class="s2">"q"</span><span class="p">,</span> <span class="s2">"surv"</span><span class="p">,</span> <span class="s2">"hazard"</span><span class="p">]]</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="go">   at_risk       q    surv  hazard</span>
+<span class="go">0      9.5  0.2105  1.0000  0.0784</span>
+<span class="go">1      6.5  0.3077  0.7895  0.1212</span>
+<span class="go">2      3.5  0.5714  0.5466  0.2667</span>
+<span class="go">3      1.0  1.0000  0.2343     NaN</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="relative_survival.html" class="btn btn-neutral float-left" title="Relative Survival" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="success_run.html" class="btn btn-neutral float-right" title="Success Run" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

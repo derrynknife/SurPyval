@@ -1,0 +1,567 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Design Principles &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Handy References - Aide-mémoire" href="Handy%20References%20-%20Aide-m%C3%A9moire.html" />
+    <link rel="prev" title="Glossary" href="Glossary.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Design Principles</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#inputs">Inputs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#outputs">Outputs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#estimation">Estimation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#uncertainty">Uncertainty</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#behaviour-and-api">Behaviour and API</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#adding-to-the-list">Adding to the list</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Design Principles</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Design Principles.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="design-principles">
+<h1>Design Principles<a class="headerlink" href="#design-principles" title="Link to this heading"></a></h1>
+<p>These are the rules every part of SurPyval keeps, whichever model you use.
+They exist so that what you learn about one model holds for the others, and
+so that a contributor or reviewer can check a change against a fixed list
+rather than against memory. <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a> gives the details of several
+of them (the data format, missing values, seeds, saving and loading).</p>
+<p>A principle is only as good as its check, so each one names the tests that
+enforce it. Most are <strong>properties</strong>: general statements checked for every
+registered model by the conformance suite (<code class="docutils literal notranslate"><span class="pre">surpyval/tests/conformance</span></code>,
+see <a class="reference internal" href="Contributing.html"><span class="doc">Contributing</span></a>), or on generated data by the property-based tests
+(<code class="docutils literal notranslate"><span class="pre">surpyval/tests/properties</span></code>). Where a model is known to break a
+principle, the test marks it as a strict expected failure naming the issue
+that tracks the fix, so the suite stays green and turns red the day the fix
+lands.</p>
+<p>Each principle is marked <strong>checked</strong> (every model it applies to is tested),
+<strong>partly checked</strong> (tested for some models or some cases; the gap is named),
+or <strong>judgement</strong> (a matter of review that no test can fully decide).</p>
+<section id="inputs">
+<h2>Inputs<a class="headerlink" href="#inputs" title="Link to this heading"></a></h2>
+<ol class="arabic">
+<li><p><strong>One data model.</strong> Every fitter reads data through the same letters
+with the same meanings (<a class="reference internal" href="Data%20Model.html"><span class="doc">The data model</span></a>): the time <code class="docutils literal notranslate"><span class="pre">x</span></code> (or a range
+<code class="docutils literal notranslate"><span class="pre">xl</span></code>, <code class="docutils literal notranslate"><span class="pre">xr</span></code>), the censoring flag <code class="docutils literal notranslate"><span class="pre">c</span></code> (0 observed, 1 right, -1 left,
+2 interval), the count <code class="docutils literal notranslate"><span class="pre">n</span></code>, the truncation window <code class="docutils literal notranslate"><span class="pre">t</span></code> (<code class="docutils literal notranslate"><span class="pre">tl</span></code>,
+<code class="docutils literal notranslate"><span class="pre">tr</span></code>), the unit <code class="docutils literal notranslate"><span class="pre">i</span></code>, the event type or state entered <code class="docutils literal notranslate"><span class="pre">e</span></code>, the state
+<code class="docutils literal notranslate"><span class="pre">s</span></code>, the terminal flag <code class="docutils literal notranslate"><span class="pre">a</span></code>, the measurements <code class="docutils literal notranslate"><span class="pre">m</span></code>, the covariates
+<code class="docutils literal notranslate"><span class="pre">Z</span></code> and the weights <code class="docutils literal notranslate"><span class="pre">w</span></code>. Intervals are <span class="math notranslate nohighlight">\((l, r]\)</span> and truncation
+windows <span class="math notranslate nohighlight">\((t_l, t_r]\)</span>. Every fitter’s <code class="docutils literal notranslate"><span class="pre">fit</span></code> takes a
+<code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> holding them, and the data is checked once, when it is
+built: a row giving both <code class="docutils literal notranslate"><span class="pre">x</span></code> and a range is left out with a warning
+naming it, and a row with no time, a unit’s rows out of order or
+overlapping, and a row after the unit’s terminal event are refused. A
+model takes the letters it can use and refuses the rest, naming the
+model that takes them; it never drops part of the data silently.</p>
+<p><em>Partly checked.</em> The property tests generate data in every form (mixed
+censoring, ties, counts, truncation, tiny samples) for the univariate,
+regression and recurrent fitters, and the reference tests check the
+conventions against R; the other families are checked through their
+conformance fixtures only. <code class="docutils literal notranslate"><span class="pre">conformance/test_fit_paths.py</span></code> checks that
+every registered model’s <code class="docutils literal notranslate"><span class="pre">fit(data)</span></code> gives the fit of its arrays, and
+<code class="docutils literal notranslate"><span class="pre">utils/test_exact_or_range.py</span></code>, <code class="docutils literal notranslate"><span class="pre">utils/test_terminal_flag.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">utils/test_surpyval_data_states.py</span></code> and <code class="docutils literal notranslate"><span class="pre">utils/test_measurements.py</span></code>
+check the data’s own rules.</p>
+</li>
+<li><p><strong>Invalid input raises a</strong> <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> <strong>that names the argument and
+says how to fix it</strong> – never a <code class="docutils literal notranslate"><span class="pre">TypeError</span></code>, an <code class="docutils literal notranslate"><span class="pre">IndexError</span></code> or a
+silently wrong answer.</p>
+<p><em>Partly checked</em> by <code class="docutils literal notranslate"><span class="pre">properties/test_validation.py</span></code>, for the
+univariate fitters.</p>
+</li>
+<li><p><strong>Missing values.</strong> <code class="docutils literal notranslate"><span class="pre">nan</span></code> in, <code class="docutils literal notranslate"><span class="pre">nan</span></code> out at prediction. At fit, a row
+with a missing value is dropped with one warning where rows are
+independent, and refused where a row is part of one unit (a recurrent
+item, a degradation path). A probability outside [0, 1] given to any
+<code class="docutils literal notranslate"><span class="pre">qf</span></code> gives <code class="docutils literal notranslate"><span class="pre">nan</span></code> there, with one warning.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_missing.py</span></code> (<code class="docutils literal notranslate"><span class="pre">qf_outside</span></code> for
+<code class="docutils literal notranslate"><span class="pre">qf</span></code>, #611).</p>
+</li>
+<li><p><strong>Order doesn’t matter.</strong> The order of the data rows never changes a fit,
+and permuting a query permutes the result. The one order the data keeps
+is within a unit: a unit’s own rows are a history, given in time order,
+and rows out of order are refused, never reordered.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_metamorphic.py</span></code> and
+<code class="docutils literal notranslate"><span class="pre">conformance/test_vectorisation.py</span></code>, and on generated data by the
+property tests.</p>
+</li>
+<li><p><strong>Counts equal repetition.</strong> <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">k</span></code> gives the same answer as <code class="docutils literal notranslate"><span class="pre">k</span></code>
+identical rows. Weights <code class="docutils literal notranslate"><span class="pre">w</span></code> are not counts: multiplying every weight
+by a constant changes nothing, estimates or intervals, and a weighted
+fit’s variance is the robust one (<a class="reference internal" href="Weighted%20Data.html"><span class="doc">Weighted Data</span></a>); with weights,
+<code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">k</span></code> still equals <code class="docutils literal notranslate"><span class="pre">k</span></code> identical rows of the same weight.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_metamorphic.py</span></code>, and for weights by
+<code class="docutils literal notranslate"><span class="pre">conformance/test_weights.py</span></code>, for every fitter that takes <code class="docutils literal notranslate"><span class="pre">w</span></code>.</p>
+</li>
+<li><p><strong>Units don’t matter.</strong> Rescaling time rescales the answer and nothing
+else. Nor does a covariate’s origin: with <code class="docutils literal notranslate"><span class="pre">center=True</span></code> every
+regression gives the same model when a constant is added to a
+covariate, and so do the defaults of Cox, Fine-Gray and the families
+whose baseline maps exactly between origins. Nor does a covariate’s
+scale: multiplying a column by a constant divides its coefficient by it
+and leaves the maximised likelihood and every prediction as they were,
+whatever the covariate’s scale (<code class="docutils literal notranslate"><span class="pre">1/T</span></code> in kelvin is about 0.003).</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_metamorphic.py</span></code>
+(<code class="docutils literal notranslate"><span class="pre">test_covariate_origin*</span></code>, and <code class="docutils literal notranslate"><span class="pre">test_covariate_scale*</span></code> with a
+column multiplied by 1/731, 731 and 1e-6, by <code class="docutils literal notranslate"><span class="pre">fit</span></code> and by
+<code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code>) and <code class="docutils literal notranslate"><span class="pre">test_maximum.py</span></code>’s small- and large-scale (x1e4)
+fits (#577, #612). <code class="docutils literal notranslate"><span class="pre">rescale_time</span></code>, which moves a fitted model to
+another unit or clock without refitting, is checked against the refit
+(predictions, covariance, bounds and likelihood) for every registered
+distribution and mixture by <code class="docutils literal notranslate"><span class="pre">conformance/test_rescale_time.py</span></code>. One family is excepted:
+the Beta4’s likelihood is unbounded, so its maximum-likelihood fit can
+depend on the units, and warns when it does; its MPS fit does not
+(#385).</p>
+</li>
+</ol>
+</section>
+<section id="outputs">
+<h2>Outputs<a class="headerlink" href="#outputs" title="Link to this heading"></a></h2>
+<ol class="arabic" start="7">
+<li><p><strong>Shape in, shape out.</strong> A scalar query gives a numpy scalar, a 1-D or
+2-D query a result of its shape, and an empty query an empty result of
+its shape; a two-sided confidence bound adds a last <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code>
+axis. With covariates the shape is that of the times, rows and times
+paired: one row for every time, or one time for every row; other
+counts raise. <code class="docutils literal notranslate"><span class="pre">grid=True</span></code> on the Cox and parametric regression
+functions, and on the survival tree and forest, gives the row-by-time
+grid, <code class="docutils literal notranslate"><span class="pre">(n_rows,)</span> <span class="pre">+</span> <span class="pre">x.shape</span></code>.
+<code class="docutils literal notranslate"><span class="pre">surpyval.utils.shapes</span></code> applies the rule at every model’s public
+methods.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_vectorisation.py</span></code> and <code class="docutils literal notranslate"><span class="pre">cb_shape</span></code> in
+<code class="docutils literal notranslate"><span class="pre">conformance/test_options.py</span></code>, for every registered model, and for
+the time-varying <code class="docutils literal notranslate"><span class="pre">sf_tvc</span></code> by <code class="docutils literal notranslate"><span class="pre">conformance/test_tvc.py</span></code>.</p>
+</li>
+<li><p><strong>The functions of a model agree with each other.</strong>
+<span class="math notranslate nohighlight">\(S + F = 1\)</span>, <span class="math notranslate nohighlight">\(H = -\log S\)</span>, <span class="math notranslate nohighlight">\(f = h S\)</span>, <code class="docutils literal notranslate"><span class="pre">qf</span></code> inverts
+<code class="docutils literal notranslate"><span class="pre">ff</span></code>, and the causes’ cumulative incidences sum to <span class="math notranslate nohighlight">\(1 - S\)</span>.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_identities.py</span></code>.</p>
+</li>
+<li><p><strong>Valid and accurate values.</strong> Survival stays in <span class="math notranslate nohighlight">\([0, 1]\)</span> and
+never increases; cumulative quantities never decrease. The documented
+exception is the parametric additive hazards models, whose survival can
+exceed 1 where <span class="math notranslate nohighlight">\(h_0 + \beta'Z &lt; 0\)</span> (#376); the Lin-Ying model
+predicts with the running maximum of its estimate. The other is net
+survival (<code class="docutils literal notranslate"><span class="pre">RelativeSurvival</span></code>), a difference of hazards rather than a
+probability: it rises, and can exceed 1, where fewer units fail than
+the population rates expect, and is reported as it is. A distribution’s
+functions are accurate to double
+precision wherever the value is representable, in the tails and at
+extreme parameters too.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_bounds.py</span></code>, and for accuracy by
+<code class="docutils literal notranslate"><span class="pre">reference/test_tails.py</span></code> against 50-digit mpmath values, for every
+distribution with a closed form.</p>
+</li>
+<li><p><strong>Covariate rows are independent.</strong> Evaluating rows together gives the
+same as evaluating them one at a time.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_vectorisation.py</span></code>.</p>
+</li>
+<li><p><strong>Behaviour outside the data is defined and documented.</strong> A parametric
+model is defined everywhere by its formula. An estimate with no formula
+for its shape – a step estimate, a semi-parametric baseline – starts
+at its initial value before the first time (survival 1, everything
+cumulative 0; at time 0 for the additive hazards model, whose
+covariate effect acts from time 0), and after the last time either
+holds its last value
+(the single-event estimates) or is <code class="docutils literal notranslate"><span class="pre">nan</span></code> (the recurrent mean
+cumulative functions), the same for all of a model’s functions.
+<code class="docutils literal notranslate"><span class="pre">set_support(lower,</span> <span class="pre">upper)</span></code> gives a non-parametric estimate an explicit
+support: its start value from <code class="docutils literal notranslate"><span class="pre">lower</span></code> to the first time, its last
+value held up to <code class="docutils literal notranslate"><span class="pre">upper</span></code>, and <code class="docutils literal notranslate"><span class="pre">nan</span></code> outside, for every function,
+<code class="docutils literal notranslate"><span class="pre">interp</span></code> and confidence bound.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_outside_data.py</span></code>, which also sets
+bounds on every non-parametric estimate, requires each to have
+<code class="docutils literal notranslate"><span class="pre">set_support</span></code>, and requires every bound to be <code class="docutils literal notranslate"><span class="pre">nan</span></code> outside the
+data when none is set; and for time-varying covariates by
+<code class="docutils literal notranslate"><span class="pre">conformance/test_tvc.py</span></code>, for a path that starts before 0, at 0 or
+later, and for queries at 0 and below.</p>
+</li>
+</ol>
+</section>
+<section id="estimation">
+<h2>Estimation<a class="headerlink" href="#estimation" title="Link to this heading"></a></h2>
+<ol class="arabic" start="12">
+<li><p><strong>A fit returns what it claims:</strong> the optimum of its stated estimator.
+If the estimator has no optimum on the data, the fit refuses or warns;
+it never returns a silent degenerate answer. Where the data do not
+determine a coefficient – a covariate column that is constant where
+the model has an intercept, or a combination of the others – the fit
+says so: the coefficient is <code class="docutils literal notranslate"><span class="pre">nan</span></code> and listed in <code class="docutils literal notranslate"><span class="pre">aliased</span></code>, with
+one warning naming the column, rather than an arbitrary value.</p>
+<p><em>Partly checked.</em> The property tests check that parametric fits, on
+generated data with every kind of censoring and truncation, are local
+optima of a likelihood the test computes itself from the fitted
+model’s functions (<code class="docutils literal notranslate"><span class="pre">properties/test_parametric.py</span></code>), and the
+reference tests compare fits with R, lifelines and scikit-survival;
+<code class="docutils literal notranslate"><span class="pre">calibration/test_refit_registry.py</span></code> refits every registered model
+to data drawn from itself (on demand, <code class="docutils literal notranslate"><span class="pre">--run-calibration</span></code>). Where the likelihood has no
+finite maximum, univariate MLE refuses where the likelihood is
+unbounded and warns where it rises towards a limit – data that bound
+no failure from one side, and intervals that only meet at one time
+(abutting intervals such as (1, 3] and (3, 5], whose likelihood rises
+along a flat ridge towards a spike there) – and the regression,
+frailty, Fine-Gray, copula, mixture and degradation fits warn “No
+finite maximum” (#392; <code class="docutils literal notranslate"><span class="pre">test_no_finite_maximum.py</span></code>).
+<code class="docutils literal notranslate"><span class="pre">conformance/test_aliasing.py</span></code> refits every registered model
+that has coefficients with a repeated covariate column, and with a
+constant one where it has an intercept, and requires the aliasing and
+otherwise the fit without the column; the time-varying fits are
+checked in <code class="docutils literal notranslate"><span class="pre">univariate/regression/test_aliasing.py</span></code>. The
+derivatives a fit takes – the gradient and Hessian with which it
+searches, verifies its maximum and computes its covariance – agree
+with finite differences at the fit, for every registered model that
+takes them (<code class="docutils literal notranslate"><span class="pre">conformance/test_derivatives.py</span></code>, #562).</p>
+</li>
+<li><p><strong>Failure is never silent.</strong> An optimiser that does not converge warns,
+and a fit never quietly returns its starting values.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_convergence.py</span></code>: every iterative fit
+is starved (an iteration limit of 1, a start a million times the
+answer, or data with no maximum) and must warn, raise, or still reach
+the maximum; a closed-form or exact estimator is excluded, with the
+reason. A fit accepts an optimiser’s answer only when it is a
+verified maximum (zero gradient, positive-definite Hessian), and a fit
+given <code class="docutils literal notranslate"><span class="pre">init</span></code> is also started from the default start. A likelihood
+with no finite maximum warns so (#392), whatever the model. And by
+<code class="docutils literal notranslate"><span class="pre">conformance/test_maximum.py</span></code>: every maximum-likelihood fit in the
+registry – the univariate distributions, mixtures, the parametric and
+semi-parametric regressions, frailty, competing-risks, recurrence and
+copula models, and the degradation process and destructive models –
+records what it reached as its model’s <code class="docutils literal notranslate"><span class="pre">maximum</span></code>
+(<code class="docutils literal notranslate"><span class="pre">&quot;verified&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;unverified&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;no</span> <span class="pre">finite</span> <span class="pre">maximum&quot;</span></code>), warns
+exactly when that is not a verified maximum, its fixture’s fit, its
+starved fit and its time-varying-covariate fit alike; and a verified
+maximum passes an independent check at the reported parameters (the
+gradient of the model’s own likelihood ~0 and its Hessian positive
+definite, a parameter on a boundary of its space held out where the
+likelihood does not rise off it, and a refit from off it finding
+nothing higher, #579).</p>
+</li>
+<li><p><strong>Entry points agree.</strong> <code class="docutils literal notranslate"><span class="pre">fit</span></code>, <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code>, a formula,
+<code class="docutils literal notranslate"><span class="pre">from_params</span></code> and <code class="docutils literal notranslate"><span class="pre">fit_tvc</span></code> give the same model for the same data.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_fit_paths.py</span></code>, and for a regression
+model’s attributes (every builder, <code class="docutils literal notranslate"><span class="pre">from_dict</span></code> included, gives the
+same declared attributes) by <code class="docutils literal notranslate"><span class="pre">conformance/test_attributes.py</span></code>.</p>
+</li>
+<li><p><strong>Defaults are the statistically best standard choice, and the same
+everywhere.</strong> For example, every Cox fit defaults to Efron’s tie
+handling, which is far less biased than Breslow’s.</p>
+<p>The first half is <em>judgement</em>, informed by the calibration studies and
+the literature. The second half is <em>checked</em> by
+<code class="docutils literal notranslate"><span class="pre">conformance/test_defaults.py</span></code>: every entry point of a fitter gives
+a shared argument the same default, and the tie-handling default is
+the same across the Cox-based models.</p>
+</li>
+<li><p><strong>Conventions follow the established references</strong> – R’s
+<code class="docutils literal notranslate"><span class="pre">survival</span></code>, <code class="docutils literal notranslate"><span class="pre">cmprsk</span></code> and <code class="docutils literal notranslate"><span class="pre">pec</span></code>, lifelines, scikit-survival –
+unless there is a documented reason to differ.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">surpyval/tests/reference</span></code>, which compares results with
+values those packages computed (regenerated by
+<code class="docutils literal notranslate"><span class="pre">scripts/reference/regenerate.sh</span></code>).</p>
+</li>
+</ol>
+</section>
+<section id="uncertainty">
+<h2>Uncertainty<a class="headerlink" href="#uncertainty" title="Link to this heading"></a></h2>
+<ol class="arabic" start="17">
+<li><p><strong>Intervals achieve their stated coverage, and tests their stated
+size.</strong></p>
+<p><em>Partly checked</em> by the calibration studies
+(<code class="docutils literal notranslate"><span class="pre">surpyval/tests/calibration</span></code>, run on demand), which cover the main
+parametric (the likelihood-ratio bounds of offset, limited-failure and
+zero-inflated models among them, with <code class="docutils literal notranslate"><span class="pre">lfp_p</span></code> on its edge),
+non-parametric, Cox, regression, degradation and recurrent bounds and
+the hypothesis tests, not every model.</p>
+</li>
+<li><p><strong>Intervals behave consistently.</strong> Bounds contain the estimate and stay
+in the valid range; a one-sided bound is the matching end of the
+two-sided bound; a higher confidence level gives a wider interval.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_options.py</span></code>, over every uncertainty
+method, confidence level and option of every registered model.</p>
+</li>
+</ol>
+</section>
+<section id="behaviour-and-api">
+<h2>Behaviour and API<a class="headerlink" href="#behaviour-and-api" title="Link to this heading"></a></h2>
+<ol class="arabic" start="19">
+<li><p><strong>One seed rule.</strong> Every method that draws takes <code class="docutils literal notranslate"><span class="pre">random_state</span></code>.
+<code class="docutils literal notranslate"><span class="pre">None</span></code> draws from numpy’s global generator, so <code class="docutils literal notranslate"><span class="pre">np.random.seed</span></code>
+reproduces it; an explicit seed gets its own stream and leaves the
+global one alone.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_seeds.py</span></code>, for every registered model
+that draws.</p>
+</li>
+<li><p><strong>Saving and loading.</strong> Every model round-trips through strict JSON with
+identical predictions, stamped with the oldest schema version that can
+read it, and through <code class="docutils literal notranslate"><span class="pre">pickle</span></code>, which process pools and the packages
+built on SurPyval use to move a fitted model between processes.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_serialisation.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">conformance/test_pickle.py</span></code> (#573) and
+<code class="docutils literal notranslate"><span class="pre">properties/test_serialisation.py</span></code>, and for tuple and mixed
+<code class="docutils literal notranslate"><span class="pre">str</span></code> / <code class="docutils literal notranslate"><span class="pre">int</span></code> cause labels by <code class="docutils literal notranslate"><span class="pre">conformance/test_labels.py</span></code>.</p>
+</li>
+<li><p><strong>Consistent names.</strong> The same option has the same name, meaning and
+default everywhere (<code class="docutils literal notranslate"><span class="pre">alpha_ci</span></code>, <code class="docutils literal notranslate"><span class="pre">bound</span></code>, <code class="docutils literal notranslate"><span class="pre">on</span></code>, <code class="docutils literal notranslate"><span class="pre">interp</span></code>,
+<code class="docutils literal notranslate"><span class="pre">Z</span></code>, <code class="docutils literal notranslate"><span class="pre">random_state</span></code>, <code class="docutils literal notranslate"><span class="pre">n_boot</span></code>, <code class="docutils literal notranslate"><span class="pre">tie_method</span></code>, <code class="docutils literal notranslate"><span class="pre">event</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">x</span></code> for the times and <code class="docutils literal notranslate"><span class="pre">p</span></code> for a quantile’s probability), and so
+does the same attribute: every model’s fitted values are <code class="docutils literal notranslate"><span class="pre">params</span></code>,
+named entry by entry by the attribute <code class="docutils literal notranslate"><span class="pre">parameter_names</span></code>, and every
+model with <code class="docutils literal notranslate"><span class="pre">covariance()</span></code> has <code class="docutils literal notranslate"><span class="pre">standard_errors()</span></code>, the square roots
+of its diagonal; a regression coefficient is named by its covariate’s
+column, else <code class="docutils literal notranslate"><span class="pre">coef_j</span></code>, and the limited-failure proportion is
+<code class="docutils literal notranslate"><span class="pre">lfp_p</span></code>. Every
+DataFrame entry point (<code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code>, <code class="docutils literal notranslate"><span class="pre">fit_tvc_from_df</span></code>,
+<code class="docutils literal notranslate"><span class="pre">fit_tvc_timeline_from_df</span></code>) names a column argument after the <code class="docutils literal notranslate"><span class="pre">fit</span></code>
+argument it fills with a <code class="docutils literal notranslate"><span class="pre">_col</span></code> suffix, <code class="docutils literal notranslate"><span class="pre">_cols</span></code> for a list of
+columns: <code class="docutils literal notranslate"><span class="pre">x_col</span></code>, <code class="docutils literal notranslate"><span class="pre">c_col</span></code>, <code class="docutils literal notranslate"><span class="pre">n_col</span></code>, <code class="docutils literal notranslate"><span class="pre">xl_col</span></code>, <code class="docutils literal notranslate"><span class="pre">xr_col</span></code>,
+<code class="docutils literal notranslate"><span class="pre">tl_col</span></code>, <code class="docutils literal notranslate"><span class="pre">tr_col</span></code>, <code class="docutils literal notranslate"><span class="pre">i_col</span></code>, <code class="docutils literal notranslate"><span class="pre">e_col</span></code>, <code class="docutils literal notranslate"><span class="pre">y_col</span></code>, <code class="docutils literal notranslate"><span class="pre">Z_cols</span></code>.
+When a name changes, the old one keeps working for one release with a
+<code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> naming the new one.</p>
+<p>The quantities a model comparison reads – <code class="docutils literal notranslate"><span class="pre">aic</span></code>, <code class="docutils literal notranslate"><span class="pre">bic</span></code>,
+<code class="docutils literal notranslate"><span class="pre">neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">log_likelihood</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code> – are the same kind
+(a method or a value) on every model, and every full-likelihood fit
+offers <code class="docutils literal notranslate"><span class="pre">aic</span></code> and <code class="docutils literal notranslate"><span class="pre">bic</span></code>.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_options.py</span></code>,
+<code class="docutils literal notranslate"><span class="pre">conformance/test_params.py</span></code>, <code class="docutils literal notranslate"><span class="pre">conformance/test_comparison.py</span></code>
+(standard errors, #613), <code class="docutils literal notranslate"><span class="pre">conformance/test_repr.py</span></code> (every fitter
+prints what it is, #614), for the column names,
+<code class="docutils literal notranslate"><span class="pre">conformance/test_fit_paths.py</span></code>, and for the comparison quantities
+<code class="docutils literal notranslate"><span class="pre">conformance/test_comparison.py</span></code> and <code class="docutils literal notranslate"><span class="pre">conformance/test_surface.py</span></code>
+(#572; the degradation process models, <code class="docutils literal notranslate"><span class="pre">DestructiveDegradation</span></code>
+and <code class="docutils literal notranslate"><span class="pre">CauseSpecificNHPP</span></code> have them since #711). A fit with weights
+<code class="docutils literal notranslate"><span class="pre">w</span></code> maximises a pseudo-likelihood, not a full likelihood: its
+<code class="docutils literal notranslate"><span class="pre">aic</span></code>, <code class="docutils literal notranslate"><span class="pre">bic</span></code> and <code class="docutils literal notranslate"><span class="pre">aic_c</span></code> refuse, saying so.</p>
+</li>
+<li><p><strong>Warnings and errors.</strong> One warning per problem, with counts, saying
+what happened and what to do about it. No raw numpy warning escapes
+from package code.</p>
+<p><em>Checked</em> by <code class="docutils literal notranslate"><span class="pre">conformance/test_warnings.py</span></code>, which fails for any raw
+numerical warning raised inside SurPyval while fitting or predicting
+with a registered model.</p>
+</li>
+<li><p><strong>Documentation.</strong> Every public item is documented with a runnable
+example, and every number quoted in the prose is checked.</p>
+<p><em>Checked</em> for what exists: the documentation build runs every example
+and the hidden checks of the quoted numbers (see <a class="reference internal" href="Contributing.html"><span class="doc">Contributing</span></a>),
+and the docstring examples run as tests. <em>Checked</em> for completeness
+by <code class="docutils literal notranslate"><span class="pre">conformance/test_documentation.py</span></code>: every public item has a
+docstring with an example, and a new one without fails.</p>
+</li>
+<li><p><strong>Simple by default; more as an option.</strong> When a method reaches its
+limit – data it cannot handle, an approximation that breaks down, a
+question that needs a heavier computation – the new approach is added
+as an option beside it, not put in its place. The default stays the
+simple, standard method that serves the usual case, so a plain call
+stays fast and easy to explain, and its results do not move. A
+default changes only when it is wrong for the usual case (principle
+15; for example a band that did not hold its level, #390), not because
+a better method exists for a harder one. For example, trees split
+greedily by default and take conditional inference with
+<code class="docutils literal notranslate"><span class="pre">selection=&quot;ctree&quot;</span></code>; <code class="docutils literal notranslate"><span class="pre">cb</span></code> gives Wald bounds and <code class="docutils literal notranslate"><span class="pre">bootstrap_cb</span></code>
+resamples.</p>
+<p><em>Judgement</em>, applied in review: a change to a default says which
+principle the old default broke.</p>
+</li>
+</ol>
+</section>
+<section id="adding-to-the-list">
+<h2>Adding to the list<a class="headerlink" href="#adding-to-the-list" title="Link to this heading"></a></h2>
+<p>When a bug is fixed, ask which principle it broke. If the principle’s check
+did not catch it, extend the check – a new property in the conformance
+suite covers every model at once. If no principle covers it, it may be a new
+one: add it here with its check.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Glossary.html" class="btn btn-neutral float-left" title="Glossary" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Handy%20References%20-%20Aide-m%C3%A9moire.html" class="btn btn-neutral float-right" title="Handy References - Aide-mémoire" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,156 @@
+Recurrent Event Models
+======================
+
+Models for items that can have the same event many times -- repairable
+systems that fail and are repaired, patients with repeated
+hospitalisations. The data are each item's event times, measured from
+the start of its life, with a right-censored (``c=1``) row marking the
+end of its observation. Import everything on these pages from
+``surpyval.recurrent``. The theory is in
+:doc:`Recurrent Event Analysis` and
+:doc:`Recurrent Event Regression Analysis`; worked examples are in
+:doc:`Recurrent Event Modelling with SurPyval` and
+:doc:`Recurrent Event Regression Modelling with SurPyval`.
+
+Each fitter below returns one of three fitted-model classes: a
+:doc:`ParametricRecurrenceModel <counting/parametric_recurrence_model>`
+(the Poisson processes), a :doc:`RenewalModel <counting/renewal_model>`
+(the renewal and imperfect-repair models) or a
+:doc:`ProportionalIntensityModel <counting/proportional_intensity_models>`
+(the regression models; the semi-parametric ones return a
+:doc:`RecurrentCoxModel <counting/recurrent_cox>`). The non-parametric and cause-specific fitters
+return a fitted instance of their own class.
+
+Recurrent Event (Poisson Process) Models
+-----------------------------------------
+
+Processes whose events arrive at a rate that depends only on the
+system's age (or not at all, for the HPP), so a repair leaves the
+system as it was just before the failure ("as bad as old").
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/parametric_recurrence_model
+    counting/hpp
+    counting/duane
+    counting/cox_lewis
+    counting/crow_amsaa
+
+Software Reliability Growth Models
+----------------------------------
+
+Poisson processes for faults found and removed during testing: the
+intensity falls as the testing goes on. Fitted to failure times or to
+the failures counted in each period of testing.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/goel_okumoto
+    counting/yamada_delayed_s
+    counting/inflection_s
+    counting/musa_okumoto
+    counting/rayleigh_defects
+    counting/clocks
+
+Models of the Times Between Failures
+------------------------------------
+
+Models of one test campaign's times between failures that are not
+Poisson processes: a whole number of faults (Jelinski-Moranda), or a
+rate that is itself uncertain (Littlewood-Verrall).
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/jelinski_moranda
+    counting/littlewood_verrall
+
+Non-Parametric Models
+---------------------
+
+The mean cumulative function estimated without assuming a process, and
+the comparison of two groups' MCFs.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/nonparametric_mcf
+    counting/mcf_diff
+
+Panel Counts
+------------
+
+Events counted at inspections, with no event times: the mean cumulative
+function and a proportional means regression.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/panel_count
+
+Renewal Models
+--------------
+
+Processes in which a repair restores the system part of the way to new
+(or all the way, for an ordinary renewal process).
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/renewal_model
+    counting/grp
+    counting/g1_rp
+    counting/ara
+    counting/ari
+
+Competing Risks (Marked) Models
+-------------------------------
+
+Recurrent processes with several kinds of event, each with its own
+intensity (and, for the last, its own covariate effects).
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/cause_specific_mcf
+    counting/cause_specific_nhpp
+    counting/cause_specific_proportional_intensity
+
+Recurrent Event Regression Models
+----------------------------------
+
+Intensities that depend on covariates.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/proportional_intensity_models
+    counting/hpp_pi
+    counting/nhpp_pi
+    counting/recurrent_cox
+    counting/joint_frailty
+    counting/shared_frailty
+
+Trend Tests and Diagnostics
+---------------------------
+
+Tests of whether the event rate is changing, and the result classes of
+the tests and of the models' goodness-of-fit methods.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/trend_tests
+
+Interventions
+-------------
+
+Whether the rate of failures changed at an intervention (a design
+change, a corrective action), with the evidence to say so.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/intervention

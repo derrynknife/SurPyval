@@ -1,0 +1,2004 @@
+
+Non-Parametric SurPyval Modelling
+=================================
+
+This page is the how-to companion to the :doc:`Non-Parametric Estimation` page,
+which covers the concepts and mathematics behind the Kaplan-Meier,
+Nelson-Aalen, Fleming-Harrington and Turnbull estimators. Each section below
+is a worked scenario; where an example relies on an idea (a risk set, a
+confidence bound, the Turnbull EM) the theory page explains *why* it works.
+
+To get started, let's import some useful packages, as such, for the rest of this page we will assume the following imports have occurred:
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    import numpy as np
+    from matplotlib import pyplot as plt
+
+
+Survival modelling with *surpyval* is very easy. This page will take you through a series of scenarios that can show you how to use the features of *surpyval* to get you the answers you need. The first example is if you simply have a list of event times and need to estimate the probability of surviving to a given value.
+
+All four estimators share one interface. Each is an object with a ``fit()``
+method that takes data in the xcnt format described in :doc:`Types of Data`:
+
+- ``x``: the observed values (a 1-D array), or a 2-D array of ``[left, right]`` intervals; alternatively pass the two columns as ``xl`` and ``xr``;
+- ``c``: the censoring flag of each value: 0 observed, 1 right censored, -1 left censored, 2 interval censored (defaults to all observed);
+- ``n``: the number of items with each value (defaults to 1 each);
+- ``t``: a 2-D array of ``[left, right]`` truncation limits, or equivalently ``tl`` and ``tr`` (scalars apply to every value).
+
+There are five more, optional, arguments: ``set_lower_limit`` (see `Starting the curve at zero`_),
+and, for the ``Turnbull`` estimator only, ``turnbull_estimator``, ``tol``, ``max_iter`` and
+``turnbull_algorithm`` (the EM-ICM without truncation and the EM with it, by default; see
+`Arbitrarily Truncated and Censored Data`_). The other estimators
+ignore those four.
+
+``fit()`` returns a :class:`~surpyval.univariate.nonparametric.nonparametric.NonParametric` model (see its API page for every method), and every model has the same
+methods (``sf``, ``ff``, ``Hf``, ``cb``, ``plot`` and so on) whichever estimator made it.
+In each of the examples below, each of the ``KaplanMeier``, ``NelsonAalen``, or ``FlemingHarrington`` can be substituted with any of the others. It is the choice of the analyst which should be used (see `Choosing between Kaplan-Meier, Nelson-Aalen and Fleming-Harrington`_). The
+``Turnbull`` estimator has additional capabilities that can be used when you have right truncated, left censored, or interval censored data.
+
+Complete Data
+-------------
+
+Using data of the stress of Bofors steel from Weibull's original paper we can estimate the reliability, that is, the probability that a sample of steel will survive up to a given applied stress. So what does that mean?
+
+We can find when the steel will break. This is particularly useful when we know the application.
+
+For this example, lets say that the maximum tensile stress our design will see during use is 34 units. Lets try and estimate the proportion that will fail during operation.
+
+For this we can use the Nelson-Aalen estimator of the hazard rate, then convert it to the reliability. This is all done with one easy call.
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    import numpy as np
+    from matplotlib import pyplot as plt
+
+    x = np.array([32, 33, 34, 35, 36, 37, 38, 39, 40, 42])
+    n = np.array([10, 33, 81, 161, 224, 289, 336, 369, 383, 389])
+
+    # Weibull's measurements are cumulative so we need to transform them
+    n = np.concatenate([[n[0]], np.diff(n)])
+
+    bofors_steel_na = surv.NelsonAalen.fit(x, n=n)
+
+    plt.figure(figsize=(10, 7));
+    plt.ylabel('Survival Probability')
+    plt.xlabel('Stress [1.275kg/mm2]')
+    plt.ylim([0, 1])
+    plt.xlim([31, 42])
+    plt.step(bofors_steel_na.x, bofors_steel_na.R, where='post')
+    plt.title('Survival Prob vs Stress of Bofors Steel');
+
+Note the use of ``n``: rather than typing 389 values, each distinct stress is given once with the number of samples that broke there. The step is drawn with ``where='post'`` because the estimate drops *at* each observed value and holds until the next one.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert n.sum() == 389
+
+Data held in a pandas ``DataFrame`` can be passed with ``fit_from_df``,
+naming the columns, exactly as for a parametric distribution
+(``x_col``, ``c_col``, ``n_col``, ``xl_col`` / ``xr_col`` and ``tl_col`` /
+``tr_col``); the estimate is
+the one ``fit`` gives on the same arrays:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    bofors = pd.DataFrame({'stress': x, 'broke': n})
+    bofors_df_na = surv.NelsonAalen.fit_from_df(
+        bofors, x_col='stress', n_col='broke'
+    )
+    print(bofors_df_na.sf([34, 36]).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(bofors_df_na.R, bofors_steel_na.R)
+
+So what purpose is this?
+
+With our non-parametric model of the Bofors steel. We can use this model to estimate the reliability in our application. Let's say that our application uses Bofors steel up to 34. What is our estimate of the number of failures?
+
+.. jupyter-execute::
+
+    print(str(bofors_steel_na.sf(34).round(4).item() * 100) + "%")
+
+The above shows that approximately 80% will survive up to a stress of 34. Therefore we will have an approximately 20% chance of our component failing in the design.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(bofors_steel_na.sf(34).item(), 2) == 0.80
+
+It is up to the designer to determine whether this is acceptable.
+
+What if we want to take into account our uncertainty about the reliability. The non-parametric class automatically computes the variance of the estimate using the formula appropriate to the estimator (Greenwood's formula for Kaplan-Meier, Aalen's variance for Nelson-Aalen, and the tie-corrected variance for Fleming-Harrington) and uses that to compute the upper and lower confidence intervals. Let's plot the intervals to see.
+
+.. jupyter-execute::
+
+    plt.figure(figsize=(10, 7))
+    bofors_steel_na.plot(interp='linear')
+    plt.xlabel('Stress [1.275kg/mm2]')
+    plt.ylabel('Survival Probability')
+    plt.ylim([0, 1])
+    plt.xlim([32, 42])
+    plt.title('Surv Prob vs Stress of Bofors Steel')
+
+
+The confidence bounds can also be used to estimate the probability of survival up to some point with some degree of confidence. For example:
+
+.. jupyter-execute::
+
+    lower = bofors_steel_na.cb(34, on='sf', bound='lower', interp='linear', alpha_ci=0.05)
+    print(str(lower.round(4).item() * 100) + "%")
+
+Therefore we can be 95% confident that the reliability at 34 is above 76%. A one-sided bound uses all of ``alpha_ci`` on one side, so this lower bound is higher than the lower end of the two-sided 95% interval drawn in the plot. For a Kaplan-Meier
+model with no right censoring the variance at the final value is undefined with Greenwood's
+formula, so the bounds at the last observation are filled with the last finite upper bound and
+zero for the lower bound. The Nelson-Aalen and Fleming-Harrington variances remain finite at
+the final value so their bounds are defined all the way to the last observation.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert 0.76 < lower.item() < 0.77, lower
+    _two = bofors_steel_na.cb(34, interp='linear', alpha_ci=0.05)
+    assert lower.item() > _two[0]
+
+What a fitted model holds
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A fitted model stores the estimate in the xrd form described on the theory page: the distinct values ``x``, the number at risk ``r`` and the number of failures ``d`` at each, and the resulting survival ``R``, failure probability ``F`` and cumulative hazard ``H`` at each ``x``. Here is a small data set with a tie:
+
+.. jupyter-execute::
+
+    model = surv.KaplanMeier.fit([1, 2, 2, 3, 5, 8])
+    print(model)
+    print('x:', model.x)
+    print('r:', model.r)
+    print('d:', model.d)
+    print('R:', model.R.round(4))
+
+Two items fail at 2, so the risk set drops from 5 to 3 across that time and the survival falls by the factor :math:`1 - 2/5`. The cumulative variance of :math:`\hat{H}` behind the confidence bounds is in ``model.greenwood`` (the name is historical: for the Nelson-Aalen and Fleming-Harrington estimators it holds their own variance). The raw data the model was fitted with is kept in ``model.data``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.r[1:3].tolist() == [5, 3] and model.d[1] == 2
+    assert np.isclose(model.R[1] / model.R[0], 1 - 2 / 5)
+
+Evaluating the fitted curve
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The survival function ``sf``, failure function ``ff`` and cumulative hazard ``Hf`` can be evaluated anywhere, not just at the observed values. By default they follow the step function (``interp='step'``): the value at ``x`` is the estimate at the largest observed value at or below ``x``, it is 1 before the first observation, and it holds its last value after the last observation.
+
+.. jupyter-execute::
+
+    t = [0, 1, 1.5, 2, 4, 10]
+    print('sf:', model.sf(t).round(4))
+    print('ff:', model.ff(t).round(4))
+    print('linear sf:', model.sf(t, interp='linear').round(4))
+
+``interp='linear'`` (or ``'cubic'``, a shape-preserving interpolant) joins the estimates at the observed values instead; it is ``nan`` outside the observed range because there is nothing to interpolate between. Interpolation can make a plot easier to read but is not part of the estimate: the data say nothing about the shape of the curve between observations.
+
+Outside the data, then, what the estimate gives is a convention, and the step function's (1 before the first value, the last value held however far beyond it) is not always right. When you know the range the variable can take -- nothing can have failed before ``lower``, and the curve is to be held flat up to ``upper`` -- give the model that range with ``set_support(lower, upper)``. For every function and every ``interp``, the estimate is then at its start (``sf`` 1; ``ff``, ``Hf``, ``hf`` and ``df`` 0) from ``lower`` to the first observed value, holds its value at the last observed value up to ``upper``, and is ``nan`` outside ``[lower, upper]``; the confidence bounds from ``cb`` and ``bootstrap_cb`` follow the same rule (without a support they are the step estimate's start before the first value and ``nan`` past the last, see `Confidence bounds`_). The bounds must contain the data. ``lower`` may be negative (the variable need not be time) and either bound may be infinite. ``set_support`` returns the model, so it can follow ``fit``, and ``to_dict`` saves the bounds with the model. Without it (``model.support`` is ``None``) nothing changes.
+
+.. jupyter-execute::
+
+    bounded = surv.KaplanMeier.fit([1, 2, 2, 3, 5, 6], c=[0, 0, 0, 0, 0, 1])
+    bounded = bounded.set_support(0, 10)
+    t = [-1, 0, 0.5, 4, 8, 10, 11]
+    print('support:  ', bounded.support)
+    print('sf:       ', bounded.sf(t).round(4))
+    print('linear sf:', bounded.sf(t, interp='linear').round(4))
+    print('cb:\n', bounded.cb(t).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _s = bounded.sf(t, interp='linear')
+    assert np.isnan(_s[[0, -1]]).all() and (_s[1:3] == 1).all()
+    assert (_s[4:6] == bounded.R[-1]).all()
+    assert np.isnan(bounded.cb(t)[[0, -1]]).all()
+    assert (bounded.cb(t)[4:6] == bounded.cb([6])).all()
+
+Quantiles work on the step function too. ``qf(p)`` returns the smallest observed value at which the estimated CDF reaches ``p``, ``median`` is ``qf(0.5)`` and ``mean()`` is the area under the curve (up to the largest observation, by default):
+
+.. jupyter-execute::
+
+    print('10%, 50%, 90% quantiles:', model.qf([0.1, 0.5, 0.9]))
+    print('median:', model.median)
+    print('mean:', round(model.mean(), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(model.mean(), 3.5)
+
+With no censoring the mean is just the sample mean, (1 + 2 + 2 + 3 + 5 + 8)/6 = 3.5. A confidence
+interval for a quantile comes from ``quantile_cb(p)`` (the Brookmeyer-Crowley method: the times
+at which the pointwise interval for the survival contains :math:`1 - p`). It returns one
+``[lower, upper]`` row per ``p`` and takes ``alpha_ci`` and ``bound_type`` like ``cb()``:
+
+.. jupyter-execute::
+
+    print(model.quantile_cb([0.25, 0.5]))
+
+With six items the data are consistent with a median anywhere from 1 upwards: the upper bound of the
+survival never falls below 0.5, so the upper end is ``nan`` (open). Six items is simply too few to
+pin a median down.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _q = model.quantile_cb([0.5])[0]
+    assert _q[0] == 1 and np.isnan(_q[1]), _q
+
+``random(size, random_state=None)`` draws lifetimes from the fitted estimate: each draw is
+``qf(u)`` for one uniform ``u``, so each step time is drawn with the probability the estimate puts
+on it and the draws follow the model's own ``sf``. If the curve does not reach zero, the probability
+it leaves beyond its last time is drawn as ``inf`` -- a lifetime not observed to end within the
+data, as a parametric model's never-failing units are:
+
+.. jupyter-execute::
+
+    print(model.random(8, random_state=0))
+
+Confidence bounds
+^^^^^^^^^^^^^^^^^
+
+``cb()`` returns confidence bounds. By default they are two-sided 95% bounds on the survival function, returned as an array with one ``[lower, upper]`` row per requested value:
+
+.. jupyter-execute::
+
+    print(model.cb([1.5, 3, 6]).round(4))
+
+The options are:
+
+- ``on``: the function to bound, ``'sf'`` (default), ``'ff'`` or ``'Hf'``. The rows are always ``[lower, upper]`` for the function you asked about;
+- ``bound``: ``'two-sided'`` (default), ``'lower'`` or ``'upper'``;
+- ``alpha_ci``: the significance level, 0.05 by default;
+- ``bound_type``: how the interval is formed. ``'exp'`` (default) is the log(-log) interval, which always stays within [0, 1]; ``'normal'`` the plain symmetric interval. The others match the choices other software offers: ``'log'`` (the default of R's ``survfit``), ``'logit'`` and ``'arcsine'`` form the interval on the log, log-odds or arcsine-square-root scale and map it back (all within [0, 1]); ``'peto'`` is the plain interval with Peto's variance, which uses the number still at risk and is cautious late in follow-up; ``'rothman'`` is Rothman's Wilson-type interval, within [0, 1]. They are listed with their formulas in the ``cb`` reference;
+- ``interp``: as for ``sf``.
+
+.. jupyter-execute::
+
+    print('on ff:        ', model.cb(3, on='ff').round(4))
+    print('on Hf:        ', model.cb(3, on='Hf').round(4))
+    print('90% lower sf: ', model.cb(3, bound='lower', alpha_ci=0.1).round(4))
+    print("'normal' type:", model.cb(6, bound_type='normal').round(4))
+    print("'logit' type: ", model.cb(6, bound_type='logit').round(4))
+    print('at last value:', model.cb(8).round(4))
+    print('before first: ', model.cb(0.5))
+
+The bounds on ``ff`` are one minus those on ``sf`` (swapped so the lower is still first), and those
+on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below zero, which is impossible for a probability and the reason ``'exp'`` is the default. At 8, the last value, the survival estimate is 0 and Greenwood's variance is undefined, so the lower bound is set to 0 and the upper bound to the last finite one (the upper bound at 5). Before the first value the step estimate is exactly its start, and so are both bounds: ``[1, 1]`` on ``sf``, ``[0, 0]`` on ``ff`` and ``Hf`` (the interpolated forms, ``interp='linear'`` or ``'cubic'``, are ``nan`` there, as their ``sf`` is). Past the last value the bounds are ``nan``, with a warning naming the values: the step ``sf`` only holds its last value there, and the data say nothing about it (unless the model has bounds from ``set_support``, above):
+
+.. jupyter-execute::
+    :stderr:
+
+    print('past last:    ', model.cb(9))
+
+The formulas are in the section *From a variance to confidence bounds* of :doc:`Non-Parametric Estimation`. (``cb()`` also takes ``dist``, but only its default ``'z'`` is accepted; for small samples use ``bootstrap_cb()``, below.)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _sf = model.cb(3)
+    assert np.allclose(model.cb(3, on='ff'), 1 - _sf[::-1])
+    assert np.allclose(model.cb(3, on='Hf'), -np.log(_sf[::-1]))
+    assert model.cb(6, bound_type='normal')[0] < 0
+    assert 0 < model.cb(6, bound_type='logit')[0] < model.sf(6)
+    assert np.allclose(model.cb(8), [0, model.cb(5)[1]])
+    assert np.all(model.cb(0.5) == 1) and np.all(model.cb(0.5, on='ff') == 0)
+    assert np.all(model.cb(0.5, on='Hf') == 0)
+    assert np.all(np.isnan(model.cb(0.5, interp='linear')))
+    import warnings
+    with warnings.catch_warnings(record=True) as _w:
+        warnings.simplefilter('always')
+        assert np.all(np.isnan(model.cb(9)))
+    assert len(_w) == 1 and 'past the last observed value 8' in str(_w[0].message)
+
+``plot()`` draws the survival curve with the two-sided bounds as a shaded band, and marks right censored values with ticks. It accepts ``plot_bounds``, ``show_censors``, ``interp``, ``alpha_ci``, ``bound_type`` and ``bound`` (a one-sided ``'lower'`` or ``'upper'`` bound is drawn as a dashed line), passes anything else (``color``, ``label``, ...) to matplotlib, and can draw on a given ``ax``. The axes are titled with the estimator ("Kaplan-Meier estimate"), the y axis is "Survival probability" and the x axis "Time" unless it already has a label:
+
+.. jupyter-execute::
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    model.plot(ax=ax, label='two-sided 95%')
+    model.plot(ax=ax, bound='lower', alpha_ci=0.1, color='k', label='90% lower bound')
+    ax.legend();
+
+Starting the curve at zero
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A fitted curve starts at the first observed value: ``plot()`` draws nothing before it, and the
+interpolated ``sf`` and its bounds are ``nan`` there (the step estimate and its ``cb()`` are 1). If
+you know every item was new at some time (usually 0), pass
+``set_lower_limit``: it adds that value to the ladder with the full risk set and no failures, so the
+estimate and its bounds are 1 there. It must be below the smallest value in the data (a
+``ValueError`` otherwise); it changes nothing else, and it is ignored by the ``Turnbull``
+estimator.
+
+.. jupyter-execute::
+
+    started = surv.KaplanMeier.fit([1, 2, 2, 3, 5, 8], set_lower_limit=0)
+    print('x:', started.x, ' r:', started.r, ' d:', started.d)
+    print('cb at 0.5:', started.cb(0.5))
+
+Building a model from counts you already have
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If your data are already tabulated as times, numbers at risk and numbers of failures (a life table), skip ``fit()`` and use ``from_xrd`` (available for all but the Turnbull estimator). This is the example ladder from the theory page:
+
+.. jupyter-execute::
+
+    x = [1, 2, 3, 4, 5, 6]
+    r = [7, 5, 4, 3, 2, 1]
+    d = [2, 1, 1, 1, 1, 1]
+
+    for estimator in [surv.KaplanMeier, surv.FlemingHarrington, surv.NelsonAalen]:
+        print(estimator.from_xrd(x, r, d).model, estimator.from_xrd(x, r, d).R.round(4))
+
+The three rows show the ordering :math:`R_{KM} \leq R_{FH} \leq R_{NA}` discussed on the theory page. The Kaplan-Meier is one minus the empirical CDF, while the other two never reach zero.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _R = [e.from_xrd(x, r, d).R for e in
+          [surv.KaplanMeier, surv.FlemingHarrington, surv.NelsonAalen]]
+    assert np.all(_R[0] <= _R[1]) and np.all(_R[1] <= _R[2])
+    assert _R[0][-1] == 0 and _R[1][-1] > 0 and _R[2][-1] > 0
+
+If you only have a survival curve (the values and the survival at each) you can wrap it with ``surv.NonParametric.fit_from_ecdf(x, R)`` to get ``sf``, ``ff``, ``qf`` and so on (``x`` must be increasing and ``R`` non-increasing, within [0, 1]). Without the at-risk and failure counts there is no variance, so such a model cannot produce confidence bounds; draw it with ``plot(plot_bounds=False)``.
+
+Plotting positions for probability plots
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Probability plotting needs an estimate of :math:`F` at each observation. The ``plotting_positions`` function returns the ``x``, ``r``, ``d`` and ``F`` used for that, for any of the rank-based heuristics listed on the theory page or any of the estimators:
+
+.. jupyter-execute::
+
+    from surpyval.univariate.nonparametric import plotting_positions
+
+    x = [1, 2, 3, 4, 5, 6, 7, 8]
+    for heuristic in ['Blom', 'Filliben', 'Mean', 'Nelson-Aalen', 'Kaplan-Meier']:
+        _, _, _, F = plotting_positions(x, heuristic=heuristic)
+        print(f'{heuristic:>12}:', F.round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    for _h in ['Blom', 'Filliben', 'Mean', 'Nelson-Aalen', 'Kaplan-Meier']:
+        _F = plotting_positions(x, heuristic=_h)[3]
+        assert (_F[-1] == 1) == (_h == 'Kaplan-Meier'), (_h, _F)
+
+Note how the Kaplan-Meier reaches 1 at the largest value (which cannot be plotted on a Weibull axis), while the others stop short of it. ``plotting_positions`` also takes ``c``, ``n`` and ``t``: right censored data work with every heuristic (the rank based ones use adjusted ranks), left truncation needs one of the estimators, and left or interval censoring or right truncation need ``heuristic='Turnbull'`` (with ``turnbull_estimator`` to pick the estimator applied to the Turnbull ladder). Anything else raises an error. Here is the rank adjustment at work, with the items at 2 and 5 right censored:
+
+.. jupyter-execute::
+
+    x_pp, _, _, F = plotting_positions([1, 2, 3, 4, 5], c=[0, 1, 0, 0, 1], heuristic='Blom')
+    print(x_pp, F.round(3))
+
+The failure at 1 has rank 1. The censored item at 2 might have failed at any later position, so
+the failure at 3 gets rank :math:`1 + (5 + 1 - 1)/(1 + 3) = 2.25` rather than 3, and the one at 4 gets
+:math:`2.25 + (6 - 2.25)/(1 + 2) = 3.5`; Blom's formula then gives :math:`(2.25 - 0.375)/5.25 = 0.357`
+and :math:`(3.5 - 0.375)/5.25 = 0.595`. Censored values are returned too, carrying the previous
+failure's value, but only the failures are meant to be plotted. You rarely need to call it yourself: a parametric model's ``plot(heuristic=...)`` and ``fit(how='MPP', heuristic=...)`` use it, with ``'Nelson-Aalen'`` as the default (see :doc:`Parametric SurPyval Modelling`).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert F.round(3)[2:4].tolist() == [0.357, 0.595], F
+
+Saving and restoring a model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A fitted model can be written to a plain dictionary (or a JSON file) and read back, and the restored model has the same curve and bounds. ``surv.from_dict`` and ``surv.from_json`` work out which kind of model wrote the file:
+
+.. jupyter-execute::
+
+    import json
+
+    model_dict = model.to_dict()
+    restored = surv.from_dict(json.loads(json.dumps(model_dict)))
+    print(restored.model, restored.sf([1.5, 3]), model.sf([1.5, 3]))
+
+    # Keep the data too, so the restored model can bootstrap
+    with_data = surv.from_dict(json.loads(json.dumps(model.to_dict(with_data=True))))
+    print(with_data.bootstrap_cb([3], n_boot=50, random_state=0),
+          model.bootstrap_cb([3], n_boot=50, random_state=0))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.array_equal(restored.sf([1.5, 3]), model.sf([1.5, 3]))
+    assert np.allclose(with_data.bootstrap_cb([3], n_boot=50, random_state=0),
+                       model.bootstrap_cb([3], n_boot=50, random_state=0))
+
+``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``model.to_json(path, with_data=True)`` keeps the data in a file, to be read back with ``surv.from_json``. The sample size of ``band()`` (the number of items fitted) is stored where it differs from the largest risk set, as it does for left truncated data, so the band of a restored model is the original's (such a dictionary, like one with a support, is schema 2). For Turnbull models the estimator name, ``tol``, ``max_iter`` and (when it is not the EM) the ``turnbull_algorithm`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
+
+
+Right Censored Data
+-------------------
+
+Non-Parametric estimation can handle right censored data. This is possible because at the point of censoring the item is removed from the at risk group without counting a death/failure.
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval import KaplanMeier as KM
+
+    x = np.array([3, 4, 5, 6, 10])
+    c = np.array([0, 0, 0, 0, 1])
+    n = np.array([1, 1, 1, 1, 5])
+
+    model = KM.fit(x=x, c=c, n=n)
+    model.R
+
+.. jupyter-execute::
+
+    model.plot()
+
+In this example, we have included right censored data. This example can be done for the Nelson-Aalen,
+Fleming-Harrington, and Turnbull estimators as well. The five items still running at 10 never
+fail in the data, so the curve stops at 0.5556 (drawn with a tick at 10) rather than falling to zero.
+That has a consequence worth knowing: the estimated CDF never reaches 0.5, so the median (and
+any quantile above 0.44) is undefined, and surpyval says so rather than guessing:
+
+.. jupyter-execute::
+
+    print('median:', model.median)
+    print('mean up to 10:', round(model.mean(tau=10), 4))
+
+The mean is the area under the curve, and here it can only be taken up to the largest observation:
+``mean(tau=10)`` is the restricted mean over the first 10 units (see `Restricted mean survival
+time`_), not the mean life, which these data do not determine (it could be anything past it). With
+``tau`` left out, ``mean()`` gives the same area and warns, naming the survival estimate at the
+largest observation (0.5556 here, the probability the area leaves out); so do ``mean_cb()`` and
+``mrl(x)``. Give ``tau`` to ask for the restricted mean, or fit a parametric model for the mean
+life. Where no unit is left at risk after the last time, the area is the mean of the estimate and
+nothing warns.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(model.R[-1], 4) == 0.5556, model.R
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
+        assert model.mean() == model.mean(tau=10)
+    assert "0.5556" in str(_caught[0].message), _caught
+    assert np.isnan(model.median)
+    assert np.isnan(model.qf(0.45)) and not np.isnan(model.qf(0.44))
+
+Choosing between Kaplan-Meier, Nelson-Aalen and Fleming-Harrington
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The three estimators agree closely when the risk set is large and failures are not tied, and
+separate when a large fraction of the risk set fails at once. This data set has many failures
+tied at the first three times:
+
+.. jupyter-execute::
+
+    x = [1, 2, 3, 4, 5, 6, 7]
+    c = [0, 0, 0, 1, 0, 0, 1]
+    n = [6, 4, 2, 2, 1, 1, 2]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for estimator in [surv.KaplanMeier, surv.FlemingHarrington, surv.NelsonAalen]:
+        m = estimator.fit(x, c=c, n=n)
+        m.plot(ax=ax, plot_bounds=False, label=m.model)
+        print(f'{m.model:>18}:', m.sf([1, 2, 6]).round(3))
+    ax.legend();
+
+At time 1, six of eighteen fail. The Kaplan-Meier multiplies by :math:`1 - 6/18`, the
+Nelson-Aalen by :math:`e^{-6/18}` (noticeably larger) and the Fleming-Harrington splits the tie
+into six successive failures, landing close to the Kaplan-Meier. After the ties, where one item
+fails at a time, the Fleming-Harrington drops by the same factor as the Nelson-Aalen. See the section *On Surpyval's recommended estimator* of
+:doc:`Non-Parametric Estimation` for the guidance on which to prefer.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert sum(n) == 18 and n[0] == 6
+    _m = [e.fit(x, c=c, n=n) for e in
+          [surv.KaplanMeier, surv.FlemingHarrington, surv.NelsonAalen]]
+    _km, _fh, _na = (m.sf(1) for m in _m)
+    assert np.isclose(_km, 1 - 6 / 18) and np.isclose(_na, np.exp(-6 / 18))
+    assert _fh - _km < _na - _fh, (_km, _fh, _na)
+    assert np.isclose(_m[1].sf(6) / _m[1].sf(5),
+                      _m[2].sf(6) / _m[2].sf(5))
+
+Pointwise bounds, simultaneous bands and the bootstrap
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``cb()`` gives *pointwise* bounds: correct at any one time, but the whole true curve escapes
+them somewhere more often than 5% of the time. To ask whether a whole curve (say, a fitted
+Weibull) is consistent with the data, use the simultaneous band from ``band()``. For small
+samples, or when you distrust the asymptotic formulas, ``bootstrap_cb()`` refits the estimator
+to resampled data. Here is a simulated sample of 60 items with random right censoring:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(0)
+    lifetimes = 10 * rng.weibull(1.5, 60)
+    censor_times = rng.uniform(0, 20, 60)
+    x = np.minimum(lifetimes, censor_times)
+    c = (censor_times < lifetimes).astype(int)
+
+    km = surv.KaplanMeier.fit(x, c=c)
+    t = [5, 10, 15]
+    print('pointwise:\n', km.cb(t).round(3))
+    print('Hall-Wellner band:\n', km.band(t).round(3))
+    print('bootstrap:\n', km.bootstrap_cb(t, n_boot=200, random_state=1).round(3))
+
+The band is wider than the pointwise bounds, as it must be, and the bootstrap interval is close
+to the pointwise one here, a sign that the asymptotic formula is adequate for this sample. ``band()`` takes
+``method='hall-wellner'`` (default) or ``method='nair'`` (the equal-precision band), ``alpha_ci``,
+and ``bound_type``: the scale the band is applied on, ``'arcsine'`` (the arcsine-square-root of
+the survival function, the default), ``'exp'`` (its log(-log), as ``cb()``) or ``'normal'``. Its
+critical value, that of the limiting Brownian bridge over the range the band covers, is computed
+numerically rather than simulated, so results are accurate and reproducible. ``x_range=(t_L, t_U)``
+sets the times a band covers; it is ``nan`` outside them. The Hall-Wellner band covers the first to
+the last event by default. The Nair band's boundary grows without limit towards the ends of the
+data, where the estimate rests on a handful of failures or of items at risk, so by default it covers
+the times where :math:`a = N\hat{\sigma}^2/(1 + N\hat{\sigma}^2)` is between 0.1 and 0.9. In
+simulation it covers 94% to 96% for a nominal 95% so; over the first to the last event it covered
+93% on the arcsine scale, 87% to 89% on the log(-log) scale and 83% untransformed, most misses at
+the first events. ``bootstrap_cb()`` takes ``n_boot`` (200 resamples), ``random_state``, ``alpha_ci`` and a
+one-sided ``bound``; it always bounds the survival function and, like ``cb()``, is ``nan``
+outside the range of the data unless the model has a support (``set_support``).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _pw, _hw = km.cb(t), km.band(t)
+    assert np.all(_hw[:, 0] < _pw[:, 0]) and np.all(_hw[:, 1] > _pw[:, 1])
+    _bs = km.bootstrap_cb(t, n_boot=200, random_state=1)
+    assert np.max(np.abs(_bs - _pw)) < 0.05, _bs - _pw
+
+.. jupyter-execute::
+
+    print('Nair band:\n', km.band(t, method='nair').round(3))
+    print('Hall-Wellner, normal type:\n', km.band(t, bound_type='normal').round(3))
+    print('bootstrap 95% lower:', km.bootstrap_cb(t, bound='lower', n_boot=200, random_state=1).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _w = lambda b: b[:, 1] - b[:, 0]
+    _nair, _hw = km.band(t, method='nair'), km.band(t)
+    assert _w(_nair)[1] > _w(_hw)[1] and _w(_nair)[2] < _w(_hw)[2]
+    _normal = km.band(t, bound_type='normal')
+    assert _normal[2, 0] < 0 and np.all(_normal[:2, 0] >= 0)
+
+The Nair band follows the shape of the pointwise interval (it is the same formula with a larger
+critical value), while the Hall-Wellner band's width follows :math:`1 + N\hat{\sigma}^2`, so the two
+distribute their width differently: here the Nair band is a little wider at 10 and narrower at 15.
+Neither is uniformly better. The ``'normal'`` band, like the ``'normal'`` pointwise interval, can
+spill below zero (it does at 15); the arcsine and log(-log) bands stay within [0, 1]. With the band we can check a
+parametric fit against the data:
+
+.. jupyter-execute::
+
+    weibull = surv.Weibull.fit(x, c=c)
+    band = km.band()          # evaluated at the observed values by default
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    km.plot(ax=ax, plot_bounds=False, label='Kaplan-Meier')
+    ax.fill_between(km.x, band[:, 0], band[:, 1], step='post', alpha=0.3,
+                    label='95% Hall-Wellner band')
+    grid = np.linspace(0.1, km.x.max(), 200)
+    ax.plot(grid, weibull.sf(grid), 'k--', label='Weibull fit')
+    ax.legend();
+
+The Weibull curve stays inside the band, so the data give no reason to reject it.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # the Weibull sf decreases, so on each step [x_j, x_j+1) it lies in
+    # the band if sf(x_j) is below the upper and sf(x_j+1) above the lower
+    _ok = ~np.isnan(band[:-1, 0])
+    _s = weibull.sf(km.x)
+    assert np.all((_s[:-1] <= band[:-1, 1])[_ok])
+    assert np.all((_s[1:] >= band[:-1, 0])[_ok])
+
+The hazard rate
+^^^^^^^^^^^^^^^
+
+A non-parametric cumulative hazard is a step function, so its slope, the hazard *rate*, has to be
+approximated. ``hf()`` simply takes the change in the cumulative hazard between successive points
+you ask for, so its values depend on the spacing of your grid (here, steps of 3 units) and are
+increments rather than rates. ``smoothed_hf()`` spreads the jumps of the cumulative hazard with a
+kernel instead, which is usually what you want; ``bandwidth`` (in the units of ``x``) controls the
+trade-off between smoothness and detail. A hazard needs plenty of data, so here is a larger sample
+from the same Weibull distribution, whose true hazard is :math:`0.15 (t/10)^{0.5}`:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(0)
+    lifetimes = 10 * rng.weibull(1.5, 1000)
+    censor_times = rng.uniform(0, 20, 1000)
+    big = surv.KaplanMeier.fit(np.minimum(lifetimes, censor_times),
+                               c=(censor_times < lifetimes).astype(int))
+
+    t = np.array([3, 6, 9, 12])
+    print('true:        ', (0.15 * (t / 10) ** 0.5).round(3))
+    print('smoothed_hf: ', big.smoothed_hf(t, bandwidth=3).round(3))
+    print('hf:          ', big.hf(t).round(3))
+
+The smoothed estimate follows the true rising hazard, drifting low at 12 where few items remain at
+risk, while ``hf()`` returns increments over 3-unit steps (roughly three times the rate). Note that
+the first two ``hf()`` values are equal: the first point has nothing before it to difference from, so
+it repeats the second. ``df()`` is the drop in the survival over the same step, so it is a
+grid-dependent probability of failing in each step rather than a density. ``smoothed_hf()`` is ``nan`` outside the
+observed range and, if ``bandwidth`` is omitted, uses one eighth of that range.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _true = 0.15 * (t / 10) ** 0.5
+    _sm, _hf = big.smoothed_hf(t, bandwidth=3), big.hf(t)
+    assert np.all(np.abs(_sm - _true)[:3] < 0.015), _sm
+    assert _sm[3] < _true[3] - 0.02, _sm                  # drifts low at 12
+    assert np.all(np.abs(_hf[1:] / (3 * _true[1:]) - 1) < 0.3), _hf
+    assert _hf[0] == _hf[1]
+
+All units survived: success-run testing
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A zero-failure test is right censored data in its purest form: every unit is censored at the end
+of the test. The Kaplan-Meier is then 1 with no variance, which says nothing about the population.
+``success_run`` answers the useful question instead: after ``n`` successes in a row, what
+reliability can we claim with a given confidence?
+
+.. jupyter-execute::
+
+    from surpyval import success_run
+
+    print('10 successes, 95% confidence:', round(success_run(10), 4))
+    print('59 successes, 95% confidence:', round(success_run(59, alpha_ci=0.05), 4))
+    print('22 successes, 90% confidence:', round(success_run(22, alpha_ci=0.1), 4))
+
+So 59 consecutive successes demonstrate at least 95% reliability with 95% confidence. The level
+is ``alpha_ci``, the total tail probability, as for every bound in SurPyval (default 0.05, 95%
+confidence; the older ``confidence`` and ``alpha`` arguments were removed in v0.24). The same
+bound, as an upper bound on the failure probability, is the
+exact (Clopper-Pearson) bound of a ``Bernoulli`` fit with no failures, which also covers the
+case of a few failures:
+
+.. jupyter-execute::
+
+    from surpyval import Bernoulli
+
+    # failures coded 1: none in 59 demands, then 2 in 120
+    print(1 - Bernoulli.fit([0], n=[59]).param_cb("p", bound="upper"))
+    print(Bernoulli.fit([1, 0], n=[2, 118]).param_cb("p", alpha_ci=0.1))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert success_run(59) >= 0.95 > success_run(58)
+    _clean = Bernoulli.fit([0], n=[59]).param_cb("p", bound="upper")
+    assert abs(1 - _clean[0] - success_run(59)) < 1e-12
+
+Left Truncated Data
+-------------------
+
+In some instances you will need to account for left truncated data. These data can be passed
+straight to the same KM, NA, and FH fitters. A common source of left truncation is delayed
+entry into a study: each subject's clock starts before they enrol, so anyone who failed
+before they could enrol is never observed, biasing the sample towards longer survivors.
+We can simulate such a cohort:
+
+.. jupyter-execute::
+
+    from surpyval import KaplanMeier as KM
+
+    np.random.seed(10)
+    lifetimes = surv.Weibull.random(1_000, 10, 2.5)
+    entry = np.random.uniform(0, 10, 1_000)
+
+    # Only subjects still alive at their entry time are ever enrolled
+    enrolled = lifetimes > entry
+    x = lifetimes[enrolled]
+    tl = entry[enrolled]
+
+    model = KM.fit(x=x, tl=tl)
+    model_no_trunc = KM.fit(x=x)
+
+    model.plot(plot_bounds=False)
+    model_no_trunc.plot(plot_bounds=False)
+    plt.legend(['Truncation', 'No Truncation'])
+
+
+The image above shows that if you fail to take into account the left truncation (using the ``tl`` keyword)
+you will overstate the survival probability. This can be used with any of the other non-parametric fitters.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = [4, 6, 8, 10]
+    assert np.all(model_no_trunc.sf(_t) > model.sf(_t))
+
+Who is at risk, and when
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Truncation works entirely through the risk set: an item is only at risk after it has entered.
+SurPyval uses the standard :math:`(t_l, x]` convention, so an item entering at *exactly* the time of
+a failure is not at risk for it. Looking at ``r`` makes this concrete:
+
+.. jupyter-execute::
+
+    model = KM.fit(x=[2, 3, 3, 4, 5, 6], tl=[0, 0, 1, 1, 2, 2])
+    print('x:', model.x)
+    print('r:', model.r)
+    print('d:', model.d)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.r[:2].tolist() == [4, 5], model.r
+
+The two items entering at 2 are not at risk for the failure at 2 (four are), but they are at risk
+by 3, so the risk set *grows* from 4 to 5. A value equal to its own entry time would have a
+zero-length observation window and is rejected with an error. Truncation can also be given as a
+two-column ``t`` array of ``[left, right]`` limits, with ``np.inf`` for "no right truncation";
+this is the same fit:
+
+.. jupyter-execute::
+
+    t = np.array([[0, np.inf], [0, np.inf], [1, np.inf],
+                  [1, np.inf], [2, np.inf], [2, np.inf]])
+    print(KM.fit(x=[2, 3, 3, 4, 5, 6], t=t).R.round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(KM.fit(x=[2, 3, 3, 4, 5, 6], t=t).R, model.R)
+
+Two cautions. The estimate is of survival *given* survival to the earliest entry time; nothing can
+be said about earlier times. And when few items have entered early the early risk sets are small,
+so a single early failure moves the curve a long way. Always look at ``r`` when you have delayed
+entry. Right truncation cannot be handled this way (the number at risk is unknown); the Kaplan-Meier,
+Nelson-Aalen and Fleming-Harrington fitters raise an error and the Turnbull estimator is needed.
+
+Arbitrarily Truncated and Censored Data
+---------------------------------------
+
+In the event you have data that has interval, left, or right censoring with no, left, or right truncation, the previous estimators will not work. Enter the ``Turnbull`` estimator. First an interval
+estimation example:
+
+
+.. jupyter-execute::
+
+    from surpyval import Turnbull as TB
+
+    low = np.array([0, 0, 0, 4, 5, 5, 6, 7, 7, 11, 11, 15, 17, 17,
+                    17, 18, 19, 18, 22, 24, 24, 25, 26, 27, 32, 33,
+                    34, 36, 36, 36, 36, 37, 37, 37, 37, 38, 40, 45,
+                    46, 46, 46, 46, 46, 46, 46, 46])
+    upp = np.array([7, 8, 5, 11, 12, 11, 10, 16, 14, 15, 18, np.inf,
+                    np.inf, 25, 25, np.inf, 35, 26, np.inf, np.inf,
+                    np.inf, 37, 40, 34, np.inf, np.inf, np.inf, 44,
+                    48, np.inf, np.inf, 44, np.inf, np.inf, np.inf,
+                    np.inf, np.inf, np.inf, np.inf, np.inf, np.inf,
+                    np.inf, np.inf, np.inf, np.inf, np.inf])
+
+    x = np.array([low, upp]).T
+    model = TB.fit(x, max_iter=10_000)
+    model.plot()
+
+Each row of ``x`` is an interval ``[left, right]`` in which the item failed; an upper limit of
+``np.inf`` means the item was still working at the last inspection (right censored). The
+censoring flags are worked out from the intervals, so ``c`` is not needed. (The same data can be
+given as ``TB.fit(xl=low, xr=upp)``.)
+
+These data are not truncated, so the fit uses the EM-ICM of R's ``Icens`` and ``icenReg``
+packages (``turnbull_algorithm='auto'``, the default): it reaches the non-parametric MLE in 17
+iterations and stops when it is there, when the Karush-Kuhn-Tucker conditions of the maximum hold
+to ``tol`` (default ``1e-10``; see :doc:`Non-Parametric Estimation`). With truncation the default
+is Turnbull's EM, which can be slow: it stops when no piece's probability mass changes by more
+than ``tol`` in an iteration, and converges slowly when many observations are right censored to
+infinity, as more than half of these are. Fitted with ``turnbull_algorithm='EM'`` these data take
+nearly 900 iterations (with the default Fleming-Harrington option), which is why ``max_iter`` is
+raised from its default of 1000 here to leave headroom. The EM warns rather than failing silently
+if it runs out of iterations before reaching ``tol``; if you see that warning, raising
+``max_iter`` is usually the answer, and if it persists, the data may not identify a unique
+estimate at all. The fitted model records what happened:
+
+.. jupyter-execute::
+
+    print('converged:', model.converged, ' iterations:', model.iters)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.converged and model.turnbull_algorithm == "EMICM"
+    assert model.iters < 50, model.iters
+    _em = TB.fit(x, max_iter=10_000, turnbull_algorithm="EM")
+    assert _em.converged and 800 < _em.iters < 900, _em.iters
+    assert np.isinf(upp).mean() > 0.5
+
+And finally, an example with completely arbitrary censoring:
+
+
+.. jupyter-execute::
+
+    from surpyval import Turnbull as TB
+
+    x = [1, 2, [3, 6], 7, 8, 9, [5, 9], [4, 10], [7, 10], 11, 12]
+    c = [1, 1, 2, 0, 0, 0, 2, 2, 2, -1, 0]
+    n = [1, 2, 1, 3, 2, 2, 1, 1, 2, 1, 1]
+
+    model = TB.fit(x=x, c=c, n=n)
+    model.plot()
+
+With a completely arbitrary set of data we have created a non-parametric estimate of the survival
+curve that can be used to estimate probabilities. Here ``x`` mixes single values and
+``[left, right]`` pairs, and ``c`` says how to read each: right censored at 1 and 2, interval
+censored in (3, 6], (5, 9], (4, 10] and (7, 10], observed at 7, 8, 9 and 12, and left censored
+(failed at or before) 11.
+
+Reading a Turnbull model
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+What is interesting about the Turnbull estimate is that it first finds the data in the 'xrd' format.
+This is done even though we might not have a complete failure occur in an interval. This can be seen by looking at the number of deaths/failures that occur at each value.
+
+.. jupyter-execute::
+
+    print('x:', model.x)
+    print('d:', model.d.round(3))
+
+You can see that some values are 0 and that others are fractional: the EM has shared each
+censored item's failure out over the times it could have failed at, so ``d`` and ``r`` are
+*expected* counts: those of the non-parametric MLE, to which the default Fleming-Harrington
+option is then applied (see the theory page). The risk set starts at all 17 items and ``d`` adds
+up to 17. A few things to know when reading them:
+
+- ``x`` holds the endpoints of the Turnbull pieces. Exactly observed times appear twice, because the failure mass at such a time sits in the zero-width piece between the two copies.
+- ``d[k]`` is the expected number of failures in the piece that *ends* at ``x[k]``, i.e. in :math:`(x_{k-1}, x_k]`, and ``r[k]`` is the expected number at risk just before that piece, so that ``R[k]`` is the estimator applied to ``r`` and ``d`` up to ``k``, as for the other estimators. So the 1.58 failures at ``x = 6`` are in (5, 6], and the curve drops there. (The first piece starts at ``model.bounds[0]``, here :math:`-\infty`.)
+- Where the estimate falls across a piece, the data do not say *where* in the piece: the drawn step (holding the value until the right end) is a convention. The full set of piece boundaries is ``model.bounds``, and ``model.R_upper`` and ``model.R_lower`` hold the survival at the start and end of each piece, which is the range any curve through that piece could take:
+
+.. jupyter-execute::
+
+    print('r[0]:', model.r[0].round(3), ' sum of d:', model.d.sum().round(3))
+    for k in [4, 6]:
+        print(f'piece ({model.x[k]:g}, {model.x[k + 1]:g}]: survival between '
+              f'{model.R_lower[k]:.3f} and {model.R_upper[k]:.3f}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # r[0] is a sum of the EM's fractional expected counts, so it is 17
+    # only to rounding (the summation order depends on the CPU).
+    assert round(model.r[0], 9) == 17 and round(model.d.sum(), 2) == 17
+    _k = np.flatnonzero(model.x == 6)[0]
+    assert round(model.d[_k], 2) == 1.58, model.d
+    assert model.x[6] == model.x[7] == 7          # the (7, 7] piece
+
+The second piece, (7, 7], is the zero-width piece holding the failures observed at exactly 7. The
+fitted model also records the Turnbull-specific ``turnbull_estimator``, ``converged``,
+``iters``, ``degenerate``, ``npmle`` and ``exploitable_mass`` (described below). Like every other model it
+carries the cumulative hazard ``H`` (:math:`-\ln R`), so ``Hf()``, ``hf()``, ``df()`` and
+``smoothed_hf()`` all work as usual.
+
+Choosing the estimator applied to the Turnbull ladder
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Because the Turnbull estimate finds the x, r, and d format we can actually elect to use the Nelson-Aalen, Kaplan-Meier or Fleming-Harrington estimate with the Turnbull estimates of x, r, and d, using ``turnbull_estimator``. The default is ``'Fleming-Harrington'``.
+
+.. jupyter-execute::
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for estimator in ['Kaplan-Meier', 'Fleming-Harrington', 'Nelson-Aalen']:
+        m = TB.fit(x=x, c=c, n=n, turnbull_estimator=estimator)
+        m.plot(ax=ax, plot_bounds=False, label=estimator)
+    ax.legend();
+
+The Kaplan-Meier option drops to zero at the last value, as a Kaplan-Meier does, while the
+Nelson-Aalen and Fleming-Harrington options leave some probability of surviving beyond it, which
+gives a better approximation for the tail end of the distribution. Only the Kaplan-Meier option is
+the non-parametric maximum likelihood estimate.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    for _e in ['Kaplan-Meier', 'Fleming-Harrington', 'Nelson-Aalen']:
+        _last = TB.fit(x=x, c=c, n=n, turnbull_estimator=_e).R[-1]
+        assert (_last == 0) == (_e == 'Kaplan-Meier'), (_e, _last)
+
+This choice is the usual reason a Turnbull fit does not match a ``KaplanMeier`` fit on data both
+can handle. With the estimator matched, they agree:
+
+.. jupyter-execute::
+
+    x_t = [2, 3, 3, 4, 5, 6]
+    tl_t = [0, 0, 1, 1, 2, 2]
+
+    print('KaplanMeier:        ', KM.fit(x=x_t, tl=tl_t).sf(2))
+    for estimator in ['Kaplan-Meier', 'Fleming-Harrington', 'Nelson-Aalen']:
+        m = TB.fit(x=x_t, tl=tl_t, turnbull_estimator=estimator)
+        print(f'Turnbull {estimator:>18}:', m.sf(2).round(4))
+
+Compare like with like: pass ``turnbull_estimator='Kaplan-Meier'`` when checking a Turnbull fit
+against ``KaplanMeier``. (A Turnbull fit with the Fleming-Harrington option need not equal
+``FlemingHarrington.fit`` either, because the Turnbull ladder spreads censored items over later
+times as fractional failures; see the theory page.)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(KM.fit(x=x_t, tl=tl_t).sf(2),
+                       TB.fit(x=x_t, tl=tl_t,
+                              turnbull_estimator='Kaplan-Meier').sf(2))
+
+Confidence bounds for a Turnbull estimate
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``cb()`` and ``plot()`` work for Turnbull models. For exact and right censored data, with or
+without left truncation, the variance is computed from the observed counts and matches the
+Kaplan-Meier's. With interval or left censoring it treats the expected counts as if they had been
+observed, which ignores the uncertainty about where the censored failures really were, so the
+bounds are only approximate. The bootstrap does not have that problem, and is the recommended
+way to put bounds on such an estimate:
+
+.. jupyter-execute::
+
+    model = TB.fit(x=x, c=c, n=n, turnbull_estimator='Kaplan-Meier')
+    t = [6, 8, 9]
+    print('from cb():\n', model.cb(t).round(3))
+    print('bootstrap:\n', model.bootstrap_cb(t, n_boot=100, random_state=1).round(3))
+
+The bootstrap interval at 8 is much wider than the one from ``cb()``: six of the 17 items were
+interval or left censored, and the formula-based bound does not know how uncertain their failure times
+are. Each bootstrap resample refits the Turnbull EM, with the same ``turnbull_estimator``, ``tol``
+and ``max_iter`` as the original fit, so keep ``n_boot`` modest for large data sets.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _cb, _bs = model.cb(t), model.bootstrap_cb(t, n_boot=100, random_state=1)
+    assert _bs[1, 1] - _bs[1, 0] > 1.4 * (_cb[1, 1] - _cb[1, 0])
+    _n = np.array(n)
+    assert _n[np.isin(c, [-1, 2])].sum() == 6 and _n.sum() == 17
+
+The ``cb()`` bounds use the same pieces as the estimate, so they drop where it drops:
+
+.. jupyter-execute::
+
+    print('sf at 5.5:', model.sf(5.5).round(3), ' cb at 5.5:', model.cb(5.5).round(3))
+    print('sf at 6:  ', model.sf(6).round(3), ' cb at 6:  ', model.cb(6).round(3))
+
+The estimate at 5.5 is 1 (the drop in (5, 6] is drawn at 6), and so are both bounds; at 6 all three
+have dropped.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.sf(5.5) == 1 and np.all(model.cb(5.5) == 1)
+    assert model.sf(6) < 1 and np.all(model.cb(6) < 1)
+
+Truncation with the Turnbull estimator
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Turnbull fitter also accepts truncation (``tl``/``tr``, or ``t``). Under
+truncation the EM iterates with the Kaplan-Meier self-consistency update
+(the canonical Turnbull M-step), and the requested hazard-form estimator
+(Fleming-Harrington / Nelson-Aalen) is applied to the converged step
+function -- so on well-sized samples the truncated estimate converges and
+is well behaved. Here is the mixed-censoring sample again, now with entry times:
+
+.. jupyter-execute::
+
+    tl = [0, 0, 0, 0, 0, 2, 3, 3, 1, 1, 5]
+
+    model = TB.fit(x=x, c=c, n=n, tl=tl, max_iter=5_000)
+    print('converged:', model.converged, ' iterations:', model.iters)
+    print('degenerate:', model.degenerate, ' npmle:', model.npmle)
+    print('sf:', model.sf([5, 7, 9, 12]).round(4))
+
+This small, truncated, mixed-censoring sample needs about 3,300 iterations; with the default
+``max_iter`` it would stop early with a warning. Once converged, the diagnostics are clean.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(model.iters, -2) == 3300, model.iters
+    assert model.converged and not model.degenerate
+    assert model.npmle == 'exists'
+
+Right truncation arises when items that fail *late* are never seen, for example when failures are
+only reported if they happen before a data cut-off. Each item can have its own truncation time:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(3)
+    lifetimes = 10 * rng.weibull(2.0, 300)
+    cutoff = rng.uniform(5, 20, 300)
+    seen = lifetimes <= cutoff
+
+    model = TB.fit(x=lifetimes[seen], tr=cutoff[seen], turnbull_estimator='Kaplan-Meier')
+    naive = KM.fit(lifetimes[seen])
+    t = np.array([4, 8, 12, 16])
+    print('true:     ', np.exp(-(t / 10) ** 2).round(3))
+    print('Turnbull: ', model.sf(t).round(3))
+    print('ignoring truncation:', naive.sf(t).round(3))
+
+Ignoring the truncation badly understates survival, because the long-lived items are exactly the
+ones that were cut off.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _true = np.exp(-(t / 10) ** 2)
+    assert np.all(naive.sf(t) < model.sf(t)) and np.all(naive.sf(t) < _true)
+
+When the data cannot identify the curve
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Be aware, though, that the truncated NPMLE is a delicate object: on some data it does not exist
+(the likelihood only approaches its supremum on the boundary) or is not unique -- the data simply
+do not pin down a unique curve. Which applies is a property of the data, and SurPyval decides it
+before the EM runs and warns rather than silently returning a meaningless curve:
+
+- ``npmle`` is ``'exists'``, ``'not unique'`` (with a warning: some probability is left free, so many curves fit equally well), ``'does not exist'`` (with a warning that the estimate is not identifiable) or ``'undetermined'`` (windows truncated on both sides together with censoring, where the structure alone does not decide);
+- ``degenerate`` is set, with a warning, if the survival estimate collapses (for example all probability mass escaping below every entry time);
+- ``exploitable_mass`` is the share of the fitted mass in pieces where mass never lowers the likelihood: some item could have failed there, and every item whose truncation window covers the piece could have too. It is a diagnostic; its size depends on how far the EM got, so the warnings follow ``npmle``;
+- ``converged`` is ``False`` if the EM ran out of iterations (with a warning saying so, unless one of the more specific warnings above was raised instead).
+
+The classic trap is left censoring combined with two or more distinct entry times. Here two of
+six items are left censored and every item has a different entry time:
+
+.. jupyter-execute::
+
+    import warnings
+
+    x_ni = [2, 3, 4, 5, 6, 7]
+    c_ni = [-1, 0, 0, -1, 0, 0]
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        bad = TB.fit(x=x_ni, c=c_ni, tl=np.linspace(0.1, 1.0, 6),
+                     turnbull_estimator='Kaplan-Meier')
+    print(caught[0].message.args[0].split(' (')[0] + ' ...')
+    print('npmle:', bad.npmle, ' converged:', bad.converged)
+    print('sf:', bad.sf([2, 4, 6]).round(4))
+
+    good = TB.fit(x=x_ni, c=c_ni, tl=0.5, turnbull_estimator='Kaplan-Meier')
+    print('common entry time, sf:', good.sf([2, 4, 6]).round(4))
+
+The first left censored item could have failed in (0.1, 0.28], before anyone else entered, and
+nobody who had entered by 0.28 is known to have survived it. Pushing the hazard there towards one
+raises that item's likelihood and costs the others nothing (their likelihoods are conditional on
+their own entry), so the likelihood has no maximum: nearly all of the mass has been pushed there and
+the survival curve has collapsed. Raising ``max_iter`` would not help. With a common entry time the
+same data fit without complaint. Treat any Turnbull estimate that came with a warning with suspicion.
+Data that do identify the curve, such as exact failures with right truncation or with staggered
+entry (unless everyone at risk at some time fails before the next item enters), fit without the
+warning; the section *What the data cannot tell you* of :doc:`Non-Parametric Estimation` gives the
+conditions and where they come from.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(np.linspace(0.1, 1.0, 6)[1], 0.28)
+    assert bad.npmle == 'does not exist' and bad.sf(2) < 0.01
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        TB.fit(x=x_ni, c=c_ni, tl=0.5, turnbull_estimator='Kaplan-Meier')
+
+Some Issues with the Turnbull Estimate
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Caution must be given when using the Turnbull estimate when all values are truncated by some left and/or
+right value. This is taken up again in the parametric pages. But
+essentially the Turnbull method cannot make any assumptions about the probability by which the smallest
+value if left truncated should be adjusted. This is because there is no information available with the
+non-parametric method below this smallest value. The same is true for the largest value if it is also
+right truncated, there is no information available about the probability of its observation. Therefore
+the Turnbull method makes an implicit assumption that the first value, if left truncated has 100% chance
+of observation, and the highest value, if right truncated also has 100% chance of being observed.
+
+In other words the estimate is *conditional* on the truncation. When every item has the same right
+truncation time, the Turnbull estimate is of the distribution given failure before that time, and
+so it reaches zero there:
+
+.. jupyter-execute::
+
+    x_cut = lifetimes[lifetimes <= 12]
+    model = TB.fit(x=x_cut, tr=12, turnbull_estimator='Kaplan-Meier')
+    t = np.array([4, 8, 12])
+    F12 = 1 - np.exp(-(12 / 10) ** 2)
+    print('Turnbull:                 ', model.sf(t).round(3))
+    print('true, given failure by 12:', (1 - (1 - np.exp(-(t / 10) ** 2)) / F12).round(3))
+
+The estimate follows the conditional distribution (up to sampling noise), not the unconditional one
+(whose survival at 12 is about 0.24). The implications of this are detailed in the Parametric section, because the only way to gain an understanding of these situations is by assuming a shape of the distribution. That is, by doing parametric analysis. This is possible since if the distribution within the truncated ends has a shape that matches to a particular distribution you can then extrapolate beyond the observed values. Parametric analysis is therefore incredibly powerful for prediction / extrapolation; see :doc:`Parametric SurPyval Modelling`.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _cond = 1 - (1 - np.exp(-(t / 10) ** 2)) / F12
+    assert np.all(np.abs(model.sf(t) - _cond) < 0.07)
+    assert round(np.exp(-(12 / 10) ** 2), 2) == 0.24
+
+
+Comparing two groups: the log-rank test
+---------------------------------------
+
+Having estimated a survival curve for each of several groups, the natural next
+question is whether they *differ*. The **log-rank test** is the standard answer:
+at every event time it compares the observed number of failures in each group
+with the number expected if all groups shared one survival curve, and combines
+those differences into a chi-squared statistic with ``k - 1`` degrees of freedom
+(``k`` groups). A small ``p``-value is evidence the groups differ.
+
+.. jupyter-execute::
+
+    import numpy as np
+    import surpyval as surv
+    from surpyval import logrank
+
+    np.random.seed(1)
+    control = surv.Weibull.random(200, 10, 1.2)
+    treatment = surv.Weibull.random(200, 16, 1.2)   # longer-lived
+    x = np.concatenate([control, treatment])
+    group = np.array(['control'] * 200 + ['treatment'] * 200)
+
+    result = logrank(x, group)
+    print(result)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert result.dof == 1
+
+The second argument, ``Z``, holds a group label for each value (any labels will do except NaN or
+``None``, which raise an error; with :math:`k` distinct labels the test has :math:`k - 1` degrees
+of freedom, counting, as R's ``survdiff`` does, only groups with a positive expected number of
+failures: a group never at risk at a failure time carries no information). The result's
+``statistic``, ``dof``, ``p_value`` and ``weighting`` are available as attributes. The test
+accepts right censored data through ``c`` (0 observed, 1 right censored; left or interval
+censored values raise an error) and counts through ``n``. Here the study is stopped at time 15,
+so every item still working then is right censored there:
+
+.. jupyter-execute::
+
+    c = (x > 15).astype(int)
+    x_obs = np.minimum(x, 15)
+    censored = logrank(x_obs, group, c=c)
+    print('censored at 15: statistic = %.2f, dof = %d, p = %.3g'
+          % (censored.statistic, censored.dof, censored.p_value))
+
+Censoring removes information, so the statistic is smaller than with the complete data, but the
+difference is still clear.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert censored.statistic < result.statistic and censored.p_value < 1e-6
+
+``weighting`` chooses the weight given to each event time: ``'log-rank'`` (the default, weight 1),
+``'gehan'`` (the number at risk), ``'tarone-ware'`` (its square root) or
+``'fleming-harrington'`` with ``rho`` and ``gamma`` (both 0 by default, which is the plain
+log-rank). Use them when you expect the difference to be concentrated early or late rather than
+proportional over time, and pick one before looking at the results:
+
+.. jupyter-execute::
+
+    for weighting in ['log-rank', 'gehan', 'tarone-ware']:
+        print(f'{weighting:>12}: p = {logrank(x, group, weighting=weighting).p_value:.3g}')
+    early = logrank(x, group, weighting='fleming-harrington', rho=1, gamma=0)
+    print('FH(1, 0), early differences: p = %.3g' % early.p_value)
+    late = logrank(x, group, weighting='fleming-harrington', rho=0, gamma=1)
+    print('FH(0, 1), late differences:  p = %.3g' % late.p_value)
+    print(late.weighting)
+
+These two groups differ by a constant factor in the hazard (the same Weibull shape, a different
+scale), which is exactly the alternative the plain log-rank is built for, so it gives the smallest
+:math:`p`-value; weights that emphasise only early or only late times lose some power.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _p = [logrank(x, group, weighting=w).p_value
+          for w in ['gehan', 'tarone-ware']] + [early.p_value, late.p_value]
+    assert result.p_value < min(_p), (result.p_value, _p)
+
+With **delayed entry** -- units that came under observation part-way through their lives, such as
+equipment whose records start when a database was set up -- pass each unit's entry time as ``tl``.
+A unit is then at risk only from its entry, at the event times ``t`` with ``tl < t <= x``, as in
+``KaplanMeier`` and ``CoxPH`` with ``tl``. Without it, a unit would be counted at risk before it was
+seen, at failures it could not have been part of. R's ``survdiff`` takes right censored data only;
+with entry times the test is the score test of the Cox model of the group (``coxph`` with
+``ties = "exact"`` in R), which it matches. Here the units of group 1 entered at age 3:
+
+.. jupyter-execute::
+
+    np.random.seed(5)
+    x_late = np.concatenate([3 + np.random.weibull(2, 40) * 10, np.random.weibull(2, 40) * 7])
+    group_late = np.repeat([1, 2], 40)
+    entry = np.where(group_late == 1, 3.0, 0.0)
+    print('ignoring entry: p = %.3g' % logrank(x_late, group_late).p_value)
+    print('with tl       : p = %.3g' % logrank(x_late, group_late, tl=entry).p_value)
+
+Ignoring the entry time puts the group 1 units at risk at every early failure of group 2, before
+they were seen, which inflates the difference between the groups.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (logrank(x_late, group_late, tl=entry).statistic
+            < logrank(x_late, group_late).statistic)
+
+Stratified log-rank
+^^^^^^^^^^^^^^^^^^^
+
+When a *nuisance* factor influences survival — a study site, a batch — comparing
+groups while ignoring it can be badly misleading if the groups are unevenly
+distributed across its levels. The **stratified** log-rank accumulates the
+observed-minus-expected counts *within* each stratum before forming the
+statistic, so groups are only ever compared against others in the same stratum.
+Pass a ``strata`` label per observation.
+
+The example below is confounded on purpose: the baseline hazard differs sharply
+by site, and the group is unevenly allocated across sites, but there is no true
+group effect. The pooled test is fooled; the stratified test is not:
+
+.. jupyter-execute::
+
+    np.random.seed(2)
+    n = 600
+    site = np.random.randint(0, 2, n)
+    group = np.where(site == 0, np.random.random(n) < 0.8,
+                     np.random.random(n) < 0.2).astype(int)
+    baseline = np.where(site == 0, 4.0, 20.0)
+    x = np.random.exponential(baseline)              # no group effect
+
+    print('pooled     p = %.4g' % logrank(x, group).p_value)
+    print(logrank(x, group, strata=site))
+
+The stratified result also records the number of strata (its ``strata`` attribute). The degrees of
+freedom are unchanged: stratification changes which items are compared with which, not the number
+of groups. ``strata`` can be combined with ``c``, ``n`` and any ``weighting``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert logrank(x, group).p_value < 1e-6            # pooled is fooled
+    _s = logrank(x, group, strata=site)
+    assert _s.p_value > 0.1 and _s.strata == 2 and _s.dof == 1
+
+Peto-Peto weights and a fixed window
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Two more weightings are ``'peto-peto'``, Peto and Peto's estimate of the pooled survival at each
+event time (it emphasises early differences, as Gehan's does, but depends less on the censoring
+pattern), and ``'modified-peto-peto'``. ``t0`` compares the groups up to a time only: events after
+it count as units still running at ``t0``. Use it when the question is about a fixed follow-up
+window, chosen before looking at the data. On the control and treatment groups of the first
+example:
+
+.. jupyter-execute::
+
+    x2 = np.concatenate([control, treatment])
+    group2 = np.repeat(['control', 'treatment'], 200)
+    print('log-rank    : p = %.3g' % logrank(x2, group2).p_value)
+    print('Peto-Peto   : p = %.3g' % logrank(x2, group2, weighting='peto-peto').p_value)
+    print('up to t = 5 : p = %.3g' % logrank(x2, group2, t0=5).p_value)
+
+Up to time 5 there are fewer events, so the evidence from that window alone is weaker.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert logrank(x2, group2, t0=5).p_value > logrank(x2, group2).p_value
+
+Which groups differ? Pairwise tests
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+With three or more groups the log-rank test says whether *any* group differs, not which.
+``pairwise_logrank`` tests every pair on its own two groups' data and gives the results in one
+table. Running several tests raises the chance that one of them rejects by luck, so the table also
+has the p-values adjusted for the number of pairs (``p_adjusted``; Holm's method by default,
+``adjust='bonferroni'``, ``'bh'`` for Benjamini-Hochberg or ``'none'``). Compare the adjusted
+values with your significance level. Here, three groups of which only the third is different:
+
+.. jupyter-execute::
+
+    from surpyval import pairwise_logrank
+
+    np.random.seed(3)
+    x3 = np.concatenate([np.random.weibull(1.5, 60) * s for s in (10, 10, 5)])
+    group3 = np.repeat(['A', 'B', 'C'], 60)
+    pairs = pairwise_logrank(x3, group3)
+    print(pairs.table.round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = pairs.table.set_index(['group_a', 'group_b'])['p_adjusted']
+    assert _t[('A', 'B')] > 0.05 and _t[('A', 'C')] < 0.05 and _t[('B', 'C')] < 0.05, _t
+
+A and B are not told apart; C differs from each. ``pairwise_logrank`` takes every argument of
+``logrank`` (``c``, ``n``, ``weighting``, ``strata``, ``tl``, ``t0``).
+
+Interval-censored groups: ``interval_logrank``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When failures are found at inspections or clinic visits, each failure time is only known to lie
+between the last visit where all was well and the first where it was not. ``logrank`` needs exact
+or right censored times, so it refuses such data; ``interval_logrank`` takes any mix of exact,
+right, left and interval-censored rows, in the usual forms (``x`` and ``c``, a two-column ``x``,
+or ``xl`` and ``xr``).
+
+In plain words, it works in three steps:
+
+1. Pool every group and estimate one survival curve, the Turnbull estimate.
+2. Give each unit a score from that curve: high if it failed early, low if it lasted, averaged
+   over the interval it is known to have failed in. A unit still running at its last visit gets a
+   low score.
+3. If the groups truly share one survival curve, which group a unit is in tells nothing about its
+   score. So compare each group's total score with how much it would vary if the labels were
+   shuffled at random.
+
+The scores come in three flavours (``scores``): ``'log-rank'`` (Sun's, the default; on exact and
+right censored data each group's score total is exactly the log-rank test's observed minus
+expected events), ``'finkelstein'`` (Finkelstein's log-rank scores, from a proportional hazards
+model of the grouped data) and ``'wilcoxon'`` (the Wilcoxon-type scores, which weigh early
+differences more). The p-value is from the chi-squared distribution by default, or from random
+relabellings of the units with ``method='permutation'`` (seeded with ``random_state``), better for
+small samples.
+
+The breast cosmesis study (Finkelstein and Wolfe, 1985) followed 94 women after radiotherapy for
+early breast cancer, alone or with chemotherapy, and recorded at each visit whether breast
+retraction had appeared. Here are 30 of each group:
+
+.. jupyter-execute::
+
+    from surpyval import interval_logrank
+
+    inf = np.inf
+    xl = [45, 6, 0, 46, 46, 7, 17, 7, 37, 0, 4, 15, 11, 22, 46, 46, 25, 46, 26, 46,
+          27, 36, 46, 36, 37, 40, 17, 46, 11, 38,
+          8, 0, 24, 17, 17, 24, 16, 13, 11, 16, 18, 17, 32, 23, 44, 14, 0, 5, 12, 11,
+          33, 31, 13, 19, 34, 13, 16, 35, 15, 11]
+    xr = [inf, 10, 7, inf, inf, 16, inf, 14, 44, 8, 11, inf, 15, inf, inf, inf, 37, inf, 40, inf,
+          34, 44, inf, 48, inf, inf, 25, inf, 18, inf,
+          12, 22, 31, 27, 23, 30, 24, inf, 13, 20, 25, 26, inf, inf, 48, 17, 5, 8, 20, inf,
+          40, inf, 39, 32, inf, inf, 24, inf, 22, 17]
+    regimen = ['radiotherapy'] * 30 + ['with chemotherapy'] * 30
+    print(interval_logrank(xl=xl, xr=xr, Z=regimen))
+    res = interval_logrank(xl=xl, xr=xr, Z=regimen, scores='wilcoxon',
+                           method='permutation', random_state=1)
+    print('Wilcoxon, permutation p-value: %.3g' % res.p_value)
+    print(res.U)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _r = interval_logrank(xl=xl, xr=xr, Z=regimen)
+    assert _r.p_value < 0.05 and _r.U['with chemotherapy'] > 0, _r
+
+``U`` holds each group's score total: positive means earlier failures than the pooled curve
+suggests, so retraction came sooner with chemotherapy.
+
+With :math:`S` the pooled Turnbull estimate and a unit known to fail in :math:`(a_i, b_i]`, the
+scores are
+
+.. math::
+
+    c_i = \frac{\psi(S(a_i)) - \psi(S(b_i))}{S(a_i) - S(b_i)},
+
+with :math:`\psi(s) = s \log s` for Finkelstein's scores and :math:`\psi(s) = s^2 - s` for the
+Wilcoxon's (so :math:`c_i = S(a_i) + S(b_i) - 1`); Sun's use :math:`\psi = S \log \tilde S`, with
+:math:`\tilde S` the exponential of minus the cumulative hazard of the estimate. With :math:`N`
+units, :math:`d_i = c_i - \bar c` and :math:`\bar d_g` the mean of :math:`d_i` over the
+:math:`N_g` units of group :math:`g`, the statistic is
+
+.. math::
+
+    \chi^2 = \frac{N - 1}{\sum_i d_i^2} \sum_g N_g \bar d_g^2,
+
+on :math:`k - 1` degrees of freedom (Fay and Shaw, 2010). It is R's
+``interval::ictest(L, R, group, scores = 'logrank1' | 'logrank2' | 'wmw', method = 'pclt')``, and
+agrees with it to rounding when both estimates are converged tightly (checked in the test suite
+on the full 94 women and on simulated data with every kind of censoring). Truncated data (``tl``, ``tr``) are refused: delayed entry
+makes the units not exchangeable, which the test relies on; use ``logrank`` with ``tl`` for exact
+and right censored data with delayed entry.
+
+When the hazards are not proportional: the max-combo test
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The log-rank test is at its best when one group's hazard is a constant multiple of the other's.
+When the difference only shows after a while (a treatment that takes time to work), fades, or the
+curves cross, a weighting that stresses late or early times does better -- but which one is not
+known in advance, and trying several and keeping the smallest p-value overstates the evidence.
+``maxcombo_logrank`` runs several Fleming-Harrington weightings at once (by default FH(0, 0), the
+log-rank test; FH(0, 1), late; FH(1, 0), early; and FH(1, 1), the middle), takes the strongest,
+and gets its p-value from the joint distribution of all of them, so the chance of a false
+rejection stays at the level chosen. Here the treatment does nothing for 5 time units and then
+halves the hazard:
+
+.. jupyter-execute::
+
+    from surpyval import maxcombo_logrank
+
+    rng = np.random.default_rng(11)
+    control = rng.exponential(10, 150)
+    treated = rng.exponential(10, 150)
+    late = treated > 5
+    treated[late] = 5 + rng.exponential(20, late.sum())
+    x_d = np.minimum(np.concatenate([control, treated]), 25)
+    c_d = (np.concatenate([control, treated]) > 25).astype(int)
+    arm = np.repeat(['control', 'treated'], 150)
+    print('log-rank : p = %.3g' % logrank(x_d, arm, c=c_d).p_value)
+    combo = maxcombo_logrank(x_d, arm, c=c_d)
+    print(combo)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert combo.p_value < logrank(x_d, arm, c=c_d).p_value, combo
+
+Each component's ``z`` is the first group's (here ``'control'``) observed minus expected events
+over its standard deviation; the p-value is :math:`P(\max_j |Z_j| \ge m)` for normal
+:math:`Z_j` with the components' estimated correlation (``combo.correlation``), R's
+``nph::logrank.maxtest``. ``alternative='greater'`` or ``'less'`` gives a one-sided test, and
+``strata``, ``tl`` and ``t0`` work as for ``logrank``.
+
+Ordered groups: the test for trend
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When the groups have an order -- doses, stages, load levels -- the question is usually whether
+the hazard rises with the order, not whether any group differs. ``trend_logrank`` gives each group
+a score (1, 2, ..., k by default, or your own through ``scores``) and tests whether the groups'
+observed minus expected events line up with the scores, on one degree of freedom. It finds a
+steady trend with fewer data than the k-group test, and misses a difference that does not follow
+the order. It takes every option of ``logrank`` (``weighting``, ``strata``, ``tl``, ``t0``, ``w``):
+
+.. jupyter-execute::
+
+    from surpyval import trend_logrank
+
+    rng = np.random.default_rng(12)
+    dose = np.repeat([0, 10, 20, 40], 40)
+    x_t = rng.exponential(10 / np.exp(0.02 * dose))
+    print('k-group : p = %.3g' % logrank(x_t, dose).p_value)
+    print(trend_logrank(x_t, dose, scores=[0, 10, 20, 40]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _tr = trend_logrank(x_t, dose, scores=[0, 10, 20, 40])
+    assert _tr.z > 0 and _tr.p_value < logrank(x_t, dose).p_value, _tr
+
+A positive ``z`` means the hazard rises with the score. With :math:`U` the groups' observed minus
+expected events, :math:`V` their covariance and :math:`s` the scores,
+:math:`z = s^\top U / \sqrt{s^\top V s}` (Tarone, 1975).
+
+Small samples: the permutation log-rank test
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The chi-squared p-value of ``logrank`` is an approximation that can be poor with a handful of
+units. ``permutation_logrank`` takes the p-value from the data instead: if the groups share one
+survival curve, the labels are just tags, so it counts how many ways of shuffling them give a
+statistic at least as large as the one observed -- every way when there are few (an exact
+p-value), a random sample of them otherwise (a Monte Carlo p-value, seeded with
+``random_state``, with its standard error):
+
+.. jupyter-execute::
+
+    from surpyval import permutation_logrank
+
+    x_s = [6, 6, 6, 7, 10, 13, 16, 22, 23, 1, 1, 2, 2, 3, 4, 4, 5]
+    c_s = [0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    arm_s = ['treated'] * 9 + ['control'] * 8
+    print(permutation_logrank(x_s, arm_s, c=c_s))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _pl = permutation_logrank(x_s, arm_s, c=c_s)
+    assert _pl.method == 'exact' and _pl.p_value < 0.05, _pl
+
+**When the permutation p-value is valid.** Shuffling the labels assumes the units are
+exchangeable under the null hypothesis: the same survival *and the same censoring* in every
+group. When one group is followed for longer or loses more units, the shuffles mix up the
+censoring patterns too, and the test can reject a true null too often (Heinze, Gnant and Schemper,
+2003). Then use ``logrank``, whose chi-squared p-value does not assume equal censoring. For the
+same reason delayed entry (``tl``) and sampling weights (``w``) are refused.
+
+Cut-points of a continuous covariate: maximally selected statistics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+People often want a threshold: "patients over this age", "parts above this vibration level".
+``maxstat_logrank`` tries every cut of a continuous covariate between the 10% and 90% quantiles
+(``minprop``, ``maxprop``), scores each split with the log-rank statistic, and reports the best.
+
+Two warnings in plain words. First, the ordinary log-rank p-value *at the best cut* is wrong:
+with dozens of cuts tried, one of them looks significant by chance alone, and that naive p-value
+rejects a true null hypothesis far more often than 5% (about 4 times in 10 with 100 units and the default range of cuts, in the package's own simulation study).
+``maxstat_logrank`` reports it as ``naive_p_value`` only to show the size of the correction; report
+``p_value``, which allows for the search. Second, cutting a continuous covariate in two throws
+information away and the best cut rarely replicates; to learn how the covariate affects survival,
+fit a regression on the covariate itself (``CoxPH``). Use a cut only when a two-way decision is
+really needed.
+
+.. jupyter-execute::
+
+    from surpyval import maxstat_logrank
+    from surpyval.datasets import load_lung
+
+    lung = load_lung()
+    res = maxstat_logrank(lung['time'], lung['age'], c=1 - lung['status'])
+    print(res)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert res.naive_p_value < 0.05 < res.p_value, res
+
+The best cut, 70 years, would look significant on its own (p = 0.044), but once the 24 cuts tried
+are allowed for there is no real evidence of a threshold in age. The default p-value
+(``method='exact'``) is the probability that the largest of the standardised statistics, jointly
+normal under the null hypothesis, reaches the one observed (R's ``maxstat``, ``pmethod =
+'exactGauss'``); ``'lausen94'`` (an upper bound), ``'lausen92'`` (a large-sample approximation) and
+``'permutation'`` (Monte Carlo) are the alternatives.
+
+Plotting groups with the number at risk
+---------------------------------------
+
+``surv.plot_nonparametric`` draws one or more fitted non-parametric models on one axes, with
+the things a survival figure usually carries: the confidence bounds, ticks at the censored
+times, reference lines at the median (or any quantile) with their values, and a
+**number-at-risk table** under the x axis. It takes one model, a list of models, or a dict
+``{label: model}`` for groups, from any estimator (Kaplan-Meier, Nelson-Aalen,
+Fleming-Harrington or Turnbull, truncated or not).
+
+The lung cancer data has 138 men and 90 women. Fit a Kaplan-Meier curve to each and draw them
+with their medians and the full table (at risk, censored so far, events so far):
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_lung
+
+    lung = load_lung()
+    by_sex = {
+        ('Men' if sex == 1 else 'Women'): surv.KaplanMeier.fit(part['time'], c=1 - part['status'])
+        for sex, part in lung.groupby('sex')
+    }
+    out = surv.plot_nonparametric(by_sex, quantiles=0.5, at_risk_rows='all', xlabel='Days')
+
+In plain terms: a man's median survival in this study is 270 days and a woman's 426. At day 200,
+78 of the 138 men are still being followed and event-free; 54 have died and 6 have left the study
+alive. The columns of the table sit under the x axis's ticks; pass ``at_risk_times`` to choose
+others.
+
+The function returns the figure and axes to customise further, and the numbers it drew:
+
+.. jupyter-execute::
+
+    print(out.quantiles)
+    print(out.times)
+    print(out.counts['Men']['At risk'])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert out.quantiles['Men'][0.5] == 270 and out.quantiles['Women'][0.5] == 426
+    assert out.counts['Men']['At risk'][0] == 138 and out.counts['Women']['At risk'][0] == 90
+    _m = by_sex['Men']
+    _x = np.asarray(out.lines['Men'].get_xdata())
+    assert np.allclose(out.lines['Men'].get_ydata(), _m.sf(_x))
+    plt.close(out.fig)
+
+The other options:
+
+- ``on``: ``'sf'`` (the default), ``'ff'`` (the cumulative incidence), ``'Hf'`` (the cumulative
+  hazard) or ``'hf'`` (the kernel-smoothed hazard rate of ``smoothed_hf``, without bounds);
+- ``ci``: ``'pointwise'`` (the model's ``cb``, the default), ``'band'`` (its simultaneous
+  ``band``, with ``band_method``) or ``False``; ``alpha_ci``, ``bound`` and ``bound_type`` are
+  passed to them, and ``ci_style='lines'`` draws dashed steps instead of a shaded wash;
+- ``show_censors``, ``quantiles``, ``xlim``, ``log_x``;
+- ``labels``, ``colors``, ``xlabel``, ``ylabel``, ``title``, ``legend`` and ``ax`` (draw on your
+  own axes; save with ``bbox_inches='tight'`` so the table is not cut off);
+- ``at_risk`` (``False`` for no table), ``at_risk_times``, ``at_risk_rows`` and ``counts``
+  (``'cumulative'``, as above, or ``'interval'`` for what happened since the previous column).
+
+Here is the cumulative hazard on a log time axis, with the simultaneous equal-precision band:
+
+.. jupyter-execute::
+
+    out = surv.plot_nonparametric(by_sex, on='Hf', ci='band', band_method='nair',
+                                  log_x=True, xlabel='Days')
+
+**What "at risk" means.** A unit is at risk at time :math:`t` if it entered before :math:`t` and
+its event or censoring time is :math:`t` or later: the same risk sets the estimators use. With
+left truncation (late entry) the number at risk can therefore *rise* as units enter. With left or
+interval censoring (a Turnbull fit) an event is only known to lie in an interval
+:math:`(L, U]`, so the table counts what the data show rather than the Turnbull estimate's
+fractional expected counts: **At risk** is the units known to be event-free (:math:`t \le L`),
+**Events** those known to have had the event by :math:`t` (:math:`U \le t`), and **In interval**
+those whose interval spans :math:`t` (their event may or may not have happened yet).
+
+.. jupyter-execute::
+
+    xl = [0, 2, 2, 4, 5, 6, 8, 9, 11, 12]
+    xr = [3, 5, np.inf, 7, 9, np.inf, 12, 14, np.inf, 16]
+    turnbull = surv.Turnbull.fit(xl=xl, xr=xr)
+    out = surv.plot_nonparametric(turnbull, at_risk_rows='all', at_risk_times=[0, 4, 8, 12, 16])
+    print(out.counts['Turnbull'])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _c = out.counts['Turnbull']
+    # by hand from the intervals: (2, 5] spans 4, (5, 9] spans 8, (9, 14] spans 12
+    assert list(_c['At risk']) == [10, 7, 4, 1, 0]
+    assert list(_c['In interval']) == [0, 1, 1, 1, 0]
+    assert list(_c['Events']) == [0, 1, 3, 5, 7]
+    assert all(_c['At risk'] + _c['In interval'] + _c['Events'] + _c['Censored'] == 10)
+    plt.close(out.fig)
+
+Life tables
+-----------
+
+A **life table** (the actuarial, or Cutler-Ederer, method) groups the times into intervals and
+counts, in each, how many units were at risk at its start, how many were censored (withdrew) and
+how many had the event. From those counts it estimates the chance of the event in each interval,
+the survival at the start of each, and the density and hazard rate there, each with a standard
+error. It is the classical summary for grouped data and for reports that give survival by year
+or by age band. ``surv.life_table`` builds one from the times, the censoring flags, the counts
+and the entry times (``tl``), or from a ``SurpyvalData`` or a fitted non-parametric model.
+
+The lung cancer data in 180-day intervals:
+
+.. jupyter-execute::
+
+    lung_table = surv.life_table(lung['time'], 1 - lung['status'],
+                                 intervals=np.arange(0, 1081, 180))
+    print(lung_table[['start', 'end', 'at_risk_start', 'censored', 'events', 'at_risk',
+                      'q', 'surv', 'se_surv', 'hazard']].round(4))
+
+In plain terms: of the 228 patients, 62 died in the first 180 days, so about 72% (``surv``, with
+a standard error of 3%) were alive at the start of the second interval; of the 142.5 effectively
+at risk in that interval, 39% died in it. ``at_risk`` is the number at risk at the start less half
+of those censored in the interval: the method assumes a unit that withdraws was at risk for half
+of it. That is also why the actuarial survival differs a little from the Kaplan-Meier estimate at
+the same time (72.4% against 72.2% at day 180).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = lung_table
+    assert _t['at_risk_start'][0] == 228 and _t['events'][0] == 62
+    assert round(_t['surv'][1], 3) == 0.724 and round(_t['se_surv'][1], 2) == 0.03
+    assert _t['at_risk'][1] == 142.5 and round(_t['q'][1], 2) == 0.39
+    assert round(float(surv.KaplanMeier.fit(lung['time'], c=1 - lung['status']).sf(180)), 3) == 0.722
+
+The intervals are ``[start, end)``. ``intervals`` takes the boundaries (a last boundary of
+``inf``, or data beyond the last one, gives an open last interval, which has no density or
+hazard), or a number of equal intervals (the last open), and defaults to the Freedman-Diaconis
+width. Late entrants are counted in the ``entered`` column of the interval they enter and, like
+withdrawals, as half at risk there. Data already grouped is given as one row per interval and
+outcome, at its start, with the count in ``n``. Left or interval censored data cannot be counted
+into intervals; estimate it with ``Turnbull`` instead.
+
+Exposure (person-years) tables
+------------------------------
+
+An **exposure table** answers "how often do events happen here?" for each group and each stretch
+of life. In every cell it adds up the time the units were watched there (the *exposure*: unit-hours,
+person-years), counts the events there, and divides: the event rate, failures per 1,000 operating
+hours or deaths per 1,000 person-years. A unit counts in every cell it passes through. A pump
+watched from 3,000 to 7,000 operating hours, with bands every 2,000 hours, adds 1,000 hours to the
+2,000-4,000 band, 2,000 to the 4,000-6,000 band and 1,000 to the 6,000-8,000 band, and its failure
+counts in the band it was in when it failed. Reading each unit's band from its age at the start of
+the record instead would put all its time, and its failure, in one band, which overstates the
+rates of the young bands and understates the old.
+
+``surv.person_years`` builds the table, as R's ``survival::pyears``. Fixed groupings (a site, a
+model, a sex) are ``factors``; time bands are ``timescales``, each given as ``(start, breaks)``:
+each unit's value on that clock at time 0 of ``x``, and the band edges. Attained age is ``(age at
+time 0, age bands)``, calendar period ``(date at time 0 as a number, period edges)``, the clock of
+``x`` itself ``(0, bands)`` and time since entry ``(-tl, bands)``.
+
+A fleet: twelve pumps at two sites, each recorded from some age (``start``, in operating hours
+since installation) until it failed or the record ended. Failures per 1,000 hours by site and by
+age band:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    pumps = pd.DataFrame({
+        "site": ["North"] * 6 + ["South"] * 6,
+        "start": [0, 0, 2000, 4500, 6000, 9000, 0, 1000, 3000, 5000, 7000, 8000],
+        "end": [6200, 11800, 9400, 12000, 8100, 15500,
+                3900, 7400, 9800, 6900, 13000, 12100],
+        "failed": [1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1],
+    })
+    fleet = surv.person_years(
+        pumps["end"], 1 - pumps["failed"], tl=pumps["start"],
+        factors={"site": pumps["site"]},
+        timescales={"age": (0, [0, 5000, 10000, 20000])},
+        per=1000,
+    )
+    print(fleet.table[["site", "age", "age_end", "units", "exposure", "events",
+                       "rate", "rate_lower", "rate_upper"]].round(3))
+    print(fleet.margins("site")[["site", "exposure", "events", "rate",
+                                 "rate_lower", "rate_upper"]].round(3))
+
+In plain terms: the North pumps ran 41,500 hours and failed 3 times, 0.072 failures per 1,000
+hours; the South pumps 29,100 hours and 5 failures, 0.172. The bounds (95% by default,
+``alpha_ci``) are exact: with so few failures they are wide, from 0.015 to 0.21 at North. Is South
+really worse?
+
+.. jupyter-execute::
+
+    rr = fleet.rate_ratio({"site": "South"}, {"site": "North"})
+    print(round(rr["ratio"], 2), round(rr["lower"], 2), round(rr["upper"], 2),
+          round(rr["p_value"], 2))
+
+South's rate is 2.4 times North's, but anything from about half to 15 times fits these eight
+failures (p = 0.29): the data cannot yet tell the sites apart.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _s = fleet.margins("site").set_index("site")
+    assert _s.loc["North", "exposure"] == 41500 and _s.loc["North", "events"] == 3
+    assert _s.loc["South", "exposure"] == 29100 and _s.loc["South", "events"] == 5
+    assert round(_s.loc["North", "rate"], 3) == 0.072 and round(_s.loc["South", "rate"], 3) == 0.172
+    assert round(_s.loc["North", "rate_lower"], 3) == 0.015 and round(_s.loc["North", "rate_upper"], 2) == 0.21
+    assert round(rr["ratio"], 1) == 2.4 and round(rr["p_value"], 2) == 0.29
+    assert 0.4 < rr["lower"] < 0.5 and 15 < rr["upper"] < 16
+
+A cohort: the 1,384 patients of ``mgus2`` followed from diagnosis, deaths per 1,000
+person-years by sex and attained age. With reference rates (here an illustrative table, by sex and
+age band, in the same units: deaths per 1,000 person-years), each cell also gets its expected
+deaths and the observed to expected ratio, the standardised mortality (or incidence) ratio:
+
+.. jupyter-execute::
+
+    from surpyval.datasets import load_mgus2
+
+    mgus = load_mgus2()
+    reference = pd.DataFrame({
+        "sex": ["F"] * 4 + ["M"] * 4,
+        "age": [0, 60, 70, 80] * 2,
+        "rate": [5, 15, 40, 120, 8, 25, 60, 160],
+    })
+    cohort = surv.person_years(
+        mgus["futime"] / 12, 1 - mgus["death"],
+        factors={"sex": mgus["sex"]},
+        timescales={"age": (mgus["age"], [0, 60, 70, 80, np.inf])},
+        rates=reference, per=1000,
+    )
+    print(cohort.table[["sex", "age", "units", "exposure", "events", "rate",
+                        "expected", "oe_ratio", "oe_lower", "oe_upper"]].round(2))
+    print(cohort.margins()[["exposure", "events", "expected", "oe_ratio",
+                            "oe_lower", "oe_upper"]].round(3))
+
+The patients lived 11,048.5 person-years and 963 died, 1.37 times the deaths the reference rates
+predict (95% bounds 1.28 to 1.46). The excess is largest under 60, four to five times the
+reference (14 women died there against 3.4 expected), and shrinks with age. ``units`` counts the patients who spent time in each cell, so a patient who
+crossed an age band is counted in both.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = cohort.margins().iloc[0]
+    assert round(_t["exposure"], 1) == 11048.5 and _t["events"] == 963
+    assert round(_t["oe_ratio"], 2) == 1.37
+    assert round(_t["oe_lower"], 2) == 1.28 and round(_t["oe_upper"], 2) == 1.46
+    _f = cohort.table.iloc[0]
+    assert _f["events"] == 14 and round(_f["expected"], 1) == 3.4
+
+What it does, in more detail:
+
+- **The rate and its bounds.** A cell's rate is its events over its exposure, :math:`d / T`, the
+  estimate of a hazard taken as constant within the cell. Its bounds are the exact (Garwood)
+  Poisson bounds, :math:`\chi^2_{2d, \alpha/2} / 2T` and :math:`\chi^2_{2d+2, 1-\alpha/2} / 2T`
+  (R's ``poisson.test``); they cover the true rate at least 95% of the time, more where the counts
+  are small. ``surv.poisson_rate_bounds(d, T)`` gives them for any count and exposure.
+- **The rate ratio** of two sets of cells (``rate_ratio(cells, reference)``) uses that, given the
+  total events in the two, the share in the first is binomial: its exact (Clopper-Pearson) bounds
+  and binomial test give the ratio's bounds and p-value, as R's ``poisson.test`` with two counts.
+- **Observed to expected.** The expected events of a cell are its reference rate times its
+  exposure, and the ratio's bounds are the Garwood bounds of the events divided by them (the
+  expected count taken as known). ``rates`` is one rate for every cell or a table with a ``rate``
+  column and columns for the factors and time scales it varies by (a time band by its lower edge).
+  A reference rate that changes within a cell is taken at one value there; to integrate a finer
+  rate table, cut the bands at its edges and add the cells up (``margins``).
+- **Bands** are ``(lower, upper]``: an event exactly on an edge is in the band ending there, as in
+  R. Time outside every band is reported in ``offtable`` with a warning; end the last band at
+  ``inf`` to keep everything. ``margins(by)`` adds the table up over the other dimensions and
+  recomputes the rates; ``units`` do not add up across cells and are left out there.
+- **Refused:** left and interval censored rows (``c=-1``, ``c=2``), whose exposure ends at an
+  unknown time: a failure found at an inspection is recorded as an event at the inspection; or
+  estimate the survival with ``Turnbull``.
+
+Conditional survival
+--------------------
+
+A unit that has already lasted a while has a different outlook from a new one. ``cs(x, given)``
+is the estimated chance that a unit that has survived to ``given`` survives a further ``x``:
+:math:`\hat S(given + x) / \hat S(given)`, the estimate read from the units still at risk after
+``given``, as the parametric models' ``cs``. For the lung cancer patients, the chance of living
+another 180 days, for a new patient and for one who has already lived a year:
+
+.. jupyter-execute::
+
+    lung_km = surv.KaplanMeier.fit(lung['time'], c=1 - lung['status'])
+    print(lung_km.cs(180, [0, 365]).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _cs = lung_km.cs(180, [0, 365])
+    assert np.isclose(_cs[0], lung_km.sf(180))
+    assert np.isclose(_cs[1], lung_km.sf(545) / lung_km.sf(365))
+
+It is ``nan`` where the estimate at ``given`` is 0 and where ``given + x`` is past the data.
+
+Restricted mean survival time
+-----------------------------
+
+A hazard ratio (from Cox or the log-rank test) is only interpretable when the
+proportional-hazards assumption holds. When it does not — survival curves that
+cross, treatments that help early but not late — the **restricted mean survival
+time** (RMST) is an assumption-light alternative. It is simply the area under
+the survival curve up to a horizon :math:`\tau`, i.e. the average event-free
+time over the first :math:`\tau` units, and it is well defined for any :math:`\tau` within the data.
+
+Any fitted non-parametric model exposes ``rmst(tau)``, returning the point
+estimate with its standard error and confidence interval:
+
+.. jupyter-execute::
+
+    from surpyval import KaplanMeier
+
+    control_model = KaplanMeier.fit(control)
+    rmst = control_model.rmst(tau=20)
+    print('RMST(20) = %.2f  (95%% CI %.2f - %.2f)'
+          % (rmst['rmst'], rmst['lower'], rmst['upper']))
+
+The returned dictionary has keys ``'rmst'``, ``'se'``, ``'lower'``, ``'upper'`` and ``'tau'``;
+``alpha_ci`` sets the interval's level. ``mean(tau)`` returns just the point estimate and
+``mean_cb(tau, alpha_ci)`` just the interval. If ``tau`` is omitted it defaults to the largest
+observed value, where the curve (with no censoring here) has reached zero, so the RMST is then the
+ordinary mean:
+
+.. jupyter-execute::
+
+    print('90% interval:', control_model.mean_cb(tau=20, alpha_ci=0.1).round(2))
+    print('mean over all the data:', round(control_model.mean(), 3),
+          ' sample mean:', round(control.mean(), 3))
+
+The interval is the normal one, :math:`\widehat{\text{RMST}} \pm z\,\widehat{SE}`. A ``tau`` beyond
+the last observation is refused while the survival estimate there is above zero: the area past the
+data is not estimable, and holding the curve at its final value would make it whatever ``tau`` is.
+Where the estimate has reached zero the area stops growing, and any ``tau`` is accepted.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(control_model.mean(), control.mean())
+
+To compare two groups, ``surpyval.rmst_diff`` gives the difference in RMST with
+a standard error, confidence interval and two-sided ``p``-value. The horizon
+defaults to the smaller of the two groups' largest observed times (their common
+support):
+
+.. jupyter-execute::
+
+    from surpyval import rmst_diff
+
+    treatment_model = KaplanMeier.fit(treatment)
+    diff = rmst_diff(treatment_model, control_model, tau=20)
+    print('RMST difference = %.2f  (p = %.4g)'
+          % (diff['difference'], diff['p_value']))
+    print({k: round(v, 3) for k, v in diff.items() if k not in ('difference', 'p_value')})
+
+The treatment group spends about four more time units event-free over the first
+twenty — a difference on the natural time scale, with no proportional-hazards
+assumption required. The difference is the first model's RMST minus the second's; the result
+also holds each group's RMST (``'rmst_a'``, ``'rmst_b'``), their ``'ratio'``
+(``rmst_a / rmst_b``), the standard error of the difference (``'se'``, the square root of the sum
+of the two groups' variances), the interval (``'lower'``, ``'upper'``, at level ``alpha_ci``) and
+the ``'tau'`` used. The groups can be fitted with any of the non-parametric estimators, and
+right censoring and delayed entry are handled by those fits.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(diff['difference']) == 4, diff['difference']
+    assert np.isclose(diff['ratio'], diff['rmst_a'] / diff['rmst_b'])
+    assert np.isclose(diff['difference'], diff['rmst_a'] - diff['rmst_b'])
+
+To compare the two groups' survival at one time instead -- "is the chance of lasting 10 time
+units different?" -- use ``surpyval.sf_diff``. It compares the two estimates at that time, with
+each one's variance (Greenwood's for the Kaplan-Meier), on the log(-log) scale by default, which
+Klein et al. (2007) found holds its stated error rate better in small samples than the plain
+difference (``transform='linear'``; ``'log'``, ``'arcsine-sqrt'`` and ``'logit'`` are the others):
+
+.. jupyter-execute::
+
+    from surpyval import sf_diff
+
+    at_10 = sf_diff(treatment_model, control_model, 10)
+    print('S_a(10) = %.3f, S_b(10) = %.3f, p = %.3g'
+          % (at_10['sf_a'], at_10['sf_b'], at_10['p_value']))
+    print('difference %.3f (%.3f to %.3f)'
+          % (at_10['difference'], at_10['lower'], at_10['upper']))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert at_10['lower'] < at_10['difference'] < at_10['upper']
+    assert np.isclose(at_10['difference'], at_10['sf_a'] - at_10['sf_b'])
+
+The Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull estimates also
+run in the browser in `Reliafy <https://reliafy.com/reference/nonparametric>`__.

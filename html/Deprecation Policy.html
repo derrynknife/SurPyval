@@ -1,0 +1,382 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deprecation Policy &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Support" href="Support.html" />
+    <link rel="prev" title="v0.28 (14 November 2026)" href="changelog.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Deprecation Policy</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-is-public">What is public</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-a-name-is-retired">How a name is retired</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#an-argument-that-a-call-by-position-misreads">An argument that a call by position misreads</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#seeing-the-warnings">Seeing the warnings</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#results-that-may-change">Results that may change</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#before-version-1-0">Before version 1.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#from-version-1-0">From version 1.0</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Deprecation Policy</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Deprecation Policy.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="deprecation-policy">
+<h1>Deprecation Policy<a class="headerlink" href="#deprecation-policy" title="Link to this heading"></a></h1>
+<p>In short: when a public name in SurPyval is renamed or removed, your code
+keeps working for at least one release (from 1.0, at least two minor
+releases and six months; see <a class="reference internal" href="#from-version-1-0">From version 1.0</a>) and warns you,
+naming what to use instead and the release that removes the old name. After that release,
+the old name fails with an error that still names the replacement. Every
+deprecation and removal is listed in the <a class="reference internal" href="changelog.html"><span class="doc">v0.28 (14 November 2026)</span></a>.</p>
+<section id="what-is-public">
+<h2>What is public<a class="headerlink" href="#what-is-public" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>The names you can import from <code class="docutils literal notranslate"><span class="pre">surpyval</span></code> (<code class="docutils literal notranslate"><span class="pre">surpyval.__all__</span></code>, which
+is what <code class="docutils literal notranslate"><span class="pre">from</span> <span class="pre">surpyval</span> <span class="pre">import</span> <span class="pre">*</span></code> gives).</p></li>
+<li><p>The names of the subpackages the documentation imports from:
+<code class="docutils literal notranslate"><span class="pre">surpyval.recurrent</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval.degradation</span></code>,
+<code class="docutils literal notranslate"><span class="pre">surpyval.multivariate</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval.ml</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval.life_models</span></code>,
+<code class="docutils literal notranslate"><span class="pre">surpyval.metrics</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval.diagnostics</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval.bayes</span></code> (and
+<code class="docutils literal notranslate"><span class="pre">surpyval.prior</span></code>), <code class="docutils literal notranslate"><span class="pre">surpyval.test_planning</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval.datasets</span></code>,
+<code class="docutils literal notranslate"><span class="pre">surpyval.pymc</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval.torch</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval.utils</span></code>, the five
+<code class="docutils literal notranslate"><span class="pre">surpyval.univariate</span></code> packages (<code class="docutils literal notranslate"><span class="pre">parametric</span></code>, <code class="docutils literal notranslate"><span class="pre">nonparametric</span></code>,
+<code class="docutils literal notranslate"><span class="pre">regression</span></code>, <code class="docutils literal notranslate"><span class="pre">competing_risks</span></code> and <code class="docutils literal notranslate"><span class="pre">joint</span></code>), and
+<code class="docutils literal notranslate"><span class="pre">surpyval.univariate.regression.kinds</span></code>, the names of the regression
+families. Where a namespace has an <code class="docutils literal notranslate"><span class="pre">__all__</span></code>, that list is what it
+promises.</p></li>
+<li><p>The documented methods, attributes and arguments of those classes and
+functions.</p></li>
+</ul>
+<p>Not public, and free to change in any release without a warning:</p>
+<ul class="simple">
+<li><p>anything whose name starts with an underscore (<code class="docutils literal notranslate"><span class="pre">_handled_xcnt_to_xrd</span></code>,
+<code class="docutils literal notranslate"><span class="pre">surpyval._autograd_special</span></code>), and any name in <code class="docutils literal notranslate"><span class="pre">surpyval.utils</span></code>
+that its <code class="docutils literal notranslate"><span class="pre">__all__</span></code> does not list;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">surpyval.beta</span></code>, the tier for models whose interface has not settled
+yet (it is empty at present);</p></li>
+<li><p>the test suite, <code class="docutils literal notranslate"><span class="pre">surpyval.tests</span></code>.</p></li>
+</ul>
+</section>
+<section id="how-a-name-is-retired">
+<h2>How a name is retired<a class="headerlink" href="#how-a-name-is-retired" title="Link to this heading"></a></h2>
+<ol class="arabic">
+<li><p><strong>Deprecated.</strong> The old name still works and warns: a
+<code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> that names the new name and the release that
+removes the old one, for example</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>DeprecationWarning: AalenAdditive_.fit: 'coef_penalty' is
+deprecated and will be removed in v0.28; use 'penalizer'.
+</pre></div>
+</div>
+<p>The changelog lists it under <strong>Deprecated</strong>.</p>
+</li>
+<li><p><strong>Removed</strong>, in the next release. A few deprecations are given longer,
+each with its removal release stated in the warning
+(<code class="docutils literal notranslate"><span class="pre">CoxPH.check_ph</span></code>, deprecated in 0.26, went in 0.28). Some are
+deprecated by date rather than by release, with a <code class="docutils literal notranslate"><span class="pre">FutureWarning</span></code>
+that gives the date: the top-level data-format functions
+(<code class="docutils literal notranslate"><span class="pre">surpyval.fs_to_xcnt</span></code> and the rest) and <code class="docutils literal notranslate"><span class="pre">surpyval.beta.ml</span></code> (now
+<code class="docutils literal notranslate"><span class="pre">surpyval.ml</span></code>) go in the first release on or after 12 April 2027.
+The changelog lists each removal under <strong>Removed</strong>.</p></li>
+<li><p><strong>A hint after removal.</strong> For a release or two after it is removed, the
+old name raises the error Python would raise anyway (an
+<code class="docutils literal notranslate"><span class="pre">AttributeError</span></code>, <code class="docutils literal notranslate"><span class="pre">TypeError</span></code> or <code class="docutils literal notranslate"><span class="pre">ImportError</span></code>) with the release
+that removed it and its replacement in the message, so the traceback
+says what to change:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>AttributeError: module 'surpyval' has no attribute
+'RecurrentEventData': it was removed in v0.26; it is
+surpyval.EventHistoryData (from surpyval import EventHistoryData)
+</pre></div>
+</div>
+<p>After that, the hint is retired and the old name gets Python’s plain
+error.</p>
+</li>
+</ol>
+<section id="an-argument-that-a-call-by-position-misreads">
+<h3>An argument that a call by position misreads<a class="headerlink" href="#an-argument-that-a-call-by-position-misreads" title="Link to this heading"></a></h3>
+<p>Where an argument given by position is silently read as something other
+than what that place holds in SurPyval’s other methods of the same name
+(<code class="docutils literal notranslate"><span class="pre">Parametric.mean(5)</span></code> takes the 5 as <code class="docutils literal notranslate"><span class="pre">defective</span></code>, where a
+non-parametric model’s <code class="docutils literal notranslate"><span class="pre">mean(5)</span></code> takes it as <code class="docutils literal notranslate"><span class="pre">tau</span></code>), the call warns
+with a <code class="docutils literal notranslate"><span class="pre">FutureWarning</span></code>, not a <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code>: the risk is a
+wrong number, not an error, so the warning is shown wherever the call is
+made. It says what the value was taken as and the keyword to use.
+Passing it by name silences it, and the result is unchanged. The
+argument stays positional: making it keyword-only, or refusing the call,
+would be a breaking change, and is not made before 2.0.</p>
+<p>A test in the package keeps a list of every public name and fails when
+one disappears without going through these steps.</p>
+</section>
+<section id="seeing-the-warnings">
+<h3>Seeing the warnings<a class="headerlink" href="#seeing-the-warnings" title="Link to this heading"></a></h3>
+<p>Python hides a <code class="docutils literal notranslate"><span class="pre">DeprecationWarning</span></code> unless it is raised by code run
+directly as a script or in a notebook. pytest shows them; to make your
+tests fail on them, and so find every old name before it is removed, run</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>-W<span class="w"> </span>error::DeprecationWarning<span class="w"> </span>-W<span class="w"> </span>error::FutureWarning
+</pre></div>
+</div>
+</section>
+</section>
+<section id="results-that-may-change">
+<h2>Results that may change<a class="headerlink" href="#results-that-may-change" title="Link to this heading"></a></h2>
+<p>Numbers can differ in their last digits between releases, platforms and
+versions of numpy and scipy, within the tolerance the optimiser or the
+numerical integration works to. That is not announced. A deliberate change
+to a result (a fix, a corrected formula, a different default) is listed
+in the changelog under <strong>Changed</strong> or <strong>Fixed</strong>, with how much the numbers
+move where that is known.</p>
+</section>
+<section id="before-version-1-0">
+<h2>Before version 1.0<a class="headerlink" href="#before-version-1-0" title="Link to this heading"></a></h2>
+<p>SurPyval is not yet at version 1.0, and two things follow from that:</p>
+<ul class="simple">
+<li><p><strong>Releases come often</strong>, sometimes days apart, and each takes the next
+minor number (0.26, 0.27, …). One release of deprecation can therefore
+be short. Read the changelog’s <strong>Deprecated</strong> and <strong>Removed</strong> entries
+before upgrading, and pin the version (<code class="docutils literal notranslate"><span class="pre">surpyval==0.27</span></code>) where an
+upgrade must not surprise you.</p></li>
+<li><p><strong>A change of behaviour that cannot carry a warning</strong> can come in any
+release, listed under <strong>Changed</strong>: a corrected result, a changed
+default, or a convention made consistent across the package. For
+example, 0.27 gave the distributional regression’s coefficients the
+sign the rest of the package uses (a positive coefficient means a
+shorter life), and converts models saved by 0.26 as they load.</p></li>
+</ul>
+<p>These rules apply until 1.0 is released.</p>
+</section>
+<section id="from-version-1-0">
+<h2>From version 1.0<a class="headerlink" href="#from-version-1-0" title="Link to this heading"></a></h2>
+<p>From 1.0, SurPyval follows <a class="reference external" href="https://semver.org">semantic versioning</a>:
+a release numbered 1.x never breaks code written for an earlier 1.x
+release. A breaking change waits for 2.0.</p>
+<ul class="simple">
+<li><p><strong>What the promise covers</strong> is the public interface set out in
+<a class="reference internal" href="#what-is-public">What is public</a> above, together with the layout of the dictionaries
+that <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> writes (see <a class="reference internal" href="surpyval.serialisation.html"><span class="doc">Saving and Loading Models</span></a>). It also
+covers how a custom distribution is written: its cumulative hazard
+uses <code class="docutils literal notranslate"><span class="pre">autograd.numpy</span></code>, and a 1.x release will not ask for a
+different array library.</p></li>
+<li><p><strong>A breaking change</strong> is one that makes code using that interface fail
+or mean something different: removing or renaming a public name, an
+argument or a keyword; changing what an argument given by position is
+read as; changing a default; changing the type or shape a public
+function returns; removing a key from, or renaming a key in, a saved
+model’s dictionary, or no longer reading a dictionary an earlier
+release wrote.</p></li>
+<li><p><strong>Deprecation in 1.x.</strong> A public name, argument or keyword can still be
+deprecated in a 1.x release, following <a class="reference internal" href="#how-a-name-is-retired">How a name is retired</a>: it
+keeps working, with a warning that names its replacement, for at least
+two minor releases <em>and</em> at least six months, whichever is later. A
+deprecated name is removed only in 2.0 or later.</p></li>
+<li><p><strong>Not breaking, and so allowed in any 1.x release:</strong></p>
+<ul>
+<li><p>a bug fix that corrects a number (a wrong formula or
+bound), listed in the changelog under <strong>Changed</strong> with how much
+the numbers move;</p></li>
+<li><p>the small differences in the last digits described in
+<a class="reference internal" href="#results-that-may-change">Results that may change</a>;</p></li>
+<li><p>raising the oldest supported version of Python or numpy (and of the
+other required packages), stated in the changelog;</p></li>
+<li><p>new names, new optional arguments with defaults that keep the old
+behaviour, and new keys in a saved model’s dictionary;</p></li>
+<li><p>anything not public, as listed above.</p></li>
+</ul>
+</li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">surpyval.beta</span></code> is outside the promise in 1.x as it is now: a model
+leaves it for the stable namespaces once its interface has settled.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="changelog.html" class="btn btn-neutral float-left" title="v0.28 (14 November 2026)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Support.html" class="btn btn-neutral float-right" title="Support" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

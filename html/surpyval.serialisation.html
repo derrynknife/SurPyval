@@ -1,0 +1,1056 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Saving and Loading Models &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Utilities" href="surpyval.utilities.html" />
+    <link rel="prev" title="Comparison Tests and Validation Metrics" href="comparison_and_validation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Saving and Loading Models</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#infinite-and-nan-values">Infinite and NaN values</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-saved-model-dictionary">The saved-model dictionary</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#keys-in-every-dictionary">Keys in every dictionary</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#keys-any-model-writes-when-they-apply">Keys any model writes when they apply</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#names-shared-between-families">Names shared between families</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#keys-of-each-class">Keys of each class</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#readers-and-helpers">Readers and helpers</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.serialisation.from_dict"><code class="docutils literal notranslate"><span class="pre">from_dict()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.serialisation.from_json"><code class="docutils literal notranslate"><span class="pre">from_json()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.serialisation.encode_non_finite"><code class="docutils literal notranslate"><span class="pre">encode_non_finite()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.serialisation.decode_non_finite"><code class="docutils literal notranslate"><span class="pre">decode_non_finite()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.serialisation.required_schema"><code class="docutils literal notranslate"><span class="pre">required_schema()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="surpyval.html">API</a></li>
+      <li class="breadcrumb-item active">Saving and Loading Models</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/surpyval.serialisation.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="saving-and-loading-models">
+<h1>Saving and Loading Models<a class="headerlink" href="#saving-and-loading-models" title="Link to this heading"></a></h1>
+<p>A fitted model can be saved and restored later, or in another process,
+without refitting. Almost every fitted SurPyval model can be serialised
+to a plain dictionary with <code class="docutils literal notranslate"><span class="pre">to_dict()</span></code> and written to JSON with
+<code class="docutils literal notranslate"><span class="pre">to_json(path)</span></code>. The dictionaries hold only plain Python types, so they
+can also go straight into a document store (the round trip through
+BSON/MongoDB is tested). What a restored model keeps, and what needs the
+original data, is described in <a class="reference internal" href="Conventions.html"><span class="doc">Conventions</span></a>.</p>
+<p>Restoring takes one call whichever class wrote the file: the
+package-level readers dispatch on the serialised dictionary itself.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">to_json</span><span class="p">(</span><span class="s2">"weibull.json"</span><span class="p">)</span>
+
+<span class="n">restored</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="s2">"weibull.json"</span><span class="p">)</span>  <span class="c1"># any model's file</span>
+<span class="n">restored</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">model_dict</span><span class="p">)</span>      <span class="c1"># any model's dict</span>
+</pre></div>
+</div>
+<p>The class-level readers on the fitted-model classes
+(<code class="docutils literal notranslate"><span class="pre">Parametric.from_dict</span></code>, <code class="docutils literal notranslate"><span class="pre">SemiParametricRegressionModel.from_dict</span></code>,
+… and the matching <code class="docutils literal notranslate"><span class="pre">from_json</span></code>) remain available when the model class
+is known up front; each rejects a dictionary written by a different class
+with a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>. The readers belong to the <em>model</em> classes, not to
+the fitters: <code class="docutils literal notranslate"><span class="pre">Weibull.from_dict</span></code> and <code class="docutils literal notranslate"><span class="pre">CoxPH.from_dict</span></code> do not exist.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards</span></code> serialises the same way, for both
+<code class="docutils literal notranslate"><span class="pre">model=&quot;Cox&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">model=&quot;Fine-Gray&quot;</span></code>; its per-cause optimiser results
+(<code class="docutils literal notranslate"><span class="pre">results</span></code>) are not stored.</p>
+<p>Some details differ between families:</p>
+<ul class="simple">
+<li><p>Only the univariate <code class="docutils literal notranslate"><span class="pre">Parametric</span></code> and <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code> models take
+<code class="docutils literal notranslate"><span class="pre">to_dict(with_data=True)</span></code>, which stores the fitted data as well so
+that <code class="docutils literal notranslate"><span class="pre">plot</span></code> and likelihood-ratio bounds (parametric) or
+<code class="docutils literal notranslate"><span class="pre">bootstrap_cb</span></code> (non-parametric) work after restoring;
+<code class="docutils literal notranslate"><span class="pre">to_json(path,</span> <span class="pre">with_data=True)</span></code> writes the same to a file (any
+other model’s <code class="docutils literal notranslate"><span class="pre">to_json</span></code> refuses <code class="docutils literal notranslate"><span class="pre">with_data=True</span></code> with a
+<code class="docutils literal notranslate"><span class="pre">TypeError</span></code>). The information criteria need no data: a fitted
+univariate or regression model stores their sample size (<code class="docutils literal notranslate"><span class="pre">&quot;ic_n&quot;</span></code>),
+so <code class="docutils literal notranslate"><span class="pre">bic</span></code> and <code class="docutils literal notranslate"><span class="pre">aic_c</span></code> work on the restored model either way.</p></li>
+<li><p>The degenerate <code class="docutils literal notranslate"><span class="pre">NeverOccurs</span></code> and <code class="docutils literal notranslate"><span class="pre">InstantlyOccurs</span></code> distributions
+have no fitted state: the class itself is the model, so <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>,
+<code class="docutils literal notranslate"><span class="pre">to_json</span></code>, <code class="docutils literal notranslate"><span class="pre">from_dict</span></code> and <code class="docutils literal notranslate"><span class="pre">from_json</span></code> are called on the class
+(<code class="docutils literal notranslate"><span class="pre">NeverOccurs.to_json(path)</span></code>), and <code class="docutils literal notranslate"><span class="pre">surpyval.from_json</span></code> returns the
+class.</p></li>
+<li><p>Every reader – the package-level ones and each class’s own
+<code class="docutils literal notranslate"><span class="pre">from_dict</span></code> / <code class="docutils literal notranslate"><span class="pre">from_json</span></code> alike – checks the <code class="docutils literal notranslate"><span class="pre">&quot;schema&quot;</span></code> (an
+integer no newer than this SurPyval), names the entry a truncated or
+hand-edited dictionary is missing, and refuses the parameters of a
+univariate parametric model that fall outside the distribution’s
+bounds, each with a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p></li>
+<li><p>These cannot be saved and raise an error from <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>: an
+accelerated-life model with a user-defined
+life model, and a copula of a custom family. A regression fitted with
+a formula is saved with its levels and fitted transform statistics
+(<code class="docutils literal notranslate"><span class="pre">C(...)</span></code>, <code class="docutils literal notranslate"><span class="pre">scale()</span></code>, <code class="docutils literal notranslate"><span class="pre">poly()</span></code>, splines); a formula whose state
+cannot be stored as JSON raises at <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> instead.</p></li>
+<li><p>A model of a <code class="docutils literal notranslate"><span class="pre">Discretize(...)</span></code> distribution is read back like any
+other. A model of a <code class="docutils literal notranslate"><span class="pre">CustomDistribution</span></code> stores the distribution’s
+name only (its cumulative hazard is a Python function):
+<code class="docutils literal notranslate"><span class="pre">from_dict</span></code> reads it back in a session that has constructed the same
+<code class="docutils literal notranslate"><span class="pre">CustomDistribution</span></code> again, and otherwise raises a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>
+saying so.</p></li>
+</ul>
+<section id="infinite-and-nan-values">
+<h2>Infinite and NaN values<a class="headerlink" href="#infinite-and-nan-values" title="Link to this heading"></a></h2>
+<p>A fitted model holds values that are not finite numbers: an untruncated
+bound (<code class="docutils literal notranslate"><span class="pre">-inf</span></code>, <code class="docutils literal notranslate"><span class="pre">inf</span></code>), a cumulative hazard after the last death
+(<code class="docutils literal notranslate"><span class="pre">inf</span></code>), an undefined variance (<code class="docutils literal notranslate"><span class="pre">nan</span></code>). JSON cannot write them –
+Python’s <code class="docutils literal notranslate"><span class="pre">json</span></code> writes the non-standard <code class="docutils literal notranslate"><span class="pre">Infinity</span></code> and <code class="docutils literal notranslate"><span class="pre">NaN</span></code>, which
+strict parsers (JavaScript’s <code class="docutils literal notranslate"><span class="pre">JSON.parse</span></code>, many databases) refuse – so
+the dictionaries use a convention of their own, and are strict JSON:</p>
+<ul class="simple">
+<li><p>each non-finite value is written as <code class="docutils literal notranslate"><span class="pre">null</span></code>;</p></li>
+<li><p>the dictionary holding it records what every such <code class="docutils literal notranslate"><span class="pre">null</span></code> stood for
+under <code class="docutils literal notranslate"><span class="pre">&quot;non_finite&quot;</span></code>: for each kind present (<code class="docutils literal notranslate"><span class="pre">&quot;inf&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;-inf&quot;</span></code>,
+<code class="docutils literal notranslate"><span class="pre">&quot;nan&quot;</span></code>) a list of <a class="reference external" href="https://www.rfc-editor.org/rfc/rfc6901">JSON Pointers</a> to the values, relative to
+that dictionary. A model dictionary nested in another (a copula’s
+margins, a tree’s leaves) carries its own record. A <code class="docutils literal notranslate"><span class="pre">null</span></code> that no
+record names is an ordinary missing value.</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">surpyval</span><span class="o">.</span><span class="n">KaplanMeier</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+<span class="go">{..., 'H': [0.405..., 1.098..., None],</span>
+<span class="go"> 'greenwood': [0.166..., 0.666..., None],</span>
+<span class="go"> 'non_finite': {'inf': ['/H/2'], 'nan': ['/greenwood/2']}, 'schema': 2}</span>
+</pre></div>
+</div>
+<p>Every reader restores the original values, so a round trip is exact. A
+consumer in another language sees <code class="docutils literal notranslate"><span class="pre">null</span></code> where no number applies, and
+can use the record to recover the values. Dictionaries and files written
+before this convention (<code class="docutils literal notranslate"><span class="pre">&quot;schema&quot;</span></code> 0 or 1, holding <code class="docutils literal notranslate"><span class="pre">Infinity</span></code> or
+<code class="docutils literal notranslate"><span class="pre">NaN</span></code>, which Python’s <code class="docutils literal notranslate"><span class="pre">json</span></code> reads) still load.</p>
+<p>Each file is stamped with the <em>oldest</em> schema version that reads it
+correctly (<a class="reference internal" href="#surpyval.serialisation.required_schema" title="surpyval.serialisation.required_schema"><code class="xref py py-func docutils literal notranslate"><span class="pre">required_schema()</span></code></a>). A file with no
+non-finite value – most fitted parametric, regression, recurrent, copula
+and degradation models – has exactly the schema-1 layout and is stamped
+<code class="docutils literal notranslate"><span class="pre">1</span></code>, so SurPyval 0.20, which reads schema 1, still loads it (the test suite
+checks this against that release). A file that records non-finite values as
+<code class="docutils literal notranslate"><span class="pre">null</span></code>, as most non-parametric models and anything saved with
+<code class="docutils literal notranslate"><span class="pre">with_data=True</span></code> do, is stamped <code class="docutils literal notranslate"><span class="pre">2</span></code>; an older SurPyval refuses it with an
+error asking for an upgrade rather than misreading its <code class="docutils literal notranslate"><span class="pre">null</span></code> values. So is
+a regression model fitted with a formula that SurPyval 0.20 cannot rebuild
+(a wrapped categorical such as <code class="docutils literal notranslate"><span class="pre">C(g)</span></code>, integer category levels, or a
+fitted transform such as <code class="docutils literal notranslate"><span class="pre">scale(z)</span></code>); a formula of plain columns and
+string categoricals is stamped <code class="docutils literal notranslate"><span class="pre">1</span></code>. So is a regression model fitted with
+<code class="docutils literal notranslate"><span class="pre">center=True</span></code> (<code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>, <code class="docutils literal notranslate"><span class="pre">FineGray</span></code>,
+<code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards</span></code> or a parametric regression) whose
+covariate means <code class="docutils literal notranslate"><span class="pre">center</span></code> are not all zero: its baseline is that of a unit
+at <code class="docutils literal notranslate"><span class="pre">center</span></code>, which SurPyval 0.20 would ignore, reading the baseline as at
+<code class="docutils literal notranslate"><span class="pre">Z</span> <span class="pre">=</span> <span class="pre">0</span></code>. A model with its baseline at <code class="docutils literal notranslate"><span class="pre">Z</span> <span class="pre">=</span> <span class="pre">0</span></code>, the default, has no
+<code class="docutils literal notranslate"><span class="pre">center</span></code> and the layout of before. <code class="docutils literal notranslate"><span class="pre">SurpyvalData.to_json</span></code> uses the same
+convention. <a class="reference internal" href="#surpyval.serialisation.encode_non_finite" title="surpyval.serialisation.encode_non_finite"><code class="xref py py-func docutils literal notranslate"><span class="pre">encode_non_finite()</span></code></a> and
+<a class="reference internal" href="#surpyval.serialisation.decode_non_finite" title="surpyval.serialisation.decode_non_finite"><code class="xref py py-func docutils literal notranslate"><span class="pre">decode_non_finite()</span></code></a> apply and undo it on
+any dictionary.</p>
+<p>The later versions, each refused by the SurPyval releases before it:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Schema</p></th>
+<th class="head"><p>Stamped on</p></th>
+<th class="head"><p>First read by</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>3</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> with sampling weights <code class="docutils literal notranslate"><span class="pre">w</span></code>: a reader without
+weights would drop them. (Weighted models were schema 3 in 0.26.)</p></td>
+<td><p>0.26</p></td>
+</tr>
+<tr class="row-odd"><td><p>4</p></td>
+<td><p>A model fitted with weights <code class="docutils literal notranslate"><span class="pre">w</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;weighted&quot;:</span> <span class="pre">true</span></code>), whose
+<code class="docutils literal notranslate"><span class="pre">&quot;hess_inv&quot;</span></code> is the inverse Hessian and <code class="docutils literal notranslate"><span class="pre">&quot;covariance&quot;</span></code> the
+robust covariance (0.26 wrote the robust covariance as
+<code class="docutils literal notranslate"><span class="pre">&quot;hess_inv&quot;</span></code>); a stratified Cox model (<code class="docutils literal notranslate"><span class="pre">&quot;strata&quot;</span></code>); a model
+whose coefficients carry their signs (<code class="docutils literal notranslate"><span class="pre">&quot;coefficient_signs&quot;</span></code>).</p></td>
+<td><p>0.27</p></td>
+</tr>
+<tr class="row-even"><td><p>5</p></td>
+<td><p>A joint model with the accelerated survival part
+(<code class="docutils literal notranslate"><span class="pre">&quot;survival&quot;:</span> <span class="pre">&quot;AFT&quot;</span></code>, from <code class="docutils literal notranslate"><span class="pre">JointAFT</span></code>): a reader without it
+would predict from it as a proportional hazards model.</p></td>
+<td><p>0.29</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="the-saved-model-dictionary">
+<span id="saved-model-dictionary"></span><h2>The saved-model dictionary<a class="headerlink" href="#the-saved-model-dictionary" title="Link to this heading"></a></h2>
+<p>Code outside SurPyval (a web service, a database query, a program in
+another language) can read the dictionary <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> writes without
+loading the model. Its layout is a contract, set out here key by key:</p>
+<ul class="simple">
+<li><p>Every dictionary written by an earlier release keeps loading, whatever
+its <code class="docutils literal notranslate"><span class="pre">&quot;schema&quot;</span></code>.</p></li>
+<li><p>From 1.0, a 1.x release may <strong>add</strong> keys, but never renames or removes
+one, nor changes what an existing key holds. A reader should therefore
+ignore keys it does not know. (See <a class="reference internal" href="Deprecation%20Policy.html"><span class="doc">Deprecation Policy</span></a>.)</p></li>
+<li><p>A key listed as written “when it applies” is left out, not written as
+<code class="docutils literal notranslate"><span class="pre">null</span></code>, when it does not apply.</p></li>
+</ul>
+<p>The tables below were made by fitting one model of every class the
+readers know and listing its keys; <code class="docutils literal notranslate"><span class="pre">surpyval/tests/test_json_serialisation.py</span></code>
+checks them against the code, so they cannot drift.</p>
+<section id="keys-in-every-dictionary">
+<h3>Keys in every dictionary<a class="headerlink" href="#keys-in-every-dictionary" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>What it holds</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">schema</span></code></p></td>
+<td><p>The oldest layout version that reads the dictionary correctly, an
+integer (see above).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model</span></code> or <code class="docutils literal notranslate"><span class="pre">parameterization</span></code></p></td>
+<td><p>Which class wrote it, so that <a class="reference internal" href="#surpyval.serialisation.from_dict" title="surpyval.serialisation.from_dict"><code class="xref py py-func docutils literal notranslate"><span class="pre">from_dict()</span></code></a>
+can choose the reader. Most classes write <code class="docutils literal notranslate"><span class="pre">&quot;model&quot;</span></code>, set to the
+class name. Four write <code class="docutils literal notranslate"><span class="pre">&quot;parameterization&quot;</span></code> instead:
+<code class="docutils literal notranslate"><span class="pre">&quot;parametric&quot;</span></code> (<code class="docutils literal notranslate"><span class="pre">Parametric</span></code>), <code class="docutils literal notranslate"><span class="pre">&quot;non-parametric&quot;</span></code>
+(<code class="docutils literal notranslate"><span class="pre">NonParametric</span></code>, whose <code class="docutils literal notranslate"><span class="pre">&quot;model&quot;</span></code> holds the estimator,
+<code class="docutils literal notranslate"><span class="pre">&quot;Kaplan-Meier&quot;</span></code> for example), <code class="docutils literal notranslate"><span class="pre">&quot;parametric-regression&quot;</span></code>
+(<code class="docutils literal notranslate"><span class="pre">ParametricRegressionModel</span></code>) and <code class="docutils literal notranslate"><span class="pre">&quot;copula&quot;</span></code>
+(<code class="docutils literal notranslate"><span class="pre">CopulaModel</span></code>). A few classes write both; <code class="docutils literal notranslate"><span class="pre">&quot;model&quot;</span></code> then
+decides.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="keys-any-model-writes-when-they-apply">
+<span id="saved-model-optional-keys"></span><h3>Keys any model writes when they apply<a class="headerlink" href="#keys-any-model-writes-when-they-apply" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>When, and what it holds</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">non_finite</span></code></p></td>
+<td><p>The dictionary holds a value that is not a finite number: where
+each <code class="docutils literal notranslate"><span class="pre">null</span></code> came from (see <a class="reference internal" href="#infinite-and-nan-values">Infinite and NaN values</a>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">unit</span></code></p></td>
+<td><p>The model has a unit (<code class="docutils literal notranslate"><span class="pre">unit=</span></code> on <code class="docutils literal notranslate"><span class="pre">fit</span></code>): its text.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">weighted</span></code></p></td>
+<td><p>The model was fitted with sampling weights <code class="docutils literal notranslate"><span class="pre">w</span></code>: <code class="docutils literal notranslate"><span class="pre">true</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">effective_n</span></code></p></td>
+<td><p>With <code class="docutils literal notranslate"><span class="pre">weighted</span></code>: the effective sample size.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">data</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">to_dict(with_data=True)</span></code> (<code class="docutils literal notranslate"><span class="pre">Parametric</span></code> and <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code>):
+the fitted data, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">t</span></code> (and <code class="docutils literal notranslate"><span class="pre">w</span></code>). Some
+models that need their data to predict always store it under this
+key (listed below).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">feature_names</span></code></p></td>
+<td><p>A regression model whose covariates have names: the names, in
+the order of the coefficients.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">formula</span></code></p></td>
+<td><p>A regression model fitted with a formula: its text.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">formula_meta</span></code></p></td>
+<td><p>With <code class="docutils literal notranslate"><span class="pre">formula</span></code>: the levels and fitted transform statistics
+needed to build the same design matrix again.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">center</span></code></p></td>
+<td><p>A regression model fitted with <code class="docutils literal notranslate"><span class="pre">center=True</span></code>: the covariate
+values its baseline is at.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="names-shared-between-families">
+<h3>Names shared between families<a class="headerlink" href="#names-shared-between-families" title="Link to this heading"></a></h3>
+<p>Where a key below appears, it means the same thing whichever model wrote
+it:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Key</p></th>
+<th class="head"><p>What it holds</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">params</span></code></p></td>
+<td><p>The fitted parameters (or coefficients), a list of numbers.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">param_names</span></code></p></td>
+<td><p>The names of <code class="docutils literal notranslate"><span class="pre">params</span></code>, in the same order.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">covariance</span></code></p></td>
+<td><p>The parameters’ covariance matrix (with weights, the robust one).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">hess_inv</span></code></p></td>
+<td><p>The inverse Hessian of the negative log-likelihood. Without
+weights it equals <code class="docutils literal notranslate"><span class="pre">covariance</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code></p></td>
+<td><p>The fitted negative log-likelihood.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ic_n</span></code></p></td>
+<td><p>The sample size used by <code class="docutils literal notranslate"><span class="pre">bic</span></code> and <code class="docutils literal notranslate"><span class="pre">aic_c</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p>Whether the fit reached a maximum of the likelihood.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">data_summary</span></code></p></td>
+<td><p>The “Data” line of the model’s printout.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">distribution</span></code> or <code class="docutils literal notranslate"><span class="pre">dist</span></code></p></td>
+<td><p>The name of the distribution (<code class="docutils literal notranslate"><span class="pre">&quot;Weibull&quot;</span></code>).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">how</span></code></p></td>
+<td><p>The fitting method (<code class="docutils literal notranslate"><span class="pre">&quot;MLE&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;MPP&quot;</span></code>, …).</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code></p></td>
+<td><p>The model’s family within its class (<code class="docutils literal notranslate"><span class="pre">&quot;Cox&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;PH&quot;</span></code>, …).</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">x</span></code></p></td>
+<td><p>The times at which a step-function estimate is stored.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="keys-of-each-class">
+<h3>Keys of each class<a class="headerlink" href="#keys-of-each-class" title="Link to this heading"></a></h3>
+<p>“Always” lists the keys every fitted model of that class writes, besides
+<code class="docutils literal notranslate"><span class="pre">schema</span></code> and the identifying key; “When it applies” lists the keys
+written only by some fits (a Turnbull estimate, a stratified or
+delayed-entry Cox model, a parametric model with fixed parameters, and
+so on) beyond those in <a class="reference internal" href="#keys-any-model-writes-when-they-apply">Keys any model writes when they apply</a>. A model
+nested inside another (a competing-risks model’s per-cause models, a
+forest’s trees, a copula’s margins) is a dictionary of its own class,
+with its own <code class="docutils literal notranslate"><span class="pre">schema</span></code>.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 22.0%" />
+<col style="width: 36.0%" />
+<col style="width: 20.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Class</p></th>
+<th class="head"><p>Identified by</p></th>
+<th class="head"><p>Always</p></th>
+<th class="head"><p>When it applies</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Parametric</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;parameterization&quot;:</span> <span class="pre">&quot;parametric&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">distribution</span></code>, <code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">param_names</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">lfp</span></code>, <code class="docutils literal notranslate"><span class="pre">p</span></code>, <code class="docutils literal notranslate"><span class="pre">zi</span></code>, <code class="docutils literal notranslate"><span class="pre">f0</span></code>, <code class="docutils literal notranslate"><span class="pre">offset</span></code>, <code class="docutils literal notranslate"><span class="pre">gamma</span></code>, <code class="docutils literal notranslate"><span class="pre">hess_inv</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">custom</span></code>, <code class="docutils literal notranslate"><span class="pre">event_counts</span></code>, <code class="docutils literal notranslate"><span class="pre">n_trials</span></code>, <code class="docutils literal notranslate"><span class="pre">hr</span></code> (a hazard ratio other than 1; schema 5)</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">NonParametric</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;parameterization&quot;:</span> <span class="pre">&quot;non-parametric&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">r</span></code>, <code class="docutils literal notranslate"><span class="pre">d</span></code>, <code class="docutils literal notranslate"><span class="pre">R</span></code>, <code class="docutils literal notranslate"><span class="pre">F</span></code>, <code class="docutils literal notranslate"><span class="pre">H</span></code>, <code class="docutils literal notranslate"><span class="pre">greenwood</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">estimator</span></code>, <code class="docutils literal notranslate"><span class="pre">tol</span></code>, <code class="docutils literal notranslate"><span class="pre">max_iter</span></code>, <code class="docutils literal notranslate"><span class="pre">algorithm</span></code>, <code class="docutils literal notranslate"><span class="pre">support</span></code>, <code class="docutils literal notranslate"><span class="pre">band_n</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ParametricRegressionModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;parameterization&quot;:</span> <span class="pre">&quot;parametric-regression&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">distribution</span></code>, <code class="docutils literal notranslate"><span class="pre">phi_param_map</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">k_dist</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">gamma</span></code>, <code class="docutils literal notranslate"><span class="pre">p</span></code>, <code class="docutils literal notranslate"><span class="pre">f0</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">reg_model_name</span></code>, <code class="docutils literal notranslate"><span class="pre">inference_centring</span></code>, <code class="docutils literal notranslate"><span class="pre">life_model_name</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">DistributionalRegressionModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;DistributionalRegressionModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">distribution</span></code>, <code class="docutils literal notranslate"><span class="pre">links</span></code>, <code class="docutils literal notranslate"><span class="pre">coefficient_signs</span></code>, <code class="docutils literal notranslate"><span class="pre">covariate_positions</span></code>, <code class="docutils literal notranslate"><span class="pre">width</span></code>, <code class="docutils literal notranslate"><span class="pre">phi_param_map</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">aliased_coefficients</span></code>, <code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">k_dist</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">inference_centring</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MixtureCureModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;MixtureCureModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">distribution</span></code>, <code class="docutils literal notranslate"><span class="pre">links</span></code>, <code class="docutils literal notranslate"><span class="pre">coefficient_signs</span></code>, <code class="docutils literal notranslate"><span class="pre">covariate_positions</span></code>, <code class="docutils literal notranslate"><span class="pre">width</span></code>, <code class="docutils literal notranslate"><span class="pre">phi_param_map</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">aliased_coefficients</span></code>, <code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">k_dist</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">inference_centring</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code>, <code class="docutils literal notranslate"><span class="pre">latency</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ZeroInflatedModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;ZeroInflatedModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">distribution</span></code>, <code class="docutils literal notranslate"><span class="pre">links</span></code>, <code class="docutils literal notranslate"><span class="pre">coefficient_signs</span></code>, <code class="docutils literal notranslate"><span class="pre">covariate_positions</span></code>, <code class="docutils literal notranslate"><span class="pre">width</span></code>, <code class="docutils literal notranslate"><span class="pre">phi_param_map</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">aliased_coefficients</span></code>, <code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">k_dist</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">inference_centring</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code>, <code class="docutils literal notranslate"><span class="pre">latency</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SemiParametricRegressionModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;SemiParametricRegressionModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">r</span></code>, <code class="docutils literal notranslate"><span class="pre">d</span></code>, <code class="docutils literal notranslate"><span class="pre">h0</span></code>, <code class="docutils literal notranslate"><span class="pre">H0</span></code>, <code class="docutils literal notranslate"><span class="pre">tie_method</span></code>, <code class="docutils literal notranslate"><span class="pre">baseline_method</span></code>, <code class="docutils literal notranslate"><span class="pre">is_tvc</span></code>, <code class="docutils literal notranslate"><span class="pre">p_values</span></code>, <code class="docutils literal notranslate"><span class="pre">se</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tl</span></code>, <code class="docutils literal notranslate"><span class="pre">strata</span></code>, <code class="docutils literal notranslate"><span class="pre">firth</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">FrailtyModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;FrailtyModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">family</span></code>, <code class="docutils literal notranslate"><span class="pre">distribution</span></code>, <code class="docutils literal notranslate"><span class="pre">dist_params</span></code>, <code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">theta</span></code>, <code class="docutils literal notranslate"><span class="pre">k_dist</span></code>, <code class="docutils literal notranslate"><span class="pre">param_names</span></code>, <code class="docutils literal notranslate"><span class="pre">group_labels</span></code>, <code class="docutils literal notranslate"><span class="pre">frailties</span></code>, <code class="docutils literal notranslate"><span class="pre">n_obs</span></code>, <code class="docutils literal notranslate"><span class="pre">n_events</span></code>, <code class="docutils literal notranslate"><span class="pre">n_groups</span></code>, <code class="docutils literal notranslate"><span class="pre">n_events_weighted</span></code>, <code class="docutils literal notranslate"><span class="pre">n_obs_weighted</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CoxFrailtyModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;CoxFrailtyModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">family</span></code>, <code class="docutils literal notranslate"><span class="pre">tie_method</span></code>, <code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">theta</span></code>, <code class="docutils literal notranslate"><span class="pre">center</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">h0</span></code>, <code class="docutils literal notranslate"><span class="pre">H0</span></code>, <code class="docutils literal notranslate"><span class="pre">parameter_names</span></code>, <code class="docutils literal notranslate"><span class="pre">group_labels</span></code>, <code class="docutils literal notranslate"><span class="pre">frailties</span></code>, <code class="docutils literal notranslate"><span class="pre">n_obs</span></code>, <code class="docutils literal notranslate"><span class="pre">n_events</span></code>, <code class="docutils literal notranslate"><span class="pre">n_groups</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">log_likelihood_no_frailty</span></code>, <code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">n_events_weighted</span></code>, <code class="docutils literal notranslate"><span class="pre">n_obs_weighted</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CoxMixedEffectsModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;CoxMixedEffectsModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">tie_method</span></code>, <code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">center</span></code>, <code class="docutils literal notranslate"><span class="pre">parameter_names</span></code>, <code class="docutils literal notranslate"><span class="pre">strata</span></code>, <code class="docutils literal notranslate"><span class="pre">baselines</span></code>, <code class="docutils literal notranslate"><span class="pre">terms</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">log_likelihood_penalised</span></code>, <code class="docutils literal notranslate"><span class="pre">log_likelihood_fitted</span></code>, <code class="docutils literal notranslate"><span class="pre">log_likelihood_null</span></code>, <code class="docutils literal notranslate"><span class="pre">log_likelihood_no_random</span></code>, <code class="docutils literal notranslate"><span class="pre">df_penalised</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_variance</span></code>, <code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">n_obs</span></code>, <code class="docutils literal notranslate"><span class="pre">n_events</span></code>, <code class="docutils literal notranslate"><span class="pre">n_events_weighted</span></code>, <code class="docutils literal notranslate"><span class="pre">n_obs_weighted</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">AdditiveHazardsModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;AdditiveHazardsModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">h0</span></code>, <code class="docutils literal notranslate"><span class="pre">H0</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">se</span></code>, <code class="docutils literal notranslate"><span class="pre">p_values</span></code>, <code class="docutils literal notranslate"><span class="pre">drift</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">AalenAdditiveModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;AalenAdditiveModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">B</span></code>, <code class="docutils literal notranslate"><span class="pre">B_var</span></code>, <code class="docutils literal notranslate"><span class="pre">B_cov</span></code>, <code class="docutils literal notranslate"><span class="pre">n_terms</span></code>, <code class="docutils literal notranslate"><span class="pre">penalizer</span></code>, <code class="docutils literal notranslate"><span class="pre">aliased</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BuckleyJamesModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;BuckleyJamesModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">resid</span></code>, <code class="docutils literal notranslate"><span class="pre">resid_surv</span></code>, <code class="docutils literal notranslate"><span class="pre">n_iter</span></code>, <code class="docutils literal notranslate"><span class="pre">converged</span></code>, <code class="docutils literal notranslate"><span class="pre">data</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">QuantileRegressionModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;QuantileRegressionModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">method</span></code>, <code class="docutils literal notranslate"><span class="pre">step</span></code>, <code class="docutils literal notranslate"><span class="pre">taus</span></code>, <code class="docutils literal notranslate"><span class="pre">intercepts</span></code>, <code class="docutils literal notranslate"><span class="pre">coefs</span></code>, <code class="docutils literal notranslate"><span class="pre">data</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ProportionalOddsModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;ProportionalOddsModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">se</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">p_values</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">d</span></code>, <code class="docutils literal notranslate"><span class="pre">g0</span></code>, <code class="docutils literal notranslate"><span class="pre">G0</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">n_iter</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">IntervalCoxPHModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;IntervalCoxPHModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">se</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">p_values</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">H0</span></code>, <code class="docutils literal notranslate"><span class="pre">H0_infinite</span></code>, <code class="docutils literal notranslate"><span class="pre">intervals</span></code>, <code class="docutils literal notranslate"><span class="pre">p0</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">n_iter</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">data_summary</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CoxNPMLEModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;CoxNPMLEModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">estimator</span></code>, <code class="docutils literal notranslate"><span class="pre">causes</span></code>, <code class="docutils literal notranslate"><span class="pre">single</span></code>, <code class="docutils literal notranslate"><span class="pre">betas</span></code>, <code class="docutils literal notranslate"><span class="pre">se</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">p_values</span></code>, <code class="docutils literal notranslate"><span class="pre">d</span></code>, <code class="docutils literal notranslate"><span class="pre">left</span></code>, <code class="docutils literal notranslate"><span class="pre">right</span></code>, <code class="docutils literal notranslate"><span class="pre">allowed</span></code>, <code class="docutils literal notranslate"><span class="pre">report_lower</span></code>, <code class="docutils literal notranslate"><span class="pre">tau</span></code>, <code class="docutils literal notranslate"><span class="pre">center</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">n_iter</span></code>, <code class="docutils literal notranslate"><span class="pre">tol</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">MixtureModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;MixtureModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dist</span></code>, <code class="docutils literal notranslate"><span class="pre">m</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">w</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">theta_covariance</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">custom</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RoystonParmarModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;RoystonParmarModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">scale</span></code>, <code class="docutils literal notranslate"><span class="pre">knots</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">n_events</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">FineGrayModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;FineGrayModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">cause</span></code>, <code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">p_values</span></code>, <code class="docutils literal notranslate"><span class="pre">baseline_times</span></code>, <code class="docutils literal notranslate"><span class="pre">baseline_cumhaz</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">se</span></code>, <code class="docutils literal notranslate"><span class="pre">model_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;CompetingRisksProportionalHazards&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">event_idx_map</span></code>, <code class="docutils literal notranslate"><span class="pre">n_event_types</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">betas</span></code>, <code class="docutils literal notranslate"><span class="pre">h0_e</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">covariances</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">fg_models</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ParametricCompetingRisks</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;ParametricCompetingRisks&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">causes</span></code>, <code class="docutils literal notranslate"><span class="pre">models</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">joint</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ParametricCompetingRisksRegression</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;ParametricCompetingRisksRegression&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">causes</span></code>, <code class="docutils literal notranslate"><span class="pre">models</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ParametricMultiState</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;ParametricMultiState&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">transitions</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span></code>, <code class="docutils literal notranslate"><span class="pre">e</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">clock</span></code>, <code class="docutils literal notranslate"><span class="pre">models</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ParametricMultiStateRegression</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;ParametricMultiStateRegression&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">transitions</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span></code>, <code class="docutils literal notranslate"><span class="pre">e</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">clock</span></code>, <code class="docutils literal notranslate"><span class="pre">models</span></code>, <code class="docutils literal notranslate"><span class="pre">Z</span></code>, <code class="docutils literal notranslate"><span class="pre">covariate_names</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PanelMultiState</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;PanelMultiState&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">transitions</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">s</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">obstype</span></code>, <code class="docutils literal notranslate"><span class="pre">Z</span></code>, <code class="docutils literal notranslate"><span class="pre">censored</span></code>, <code class="docutils literal notranslate"><span class="pre">exact_entry</span></code>, <code class="docutils literal notranslate"><span class="pre">pci</span></code>, <code class="docutils literal notranslate"><span class="pre">covariate_names</span></code>, <code class="docutils literal notranslate"><span class="pre">shared</span></code>, <code class="docutils literal notranslate"><span class="pre">theta</span></code>, <code class="docutils literal notranslate"><span class="pre">cov_theta</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">n_obs</span></code>, <code class="docutils literal notranslate"><span class="pre">scale</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">sd</span></code>, <code class="docutils literal notranslate"><span class="pre">kept</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PanelMultiStateRegression</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;PanelMultiStateRegression&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">transitions</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">s</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">obstype</span></code>, <code class="docutils literal notranslate"><span class="pre">Z</span></code>, <code class="docutils literal notranslate"><span class="pre">censored</span></code>, <code class="docutils literal notranslate"><span class="pre">exact_entry</span></code>, <code class="docutils literal notranslate"><span class="pre">pci</span></code>, <code class="docutils literal notranslate"><span class="pre">covariate_names</span></code>, <code class="docutils literal notranslate"><span class="pre">shared</span></code>, <code class="docutils literal notranslate"><span class="pre">theta</span></code>, <code class="docutils literal notranslate"><span class="pre">cov_theta</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">n_obs</span></code>, <code class="docutils literal notranslate"><span class="pre">scale</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">sd</span></code>, <code class="docutils literal notranslate"><span class="pre">kept</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CompetingRisks</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;CompetingRisks&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">event_idx_map</span></code>, <code class="docutils literal notranslate"><span class="pre">n_event_types</span></code></p></td>
+<td><p>the Aalen-Johansen estimate: <code class="docutils literal notranslate"><span class="pre">method</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">d</span></code>, <code class="docutils literal notranslate"><span class="pre">r</span></code>, <code class="docutils literal notranslate"><span class="pre">h0</span></code>, <code class="docutils literal notranslate"><span class="pre">H0</span></code>, <code class="docutils literal notranslate"><span class="pre">S</span></code>, <code class="docutils literal notranslate"><span class="pre">d_e</span></code>, <code class="docutils literal notranslate"><span class="pre">h0_e</span></code>, <code class="docutils literal notranslate"><span class="pre">H0_e</span></code>, <code class="docutils literal notranslate"><span class="pre">IIF</span></code>, <code class="docutils literal notranslate"><span class="pre">CIF</span></code>, and <code class="docutils literal notranslate"><span class="pre">support</span></code>; the NPMLE of interval-censored rows, marked <code class="docutils literal notranslate"><span class="pre">estimator</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;NPMLE&quot;</span></code>; absent for Aalen-Johansen): <code class="docutils literal notranslate"><span class="pre">beyond</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">converged</span></code>, <code class="docutils literal notranslate"><span class="pre">gap</span></code>, <code class="docutils literal notranslate"><span class="pre">iterations</span></code>, <code class="docutils literal notranslate"><span class="pre">tol</span></code>, <code class="docutils literal notranslate"><span class="pre">max_iter</span></code>, <code class="docutils literal notranslate"><span class="pre">atom_cause</span></code>, <code class="docutils literal notranslate"><span class="pre">atom_lower</span></code>, <code class="docutils literal notranslate"><span class="pre">atom_upper</span></code>, <code class="docutils literal notranslate"><span class="pre">atom_mass</span></code>, <code class="docutils literal notranslate"><span class="pre">data_xl</span></code>, <code class="docutils literal notranslate"><span class="pre">data_xr</span></code>, <code class="docutils literal notranslate"><span class="pre">data_cause</span></code>, <code class="docutils literal notranslate"><span class="pre">data_n</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MultiState</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;MultiState&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">transitions</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span></code>, <code class="docutils literal notranslate"><span class="pre">e</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">MultiStateProportionalHazards</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;MultiStateProportionalHazards&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">transitions</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code>, <code class="docutils literal notranslate"><span class="pre">state</span></code>, <code class="docutils literal notranslate"><span class="pre">e</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">Z</span></code>, <code class="docutils literal notranslate"><span class="pre">covariate_names</span></code>, <code class="docutils literal notranslate"><span class="pre">shared</span></code>, <code class="docutils literal notranslate"><span class="pre">tie_method</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">shared_groups</span></code>, <code class="docutils literal notranslate"><span class="pre">baseline_groups</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">LandmarkCox</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;LandmarkCox&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">life</span></code>, <code class="docutils literal notranslate"><span class="pre">at</span></code>, <code class="docutils literal notranslate"><span class="pre">horizon</span></code>, <code class="docutils literal notranslate"><span class="pre">baseline</span></code>, <code class="docutils literal notranslate"><span class="pre">degree</span></code>, <code class="docutils literal notranslate"><span class="pre">varying</span></code>, <code class="docutils literal notranslate"><span class="pre">tie_method</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CauseSpecificMCF</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;CauseSpecificMCF&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">event_types</span></code>, <code class="docutils literal notranslate"><span class="pre">models</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">support</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">CauseSpecificNHPP</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;CauseSpecificNHPP&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dist</span></code>, <code class="docutils literal notranslate"><span class="pre">event_types</span></code>, <code class="docutils literal notranslate"><span class="pre">models</span></code>, <code class="docutils literal notranslate"><span class="pre">covariances</span></code>, <code class="docutils literal notranslate"><span class="pre">end</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CauseSpecificProportionalIntensity</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;CauseSpecificProportionalIntensity&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">baseline</span></code>, <code class="docutils literal notranslate"><span class="pre">event_types</span></code>, <code class="docutils literal notranslate"><span class="pre">models</span></code>, <code class="docutils literal notranslate"><span class="pre">covariances</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">feature_names</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NonParametricCounting</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;NonParametricCounting&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">mcf_hat</span></code>, <code class="docutils literal notranslate"><span class="pre">var</span></code>, <code class="docutils literal notranslate"><span class="pre">origin</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">support</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PanelCountMCF</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;PanelCountMCF&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">PanelCountRegression</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;PanelCountRegression&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">Z</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RelativeSurvival</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;RelativeSurvival&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">method</span></code>, <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">at_risk</span></code>, <code class="docutils literal notranslate"><span class="pre">events</span></code>, <code class="docutils literal notranslate"><span class="pre">n_units</span></code>, <code class="docutils literal notranslate"><span class="pre">observed</span></code>, <code class="docutils literal notranslate"><span class="pre">expected</span></code>, <code class="docutils literal notranslate"><span class="pre">variance</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ExcessHazard</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;ExcessHazard&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">parameter_names</span></code>, <code class="docutils literal notranslate"><span class="pre">breaks</span></code>, <code class="docutils literal notranslate"><span class="pre">aliased</span></code>, <code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">rate_table</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RateTable</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;RateTable&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ages</span></code>, <code class="docutils literal notranslate"><span class="pre">years</span></code>, <code class="docutils literal notranslate"><span class="pre">strata</span></code>, <code class="docutils literal notranslate"><span class="pre">rates</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ParametricRecurrenceModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;ParametricRecurrenceModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dist</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">clock</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">SharedFrailtyModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;SharedFrailtyModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">baseline</span></code>, <code class="docutils literal notranslate"><span class="pre">family</span></code>, <code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">n_covariates</span></code>, <code class="docutils literal notranslate"><span class="pre">regression</span></code>, <code class="docutils literal notranslate"><span class="pre">held</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">cluster_ids</span></code>, <code class="docutils literal notranslate"><span class="pre">cluster_events</span></code>, <code class="docutils literal notranslate"><span class="pre">cluster_exposure</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">feature_names</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">JointFrailtyModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;JointFrailtyModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">family</span></code>, <code class="docutils literal notranslate"><span class="pre">time_scale</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">n_covariates</span></code>, <code class="docutils literal notranslate"><span class="pre">held</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">frailty_ids</span></code>, <code class="docutils literal notranslate"><span class="pre">frailty_values</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">feature_names</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ProportionalIntensityModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;ProportionalIntensityModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">dist</span></code>, <code class="docutils literal notranslate"><span class="pre">param_names</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">coeffs</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">feature_names</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">RecurrentCoxModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;RecurrentCoxModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">cox</span></code>, <code class="docutils literal notranslate"><span class="pre">robust_covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">n_items</span></code>, <code class="docutils literal notranslate"><span class="pre">n_events</span></code>, <code class="docutils literal notranslate"><span class="pre">max_events</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">strata</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RenewalModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;RenewalModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">family</span></code>, <code class="docutils literal notranslate"><span class="pre">dist</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">restoration</span></code>, <code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">kijima_type</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">m</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">JelinskiMorandaModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;JelinskiMorandaModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">test_time</span></code>, <code class="docutils literal notranslate"><span class="pre">weighted_time</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LittlewoodVerrallModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;LittlewoodVerrallModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">psi</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DegradationModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;DegradationModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">y</span></code>, <code class="docutils literal notranslate"><span class="pre">i</span></code>, <code class="docutils literal notranslate"><span class="pre">units</span></code>, <code class="docutils literal notranslate"><span class="pre">threshold</span></code>, <code class="docutils literal notranslate"><span class="pre">path_model</span></code>, <code class="docutils literal notranslate"><span class="pre">path_params</span></code>, <code class="docutils literal notranslate"><span class="pre">pseudo_failure_times</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">life_model</span></code>, <code class="docutils literal notranslate"><span class="pre">measurement_var</span></code>, <code class="docutils literal notranslate"><span class="pre">path_param_mean</span></code>, <code class="docutils literal notranslate"><span class="pre">path_param_cov</span></code>, <code class="docutils literal notranslate"><span class="pre">path_param_sample_cov</span></code>, <code class="docutils literal notranslate"><span class="pre">population_method</span></code>, <code class="docutils literal notranslate"><span class="pre">path_selection</span></code>, <code class="docutils literal notranslate"><span class="pre">Z</span></code>, <code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">links</span></code>, <code class="docutils literal notranslate"><span class="pre">path_param_fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">path_param_fixed_names</span></code>, <code class="docutils literal notranslate"><span class="pre">path_param_link_cov</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">extrapolated</span></code>, <code class="docutils literal notranslate"><span class="pre">running</span></code>, <code class="docutils literal notranslate"><span class="pre">censored_units</span></code>, <code class="docutils literal notranslate"><span class="pre">acceleration</span></code>, <code class="docutils literal notranslate"><span class="pre">gamma</span></code>, <code class="docutils literal notranslate"><span class="pre">stress_ref</span></code>, <code class="docutils literal notranslate"><span class="pre">Z_cols</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">InducedFailureDistribution</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;InducedFailureDistribution&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">samples</span></code>, <code class="docutils literal notranslate"><span class="pre">threshold</span></code>, <code class="docutils literal notranslate"><span class="pre">path_name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">stress</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">WienerProcessModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;WienerProcessModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">mu</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">threshold</span></code>, <code class="docutils literal notranslate"><span class="pre">y0</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">gamma</span></code>, <code class="docutils literal notranslate"><span class="pre">stress_ref</span></code>, <code class="docutils literal notranslate"><span class="pre">Z_cols</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">GammaProcessModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;GammaProcessModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alpha</span></code>, <code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">threshold</span></code>, <code class="docutils literal notranslate"><span class="pre">y0</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">gamma</span></code>, <code class="docutils literal notranslate"><span class="pre">stress_ref</span></code>, <code class="docutils literal notranslate"><span class="pre">Z_cols</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DestructiveDegradationModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;DestructiveDegradationModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">distribution</span></code>, <code class="docutils literal notranslate"><span class="pre">transform</span></code>, <code class="docutils literal notranslate"><span class="pre">direction</span></code>, <code class="docutils literal notranslate"><span class="pre">beta</span></code>, <code class="docutils literal notranslate"><span class="pre">sigma</span></code>, <code class="docutils literal notranslate"><span class="pre">threshold</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">transform_scores</span></code>, <code class="docutils literal notranslate"><span class="pre">data</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CopulaModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;parameterization&quot;:</span> <span class="pre">&quot;copula&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">copula</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">how</span></code>, <code class="docutils literal notranslate"><span class="pre">margins</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">rotation</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code>, <code class="docutils literal notranslate"><span class="pre">k</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SurvivalTree</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;SurvivalTree&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">n_features_split</span></code>, <code class="docutils literal notranslate"><span class="pre">selection</span></code>, <code class="docutils literal notranslate"><span class="pre">alpha_split</span></code>, <code class="docutils literal notranslate"><span class="pre">min_split_gain</span></code>, <code class="docutils literal notranslate"><span class="pre">root</span></code>, <code class="docutils literal notranslate"><span class="pre">n_covariates</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RandomSurvivalForest</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;RandomSurvivalForest&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">kind</span></code>, <code class="docutils literal notranslate"><span class="pre">n_trees</span></code>, <code class="docutils literal notranslate"><span class="pre">bootstrap</span></code>, <code class="docutils literal notranslate"><span class="pre">selection</span></code>, <code class="docutils literal notranslate"><span class="pre">alpha_split</span></code>, <code class="docutils literal notranslate"><span class="pre">min_split_gain</span></code>, <code class="docutils literal notranslate"><span class="pre">trees</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">NeverOccurs</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;NeverOccurs&quot;</span></code></p></td>
+<td><p>–</p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">InstantlyOccurs</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;InstantlyOccurs&quot;</span></code></p></td>
+<td><p>–</p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">JointModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;JointModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">distribution</span></code>, <code class="docutils literal notranslate"><span class="pre">path_model</span></code>, <code class="docutils literal notranslate"><span class="pre">links</span></code>, <code class="docutils literal notranslate"><span class="pre">varying</span></code>, <code class="docutils literal notranslate"><span class="pre">link</span></code>, <code class="docutils literal notranslate"><span class="pre">survival</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">parameter_names</span></code>, <code class="docutils literal notranslate"><span class="pre">aliased</span></code>, <code class="docutils literal notranslate"><span class="pre">path_covariates</span></code>, <code class="docutils literal notranslate"><span class="pre">hazard_covariates</span></code>, <code class="docutils literal notranslate"><span class="pre">marker_reference</span></code>, <code class="docutils literal notranslate"><span class="pre">centre</span></code>, <code class="docutils literal notranslate"><span class="pre">covariate_means</span></code>, <code class="docutils literal notranslate"><span class="pre">n_items</span></code>, <code class="docutils literal notranslate"><span class="pre">n_events</span></code>, <code class="docutils literal notranslate"><span class="pre">n_readings</span></code>, <code class="docutils literal notranslate"><span class="pre">integration</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">EquivalenceModel</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;EquivalenceModel&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">distribution</span></code>, <code class="docutils literal notranslate"><span class="pre">clocks</span></code>, <code class="docutils literal notranslate"><span class="pre">params</span></code>, <code class="docutils literal notranslate"><span class="pre">parameter_names</span></code>, <code class="docutils literal notranslate"><span class="pre">_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">_null_neg_ll</span></code>, <code class="docutils literal notranslate"><span class="pre">ic_n</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">maximum</span></code>, <code class="docutils literal notranslate"><span class="pre">covariance</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">BayesianParametric</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;model&quot;:</span> <span class="pre">&quot;BayesianParametric&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">distribution</span></code>, <code class="docutils literal notranslate"><span class="pre">offset</span></code>, <code class="docutils literal notranslate"><span class="pre">lfp</span></code>, <code class="docutils literal notranslate"><span class="pre">zi</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed</span></code>, <code class="docutils literal notranslate"><span class="pre">method</span></code>, <code class="docutils literal notranslate"><span class="pre">priors</span></code>, <code class="docutils literal notranslate"><span class="pre">data</span></code>, <code class="docutils literal notranslate"><span class="pre">posterior</span></code>, <code class="docutils literal notranslate"><span class="pre">log_evidence</span></code>, <code class="docutils literal notranslate"><span class="pre">diagnostics</span></code>, <code class="docutils literal notranslate"><span class="pre">exact</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval_version</span></code></p></td>
+<td><p>–</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="readers-and-helpers">
+<h2>Readers and helpers<a class="headerlink" href="#readers-and-helpers" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.serialisation.from_dict">
+<span class="sig-prename descclassname"><span class="pre">surpyval.serialisation.</span></span><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.serialisation.from_dict" title="Link to this definition"></a></dt>
+<dd><p>Restore any serialised SurPyval model from its dictionary.</p>
+<p>Reads the dictionary written by any fitted model’s <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> and
+dispatches to the right class’s <code class="docutils literal notranslate"><span class="pre">from_dict</span></code>, so the caller does
+not need to know which class wrote it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>model_dict</strong> (<em>dict</em>) – A dictionary produced by a SurPyval model’s <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>The restored model, of whichever class serialised the dictionary.</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>ValueError</strong> – If the dictionary is not recognisable as a serialised SurPyval
+    model, lacks an entry its reader needs (the message names it), has
+    a <code class="docutils literal notranslate"><span class="pre">&quot;schema&quot;</span></code> that is not a non-negative integer or was written
+    by a newer SurPyval (a higher <code class="docutils literal notranslate"><span class="pre">&quot;schema&quot;</span></code> version), holds
+    parameters outside the distribution’s bounds (for a univariate
+    parametric model), or names a distribution the reader does not
+    know – which includes a <code class="docutils literal notranslate"><span class="pre">CustomDistribution</span></code> that has not been
+    constructed again in this session (a dictionary stores only its
+    name, since its cumulative hazard is a Python function). Also if
+    its <code class="docutils literal notranslate"><span class="pre">&quot;non_finite&quot;</span></code> record (see <a class="reference internal" href="#surpyval.serialisation.encode_non_finite" title="surpyval.serialisation.encode_non_finite"><code class="xref py py-func docutils literal notranslate"><span class="pre">encode_non_finite()</span></code></a>) is
+    corrupt. Each class’s own <code class="docutils literal notranslate"><span class="pre">from_dict</span></code> raises the same errors.</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>What a restored model keeps differs by family: in general the
+parameters and whatever predictions need, but not the fitted data,
+so methods that need the data (<code class="docutils literal notranslate"><span class="pre">plot</span></code>, bootstrap and
+likelihood-ratio bounds, residuals) raise on the restored model –
+except a univariate parametric model’s <code class="docutils literal notranslate"><span class="pre">plot</span></code>, which draws the
+model’s CDF without data points.
+A fitted univariate parametric, regression or copula model keeps
+the likelihood and sample size of its information criteria, so
+<code class="docutils literal notranslate"><span class="pre">aic</span></code> and <code class="docutils literal notranslate"><span class="pre">bic</span></code> (and <code class="docutils literal notranslate"><span class="pre">aic_c</span></code>, where the model has one) work on
+its restored copy.
+See “Saving and Loading Models” in the Conventions page.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">,</span> <span class="mf">7.0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">restored</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">from_dict</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">restored</span><span class="o">.</span><span class="n">dist</span><span class="o">.</span><span class="n">name</span>
+<span class="go">'Weibull'</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.serialisation.from_json">
+<span class="sig-prename descclassname"><span class="pre">surpyval.serialisation.</span></span><span class="sig-name descname"><span class="pre">from_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.serialisation.from_json" title="Link to this definition"></a></dt>
+<dd><p>Restore any serialised SurPyval model from a JSON file or string.</p>
+<p>Reads a file written by any fitted model’s <code class="docutils literal notranslate"><span class="pre">to_json</span></code> (or the JSON
+text <code class="docutils literal notranslate"><span class="pre">to_json()</span></code> returns without a path) and dispatches to the
+right class’s reader; see <a class="reference internal" href="#surpyval.serialisation.from_dict" title="surpyval.serialisation.from_dict"><code class="xref py py-func docutils literal notranslate"><span class="pre">from_dict()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>fp</strong> (<em>str</em><em> | </em><em>Path</em>) – Path to a JSON file written by a SurPyval model’s <code class="docutils literal notranslate"><span class="pre">to_json</span></code>, or
+the JSON text itself (a string starting with <code class="docutils literal notranslate"><span class="pre">{</span></code>).</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>The restored model, of whichever class serialised the file.</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span><span class="o">,</span><span class="w"> </span><span class="nn">tempfile</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">Weibull</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">Weibull</span><span class="o">.</span><span class="n">fit</span><span class="p">([</span><span class="mf">3.0</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">6.0</span><span class="p">,</span> <span class="mf">7.0</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">mkdtemp</span><span class="p">(),</span> <span class="s2">"weibull.json"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">to_json</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">restored</span> <span class="o">=</span> <span class="n">surpyval</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">restored</span><span class="o">.</span><span class="n">params</span>
+<span class="go">array([5.53092634, 4.04187535])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">surpyval</span><span class="o">.</span><span class="n">from_json</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">to_json</span><span class="p">())</span><span class="o">.</span><span class="n">params</span>
+<span class="go">array([5.53092634, 4.04187535])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.serialisation.encode_non_finite">
+<span class="sig-prename descclassname"><span class="pre">surpyval.serialisation.</span></span><span class="sig-name descname"><span class="pre">encode_non_finite</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stamped</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.serialisation.encode_non_finite" title="Link to this definition"></a></dt>
+<dd><p>Make a serialised dictionary strict JSON, in place.</p>
+<p><code class="docutils literal notranslate"><span class="pre">json.dumps</span></code> writes <code class="docutils literal notranslate"><span class="pre">inf</span></code>, <code class="docutils literal notranslate"><span class="pre">-inf</span></code> and <code class="docutils literal notranslate"><span class="pre">nan</span></code> as the literals
+<code class="docutils literal notranslate"><span class="pre">Infinity</span></code>, <code class="docutils literal notranslate"><span class="pre">-Infinity</span></code> and <code class="docutils literal notranslate"><span class="pre">NaN</span></code>, which are not JSON: strict
+parsers (JavaScript’s <code class="docutils literal notranslate"><span class="pre">JSON.parse</span></code>, many databases) refuse the
+whole document. Yet the values are meaningful in a fitted model –
+an untruncated bound, the cumulative hazard after the last death, an
+undefined variance – so they cannot simply be dropped.</p>
+<p>The convention: each non-finite float is written as <code class="docutils literal notranslate"><span class="pre">null</span></code>, and
+the dictionary records what every such <code class="docutils literal notranslate"><span class="pre">null</span></code> stood for under
+<code class="docutils literal notranslate"><span class="pre">&quot;non_finite&quot;</span></code>, as lists of RFC 6901 JSON Pointers relative to the
+dictionary, grouped by kind:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span><span class="s2">"H"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.4</span><span class="p">,</span> <span class="n">null</span><span class="p">],</span> <span class="s2">"greenwood"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">,</span> <span class="n">null</span><span class="p">],</span>
+ <span class="s2">"non_finite"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"inf"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"/H/2"</span><span class="p">],</span> <span class="s2">"nan"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"/greenwood/2"</span><span class="p">]}}</span>
+</pre></div>
+</div>
+<p>A <code class="docutils literal notranslate"><span class="pre">null</span></code> that no pointer names is an ordinary <code class="docutils literal notranslate"><span class="pre">None</span></code>. Readers put
+the floats back with <a class="reference internal" href="#surpyval.serialisation.decode_non_finite" title="surpyval.serialisation.decode_non_finite"><code class="xref py py-func docutils literal notranslate"><span class="pre">decode_non_finite()</span></code></a>, which every
+<code class="docutils literal notranslate"><span class="pre">from_dict</span></code> does; a consumer in another language sees <code class="docutils literal notranslate"><span class="pre">null</span></code>
+where no number applies and can use the record to recover the exact
+values. The kinds with no values are omitted, as is the record
+itself when the dictionary holds no non-finite float.</p>
+<p>Numpy arrays and scalars are converted to native Python types on the
+way, so the dictionary is also BSON-native. A record the dictionary
+already carries (<code class="docutils literal notranslate"><span class="pre">to_dict</span></code> output re-encoded) is extended, and the
+records of nested model dictionaries are left in place.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.serialisation</span><span class="w"> </span><span class="kn">import</span> <span class="n">encode_non_finite</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">encode_non_finite</span><span class="p">({</span><span class="s2">"H"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">],</span> <span class="s2">"var"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">})</span>
+<span class="go">{'H': [0.5, None], 'var': None, 'non_finite': {'inf': ['/H/1'], 'nan': ['/var']}}</span>
+</pre></div>
+</div>
+<p>With <code class="docutils literal notranslate"><span class="pre">stamped</span></code>, the nested model dictionaries that <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> has
+already finished (each carries its <code class="docutils literal notranslate"><span class="pre">&quot;schema&quot;</span></code>) are not walked again:
+they are strict JSON already, with records of their own.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.serialisation.decode_non_finite">
+<span class="sig-prename descclassname"><span class="pre">surpyval.serialisation.</span></span><span class="sig-name descname"><span class="pre">decode_non_finite</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.serialisation.decode_non_finite" title="Link to this definition"></a></dt>
+<dd><p>Undo <a class="reference internal" href="#surpyval.serialisation.encode_non_finite" title="surpyval.serialisation.encode_non_finite"><code class="xref py py-func docutils literal notranslate"><span class="pre">encode_non_finite()</span></code></a>: the dictionary with every <code class="docutils literal notranslate"><span class="pre">null</span></code>
+its <code class="docutils literal notranslate"><span class="pre">&quot;non_finite&quot;</span></code> records name put back to <code class="docutils literal notranslate"><span class="pre">inf</span></code>, <code class="docutils literal notranslate"><span class="pre">-inf</span></code> or
+<code class="docutils literal notranslate"><span class="pre">nan</span></code>, and the records removed.</p>
+<p>The records of nested model dictionaries are applied too. The input
+is not modified; a dictionary without records (including those
+written before schema 2, whose non-finite values were stored as
+floats) is returned unchanged. A record naming a missing entry or a
+value that is not <code class="docutils literal notranslate"><span class="pre">null</span></code> raises a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.serialisation</span><span class="w"> </span><span class="kn">import</span> <span class="n">decode_non_finite</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">decode_non_finite</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="p">{</span><span class="s2">"H"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span> <span class="s2">"non_finite"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"inf"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"/H/1"</span><span class="p">]}}</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="go">{'H': [0.5, inf]}</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.serialisation.required_schema">
+<span class="sig-prename descclassname"><span class="pre">surpyval.serialisation.</span></span><span class="sig-name descname"><span class="pre">required_schema</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stamped</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="headerlink" href="#surpyval.serialisation.required_schema" title="Link to this definition"></a></dt>
+<dd><p>The oldest schema version that reads <code class="docutils literal notranslate"><span class="pre">model_dict</span></code> correctly.</p>
+<p>2 if the dictionary, or a model dictionary nested in it, records
+non-finite values as <code class="docutils literal notranslate"><span class="pre">null</span></code> (a <code class="docutils literal notranslate"><span class="pre">&quot;non_finite&quot;</span></code> record, see
+<a class="reference internal" href="#surpyval.serialisation.encode_non_finite" title="surpyval.serialisation.encode_non_finite"><code class="xref py py-func docutils literal notranslate"><span class="pre">encode_non_finite()</span></code></a>), which a schema-1 reader would take for
+missing entries, holds a regression formula that only a schema-2
+reader can rebuild (wrapped categoricals such as <code class="docutils literal notranslate"><span class="pre">C(g)</span></code>, integer
+levels, or fitted transforms such as <code class="docutils literal notranslate"><span class="pre">scale(z)</span></code>), or holds the
+<code class="docutils literal notranslate"><span class="pre">&quot;support&quot;</span></code> of a non-parametric estimate’s <code class="docutils literal notranslate"><span class="pre">set_support</span></code>, the
+<code class="docutils literal notranslate"><span class="pre">&quot;band_n&quot;</span></code> of its <code class="docutils literal notranslate"><span class="pre">band</span></code> or the <code class="docutils literal notranslate"><span class="pre">&quot;algorithm&quot;</span></code> of a Turnbull fit
+by the EM-ICM, or the nonzero covariate <code class="docutils literal notranslate"><span class="pre">&quot;center&quot;</span></code> of
+a regression model fitted with <code class="docutils literal notranslate"><span class="pre">center=True</span></code>, which a schema-1
+reader would silently ignore; 1
+otherwise, the layout SurPyval v0.20 reads. This is the version
+<code class="xref py py-func docutils literal notranslate"><span class="pre">stamp_schema()</span></code> writes. With <code class="docutils literal notranslate"><span class="pre">stamped</span></code>, a nested model
+dictionary that carries its <code class="docutils literal notranslate"><span class="pre">&quot;schema&quot;</span></code> counts by that version
+rather than being searched again (it is 2 exactly when something in
+it needs schema 2).</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval.serialisation</span><span class="w"> </span><span class="kn">import</span> <span class="n">required_schema</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">required_schema</span><span class="p">({</span><span class="s2">"params"</span><span class="p">:</span> <span class="p">[</span><span class="mf">10.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">]})</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">required_schema</span><span class="p">({</span><span class="s2">"H"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.1</span><span class="p">,</span> <span class="kc">None</span><span class="p">],</span> <span class="s2">"non_finite"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"inf"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"/H/1"</span><span class="p">]}})</span>
+<span class="go">2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">required_schema</span><span class="p">({</span><span class="s2">"x"</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">],</span> <span class="s2">"support"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">]})</span>
+<span class="go">2</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">required_schema</span><span class="p">({</span><span class="s2">"beta"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">],</span> <span class="s2">"center"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]})</span>
+<span class="go">1</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">required_schema</span><span class="p">({</span><span class="s2">"beta"</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.5</span><span class="p">],</span> <span class="s2">"center"</span><span class="p">:</span> <span class="p">[</span><span class="mf">2000.0</span><span class="p">]})</span>
+<span class="go">2</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="comparison_and_validation.html" class="btn btn-neutral float-left" title="Comparison Tests and Validation Metrics" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="surpyval.utilities.html" class="btn btn-neutral float-right" title="Utilities" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

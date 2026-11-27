@@ -1,0 +1,1255 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Competing Risks Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Recurrent Event Analysis" href="Recurrent%20Event%20Analysis.html" />
+    <link rel="prev" title="Regression Analysis" href="regression%20analysis.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Competing Risks Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#relationship-to-univariate-analysis">Relationship to Univariate Analysis</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-data-a-time-and-a-cause">The data: a time and a cause</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-cause-specific-hazard">The cause-specific hazard</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-cumulative-incidence-function">The cumulative incidence function</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#why-one-minus-kaplan-meier-of-one-cause-is-wrong">Why one minus Kaplan-Meier of one cause is wrong</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#net-and-crude-probabilities">Net and crude probabilities</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#non-parametric-cif-estimation">Non-Parametric CIF Estimation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-aalen-johansen-estimator">The Aalen-Johansen estimator</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-surpyval-computes">What SurPyval computes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#confidence-bounds">Confidence bounds</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#censoring-and-truncation">Censoring and truncation</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#parametric-competing-risks">Parametric Competing Risks</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-latent-failure-time-picture">The latent-failure-time picture</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#why-the-fit-separates-by-cause">Why the fit separates by cause</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#computing-the-model-s-quantities">Computing the model’s quantities</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#regression-fine-gray-and-cause-specific-ph">Regression: Fine-Gray and Cause-Specific PH</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#cause-specific-proportional-hazards-in-detail">Cause-specific proportional hazards in detail</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#delayed-entry-in-the-regressions">Delayed entry in the regressions</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#interval-censored-and-truncated-data-cox-s-full-likelihood">Interval-censored and truncated data: Cox’s full likelihood</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-fine-gray-model-in-detail">The Fine-Gray model in detail</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#parametric-regression-of-each-cause">Parametric regression of each cause</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#choosing-between-them">Choosing between them</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#comparing-incidence-across-groups-gray-s-test">Comparing incidence across groups: Gray’s test</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-statistic">The statistic</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#further-reading">Further Reading</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Competing Risks Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Competing Risks Analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="competing-risks-analysis">
+<h1>Competing Risks Analysis<a class="headerlink" href="#competing-risks-analysis" title="Link to this heading"></a></h1>
+<p>Competing risks analysis addresses situations where a subject is at risk of
+experiencing more than one type of event, but only one event can occur first
+and doing so removes the subject from further observation. A subject “competes”
+among several possible failure causes.</p>
+<p>Classic examples:</p>
+<ul class="simple">
+<li><p>A patient may die from cancer, heart disease, or another cause; the first
+to occur ends their observation period.</p></li>
+<li><p>A mechanical component may fail by fatigue, corrosion, or overload; which
+failure mode occurs first determines both the failure time and its cause.</p></li>
+<li><p>A customer may churn, upgrade, or downgrade; the event that happens first
+changes the analysis for the remaining outcomes.</p></li>
+</ul>
+<p>Competing risks require special treatment because treating the competing
+events as ordinary independent censoring gives a quantity that cannot be
+interpreted as a real-world probability. A deeper subtlety is the
+<strong>identifiability problem</strong>: from competing-risks data alone the <em>marginal</em>
+(net, latent) distribution of each cause — the distribution that would be seen
+if the other causes were removed — cannot be identified without an untestable
+assumption about the dependence between causes <a class="reference internal" href="#tsiatis1975cr" id="id1"><span>[Tsiatis1975cr]</span></a>. This is why
+the observable, well-defined target is the cumulative incidence function
+rather than a marginal cause-specific survival.</p>
+<p>This page builds the theory from first principles: what the data look like,
+the two quantities that <em>can</em> be estimated (the cause-specific hazard and the
+cumulative incidence function), why the tempting shortcut of “one minus
+Kaplan-Meier with the other causes censored” is wrong, and then the
+non-parametric, parametric and regression estimators SurPyval provides. Every
+method described here has a runnable example on the
+<a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html"><span class="doc">Competing Risks SurPyval Modelling</span></a> page, and the full API is on the
+<a class="reference internal" href="surpyval.competing_risks.html"><span class="doc">Competing Risks</span></a> reference page.</p>
+<section id="relationship-to-univariate-analysis">
+<h2>Relationship to Univariate Analysis<a class="headerlink" href="#relationship-to-univariate-analysis" title="Link to this heading"></a></h2>
+<p>Standard survival methods (Kaplan-Meier, parametric MLE) applied to a
+single cause — ignoring others — estimate the <em>cause-specific</em> survival
+function. Naïvely applying KM while censoring the competing events yields a
+quantity that cannot be interpreted as the probability of experiencing the
+event in the real world because the competing events are not truly independent
+censoring mechanisms. The subsections below make this precise.</p>
+<section id="the-data-a-time-and-a-cause">
+<h3>The data: a time and a cause<a class="headerlink" href="#the-data-a-time-and-a-cause" title="Link to this heading"></a></h3>
+<p>In ordinary (univariate) survival analysis each unit contributes a time
+<span class="math notranslate nohighlight">\(x_i\)</span> and a flag saying whether that time is an observed failure or a
+censoring time. Competing-risks data adds one more piece of information to each
+<em>observed</em> failure: its <strong>cause</strong> (also called the failure mode or event type).
+Write</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(T\)</span> for the time of the <em>first</em> event of any kind,</p></li>
+<li><p><span class="math notranslate nohighlight">\(K \in \{1, \dots, m\}\)</span> for the cause of that event, where <span class="math notranslate nohighlight">\(m\)</span>
+is the number of distinct causes,</p></li>
+<li><p><span class="math notranslate nohighlight">\(C\)</span> for the censoring time, so that we observe
+<span class="math notranslate nohighlight">\(x = \min(T, C)\)</span> and, if <span class="math notranslate nohighlight">\(T \leq C\)</span>, the cause <span class="math notranslate nohighlight">\(K\)</span>.</p></li>
+</ul>
+<p>A censored unit therefore has <em>no</em> cause: we only know that none of the
+<span class="math notranslate nohighlight">\(m\)</span> events had happened by <span class="math notranslate nohighlight">\(x\)</span>. In SurPyval the cause is passed
+as the array <code class="docutils literal notranslate"><span class="pre">e</span></code> (any hashable labels: integers, strings, …), and a
+missing cause (<code class="docutils literal notranslate"><span class="pre">None</span></code> or <code class="docutils literal notranslate"><span class="pre">NaN</span></code>) marks a censored row.</p>
+<p>Throughout, censoring is assumed to be <strong>independent</strong>: <span class="math notranslate nohighlight">\(C\)</span> carries no
+information about <span class="math notranslate nohighlight">\((T, K)\)</span> (for the regression models, conditionally on
+the covariates). This is the same assumption the Kaplan-Meier estimator makes;
+it is about the <em>censoring</em>, not about the causes, and it says nothing about
+whether the causes are independent of each other.</p>
+</section>
+<section id="the-cause-specific-hazard">
+<h3>The cause-specific hazard<a class="headerlink" href="#the-cause-specific-hazard" title="Link to this heading"></a></h3>
+<p>The natural building block is the rate at which cause <span class="math notranslate nohighlight">\(k\)</span> strikes units
+that are still event-free. The <strong>cause-specific hazard</strong> is</p>
+<div class="math notranslate nohighlight">
+\[h_k(t) = \lim_{\Delta t \to 0}
+         \frac{P(t \leq T &lt; t + \Delta t,\; K = k \mid T \geq t)}{\Delta t},
+\qquad k = 1, \dots, m.\]</div>
+<p>Intuitively <span class="math notranslate nohighlight">\(h_k(t)\,\Delta t\)</span> is the probability that a unit which has
+survived everything up to <span class="math notranslate nohighlight">\(t\)</span> fails from cause <span class="math notranslate nohighlight">\(k\)</span> in the next
+small interval. Because a unit can fail from only one cause at a time, the
+all-cause hazard is the sum of the cause-specific hazards, and so the
+all-cause survival function (the probability of being free of <em>every</em> event)
+is</p>
+<div class="math notranslate nohighlight">
+\[h(t) = \sum_{k=1}^{m} h_k(t), \qquad
+S(t) = P(T &gt; t) = \exp\!\Big(-\sum_{k=1}^{m} H_k(t)\Big),\]</div>
+<p>where <span class="math notranslate nohighlight">\(H_k(t) = \int_0^t h_k(u)\,du\)</span> is the cumulative cause-specific
+hazard. The cause-specific hazards are <em>identifiable</em>: they can be estimated
+from competing-risks data without any assumption about how the causes depend
+on one another, because each one only involves units that are observed to be
+still at risk.</p>
+</section>
+<section id="the-cumulative-incidence-function">
+<h3>The cumulative incidence function<a class="headerlink" href="#the-cumulative-incidence-function" title="Link to this heading"></a></h3>
+<p>The correct marginal quantity of interest is the <strong>Cumulative Incidence
+Function (CIF)</strong>, also called the sub-distribution function. For
+cause <span class="math notranslate nohighlight">\(k\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[F_k(t) = P(T \leq t,\; K = k)\]</div>
+<p>where <span class="math notranslate nohighlight">\(T\)</span> is the event time and <span class="math notranslate nohighlight">\(K\)</span> is the event type. In words:
+the probability that a unit has failed <em>from cause</em> <span class="math notranslate nohighlight">\(k\)</span> by time
+<span class="math notranslate nohighlight">\(t\)</span>, in the real world where all the other causes are also operating.
+It is built from the cause-specific hazard by asking, at each instant, “is the
+unit still event-free, and does cause <span class="math notranslate nohighlight">\(k\)</span> strike now?”:</p>
+<div class="math notranslate nohighlight">
+\[F_k(t) = \int_0^t h_k(u)\, S(u^-)\, du .\]</div>
+<p>The integrand <span class="math notranslate nohighlight">\(f_k^{\text{sub}}(t) = h_k(t)S(t^-)\)</span> is the
+<em>sub-distribution density</em> (SurPyval calls it the instantaneous incidence
+function, <code class="docutils literal notranslate"><span class="pre">iif</span></code>). Two properties follow immediately:</p>
+<ul>
+<li><p>The CIFs sum to the overall failure probability:</p>
+<div class="math notranslate nohighlight">
+\[\sum_{k=1}^{m} F_k(t) = F(t) = 1 - S(t).\]</div>
+</li>
+<li><p>Each CIF is <strong>improper</strong>: it plateaus at the eventual probability of that
+cause, <span class="math notranslate nohighlight">\(F_k(\infty) = P(K = k) &lt; 1\)</span>, rather than rising to one. A
+unit that fails from cause 2 can never go on to fail from cause 1.</p></li>
+</ul>
+<p>Notice that <span class="math notranslate nohighlight">\(F_k\)</span> depends on <em>all</em> the cause-specific hazards through
+<span class="math notranslate nohighlight">\(S\)</span>. Raising the hazard of cause 2 lowers the incidence of cause 1,
+even if <span class="math notranslate nohighlight">\(h_1\)</span> is untouched, simply because fewer units survive long
+enough to fail from cause 1. This is the single most important idea in
+competing risks, and it is why the regression section below distinguishes
+models for the hazard from models for the incidence.</p>
+</section>
+<section id="why-one-minus-kaplan-meier-of-one-cause-is-wrong">
+<h3>Why one minus Kaplan-Meier of one cause is wrong<a class="headerlink" href="#why-one-minus-kaplan-meier-of-one-cause-is-wrong" title="Link to this heading"></a></h3>
+<p>The tempting shortcut is to analyse cause <span class="math notranslate nohighlight">\(k\)</span> on its own: treat failures
+from every other cause as censored and compute a Kaplan-Meier curve
+<span class="math notranslate nohighlight">\(\hat{S}_k^{\text{KM}}\)</span>. This estimates</p>
+<div class="math notranslate nohighlight">
+\[1 - S_k(t) = 1 - \exp\{-H_k(t)\},\]</div>
+<p>which is the probability of failing from cause <span class="math notranslate nohighlight">\(k\)</span> by <span class="math notranslate nohighlight">\(t\)</span> in a
+<em>hypothetical</em> world where cause <span class="math notranslate nohighlight">\(k\)</span> is the only cause in operation (the
+“net” probability). Two things are wrong with reading it as a real-world
+probability:</p>
+<ol class="arabic simple">
+<li><p><strong>It overstates the incidence.</strong> Since <span class="math notranslate nohighlight">\(S(u) \leq S_k(u)\)</span>,
+<span class="math notranslate nohighlight">\(F_k(t) = \int_0^t h_k S \, du \leq \int_0^t h_k S_k\, du
+= 1 - S_k(t)\)</span>. Treating competing failures as censored pretends those
+units could still go on to fail from cause <span class="math notranslate nohighlight">\(k\)</span>, when in reality they
+never can. Summed over the causes, the “one minus KM” curves can exceed one.</p></li>
+<li><p><strong>It is only meaningful under an untestable assumption.</strong> The hypothetical
+world “with the other causes removed” corresponds to the distribution of a
+<em>latent</em> failure time <span class="math notranslate nohighlight">\(T_k\)</span>, and it equals <span class="math notranslate nohighlight">\(S_k\)</span> only if the
+latent times of the different causes are independent. Competing-risks data
+cannot confirm or refute that independence <a class="reference internal" href="#tsiatis1975cr" id="id2"><span>[Tsiatis1975cr]</span></a>.</p></li>
+</ol>
+<p>A small example makes the first point concrete. Six units are followed; the
+fourth is censored and the rest fail from cause A or B:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>time <span class="math notranslate nohighlight">\(x\)</span></p></th>
+<th class="head"><p>1</p></th>
+<th class="head"><p>2</p></th>
+<th class="head"><p>3</p></th>
+<th class="head"><p>4</p></th>
+<th class="head"><p>5</p></th>
+<th class="head"><p>6</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>cause</p></td>
+<td><p>A</p></td>
+<td><p>B</p></td>
+<td><p>A</p></td>
+<td><p>censored</p></td>
+<td><p>B</p></td>
+<td><p>A</p></td>
+</tr>
+<tr class="row-odd"><td><p>at risk <span class="math notranslate nohighlight">\(r\)</span></p></td>
+<td><p>6</p></td>
+<td><p>5</p></td>
+<td><p>4</p></td>
+<td><p>3</p></td>
+<td><p>2</p></td>
+<td><p>1</p></td>
+</tr>
+<tr class="row-even"><td><p>all-cause KM <span class="math notranslate nohighlight">\(\hat{S}(x)\)</span></p></td>
+<td><p>5/6</p></td>
+<td><p>4/6</p></td>
+<td><p>3/6</p></td>
+<td><p>3/6</p></td>
+<td><p>1/4</p></td>
+<td><p>0</p></td>
+</tr>
+</tbody>
+</table>
+<p>By time 6 every unit has either failed or been censored. The Aalen-Johansen
+estimator described next gives <span class="math notranslate nohighlight">\(\hat{F}_A(6) = 7/12\)</span> and
+<span class="math notranslate nohighlight">\(\hat{F}_B(6) = 5/12\)</span>, which sum to <span class="math notranslate nohighlight">\(1 - \hat{S}(6) = 1\)</span>. The
+naive “1 - KM with B censored” for cause A instead reaches <strong>1</strong> at time 6
+(the last unit at risk fails from A), and the naive curve for B reaches 0.6:
+together they claim a total failure probability of 1.6. The naive curve for A
+says that every unit eventually fails from A, when in fact 5/12 of the
+incidence was due to B. The same numbers are reproduced with code on
+the <a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html"><span class="doc">Competing Risks SurPyval Modelling</span></a> page.</p>
+</section>
+<section id="net-and-crude-probabilities">
+<h3>Net and crude probabilities<a class="headerlink" href="#net-and-crude-probabilities" title="Link to this heading"></a></h3>
+<p>The two quantities above have traditional names. The CIF <span class="math notranslate nohighlight">\(F_k\)</span> is the
+<strong>crude</strong> probability: it is what actually happens, and it is always
+identifiable. <span class="math notranslate nohighlight">\(1 - S_k\)</span> is the <strong>net</strong> probability: what would happen if
+cause <span class="math notranslate nohighlight">\(k\)</span> acted alone. In reliability engineering the net quantity is
+sometimes exactly what is wanted — “if we eliminate the corrosion failure mode
+by a design change, what will the fatigue life look like?” — but that is a
+counterfactual question and its answer relies on the causes acting
+independently. SurPyval exposes both; the CIF (<code class="docutils literal notranslate"><span class="pre">cif</span></code>) should be the default
+answer to “how likely is failure from this cause?”, and the net quantities
+(<code class="docutils literal notranslate"><span class="pre">ff</span></code>/<code class="docutils literal notranslate"><span class="pre">sf</span></code> with an <code class="docutils literal notranslate"><span class="pre">event</span></code>) should be used knowingly.</p>
+</section>
+</section>
+<section id="non-parametric-cif-estimation">
+<h2>Non-Parametric CIF Estimation<a class="headerlink" href="#non-parametric-cif-estimation" title="Link to this heading"></a></h2>
+<section id="the-aalen-johansen-estimator">
+<h3>The Aalen-Johansen estimator<a class="headerlink" href="#the-aalen-johansen-estimator" title="Link to this heading"></a></h3>
+<p>The non-parametric estimate replaces every quantity in
+<span class="math notranslate nohighlight">\(F_k(t) = \int_0^t h_k(u) S(u^-) du\)</span> with its empirical counterpart, in
+exactly the way the Nelson-Aalen and Kaplan-Meier estimators do for
+single-cause data (see <a class="reference internal" href="Non-Parametric%20Estimation.html"><span class="doc">Non-Parametric Estimation</span></a>). Order the distinct
+observed times <span class="math notranslate nohighlight">\(x_1 &lt; x_2 &lt; \dots &lt; x_J\)</span> and at each <span class="math notranslate nohighlight">\(x_j\)</span> let</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(r_j\)</span> be the number at risk (units with an observed or censored time
+<span class="math notranslate nohighlight">\(\geq x_j\)</span>),</p></li>
+<li><p><span class="math notranslate nohighlight">\(d_{k,j}\)</span> be the number of cause-<span class="math notranslate nohighlight">\(k\)</span> events at <span class="math notranslate nohighlight">\(x_j\)</span>, and
+<span class="math notranslate nohighlight">\(d_j = \sum_k d_{k,j}\)</span> the number of events of any cause.</p></li>
+</ul>
+<p>The empirical CIF for cause <span class="math notranslate nohighlight">\(k\)</span> is then estimated from the
+cause-specific hazard rates:</p>
+<div class="math notranslate nohighlight">
+\[\hat{F}_k(t) = \sum_{x_j \leq t} \hat{h}_k(x_j)\, \hat{S}(x_{j}^-)
+             = \sum_{x_j \leq t} \frac{d_{k,j}}{r_j}\,\hat{S}(x_{j-1})\]</div>
+<p>where <span class="math notranslate nohighlight">\(\hat{h}_k(x_j) = d_{k,j} / r_j\)</span> is the cause-specific hazard
+increment at event time <span class="math notranslate nohighlight">\(x_j\)</span>, and
+<span class="math notranslate nohighlight">\(\hat{S}(x_j^-) = \hat{S}(x_{j-1})\)</span> is the all-cause Kaplan-Meier
+survival just before <span class="math notranslate nohighlight">\(x_j\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[\hat{S}(t) = \prod_{x_j \leq t}\left(1 - \frac{d_j}{r_j}\right),
+\qquad \hat{S}(x_0) = 1 .\]</div>
+<p>This is the <strong>Aalen-Johansen</strong> estimator <a class="reference internal" href="#aalenjohansen1978cr" id="id3"><span>[AalenJohansen1978cr]</span></a>. Read each term
+as “the fraction of the population still event-free just before
+<span class="math notranslate nohighlight">\(x_j\)</span>” times “the fraction of those at risk that fail from cause
+<span class="math notranslate nohighlight">\(k\)</span> at <span class="math notranslate nohighlight">\(x_j\)</span>”. With a single cause and no censoring it reduces to
+the empirical CDF, and with a single cause and censoring to
+<span class="math notranslate nohighlight">\(1 - \text{KM}\)</span>.</p>
+<p>Two details of the formula are easy to get wrong, and both matter:</p>
+<ul class="simple">
+<li><p><strong>Weight by</strong> <span class="math notranslate nohighlight">\(\hat{S}(x_j^-)\)</span>, <strong>not</strong> <span class="math notranslate nohighlight">\(\hat{S}(x_j)\)</span>. The
+hazard at <span class="math notranslate nohighlight">\(x_j\)</span> acts on the units alive just <em>before</em> <span class="math notranslate nohighlight">\(x_j\)</span>.
+Using the survival after the jump removes the units failing at
+<span class="math notranslate nohighlight">\(x_j\)</span> before they have been counted, and makes the CIFs
+systematically too small (with one cause and
+no censoring the total incidence stops well short of one).</p></li>
+<li><p><strong>Use the product-limit (Kaplan-Meier) survival as the weight.</strong> Only it
+satisfies the telescoping identity
+<span class="math notranslate nohighlight">\(\hat{S}(x_{j-1}) - \hat{S}(x_j) = \hat{S}(x_{j-1})\,d_j/r_j\)</span>, which
+is what makes the estimated CIFs sum <em>exactly</em> to <span class="math notranslate nohighlight">\(1 - \hat{S}(t)\)</span>.
+Pairing the discrete increments <span class="math notranslate nohighlight">\(d_{k,j}/r_j\)</span> with the exponential
+(Nelson-Aalen) survival <span class="math notranslate nohighlight">\(e^{-\hat{H}}\)</span> instead inflates the CIFs and
+can push the total incidence above one in small samples.</p></li>
+</ul>
+<p>The worked example above is this formula applied by hand: for cause A,
+<span class="math notranslate nohighlight">\(\hat{F}_A(6) = 1 \cdot \tfrac{1}{6} + \tfrac{4}{6} \cdot \tfrac{1}{4}
++ \tfrac{1}{4} \cdot \tfrac{1}{1} = \tfrac{7}{12}\)</span>.</p>
+</section>
+<section id="what-surpyval-computes">
+<h3>What SurPyval computes<a class="headerlink" href="#what-surpyval-computes" title="Link to this heading"></a></h3>
+<p>SurPyval estimates the non-parametric CIF for each cause with the
+<a class="reference internal" href="surpyval.competing_risks.html#surpyval.univariate.competing_risks.nonparametric.competing_risks.CompetingRisks" title="surpyval.univariate.competing_risks.nonparametric.competing_risks.CompetingRisks"><code class="xref py py-class docutils literal notranslate"><span class="pre">CompetingRisks</span></code></a>
+class, which uses this cause-specific-hazard construction directly. The
+incidence increments are always weighted by the Kaplan-Meier <span class="math notranslate nohighlight">\(\hat{S}(x_j^-)\)</span>,
+whichever <code class="docutils literal notranslate"><span class="pre">method</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;Nelson-Aalen&quot;</span></code>, the default, or <code class="docutils literal notranslate"><span class="pre">&quot;Kaplan-Meier&quot;</span></code>)
+is requested; the shared helper
+<a class="reference internal" href="surpyval.competing_risks.html#surpyval.univariate.competing_risks.aalen_johansen.aalen_johansen_iif" title="surpyval.univariate.competing_risks.aalen_johansen.aalen_johansen_iif"><code class="xref py py-func docutils literal notranslate"><span class="pre">aalen_johansen_iif()</span></code></a>
+implements the weighting once for the non-parametric CIF, the cause-specific
+Cox CIF and the per-group CIFs inside Gray’s test. So <code class="docutils literal notranslate"><span class="pre">cif</span></code> and <code class="docutils literal notranslate"><span class="pre">iif</span></code> do not
+depend on <code class="docutils literal notranslate"><span class="pre">method</span></code>.</p>
+<p>Alongside the CIFs, the fitted model also carries the cause-specific
+hazard quantities. <code class="docutils literal notranslate"><span class="pre">hf</span></code> returns the hazard increment
+<span class="math notranslate nohighlight">\(d_{k,j}/r_j\)</span> at the most recent observed time (a jump size, not a
+rate; zero if no cause-<span class="math notranslate nohighlight">\(k\)</span> failure occurred there). The survival
+functions follow <code class="docutils literal notranslate"><span class="pre">method</span></code>:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p><code class="docutils literal notranslate"><span class="pre">method</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">sf(t,</span> <span class="pre">event=k)</span></code></p></th>
+<th class="head"><p><code class="docutils literal notranslate"><span class="pre">Hf(t,</span> <span class="pre">event=k)</span></code></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;Nelson-Aalen&quot;</span></code> (default)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\exp\{-\hat{H}_k(t)\}\)</span>, with
+<span class="math notranslate nohighlight">\(\hat{H}_k(t) = \sum_{x_j \leq t} d_{k,j}/r_j\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\hat{H}_k(t)\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">&quot;Kaplan-Meier&quot;</span></code></p></td>
+<td><p><span class="math notranslate nohighlight">\(\prod_{x_j \leq t} (1 - d_{k,j}/r_j)\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(-\log\)</span> of that product</p></td>
+</tr>
+</tbody>
+</table>
+<p>so that <code class="docutils literal notranslate"><span class="pre">sf</span> <span class="pre">==</span> <span class="pre">exp(-Hf)</span></code> and <code class="docutils literal notranslate"><span class="pre">ff</span> <span class="pre">==</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">sf</span></code> for either method. With an
+<code class="docutils literal notranslate"><span class="pre">event</span></code> these are the <em>net</em> quantities discussed above (cause <span class="math notranslate nohighlight">\(k\)</span>
+acting alone, the other causes treated as censoring); without one they refer
+to all causes combined, using <span class="math notranslate nohighlight">\(d_j\)</span> in place of <span class="math notranslate nohighlight">\(d_{k,j}\)</span>. The
+two methods differ little while the risk sets are large: since
+<span class="math notranslate nohighlight">\(e^{-h} \geq 1 - h\)</span>, the Nelson-Aalen survival is never below the
+product limit, and the gap grows in the tail, where the risk sets are small
+and each increment is large. All of these are step
+functions, equal to zero (or one, for survival) before the first observed
+time. The fitted all-cause survival at the distinct times is also stored as
+the attribute <code class="docutils literal notranslate"><span class="pre">S</span></code>.</p>
+</section>
+<section id="confidence-bounds">
+<h3>Confidence bounds<a class="headerlink" href="#confidence-bounds" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">cb(x,</span> <span class="pre">event)</span></code> gives pointwise confidence bounds on <span class="math notranslate nohighlight">\(\hat{F}_k\)</span>. The
+variance is Aalen’s estimate <a class="reference internal" href="#aalen1978cr" id="id4"><span>[Aalen1978cr]</span></a>, the one R’s <code class="docutils literal notranslate"><span class="pre">cmprsk::cuminc</span></code>
+reports (SurPyval’s agrees with it to rounding):</p>
+<div class="math notranslate nohighlight">
+\[\widehat{\mathrm{Var}}\,\hat{F}_k(t) = \sum_{x_j \leq t}
+    \frac{\hat{S}(x_{j-1})^2}{r_j^2} \left[
+    d_{k,j} \Big(1 + \frac{\hat{F}_k(x_j) - \hat{F}_k(t)}{\hat{S}(x_j)}\Big)^2
+    + (d_j - d_{k,j}) \Big(\frac{\hat{F}_k(x_j) - \hat{F}_k(t)}{\hat{S}(x_j)}\Big)^2
+    \right],\]</div>
+<p>with a correction for tied events (each count <span class="math notranslate nohighlight">\(m &gt; 1\)</span> is multiplied
+by <span class="math notranslate nohighlight">\((r_j - m)/(r_j - 1)\)</span>). Both kinds of failure enter: a cause-<span class="math notranslate nohighlight">\(k\)</span>
+failure moves <span class="math notranslate nohighlight">\(\hat{F}_k\)</span> directly, and a failure from another cause
+moves it through the survival <span class="math notranslate nohighlight">\(\hat{S}\)</span> that weights the later
+increments. By default the interval is formed on the <span class="math notranslate nohighlight">\(\log(-\log)\)</span>
+scale, <span class="math notranslate nohighlight">\(\hat{F}_k^{\exp(\pm z \hat\sigma / (\hat{F}_k \log \hat{F}_k))}\)</span>,
+which keeps it inside <span class="math notranslate nohighlight">\([0, 1]\)</span> and covers better in small samples than
+the plain <span class="math notranslate nohighlight">\(\hat{F}_k \pm z\hat\sigma\)</span> (<code class="docutils literal notranslate"><span class="pre">bound_type=&quot;normal&quot;</span></code>)
+<a class="reference internal" href="#choudhury2002cr" id="id5"><span>[Choudhury2002cr]</span></a>. Before the cause’s first failure the estimate is exactly 0
+with no variance, and so are both bounds.</p>
+</section>
+<section id="censoring-and-truncation">
+<h3>Censoring and truncation<a class="headerlink" href="#censoring-and-truncation" title="Link to this heading"></a></h3>
+<p>Censoring enters the Aalen-Johansen estimator only through the risk sets
+<span class="math notranslate nohighlight">\(r_j\)</span>: a unit censored at <span class="math notranslate nohighlight">\(x_i\)</span> counts as at risk at every event
+time up to and including <span class="math notranslate nohighlight">\(x_i\)</span> and then leaves, exactly as in the
+Kaplan-Meier estimator. The Aalen-Johansen estimator takes <strong>right
+censoring</strong> only: with an interval-censored failure of known cause the
+unit’s contribution to <span class="math notranslate nohighlight">\(F_k\)</span> has to be spread across the interval
+using all of the cause-specific hazards. Given left- or interval-censored
+rows (<code class="docutils literal notranslate"><span class="pre">c</span></code> of <code class="docutils literal notranslate"><span class="pre">-1</span></code> or <code class="docutils literal notranslate"><span class="pre">2</span></code>), <code class="docutils literal notranslate"><span class="pre">CompetingRisks.fit</span></code> uses the
+non-parametric maximum-likelihood estimate of Hudgens, Satten and Longini
+<a class="reference internal" href="#hudgens2001cr" id="id6"><span>[Hudgens2001cr]</span></a> instead (see <a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html"><span class="doc">Competing Risks SurPyval Modelling</span></a>).</p>
+<p>Left truncation (delayed entry) enters the same way. A unit that comes under
+observation at <span class="math notranslate nohighlight">\(\tau_i\)</span> counts as at risk only for
+<span class="math notranslate nohighlight">\(\tau_i &lt; t \le x_i\)</span>, so <span class="math notranslate nohighlight">\(r_j\)</span> is the number that have entered
+before <span class="math notranslate nohighlight">\(t_j\)</span> and not yet left (Andersen, Borgan, Gill and Keiding,
+1993, IV.4). The non-parametric <code class="docutils literal notranslate"><span class="pre">CompetingRisks</span></code> takes the entry times as
+<code class="docutils literal notranslate"><span class="pre">tl</span></code>; its estimates are then conditional on surviving to the earliest entry,
+and Aalen’s variance above, a function of <span class="math notranslate nohighlight">\(r_j\)</span> and the failures only,
+carries over unchanged. <code class="docutils literal notranslate"><span class="pre">ParametricCompetingRisks</span></code> takes <code class="docutils literal notranslate"><span class="pre">tl</span></code> too, as the
+next section explains, and so does the cause-specific Cox model
+(<a class="reference internal" href="#delayed-entry-in-the-regressions">Delayed entry in the regressions</a>); the Fine-Gray model and Gray’s test
+refuse it.</p>
+</section>
+</section>
+<section id="parametric-competing-risks">
+<h2>Parametric Competing Risks<a class="headerlink" href="#parametric-competing-risks" title="Link to this heading"></a></h2>
+<section id="the-latent-failure-time-picture">
+<h3>The latent-failure-time picture<a class="headerlink" href="#the-latent-failure-time-picture" title="Link to this heading"></a></h3>
+<p>A parametric competing risks model specifies a separate parametric
+distribution for each cause. The most intuitive way to picture it is the
+<em>latent failure time</em> model: each cause <span class="math notranslate nohighlight">\(k\)</span> has its own clock
+<span class="math notranslate nohighlight">\(T_k\)</span> with distribution <span class="math notranslate nohighlight">\(F_k^{\text{net}} = 1 - S_k\)</span>, the unit
+fails at <span class="math notranslate nohighlight">\(T = \min_k T_k\)</span>, and the cause is whichever clock ran out
+first. The overall survival function is the product of the cause-specific
+survival functions (assuming independent latent failure times):</p>
+<div class="math notranslate nohighlight">
+\[S(t) = \prod_{k=1}^{m} S_k(t)\]</div>
+<p>The overall density is:</p>
+<div class="math notranslate nohighlight">
+\[f(t) = \sum_{k=1}^{m} f_k(t) \prod_{j \neq k} S_j(t)\]</div>
+<p>The term inside the sum is
+the sub-distribution density of cause <span class="math notranslate nohighlight">\(k\)</span>: the density of a cause-<span class="math notranslate nohighlight">\(k\)</span>
+failure at <span class="math notranslate nohighlight">\(t\)</span> multiplied by the probability that no other cause has
+struck first. Integrating it gives the model’s cumulative incidence,</p>
+<div class="math notranslate nohighlight">
+\[F_k(t) = \int_0^t f_k(u) \prod_{j \neq k} S_j(u)\, du
+       = \int_0^t h_k(u)\, S(u)\, du ,\]</div>
+<p>and the eventual probability of each cause is <span class="math notranslate nohighlight">\(F_k(\infty)\)</span>.</p>
+<p>A more careful — and assumption-free — reading of the same model is that it
+specifies the <em>cause-specific hazards</em> parametrically: <span class="math notranslate nohighlight">\(h_k(t)\)</span> is the
+hazard of the chosen distribution for cause <span class="math notranslate nohighlight">\(k\)</span>, and
+<span class="math notranslate nohighlight">\(S_k = e^{-H_k}\)</span> is just a convenient way of writing
+<span class="math notranslate nohighlight">\(\exp(-\int h_k)\)</span>. Under that reading the fitted CIFs, the all-cause
+survival and the simulated <code class="docutils literal notranslate"><span class="pre">(time,</span> <span class="pre">cause)</span></code> pairs are all valid whether or not
+the latent times are independent. Only the <em>net</em> interpretation of each
+<span class="math notranslate nohighlight">\(S_k\)</span> (“the life if the other causes were removed”) needs independence.</p>
+</section>
+<section id="why-the-fit-separates-by-cause">
+<h3>Why the fit separates by cause<a class="headerlink" href="#why-the-fit-separates-by-cause" title="Link to this heading"></a></h3>
+<p>SurPyval provides the
+<a class="reference internal" href="surpyval.competing_risks.html#surpyval.univariate.competing_risks.parametric.parametric_competing_risks.ParametricCompetingRisks" title="surpyval.univariate.competing_risks.parametric.parametric_competing_risks.ParametricCompetingRisks"><code class="xref py py-class docutils literal notranslate"><span class="pre">ParametricCompetingRisks</span></code></a>
+class for this model. Write <span class="math notranslate nohighlight">\(\delta_{ik} = 1\)</span> if unit <span class="math notranslate nohighlight">\(i\)</span> was
+observed to fail from cause <span class="math notranslate nohighlight">\(k\)</span> and 0 otherwise (a censored unit has
+<span class="math notranslate nohighlight">\(\delta_{ik} = 0\)</span> for every <span class="math notranslate nohighlight">\(k\)</span>). The likelihood of a unit is its
+cause-specific hazard at the failure time (if it failed) times the probability
+of surviving all causes until <span class="math notranslate nohighlight">\(x_i\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[L = \prod_i \Big[\prod_k h_k(x_i)^{\delta_{ik}}\Big]\, S(x_i)
+  = \prod_{k=1}^{m} \Big[\prod_i h_k(x_i)^{\delta_{ik}}\, S_k(x_i)\Big].\]</div>
+<p>Each bracket on the right is an ordinary right-censored likelihood for
+cause <span class="math notranslate nohighlight">\(k\)</span>’s distribution in which failures from cause <span class="math notranslate nohighlight">\(k\)</span> are the
+observed events and <em>everything else</em> — failures from the other causes and
+genuinely censored units — is right-censored. Under the independent-latent-times
+assumption (or, equivalently, with the cause-specific hazards parametrised
+separately) the joint likelihood therefore separates, so each cause’s
+distribution is fitted independently by MLE with the <em>other</em> causes’ events
+treated as right-censored. This is not an approximation: it is the exact
+maximum-likelihood estimate of the joint model, and its log-likelihood, AIC and
+BIC are the sums of the per-cause values.</p>
+<p>It is worth being clear about how this squares with the warning against
+“1 - KM of one cause”. Treating the other causes as censored is the correct
+way to <em>estimate</em> each cause-specific hazard; it is only wrong to read
+<span class="math notranslate nohighlight">\(1 - S_k\)</span> as the probability of failing from cause <span class="math notranslate nohighlight">\(k\)</span>. The
+parametric model gets its CIFs right by recombining the fitted hazards through
+the formula for <span class="math notranslate nohighlight">\(F_k\)</span> above.</p>
+<p>The same factorisation extends to <strong>left truncation</strong>. A unit that enters
+observation at age <span class="math notranslate nohighlight">\(\tau_i\)</span> contributes
+<span class="math notranslate nohighlight">\(\prod_k h_k(x_i)^{\delta_{ik}}\, S(x_i)/S(\tau_i)\)</span>, and because
+<span class="math notranslate nohighlight">\(S(x)/S(\tau) = \prod_k S_k(x)/S_k(\tau)\)</span> this also splits into one
+left-truncated, right-censored likelihood per cause. That is why
+<code class="docutils literal notranslate"><span class="pre">ParametricCompetingRisks.fit</span></code> takes the entry ages as <code class="docutils literal notranslate"><span class="pre">tl</span></code>: its fit is
+the same as fitting each cause’s distribution with them and combining the
+fits with <code class="docutils literal notranslate"><span class="pre">ParametricCompetingRisks.from_fitted</span></code>, and the how-to page shows
+it. (Interval censoring does <em>not</em> factorise in this way, because the
+probability of a cause-<span class="math notranslate nohighlight">\(k\)</span> failure inside an interval involves every
+cause’s survival across the interval.)</p>
+</section>
+<section id="computing-the-model-s-quantities">
+<h3>Computing the model’s quantities<a class="headerlink" href="#computing-the-model-s-quantities" title="Link to this heading"></a></h3>
+<p>Most model quantities are closed-form combinations of the per-cause models:
+the all-cause survival is <span class="math notranslate nohighlight">\(\prod_k S_k(t)\)</span>, the all-cause hazard is
+<span class="math notranslate nohighlight">\(\sum_k h_k(t)\)</span>, and the instantaneous incidence of cause <span class="math notranslate nohighlight">\(k\)</span> is
+<span class="math notranslate nohighlight">\(f_k(t)\prod_{j\neq k} S_j(t)\)</span>. The CIF integral generally has no closed
+form, so SurPyval evaluates it numerically, on the cause’s own probability
+scale: substituting <span class="math notranslate nohighlight">\(p = F_k(u)\)</span>,</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{CIF}_k(t) = \int_0^{F_k(t)} \prod_{j\neq k}
+S_j\big(F_k^{-1}(p)\big)\,dp ,\]</div>
+<p>an integral over a finite interval of a bounded, monotone function, which
+adaptive quadrature evaluates to about ten significant digits for each
+requested time. It stays accurate when the requested times span many orders of
+magnitude, when a density is infinite at zero (a Weibull shape below one) and
+for very heavy-tailed causes, and <span class="math notranslate nohighlight">\(F_k(\infty)\)</span> is the same integral
+up to <span class="math notranslate nohighlight">\(F_k(\infty)\)</span> (1, or the cure fraction), with no finite horizon to
+choose. The CIFs of the causes sum to the all-cause <code class="docutils literal notranslate"><span class="pre">ff</span></code> to that accuracy.</p>
+<p>Because the parametric model is a full generative model, it can also be
+<strong>simulated</strong>: draw a latent time from every cause’s distribution and keep the
+earliest, together with its cause. The per-cause models need not be from the
+same family, and a cause may carry a cure (limited-failure-population)
+fraction, in which case some units never fail from that cause; if every cause
+has a cure fraction some units never fail at all and the probabilities of the
+causes sum to less than one.</p>
+<p>When to prefer a parametric model: when you need smooth CIFs, extrapolation
+beyond the last observed failure, a compact description of each failure mode
+(e.g. a Weibull shape telling wear-out from random failures), or simulation for
+Monte-Carlo studies. The non-parametric estimator makes no shape assumption and
+is the right first look — and a good check of the parametric fit.</p>
+</section>
+</section>
+<section id="regression-fine-gray-and-cause-specific-ph">
+<h2>Regression: Fine-Gray and Cause-Specific PH<a class="headerlink" href="#regression-fine-gray-and-cause-specific-ph" title="Link to this heading"></a></h2>
+<p>When covariates <span class="math notranslate nohighlight">\(Z\)</span> (a row vector per unit: treatment, load, material,
+…) are available there are two fundamentally different things one can
+model, mirroring the two quantities defined above: the cause-specific hazards,
+or the cumulative incidence directly. Two main regression approaches are used
+in competing risks:</p>
+<p><strong>Cause-specific proportional hazards</strong> — fits a separate Cox or parametric
+PH model for each cause, with all other cause events treated as censored:</p>
+<div class="math notranslate nohighlight">
+\[h_k(t \mid Z) = h_{k,0}(t)\, e^{Z \beta_k}\]</div>
+<p>This estimates the effect of covariates on the hazard of each cause
+independently.</p>
+<p><strong>Fine-Gray sub-distribution hazards</strong> — models the effect of covariates
+directly on the CIF via a proportional hazards model on the sub-distribution
+hazard:</p>
+<div class="math notranslate nohighlight">
+\[h_k^*(t \mid Z) = h_{k,0}^*(t)\, e^{Z \gamma_k}\]</div>
+<p>This is the natural choice when the scientific question is about the
+probability of a cause occurring in the presence of competing risks (e.g.
+clinical risk scores).</p>
+<p>SurPyval provides the <code class="docutils literal notranslate"><span class="pre">FineGray</span></code> and
+<code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards</span></code> classes, and
+<code class="docutils literal notranslate"><span class="pre">ParametricCompetingRisksRegression</span></code> for a parametric regression of each
+cause’s hazard. The subsections below explain each model, how it is estimated
+and how to read its coefficients.</p>
+<section id="cause-specific-proportional-hazards-in-detail">
+<h3>Cause-specific proportional hazards in detail<a class="headerlink" href="#cause-specific-proportional-hazards-in-detail" title="Link to this heading"></a></h3>
+<p>Here <span class="math notranslate nohighlight">\(h_{k,0}(t)\)</span> is an unspecified baseline hazard for cause <span class="math notranslate nohighlight">\(k\)</span>
+and <span class="math notranslate nohighlight">\(\beta_k\)</span> a vector of coefficients for that cause (one per column of
+<span class="math notranslate nohighlight">\(Z\)</span>). By the same factorisation as in the parametric case, the partial
+likelihood separates by cause, so each <span class="math notranslate nohighlight">\(\beta_k\)</span> is estimated by an
+ordinary Cox model in which cause-<span class="math notranslate nohighlight">\(k\)</span> failures are events and all other
+rows are censored. <span class="math notranslate nohighlight">\(e^{\beta_{k,p}}\)</span> is a cause-specific hazard ratio:
+the multiplicative change in the <em>rate</em> of cause <span class="math notranslate nohighlight">\(k\)</span> among units still
+event-free, per unit increase of covariate <span class="math notranslate nohighlight">\(p\)</span>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards</span></code> with <code class="docutils literal notranslate"><span class="pre">model=&quot;Cox&quot;</span></code> fits one <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>
+model per cause (see <a class="reference internal" href="regression/cox_ph.html"><span class="doc">Cox Proportional Hazards</span></a>) and keeps each cause’s
+baseline cumulative hazard <span class="math notranslate nohighlight">\(\hat{\Lambda}_{k,0}\)</span>. Its <code class="docutils literal notranslate"><span class="pre">tie_method</span></code>
+argument is passed on as the Cox tie-handling <code class="docutils literal notranslate"><span class="pre">method</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;efron&quot;</span></code> by
+default as for <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>, and the baseline follows it (Efron’s tie correction
+after an Efron fit, Breslow’s estimator otherwise; the two agree when no
+failure times are tied). The CIF at a covariate vector <span class="math notranslate nohighlight">\(Z\)</span> is then
+assembled step by step from the covariate-specific hazard increments
+<span class="math notranslate nohighlight">\(\Delta\hat{\Lambda}_l(x_j \mid Z) = \Delta\hat{\Lambda}_{l,0}(x_j)
+e^{Z\hat{\beta}_l}\)</span>, with <span class="math notranslate nohighlight">\(\Delta\hat{\Lambda}(x_j \mid Z)\)</span> their sum
+over the causes:</p>
+<div class="math notranslate nohighlight">
+\[\hat{F}_k(t \mid Z) = \sum_{x_j \leq t}
+    \hat{S}(x_{j-1} \mid Z)\,
+    \frac{\Delta\hat{\Lambda}_k(x_j \mid Z)}{\Delta\hat{\Lambda}(x_j \mid Z)}
+    \Big(1 - e^{-\Delta\hat{\Lambda}(x_j \mid Z)}\Big),
+\qquad
+\hat{S}(t \mid Z) = \exp\Big(-\sum_{l=1}^{m}
+    \hat{\Lambda}_{l,0}(t)\, e^{Z\hat{\beta}_l}\Big).\]</div>
+<p>The formula shows the catch in interpreting cause-specific coefficients: the
+incidence of cause <span class="math notranslate nohighlight">\(k\)</span> depends on <em>every</em> cause’s coefficients through
+<span class="math notranslate nohighlight">\(\hat{S}(t \mid Z)\)</span>. A covariate can raise the hazard of cause <span class="math notranslate nohighlight">\(k\)</span>
+(<span class="math notranslate nohighlight">\(\beta_k &gt; 0\)</span>) and yet lower its incidence, if it raises a competing
+cause’s hazard even more.</p>
+<p>Each step is the Aalen-Johansen step with the transition probabilities of the
+matrix exponential of that step’s hazards, which is how R’s <code class="docutils literal notranslate"><span class="pre">survival</span></code>
+computes the state probabilities of a multi-state <code class="docutils literal notranslate"><span class="pre">coxph</span></code>; SurPyval matches
+it to rounding. A unit still event-free before the step fails over it with
+probability <span class="math notranslate nohighlight">\(1 - e^{-\Delta\hat{\Lambda}}\)</span>, and each cause takes its
+share of that. The increments telescope, so the cause-specific CIFs sum to
+exactly <span class="math notranslate nohighlight">\(1 - \hat{S}(t \mid Z)\)</span>, the model’s <code class="docutils literal notranslate"><span class="pre">ff</span></code>, and never exceed
+one, even at a covariate value far from the data, where a step’s total hazard
+increment can exceed one (a small risk set times a large multiplier). The
+plain product limit <span class="math notranslate nohighlight">\(\prod (1 - \Delta\hat{\Lambda})\)</span> would need a
+clip there, and would not be the survival <code class="docutils literal notranslate"><span class="pre">sf</span></code> reports.</p>
+</section>
+<section id="delayed-entry-in-the-regressions">
+<h3>Delayed entry in the regressions<a class="headerlink" href="#delayed-entry-in-the-regressions" title="Link to this heading"></a></h3>
+<p>When units come under observation late (a patient enrolled at diagnosis, a
+machine entered when the records began), the cause-specific Cox model only
+needs the risk sets right: a unit counts as at risk at time <span class="math notranslate nohighlight">\(t\)</span> once
+it has entered, <span class="math notranslate nohighlight">\(\tau_i &lt; t \leq x_i\)</span>, exactly as in <code class="docutils literal notranslate"><span class="pre">CoxPH</span></code>. Each
+cause’s partial likelihood and its Breslow (or Efron) baseline are built on
+those risk sets, so <code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards.fit(x,</span> <span class="pre">Z,</span> <span class="pre">e,</span>
+<span class="pre">tl=entry)</span></code> is R’s <code class="docutils literal notranslate"><span class="pre">coxph(Surv(entry,</span> <span class="pre">x,</span> <span class="pre">cause</span> <span class="pre">==</span> <span class="pre">k)</span> <span class="pre">~</span> <span class="pre">Z)</span></code> for every
+cause, and the CIF formula above, fed with those baselines, is the
+multi-state <code class="docutils literal notranslate"><span class="pre">survfit</span></code> with the same entry times. The estimates are then
+conditional on being event-free at the earliest entry.</p>
+<p>The Fine-Gray model does not extend so simply. Its subdistribution risk set
+keeps the units that have already failed from a competing cause, weighted by
+the censoring distribution <span class="math notranslate nohighlight">\(G(t)/G(x_i)\)</span>. With delayed entry the units
+that failed from a competing cause before they would have entered are not
+in the data at all, so the weights must also undo the truncation, with an
+estimate of the entry-time distribution <a class="reference internal" href="#geskus2011cr" id="id7"><span>[Geskus2011cr]</span></a>. SurPyval does not
+build those weights, so <code class="docutils literal notranslate"><span class="pre">FineGray</span></code>, <code class="docutils literal notranslate"><span class="pre">model=&quot;Fine-Gray&quot;</span></code> and Gray’s test
+(whose risk set is the same) refuse <code class="docutils literal notranslate"><span class="pre">tl</span></code> where an entry is after the first
+time, and the message names what to use instead: the cause-specific Cox
+model for covariate effects, or the Aalen-Johansen estimate with <code class="docutils literal notranslate"><span class="pre">tl</span></code> for
+the cumulative incidence.</p>
+</section>
+<section id="interval-censored-and-truncated-data-cox-s-full-likelihood">
+<h3>Interval-censored and truncated data: Cox’s full likelihood<a class="headerlink" href="#interval-censored-and-truncated-data-cox-s-full-likelihood" title="Link to this heading"></a></h3>
+<p><strong>In plain words.</strong> Often a failure is not seen when it happens: an
+inspection finds a unit failed, from a known cause, somewhere since the last
+inspection that found it working. The partial likelihood above needs each
+failure’s time, to know who else was at risk then, so it cannot use such a
+row. <code class="docutils literal notranslate"><span class="pre">CoxPH.fit(x,</span> <span class="pre">Z,</span> <span class="pre">c=c,</span> <span class="pre">e=causes)</span></code> takes any row anyway: given an
+interval (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">2</span></code>), a failure before the first inspection (<code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">-1</span></code>) or
+right truncation (<code class="docutils literal notranslate"><span class="pre">tr</span></code>), it fits the same cause-specific model – each
+cause’s hazard is its baseline times <span class="math notranslate nohighlight">\(e^{\beta_k' Z}\)</span> – by its full
+likelihood, with every cause’s baseline left to the data and estimated
+together with all the coefficients in one fit. The model it returns says so
+in <code class="docutils literal notranslate"><span class="pre">method</span></code>; data with exact times and right censoring only (with or
+without delayed entry) still get the partial likelihood, so their numbers
+do not change.</p>
+<p>What the data can say is limited in two ways, and the model says so rather
+than guessing:</p>
+<ul class="simple">
+<li><p>Inside an interval the data do not say when the failures happened, so the
+curves (survival, each cause’s incidence) stay level through an interval
+and move at its end, as the Turnbull estimate’s do.</p></li>
+<li><p>With right truncation (a unit is in the data only because it failed by
+some time <span class="math notranslate nohighlight">\(t_r\)</span>, as in a registry of cases reported by a date), the
+data cannot tell how many units would have failed after the largest
+<span class="math notranslate nohighlight">\(t_r\)</span>. When every row is right truncated, the fit takes every unit
+to fail by then (Turnbull’s convention), warns that it has done so, and
+every curve is <code class="docutils literal notranslate"><span class="pre">nan</span></code> after that time. A parametric model is the way to
+extrapolate.</p></li>
+</ul>
+<p><strong>The likelihood.</strong> Write <span class="math notranslate nohighlight">\(S(t \mid Z) = \exp(-\sum_k \Lambda_k(t \mid
+Z))\)</span> for the probability of no event of any cause by <span class="math notranslate nohighlight">\(t\)</span>. A unit that
+failed from cause <span class="math notranslate nohighlight">\(k\)</span> somewhere in <span class="math notranslate nohighlight">\((l, r]\)</span> contributes the
+probability of exactly that,</p>
+<div class="math notranslate nohighlight">
+\[\int_l^r S(t^- \mid Z)\, d\Lambda_k(t \mid Z),\]</div>
+<p>an exact time is the limit of a short interval, a failure before the first
+inspection is the interval <span class="math notranslate nohighlight">\((0, r]\)</span>, a right-censored row contributes
+<span class="math notranslate nohighlight">\(S(l \mid Z)\)</span>, and a failure whose cause was not recorded (accepted
+with <code class="docutils literal notranslate"><span class="pre">masked=&quot;include&quot;</span></code>) contributes the sum of the causes’ terms. A row
+with an observation window <span class="math notranslate nohighlight">\((t_l, t_r]\)</span> – delayed entry, right
+truncation or both – is divided by the probability of being seen,</p>
+<div class="math notranslate nohighlight">
+\[S(t_l \mid Z) - S(t_r \mid Z).\]</div>
+<p>That denominator is the <em>all-cause</em> survival because entry and truncation
+select units on their first event of any cause: a unit enters at
+<span class="math notranslate nohighlight">\(t_l\)</span> only if no event of any cause has happened by then, and is in a
+right-truncated sample only if its event, of whichever cause, happened by
+<span class="math notranslate nohighlight">\(t_r\)</span>. This is the truncated competing-risks likelihood of Hudgens,
+Satten and Longini <a class="reference internal" href="#hudgens2001cr" id="id8"><span>[Hudgens2001cr]</span></a>. A design in which only one cause’s
+events are sampled is a different likelihood, which SurPyval does not
+offer.</p>
+<p>Each baseline <span class="math notranslate nohighlight">\(\Lambda_{0k}\)</span> is a step function with jumps
+<span class="math notranslate nohighlight">\(d_{kj} \ge 0\)</span> on the Turnbull intervals of the data (with
+truncation, every piece some row can cover <a class="reference internal" href="#turnbull1976cr" id="id9"><span>[Turnbull1976cr]</span></a>; without it,
+the innermost intervals of the rows that can hold cause <span class="math notranslate nohighlight">\(k\)</span>, a
+cause’s mass placed at the interval’s end). Within an interval the causes’
+hazards act in proportion, so a unit still event-free at the interval’s
+start fails there from cause <span class="math notranslate nohighlight">\(k\)</span> with probability <span class="math notranslate nohighlight">\(S_j \,
+(u_{kj} / \lambda_j)(1 - e^{-\lambda_j})\)</span>, <span class="math notranslate nohighlight">\(u_{kj} = d_{kj}
+e^{\beta_k' Z}\)</span> and <span class="math notranslate nohighlight">\(\lambda_j = \sum_k u_{kj}\)</span>, the step of the
+partial-likelihood model above, so the causes’ incidences again sum to
+<span class="math notranslate nohighlight">\(1 - S\)</span>. Every baseline jump and every coefficient is fitted at once
+by a projected Newton method with the exact Hessian, the jumps held at or
+above 0.</p>
+<p><strong>What it reduces to.</strong> With one cause it is <code class="docutils literal notranslate"><span class="pre">IntervalCoxPH</span></code>; with no
+covariates it is the non-parametric estimate of the cumulative incidences
+of interval-censored data <a class="reference internal" href="#hudgens2001cr" id="id10"><span>[Hudgens2001cr]</span></a> (and, with one cause, the
+Turnbull estimate, truncation included). With exact and right-censored data
+it is close to, but not the same as, the partial-likelihood fit: it treats
+each event time as a drop of a step survival curve (the grouped-data model
+of Prentice and Gloeckler), where the partial likelihood treats the baseline
+as a continuous hazard. Both are consistent, and on 400 units the two sets
+of coefficients differed by less than a tenth of a standard error.</p>
+<p><strong>Uncertainty.</strong> The coefficients’ standard errors come from the curvature
+of the profile likelihood, the baselines re-fitted at each point (as for
+<code class="docutils literal notranslate"><span class="pre">IntervalCoxPH</span></code>); <code class="docutils literal notranslate"><span class="pre">param_cb</span></code> also gives profile likelihood-ratio and
+bootstrap intervals. The curves’ bounds (<code class="docutils literal notranslate"><span class="pre">cb</span></code>) are by the case bootstrap
+and approximate: the baselines converge more slowly than the coefficients,
+and for current-status data the plain bootstrap of them is not consistent.
+In a calibration study (200 units, two causes, every failure found between
+inspections, half the units entering late; 300 replicates) the 90% Wald
+intervals of the four coefficients covered 0.887, 0.860, 0.900 and 0.887 of
+the time: close to nominal, a little under it.</p>
+</section>
+<section id="the-fine-gray-model-in-detail">
+<h3>The Fine-Gray model in detail<a class="headerlink" href="#the-fine-gray-model-in-detail" title="Link to this heading"></a></h3>
+<p>Fine and Gray <a class="reference internal" href="#finegray1999cr" id="id11"><span>[FineGray1999cr]</span></a> asked a different question: is there a hazard
+whose proportional-hazards model acts <em>directly</em> on the CIF, the way the
+ordinary hazard acts on the survival function? The answer is the
+<strong>sub-distribution hazard</strong></p>
+<div class="math notranslate nohighlight">
+\[h_k^*(t) = \lim_{\Delta t \to 0}
+    \frac{P\big(t \leq T &lt; t + \Delta t,\, K = k \;\big|\;
+          T \geq t \;\text{or}\; (T &lt; t,\, K \neq k)\big)}{\Delta t}
+  = \frac{f_k^{\text{sub}}(t)}{1 - F_k(t)} .\]</div>
+<p>The conditioning event is the peculiar part: units that have <em>already failed
+from a competing cause</em> are kept “at risk” for cause <span class="math notranslate nohighlight">\(k\)</span> — they will
+never fail from <span class="math notranslate nohighlight">\(k\)</span>, which is exactly what makes <span class="math notranslate nohighlight">\(1 - F_k(t)\)</span> the
+right denominator. Because <span class="math notranslate nohighlight">\(h_k^*\)</span> is the hazard of the improper
+distribution <span class="math notranslate nohighlight">\(F_k\)</span>, we get the familiar relation
+<span class="math notranslate nohighlight">\(F_k(t) = 1 - \exp\{-\Lambda_k^*(t)\}\)</span> with
+<span class="math notranslate nohighlight">\(\Lambda_k^* = \int h_k^*\)</span>. The proportional sub-distribution hazards
+model <span class="math notranslate nohighlight">\(h_k^*(t \mid Z) = h_{k,0}^*(t) e^{Z\gamma_k}\)</span> therefore gives</p>
+<div class="math notranslate nohighlight">
+\[F_k(t \mid Z) = 1 - \exp\big\{-\Lambda_{k,0}^*(t)\, e^{Z\gamma_k}\big\},\]</div>
+<p>so a positive coefficient <em>always</em> raises the incidence of cause <span class="math notranslate nohighlight">\(k\)</span>,
+and <span class="math notranslate nohighlight">\(e^{\gamma_{k,p}}\)</span> is a sub-distribution hazard ratio. (In the code
+and on the how-to page the Fine-Gray coefficients are called <code class="docutils literal notranslate"><span class="pre">beta</span></code>.)</p>
+<p><strong>Estimation with censoring.</strong> Without censoring the sub-distribution risk set
+at time <span class="math notranslate nohighlight">\(t\)</span> is simply “everyone who has not failed from cause <span class="math notranslate nohighlight">\(k\)</span>
+by <span class="math notranslate nohighlight">\(t\)</span>”. Under right censoring we do not know whether a unit that failed
+from a competing cause at <span class="math notranslate nohighlight">\(x_i &lt; t\)</span> <em>would</em> still have been under
+observation at <span class="math notranslate nohighlight">\(t\)</span>. Fine and Gray keep it in the risk set with the
+inverse-probability-of-censoring weight</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}w_i(t) = \begin{cases}
+   1 &amp; x_i \geq t \quad \text{(still under observation)},\\[2pt]
+   \hat{G}(t^-)/\hat{G}(x_i^-) &amp; x_i &lt; t \text{ and failed from a competing cause},\\[2pt]
+   0 &amp; \text{otherwise (censored, or failed from cause } k \text{, before } t),
+\end{cases}\end{split}\]</div>
+<p>where <span class="math notranslate nohighlight">\(\hat{G}(t)\)</span> is the Kaplan-Meier estimate of the <em>censoring</em>
+survival function <span class="math notranslate nohighlight">\(P(C &gt; t)\)</span> (the censored rows play the role of
+“events”; everyone with <span class="math notranslate nohighlight">\(x_j \geq s\)</span> is at risk of censoring at
+<span class="math notranslate nohighlight">\(s\)</span>) and <span class="math notranslate nohighlight">\(\hat{G}(t^-)\)</span> its value just before <span class="math notranslate nohighlight">\(t\)</span>.
+<span class="math notranslate nohighlight">\(\hat{G}(t^-)/\hat{G}(x_i^-)\)</span> is the estimated probability that the
+unit would have remained uncensored from <span class="math notranslate nohighlight">\(x_i\)</span> to <span class="math notranslate nohighlight">\(t\)</span>. One
+<span class="math notranslate nohighlight">\(\hat{G}\)</span> is estimated from the whole sample, which assumes the
+censoring does not depend on the covariates.</p>
+<p>Taking <span class="math notranslate nohighlight">\(\hat{G}\)</span> just before each time settles ties: when a censoring
+and an event happen at the same recorded time, the event is taken to come
+first, so the censorings at <span class="math notranslate nohighlight">\(t\)</span> do not yet reduce the weights at
+<span class="math notranslate nohighlight">\(t\)</span>, and the censorings at <span class="math notranslate nohighlight">\(x_i\)</span> do not count against a unit that
+failed from a competing cause at <span class="math notranslate nohighlight">\(x_i\)</span>. This is the weight of R’s
+<code class="docutils literal notranslate"><span class="pre">cmprsk::crr</span></code>, <span class="math notranslate nohighlight">\(\hat{G}(t^-)/\hat{G}(x_i^-)\)</span> with <span class="math notranslate nohighlight">\(\hat{G}\)</span>
+the reverse Kaplan-Meier (<code class="docutils literal notranslate"><span class="pre">crr</span></code> reads its censoring curve at
+<code class="docutils literal notranslate"><span class="pre">ftime*(1</span> <span class="pre">-</span> <span class="pre">100*.Machine$double.eps)</span></code>), and SurPyval’s coefficients and
+likelihood reproduce a transcription of <code class="docutils literal notranslate"><span class="pre">crr</span></code>’s code on data with such ties.
+When no censoring time equals an event time the left limits are simply
+<span class="math notranslate nohighlight">\(\hat{G}(t)\)</span> and <span class="math notranslate nohighlight">\(\hat{G}(x_i)\)</span>. (SurPyval 0.20 and earlier used
+<span class="math notranslate nohighlight">\(\hat{G}(t)/\hat{G}(x_i)\)</span> and so differed slightly from <code class="docutils literal notranslate"><span class="pre">crr</span></code> on
+tied data. R’s <code class="docutils literal notranslate"><span class="pre">survival::finegray</span></code> also evaluates
+<span class="math notranslate nohighlight">\(\hat{G}\)</span> just before each time, but it removes the failures at a tied
+time from the censoring risk set there, so on tied data its weights can
+differ slightly from <code class="docutils literal notranslate"><span class="pre">crr</span></code>’s and SurPyval’s.) The
+coefficients maximise the weighted partial log-likelihood</p>
+<div class="math notranslate nohighlight">
+\[\ell(\gamma) = \sum_{i:\,K_i = k} n_i \Big[ Z_i\gamma
+    - \log \sum_j w_j(x_i)\, n_j\, e^{Z_j\gamma} \Big],\]</div>
+<p>with <span class="math notranslate nohighlight">\(n_i\)</span> the count of each row. (Tied event times are handled by
+this Breslow form: each tied event sees the same weighted risk set.) SurPyval’s
+<code class="docutils literal notranslate"><span class="pre">FineGray</span></code> maximises this by Newton-Raphson and estimates the baseline by
+the Breslow-type increments <span class="math notranslate nohighlight">\(\Delta\hat{\Lambda}_{k,0}^*(t) = d_k(t) / \sum_j w_j(t)\,
+n_j\, e^{Z_j\hat{\gamma}}\)</span>. The fitted CIF is a step function, flat before
+the first and after the last cause-<span class="math notranslate nohighlight">\(k\)</span> event time. In time order the
+weighted risk set at <span class="math notranslate nohighlight">\(t\)</span> is a suffix of the rows (<span class="math notranslate nohighlight">\(x_j \geq t\)</span>)
+plus <span class="math notranslate nohighlight">\(\hat{G}(t^-)\)</span> times a prefix of the competing failures, each
+weighted <span class="math notranslate nohighlight">\(1/\hat{G}(x_j^-)\)</span>, so every sum is a cumulative sum and a fit
+takes time and memory linear in the number of rows (after a sort): about a
+second at <span class="math notranslate nohighlight">\(10^5\)</span> rows and three covariates.</p>
+<p><strong>Standard errors.</strong> The weights <span class="math notranslate nohighlight">\(w_i(t)\)</span> are not known: they are
+built from <span class="math notranslate nohighlight">\(\hat{G}\)</span>, itself estimated from the same data. The
+curvature of <span class="math notranslate nohighlight">\(\ell\)</span> alone treats them as known, and treats the rows
+of the weighted risk sets as independent, which they are not (a unit that
+failed from a competing cause appears in every later risk set). Fine and
+Gray therefore derived a <em>robust</em>, or sandwich, variance, which adds up each
+unit’s whole influence on the estimate: its own events and time at risk,
+and what it contributes to <span class="math notranslate nohighlight">\(\hat{G}\)</span>. This is the variance SurPyval
+reports by default, and the one R’s <code class="docutils literal notranslate"><span class="pre">cmprsk::crr</span></code> reports (its <code class="docutils literal notranslate"><span class="pre">var</span></code>):
+<code class="docutils literal notranslate"><span class="pre">covariance()</span></code>, <code class="docutils literal notranslate"><span class="pre">standard_errors()</span></code>, <code class="docutils literal notranslate"><span class="pre">p_values</span></code> and <code class="docutils literal notranslate"><span class="pre">summary()</span></code> all
+use it. The <em>model-based</em> variance, the inverse of the curvature of
+<span class="math notranslate nohighlight">\(\ell\)</span> (<code class="docutils literal notranslate"><span class="pre">crr</span></code>’s <code class="docutils literal notranslate"><span class="pre">invinf</span></code>), is <code class="docutils literal notranslate"><span class="pre">covariance(robust=False)</span></code>,
+<code class="docutils literal notranslate"><span class="pre">standard_errors(robust=False)</span></code> and <code class="docutils literal notranslate"><span class="pre">summary(robust=False)</span></code>; it was the
+only one before version 0.27. The robust standard errors are mostly the
+smaller, but not always: on the reference data sets 17 of 22 are smaller,
+and they range from 25% smaller to 17% larger than the model-based ones.</p>
+<p>In symbols, with <span class="math notranslate nohighlight">\(\hat{A} = -\partial^2 \ell / \partial\gamma\,
+\partial\gamma'\)</span> the information at <span class="math notranslate nohighlight">\(\hat\gamma\)</span>, the model-based
+covariance is <span class="math notranslate nohighlight">\(\hat{A}^{-1}\)</span> and the robust one</p>
+<div class="math notranslate nohighlight">
+\[\widehat{\operatorname{var}}(\hat\gamma) = \hat{A}^{-1}
+    \Big[ \sum_i n_i\, (\hat\eta_i + \hat\psi_i)
+    (\hat\eta_i + \hat\psi_i)' \Big] \hat{A}^{-1} .\]</div>
+<p><span class="math notranslate nohighlight">\(\hat\eta_i\)</span> is unit <span class="math notranslate nohighlight">\(i\)</span>’s score residual over its time in the
+weighted risk sets, with <span class="math notranslate nohighlight">\(\bar{Z}(t)\)</span> the weighted mean covariate of
+the risk set at <span class="math notranslate nohighlight">\(t\)</span> and <span class="math notranslate nohighlight">\(\delta_i = 1\)</span> for a failure from
+cause <span class="math notranslate nohighlight">\(k\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\hat\eta_i = \delta_i \{Z_i - \bar{Z}(x_i)\}
+    - \sum_{t} w_i(t)\, e^{Z_i\hat\gamma}\,
+    \{Z_i - \bar{Z}(t)\}\, \Delta\hat{\Lambda}_{k,0}^*(t) .\]</div>
+<p><span class="math notranslate nohighlight">\(\hat\psi_i\)</span> is the unit’s part through <span class="math notranslate nohighlight">\(\hat{G}\)</span>. Let
+<span class="math notranslate nohighlight">\(Y(u)\)</span> be the number of units with <span class="math notranslate nohighlight">\(x_j \geq u\)</span>,
+<span class="math notranslate nohighlight">\(d^c(u)\)</span> the number censored at <span class="math notranslate nohighlight">\(u\)</span>, and</p>
+<div class="math notranslate nohighlight">
+\[\hat{q}(u) = \sum_{t \geq u} \Delta\hat{\Lambda}_{k,0}^*(t)
+    \sum_{j:\, x_j &lt; u,\ \text{competing}} w_j(t)\, n_j\,
+    e^{Z_j\hat\gamma}\, \{Z_j - \bar{Z}(t)\},\]</div>
+<p>how much of the score at the later events is carried by the units that
+failed from a competing cause before <span class="math notranslate nohighlight">\(u\)</span>, whose weights the censoring
+at <span class="math notranslate nohighlight">\(u\)</span> scales. Then</p>
+<div class="math notranslate nohighlight">
+\[\hat\psi_i = \frac{\hat{q}(x_i)}{Y(x_i)}\, 1\{i \text{ censored}\}
+    - \sum_{u \leq x_i} \frac{\hat{q}(u)\, d^c(u)}{Y(u)^2},\]</div>
+<p>the sum over the censoring times. With no censoring <span class="math notranslate nohighlight">\(\hat\psi_i = 0\)</span>
+and the robust covariance is the usual sandwich of the score residuals
+(Lin and Wei’s, for the Cox model). SurPyval computes every term with
+cumulative sums, in time linear in the rows, and reproduces <code class="docutils literal notranslate"><span class="pre">crr</span></code>’s
+<code class="docutils literal notranslate"><span class="pre">var</span></code> to about <span class="math notranslate nohighlight">\(10^{-7}\)</span> (relative) on tied, counted and uncensored
+reference data. For a fit with weights <code class="docutils literal notranslate"><span class="pre">w</span></code> the robust covariance leaves
+<span class="math notranslate nohighlight">\(\hat\psi\)</span> out (see <a class="reference internal" href="Weighted%20Data.html"><span class="doc">Weighted Data</span></a>), and there is no
+model-based one.</p>
+</section>
+<section id="parametric-regression-of-each-cause">
+<h3>Parametric regression of each cause<a class="headerlink" href="#parametric-regression-of-each-cause" title="Link to this heading"></a></h3>
+<p>The cause-specific Cox model leaves each cause’s baseline hazard
+unspecified. That is its strength inside the data, and its limit outside:
+the baseline is estimated only at the observed event times, so the
+cumulative incidence is a step function that is not defined after the
+last one. Giving every cause a <em>parametric</em> regression model instead –
+a hazard <span class="math notranslate nohighlight">\(h_k(t \mid Z; \theta_k)\)</span> that is a formula of time and
+covariates, such as the Weibull proportional hazards model
+<span class="math notranslate nohighlight">\((\beta_k/\alpha_k)(t/\alpha_k)^{\beta_k - 1} e^{Z\gamma_k}\)</span> –
+makes every quantity of the model a smooth function defined at all times.</p>
+<p>The argument of “Why the fit separates by cause” carries over with the
+covariates in place: the likelihood of a unit that failed from cause
+<span class="math notranslate nohighlight">\(k\)</span> at <span class="math notranslate nohighlight">\(x\)</span> with covariates <span class="math notranslate nohighlight">\(Z\)</span> is</p>
+<div class="math notranslate nohighlight">
+\[h_k(x \mid Z; \theta_k) \prod_j \exp\{-H_j(x \mid Z; \theta_j)\},\]</div>
+<p>and of a censored unit the product alone. Each <span class="math notranslate nohighlight">\(\theta_k\)</span> appears
+in its own factor only, so the maximum-likelihood estimate of cause
+<span class="math notranslate nohighlight">\(k\)</span>’s parameters is the ordinary fit of its regression with every
+other cause’s failures treated as censored, the estimates of different
+causes are asymptotically independent (their covariance is
+block-diagonal), and delayed entry at <span class="math notranslate nohighlight">\(t_l\)</span> divides each cause’s
+factor by its own <span class="math notranslate nohighlight">\(\exp\{-H_k(t_l \mid Z)\}\)</span>. The cumulative
+incidence at covariates <span class="math notranslate nohighlight">\(Z\)</span> is then</p>
+<div class="math notranslate nohighlight">
+\[\mathrm{CIF}_k(t \mid Z) = \int_0^t h_k(u \mid Z)\,
+    \exp\Big\{-\sum_j H_j(u \mid Z)\Big\}\,du ,\]</div>
+<p>computed as for the model without covariates, and its confidence bounds
+come from the delta method over every cause’s parameters, on the logit
+scale.</p>
+<p>When is it the right choice? When a prediction is needed beyond the
+follow-up, or a smooth curve, a quantile or a mean life at given
+covariates, and there is reason to believe a parametric shape for each
+cause (wear-out as a Weibull, say). The price is that shape: inside the
+data it can be checked against the cause-specific Cox model and each
+cause’s diagnostics; beyond the data it cannot, and the extrapolation is
+only as good as the assumed hazards. As with every cause-specific model,
+a covariate’s effect on a cause’s <em>hazard</em> is not its effect on that
+cause’s <em>incidence</em>, which also depends on what the covariate does to the
+other causes; read incidence effects from <code class="docutils literal notranslate"><span class="pre">cif</span></code> at the covariate values
+of interest. A parametric model of the incidence itself (a parametric
+counterpart of Fine-Gray) is a different model, and is not built.</p>
+</section>
+<section id="choosing-between-them">
+<h3>Choosing between them<a class="headerlink" href="#choosing-between-them" title="Link to this heading"></a></h3>
+<p>The two models answer different questions and are complementary rather than
+competing <a class="reference internal" href="#latouche2013cr" id="id12"><span>[Latouche2013cr]</span></a>:</p>
+<ul class="simple">
+<li><p><strong>“What drives the rate of this failure mode?”</strong> — aetiology, physics of
+failure, mechanism. Use cause-specific hazards. The coefficients have the
+usual hazard-ratio meaning among units still at risk.</p></li>
+<li><p><strong>“Who is most likely to end up failing from this mode?”</strong> — prognosis,
+risk scores, warranty or spares forecasting. Use Fine-Gray. The coefficients
+map monotonically onto the incidence.</p></li>
+</ul>
+<p>The two coincide only in special cases (for instance, when the covariate does
+not affect the competing causes at all). Two practical caveats of Fine-Gray:
+the model is fitted one cause at a time, and separate Fine-Gray fits for
+different causes are not constrained to be mutually consistent (their CIFs can
+sum to more than one); and the sub-distribution hazard itself has no direct
+physical meaning, so interpret the model through its CIFs. In SurPyval,
+<code class="docutils literal notranslate"><span class="pre">CompetingRisksProportionalHazards</span></code> with <code class="docutils literal notranslate"><span class="pre">model=&quot;Fine-Gray&quot;</span></code> fits the
+Fine-Gray model for every cause at once.</p>
+</section>
+</section>
+<section id="comparing-incidence-across-groups-gray-s-test">
+<h2>Comparing incidence across groups: Gray’s test<a class="headerlink" href="#comparing-incidence-across-groups-gray-s-test" title="Link to this heading"></a></h2>
+<p>The log-rank test compares survival curves; its competing-risks analogue is
+<strong>Gray’s test</strong> <a class="reference internal" href="#gray1988cr" id="id13"><span>[Gray1988cr]</span></a>, which compares the <em>cumulative incidence
+functions</em> of a chosen cause across groups. The distinction matters. A
+cause-specific log-rank compares the cause-specific <em>hazards</em> — the
+instantaneous rate of the cause among those still at risk — whereas Gray’s
+test compares the CIFs themselves, i.e. the actual <em>incidence</em> of the cause in
+a population that is also being depleted by the competing causes.</p>
+<p>Gray’s test achieves this by modifying the risk set. Instead of removing
+subjects who fail from a competing cause (as a cause-specific analysis would),
+it keeps them in the <strong>subdistribution risk set</strong>, which Gray estimates within
+each group <span class="math notranslate nohighlight">\(g\)</span> as</p>
+<div class="math notranslate nohighlight">
+\[R_g(t) = \frac{Y_g(t)\,\{1 - \hat{F}_g(t^-)\}}{\hat{S}_g(t^-)},\]</div>
+<p>with <span class="math notranslate nohighlight">\(Y_g\)</span> the number at risk in the group, <span class="math notranslate nohighlight">\(\hat{F}_g\)</span> its
+Aalen-Johansen CIF of the cause and <span class="math notranslate nohighlight">\(\hat{S}_g\)</span> its all-cause
+Kaplan-Meier survival. Since <span class="math notranslate nohighlight">\(Y_g(t)/\hat{S}_g(t^-)\)</span> estimates the
+group’s size times its probability of still being uncensored, this is the
+inverse-probability-of-censoring weighted risk set of the Fine-Gray model
+(below), with a censoring distribution estimated separately in every group:
+subjects who have already failed from a competing cause continue to count —
+with a weight that decays as the group’s censoring accrues — which is
+precisely what makes the comparison one of incidence rather than of
+instantaneous rate. Under the null hypothesis of equal CIFs the resulting
+statistic is approximately <span class="math notranslate nohighlight">\(\chi^2\)</span> distributed with <span class="math notranslate nohighlight">\(G - 1\)</span>
+degrees of freedom for <span class="math notranslate nohighlight">\(G\)</span> groups. Reach for it when the question is
+“how many fail of this cause”, and for the cause-specific log-rank when the
+question is “how fast”.</p>
+<section id="the-statistic">
+<h3>The statistic<a class="headerlink" href="#the-statistic" title="Link to this heading"></a></h3>
+<p>SurPyval computes Gray’s statistic <a class="reference internal" href="#gray1988cr" id="id14"><span>[Gray1988cr]</span></a>. At each distinct time
+<span class="math notranslate nohighlight">\(\tau\)</span> at which the cause of interest occurs, let <span class="math notranslate nohighlight">\(R = \sum_g
+R_g\)</span>, <span class="math notranslate nohighlight">\(d_g(\tau)\)</span> be the number of cause-of-interest events in group
+<span class="math notranslate nohighlight">\(g\)</span> and <span class="math notranslate nohighlight">\(d = \sum_g d_g\)</span>. Under the null hypothesis that every
+group has the same CIF, the events should be shared out in proportion to the
+subdistribution risk sets, so the test accumulates observed-minus-expected
+counts</p>
+<div class="math notranslate nohighlight">
+\[U_g = \sum_\tau W(\tau)\Big[d_g(\tau) - d(\tau)\frac{R_g(\tau)}{R(\tau)}\Big].\]</div>
+<p>Its variance is not the hypergeometric variance of an ordinary log-rank test:
+the risk sets <span class="math notranslate nohighlight">\(R_g\)</span> are themselves estimates, built from each group’s
+incidence and survival, so failures from the <em>competing</em> causes add
+variability too. Gray linearises <span class="math notranslate nohighlight">\(U\)</span> in each group’s counting-process
+martingales, of the cause and of the competing causes, under the null
+hypothesis. With <span class="math notranslate nohighlight">\(n_g(\tau) = Y_g(\tau)/\hat{S}_g(\tau^-)\)</span> (the group
+size times its censoring survival), <span class="math notranslate nohighlight">\(n = \sum_g n_g\)</span>, and
+<span class="math notranslate nohighlight">\(\hat{F}^0\)</span> the pooled CIF of the cause, which steps by
+<span class="math notranslate nohighlight">\(d(\tau)/n(\tau)\)</span>, this gives</p>
+<div class="math notranslate nohighlight">
+\[V_{gh} = \sum_r \sum_u \Big[A_{gr}(u)\,A_{hr}(u)\,w_r(u)
+         + B_{gr}(u)\,B_{hr}(u)\,w^{c}_r(u)\Big],\]</div>
+<div class="math notranslate nohighlight">
+\[\begin{split}A_{gr}(u) &amp;= a_{gr}(u) + \Big(1 - \frac{1 - \hat{F}^0(u)}{\hat{S}_r(u)}\Big)
+            Q_{gr}(u), \qquad
+B_{gr}(u) = \frac{1 - \hat{F}^0(u)}{\hat{S}_r(u)}\,Q_{gr}(u), \\
+Q_{gr}(u) &amp;= \sum_{\tau &gt; u} a_{gr}(\tau)\,
+             \frac{d(\tau)/n(\tau)}{1 - \hat{F}^0(\tau^-)}, \qquad
+a_{gr}(\tau) = W(\tau)\,n_g(\tau)\Big[\delta_{gr}
+             - \frac{n_r(\tau)}{n(\tau)}\Big],\end{split}\]</div>
+<p>where the martingale variances are the failures from the cause that group
+<span class="math notranslate nohighlight">\(r\)</span> is expected to have under the null hypothesis,
+<span class="math notranslate nohighlight">\(w_r(u) = d(u)/\{n(u)\,n_r(u)\}\)</span>, and those it had from the competing
+causes, <span class="math notranslate nohighlight">\(w^c_r(u) = d^c_r(u)\,\{\hat{S}_r(u^-)/Y_r(u)\}^2\)</span>, each times
+a correction for tied failures (<span class="math notranslate nohighlight">\(1 - (d - 1)/(n \hat{S}_r(u^-) - 1)\)</span> and
+<span class="math notranslate nohighlight">\(1 - (d^c_r - 1)/(Y_r - 1)\)</span>). Dropping one group to make <span class="math notranslate nohighlight">\(V\)</span>
+invertible, the statistic <span class="math notranslate nohighlight">\(U^{\top} V^{-1} U\)</span> is referred to a
+<span class="math notranslate nohighlight">\(\chi^2\)</span> distribution with (number of groups <span class="math notranslate nohighlight">\(- 1\)</span>) degrees of
+freedom. The weight <span class="math notranslate nohighlight">\(W(\tau) = \{1 - \hat{F}^0(\tau^-)\}^{\rho}\)</span>; the
+default <span class="math notranslate nohighlight">\(\rho = 0\)</span> (every event time weighted equally) is the standard
+test, and <span class="math notranslate nohighlight">\(\rho &gt; 0\)</span> down-weights late event times, making the test
+more sensitive to differences in early incidence.</p>
+<p>This is the test R’s <code class="docutils literal notranslate"><span class="pre">cmprsk::cuminc</span></code> computes, step for step: SurPyval’s
+statistic agrees with <code class="docutils literal notranslate"><span class="pre">cuminc</span></code>’s to rounding, with ties and for any
+<span class="math notranslate nohighlight">\(\rho\)</span>. The subdistribution risk set <span class="math notranslate nohighlight">\(R_g(t)\)</span> is formed from
+the number at risk at <span class="math notranslate nohighlight">\(t\)</span> and the survival just before <span class="math notranslate nohighlight">\(t\)</span>, so
+a censoring tied with a failure counts after it, the same ordering as the
+Fine-Gray weights above. Because every group’s risk set carries its own
+censoring estimate, the test does not need the groups to be censored alike;
+the how-to page checks its size by simulation, with groups censored very
+differently.</p>
+<p>A useful way to see the difference from a cause-specific log-rank: imagine two
+groups with <em>identical</em> cause-1 hazards but a much larger cause-2 hazard in the
+second group. The cause-specific log-rank for cause 1 sees no difference (the
+rates are equal), while Gray’s test correctly reports that far fewer units in
+the second group ever fail from cause 1. Both answers are right; they answer
+different questions. The how-to page runs exactly this experiment.</p>
+<p>For worked examples of estimating cumulative incidence functions, fitting the
+Fine-Gray and cause-specific proportional hazards models, and comparing groups
+with Gray’s test, see the <a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html"><span class="doc">Competing Risks SurPyval Modelling</span></a> page. For
+<em>repeated</em> events with several failure modes (the recurrent-events analogue of
+competing risks) see <a class="reference internal" href="Recurrent%20Event%20Analysis.html"><span class="doc">Recurrent Event Analysis</span></a>.</p>
+</section>
+</section>
+<section id="further-reading">
+<h2>Further Reading<a class="headerlink" href="#further-reading" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Prentice, R. L., Kalbfleisch, J. D., Peterson, A. V., Flournoy, N.,
+Farewell, V. T., &amp; Breslow, N. E. (1978). The analysis of failure times in
+the presence of competing risks. <em>Biometrics</em>, 34(4), 541–554.</p></li>
+<li><p>Gray, R. J. (1988). A class of K-sample tests for comparing the cumulative
+incidence of a competing risk. <em>The Annals of Statistics</em>, 16(3), 1141–1154.</p></li>
+<li><p>Fine, J. P., &amp; Gray, R. J. (1999). A proportional hazards model for the
+subdistribution of a competing risk. <em>JASA</em>, 94(446), 496–509.</p></li>
+<li><p>Pintilie, M. (2006). <em>Competing Risks: A Practical Perspective</em>. Wiley.</p></li>
+<li><p>Putter, H., Fiocco, M., &amp; Geskus, R. B. (2007). Tutorial in biostatistics:
+competing risks and multi-state models. <em>Statistics in Medicine</em>, 26(11),
+2389–2430. An accessible introduction to cause-specific hazards, the CIF and
+the Aalen-Johansen estimator.</p></li>
+</ul>
+<div role="list" class="citation-list">
+<div class="citation" id="hudgens2001cr" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>Hudgens2001cr<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id6">1</a>,<a role="doc-backlink" href="#id8">2</a>,<a role="doc-backlink" href="#id10">3</a>)</span>
+<p>Hudgens, M. G., Satten, G. A., &amp; Longini, I. M. (2001).
+Nonparametric maximum likelihood estimation for competing risks survival
+data subject to interval censoring and truncation. <em>Biometrics</em>, 57,
+74-80.</p>
+</div>
+<div class="citation" id="turnbull1976cr" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id9">Turnbull1976cr</a><span class="fn-bracket">]</span></span>
+<p>Turnbull, B. W. (1976). The empirical distribution
+function with arbitrarily grouped, censored and truncated data.
+<em>Journal of the Royal Statistical Society B</em>, 38, 290-295.</p>
+</div>
+<div class="citation" id="tsiatis1975cr" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>Tsiatis1975cr<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id1">1</a>,<a role="doc-backlink" href="#id2">2</a>)</span>
+<p>Tsiatis, A. (1975). A nonidentifiability aspect of the
+problem of competing risks. <em>Proceedings of the National Academy of
+Sciences</em>, 72(1), 20–22.</p>
+</div>
+<div class="citation" id="aalenjohansen1978cr" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id3">AalenJohansen1978cr</a><span class="fn-bracket">]</span></span>
+<p>Aalen, O. O., &amp; Johansen, S. (1978). An empirical
+transition matrix for non-homogeneous Markov chains based on censored
+observations. <em>Scandinavian Journal of Statistics</em>, 5(3), 141–150.</p>
+</div>
+<div class="citation" id="aalen1978cr" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">Aalen1978cr</a><span class="fn-bracket">]</span></span>
+<p>Aalen, O. (1978). Nonparametric estimation of partial
+transition probabilities in multiple decrement models. <em>The Annals of
+Statistics</em>, 6(3), 534–545.</p>
+</div>
+<div class="citation" id="choudhury2002cr" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id5">Choudhury2002cr</a><span class="fn-bracket">]</span></span>
+<p>Choudhury, J. B. (2002). Non-parametric confidence
+interval estimation for competing risks analysis: application to
+contraceptive data. <em>Statistics in Medicine</em>, 21(8), 1129–1144.</p>
+</div>
+<div class="citation" id="finegray1999cr" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id11">FineGray1999cr</a><span class="fn-bracket">]</span></span>
+<p>Fine, J. P., &amp; Gray, R. J. (1999). A proportional hazards
+model for the subdistribution of a competing risk. <em>Journal of the American
+Statistical Association</em>, 94(446), 496–509.</p>
+</div>
+<div class="citation" id="geskus2011cr" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id7">Geskus2011cr</a><span class="fn-bracket">]</span></span>
+<p>Geskus, R. B. (2011). Cause-specific cumulative incidence
+estimation and the Fine and Gray model under both left truncation and
+right censoring. <em>Biometrics</em>, 67(1), 39–49.</p>
+</div>
+<div class="citation" id="gray1988cr" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span>Gray1988cr<span class="fn-bracket">]</span></span>
+<span class="backrefs">(<a role="doc-backlink" href="#id13">1</a>,<a role="doc-backlink" href="#id14">2</a>)</span>
+<p>Gray, R. J. (1988). A class of K-sample tests for comparing the
+cumulative incidence of a competing risk. <em>The Annals of Statistics</em>,
+16(3), 1141–1154.</p>
+</div>
+<div class="citation" id="latouche2013cr" role="doc-biblioentry">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id12">Latouche2013cr</a><span class="fn-bracket">]</span></span>
+<p>Latouche, A., Allignol, A., Beyersmann, J., Labopin, M., &amp;
+Fine, J. P. (2013). A competing risks analysis should report results on all
+cause-specific hazards and cumulative incidence functions. <em>Journal of
+Clinical Epidemiology</em>, 66(6), 648–653.</p>
+</div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="regression%20analysis.html" class="btn btn-neutral float-left" title="Regression Analysis" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Recurrent%20Event%20Analysis.html" class="btn btn-neutral float-right" title="Recurrent Event Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

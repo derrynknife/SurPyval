@@ -1,0 +1,916 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Landmark Analysis &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Multivariate Analysis" href="Multivariate%20Analysis.html" />
+    <link rel="prev" title="Joint Models" href="Joint%20Models.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Landmark Analysis</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#why-it-avoids-immortal-time-bias">Why it avoids immortal-time bias</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#when-a-joint-model-is-better">When a joint model is better</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#the-landmark-data">The landmark data</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#landmark-models">Landmark models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#standard-errors-and-bounds">Standard errors and bounds</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#survival-from-a-landmark-by-group">Survival from a landmark by group</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#checked-against-r">Checked against R</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api-reference">API reference</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.univariate.landmark.landmark"><code class="docutils literal notranslate"><span class="pre">landmark()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.univariate.landmark.landmark_kaplan_meier"><code class="docutils literal notranslate"><span class="pre">landmark_kaplan_meier()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox"><code class="docutils literal notranslate"><span class="pre">LandmarkCox</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.params"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.params</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.landmarks"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.landmarks</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.window"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.window</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.baseline"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.baseline</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.feature_names"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.feature_names</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.cox"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.cox</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.Hf"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.Hf()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.aliased"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.aliased</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.beta"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.beta()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.beta_cb"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.beta_cb()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.cb"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.cb()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.covariance"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.covariance()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.ff"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.ff()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.fit"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.fit()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.fit_from_df"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.fit_from_df()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.from_dict"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.from_dict()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.from_json"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.from_json()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.predict"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.predict()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.sf"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.sf()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.standard_errors"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.standard_errors()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.summary"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.summary()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.table"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.table()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.to_dict"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.to_dict()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.to_json"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.to_json()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.unit"><code class="docutils literal notranslate"><span class="pre">LandmarkCox.unit</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="surpyval.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Landmark Analysis</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/Landmark Analysis.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="landmark-analysis">
+<h1>Landmark Analysis<a class="headerlink" href="#landmark-analysis" title="Link to this heading"></a></h1>
+<p>A <strong>dynamic prediction</strong> answers a question asked part way through
+follow-up: <em>this unit has lasted to time</em> <span class="math notranslate nohighlight">\(s\)</span> <em>and this is what we
+know about it now; how likely is it to have its event in the next</em>
+<span class="math notranslate nohighlight">\(w\)</span>? A pump that has run 2 years and whose vibration was last read as
+high; a patient alive 6 months after treatment whose blood counts have
+recovered. The answer changes as time passes and as what is known changes,
+so it is asked again at each <strong>landmark</strong> time <span class="math notranslate nohighlight">\(s\)</span>.</p>
+<p><strong>Landmarking</strong> (van Houwelingen, 2007; van Houwelingen and Putter, 2011)
+answers it directly:</p>
+<ol class="arabic simple">
+<li><p>at the landmark <span class="math notranslate nohighlight">\(s\)</span>, keep the units still at risk – entered by
+<span class="math notranslate nohighlight">\(s\)</span> and event-free past it;</p></li>
+<li><p>give each its covariates <em>as they were known at</em> <span class="math notranslate nohighlight">\(s\)</span> – the fixed
+ones, and the last value at or before <span class="math notranslate nohighlight">\(s\)</span> of anything that
+changes over time (a time-varying covariate, a measurement);</p></li>
+<li><p>stop following them at the horizon <span class="math notranslate nohighlight">\(s + w\)</span>, censoring any still
+running then (or failing later);</p></li>
+<li><p>fit an ordinary model, such as a Cox model, to that data set.</p></li>
+</ol>
+<section id="why-it-avoids-immortal-time-bias">
+<h2>Why it avoids immortal-time bias<a class="headerlink" href="#why-it-avoids-immortal-time-bias" title="Link to this heading"></a></h2>
+<p>A tempting shortcut is to group units by something that happens <em>during</em>
+follow-up – whether a repair was made, whether a treatment response was
+seen – and compare the groups from time 0. It is biased: a unit can only
+join the “it happened” group by surviving until it happens, so that group
+is credited with event-free time it was guaranteed (<em>immortal</em> time), and
+looks better than it is. A landmark data set cannot do this: it groups
+units by what was known <em>at</em> <span class="math notranslate nohighlight">\(s\)</span>, and counts only what happens to
+them <em>after</em> <span class="math notranslate nohighlight">\(s\)</span>. Nothing from the future is used.</p>
+</section>
+<section id="when-a-joint-model-is-better">
+<h2>When a joint model is better<a class="headerlink" href="#when-a-joint-model-is-better" title="Link to this heading"></a></h2>
+<p>Landmarking takes the last reading as the truth until <span class="math notranslate nohighlight">\(s\)</span>. If the
+covariate is a noisy measurement read at irregular times, a
+<a class="reference internal" href="Joint%20Models.html"><span class="doc">joint model</span></a> uses every reading, allows for the
+noise and describes how the measurement moves between readings, and gives
+the dynamic prediction from the same model at any time. It is the better
+model when its assumptions about the measurement’s path hold; landmarking
+asks for no model of the covariate at all, which makes it simpler and
+robust to a wrong one, at the cost of using only the latest value.</p>
+</section>
+<section id="the-landmark-data">
+<h2>The landmark data<a class="headerlink" href="#the-landmark-data" title="Link to this heading"></a></h2>
+<p><code class="xref py py-func docutils literal notranslate"><span class="pre">landmark()</span></code> derives the landmark data from a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">SurpyvalData</span></code> of the units’ lifetimes: each unit’s time,
+censoring, count, entry, id <code class="docutils literal notranslate"><span class="pre">i</span></code> and covariates. A covariate that changes
+is given as rows of the unit, <code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">x]</span></code> stretches with the covariates
+fixed in each (only the last row ends in the event); readings taken on the
+units are its measurements <code class="docutils literal notranslate"><span class="pre">m</span></code> (a <code class="xref py py-class docutils literal notranslate"><span class="pre">Measurements</span></code>).
+The result is another <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code>, which any model fits:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">sp</span>
+
+<span class="c1"># A unit's covariate z2 switches from 0 to 1 at some time (a recovery,</span>
+<span class="c1"># a change of duty); z1 is fixed. A unit that switches has two rows.</span>
+<span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">i</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">tl</span><span class="p">,</span> <span class="n">Z</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">unit</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">300</span><span class="p">):</span>
+    <span class="n">switch</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="mf">3.0</span><span class="p">)</span>
+    <span class="n">z1</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">t</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mf">0.15</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">z1</span><span class="p">)))</span>
+    <span class="k">if</span> <span class="n">t</span> <span class="o">&gt;</span> <span class="n">switch</span><span class="p">:</span>  <span class="c1"># the hazard doubles after the switch</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">switch</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">exponential</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mf">0.3</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">z1</span><span class="p">)))</span>
+    <span class="n">end</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span>
+    <span class="n">stop</span><span class="p">,</span> <span class="n">event</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">end</span><span class="p">),</span> <span class="nb">int</span><span class="p">(</span><span class="n">t</span> <span class="o">&lt;=</span> <span class="n">end</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">switch</span> <span class="o">&lt;</span> <span class="n">stop</span><span class="p">:</span>
+        <span class="n">i</span> <span class="o">+=</span> <span class="p">[</span><span class="n">unit</span><span class="p">,</span> <span class="n">unit</span><span class="p">];</span> <span class="n">x</span> <span class="o">+=</span> <span class="p">[</span><span class="n">switch</span><span class="p">,</span> <span class="n">stop</span><span class="p">];</span> <span class="n">c</span> <span class="o">+=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">event</span><span class="p">]</span>
+        <span class="n">tl</span> <span class="o">+=</span> <span class="p">[</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">,</span> <span class="n">switch</span><span class="p">];</span> <span class="n">Z</span> <span class="o">+=</span> <span class="p">[[</span><span class="n">z1</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">],</span> <span class="p">[</span><span class="n">z1</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">i</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">unit</span><span class="p">);</span> <span class="n">x</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">stop</span><span class="p">);</span> <span class="n">c</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">event</span><span class="p">)</span>
+        <span class="n">tl</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">);</span> <span class="n">Z</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">z1</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">])</span>
+<span class="n">life</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">SurpyvalData</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">x</span><span class="p">,</span> <span class="n">c</span><span class="o">=</span><span class="n">c</span><span class="p">,</span> <span class="n">tl</span><span class="o">=</span><span class="n">tl</span><span class="p">,</span> <span class="n">i</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">Z</span><span class="o">=</span><span class="n">Z</span><span class="p">,</span>
+                       <span class="n">covariate_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"z1"</span><span class="p">,</span> <span class="s2">"z2"</span><span class="p">])</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">landmark</span><span class="p">(</span><span class="n">life</span><span class="p">,</span> <span class="n">at</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">horizon</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">data</span><span class="o">.</span><span class="n">covariate_names</span>     <span class="c1"># ['z1', 'z2'], as known at 2</span>
+<span class="n">data</span><span class="o">.</span><span class="n">tl</span><span class="p">[:</span><span class="mi">3</span><span class="p">],</span> <span class="n">data</span><span class="o">.</span><span class="n">x</span><span class="p">[:</span><span class="mi">3</span><span class="p">]</span>  <span class="c1"># entered at 2, followed at most to 5</span>
+</pre></div>
+</div>
+<p>At one landmark the rows are the units at risk then, entered at the
+landmark (<code class="docutils literal notranslate"><span class="pre">tl</span> <span class="pre">=</span> <span class="pre">s</span></code>), each with its covariates as known then, the unit’s
+id its <code class="docutils literal notranslate"><span class="pre">i</span></code>. With several landmarks, <code class="docutils literal notranslate"><span class="pre">at=[0,</span> <span class="pre">1,</span> <span class="pre">2,</span> <span class="pre">3]</span></code>, the landmark
+data sets are stacked into one, the <em>super landmark data set</em>: a unit
+appears once for each landmark it is at risk at, the landmark is a
+covariate column <code class="docutils literal notranslate"><span class="pre">L</span></code>, and <code class="docutils literal notranslate"><span class="pre">interactions=True</span></code> adds each covariate
+times <code class="docutils literal notranslate"><span class="pre">L</span></code>. A unit’s rows there overlap in time (each runs from its own
+landmark), which <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> does not allow for one unit’s rows, so
+each row’s unit and landmark are in its <code class="docutils literal notranslate"><span class="pre">attributes</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;i&quot;</span></code> and
+<code class="docutils literal notranslate"><span class="pre">&quot;L&quot;</span></code>). Each measurement in <code class="docutils literal notranslate"><span class="pre">m</span></code> becomes a covariate named after it,
+its last reading at or before the landmark; a unit with no reading of it
+by then is left out of that landmark, with a warning that counts them:
+nothing is known about it there.</p>
+</section>
+<section id="landmark-models">
+<h2>Landmark models<a class="headerlink" href="#landmark-models" title="Link to this heading"></a></h2>
+<p><code class="xref py py-class docutils literal notranslate"><span class="pre">LandmarkCox</span></code> fits a Cox model to the landmark data and
+predicts from it. With one landmark it is the Cox model of that landmark
+data set. With several it is a <strong>supermodel</strong>: the effect of each covariate
+may change smoothly with the landmark,</p>
+<div class="math notranslate nohighlight">
+\[h(t \mid Z(s), s) = h_0(t \mid s)\,\exp\big(\beta(s)' Z(s)\big),
+\qquad s \le t \le s + w, \qquad
+\beta(s) = \beta_0 + \beta_1 u + \dots + \beta_d u^d,\]</div>
+<p>with <span class="math notranslate nohighlight">\(u = (s - s_1) / (s_L - s_1)\)</span> running from 0 at the first
+landmark to 1 at the last (<code class="docutils literal notranslate"><span class="pre">degree=d</span></code>; or any basis of <span class="math notranslate nohighlight">\(s\)</span> you
+give, a spline for example, as <code class="docutils literal notranslate"><span class="pre">basis=</span></code>; <code class="docutils literal notranslate"><span class="pre">varying=</span></code> names the
+covariates whose effect changes). The baseline hazard is either</p>
+<ul class="simple">
+<li><p><strong>stratified</strong> (<code class="docutils literal notranslate"><span class="pre">baseline=&quot;stratified&quot;</span></code>, the default): a baseline of
+its own at each landmark, which predicts at the landmarks fitted; or</p></li>
+<li><p><strong>pooled</strong> (<code class="docutils literal notranslate"><span class="pre">baseline=&quot;pooled&quot;</span></code>): one baseline <span class="math notranslate nohighlight">\(h_0(t)
+e^{\theta(s)}\)</span>, <span class="math notranslate nohighlight">\(\theta(s) = \theta_1 u + \dots + \theta_d u^d\)</span>
+(the “proportional baselines” model), which predicts at any <span class="math notranslate nohighlight">\(s\)</span>
+between the first and last landmark.</p></li>
+</ul>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">LandmarkCox</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">life</span><span class="p">,</span> <span class="n">at</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="n">horizon</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">summary</span><span class="p">()</span>                  <span class="c1"># coefficients, robust standard errors</span>
+<span class="n">model</span><span class="o">.</span><span class="n">beta</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">4</span><span class="p">])</span>            <span class="c1"># each covariate's effect at s</span>
+<span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="p">[[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]])</span>   <span class="c1"># P(T &lt;= 5 | T &gt; 2, Z(2))</span>
+<span class="n">model</span><span class="o">.</span><span class="n">table</span><span class="p">([[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">]])</span>  <span class="c1"># landmarks x profiles</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">predict(s,</span> <span class="pre">Z)</span></code> is the dynamic prediction <span class="math notranslate nohighlight">\(P(T \le s + w \mid T &gt;
+s, Z(s))\)</span>; <code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code> and <code class="docutils literal notranslate"><span class="pre">Hf(x,</span> <span class="pre">Z,</span> <span class="pre">s=...)</span></code> give it for any time
+<span class="math notranslate nohighlight">\(x\)</span> from <span class="math notranslate nohighlight">\(s\)</span> to <span class="math notranslate nohighlight">\(s + w\)</span>. <code class="docutils literal notranslate"><span class="pre">table</span></code> lays out the dynamic
+prediction table, a row for each landmark and covariate profile with the
+probability and its bounds.</p>
+</section>
+<section id="standard-errors-and-bounds">
+<h2>Standard errors and bounds<a class="headerlink" href="#standard-errors-and-bounds" title="Link to this heading"></a></h2>
+<p>In the stacked data a unit appears several times, so its rows are not
+independent and the model-based standard errors of the Cox fit are too
+small. The standard errors are therefore the <strong>robust</strong> (sandwich) ones,
+clustered on the unit, as R’s <code class="docutils literal notranslate"><span class="pre">coxph(...</span> <span class="pre">+</span> <span class="pre">cluster(id))</span></code> reports;
+<code class="docutils literal notranslate"><span class="pre">covariance(robust=False)</span></code> gives the model-based one for comparison.
+The bounds on a prediction (<code class="docutils literal notranslate"><span class="pre">cb</span></code>, and the <code class="docutils literal notranslate"><span class="pre">table</span></code>) carry the same
+robust variance to the prediction: each unit’s influence on the baseline
+over <span class="math notranslate nohighlight">\((s, x]\)</span> and on the coefficients is added up over its rows,
+and the influences are squared and summed over the units (the
+infinitesimal jackknife). The bound is normal on the log cumulative
+hazard by default (<code class="docutils literal notranslate"><span class="pre">bound_type=&quot;log-log&quot;</span></code>), which keeps it inside (0, 1).
+In simulations of a correctly specified model with four landmarks per
+unit, the 95% robust intervals covered the coefficients 93%-96% of the
+time and a window probability 95%.</p>
+<p>Only these Wald bounds are offered: the stacked rows have no likelihood of
+their own for a likelihood-ratio bound, and no bootstrap is built (resample
+the units, refit, and take quantiles, for one).</p>
+</section>
+<section id="survival-from-a-landmark-by-group">
+<h2>Survival from a landmark by group<a class="headerlink" href="#survival-from-a-landmark-by-group" title="Link to this heading"></a></h2>
+<p>The simplest landmark analysis needs no model:
+<code class="xref py py-func docutils literal notranslate"><span class="pre">landmark_kaplan_meier()</span></code> gives the Kaplan-Meier estimate of
+survival from the landmark, <span class="math notranslate nohighlight">\(P(T &gt; x \mid T &gt; s)\)</span>, for each group
+of units by their covariates known at <span class="math notranslate nohighlight">\(s\)</span>, with its usual bounds
+(each unit counted once):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">km</span> <span class="o">=</span> <span class="n">sp</span><span class="o">.</span><span class="n">landmark_kaplan_meier</span><span class="p">(</span><span class="n">life</span><span class="p">,</span> <span class="n">at</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">horizon</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">by</span><span class="o">=</span><span class="s2">"z2"</span><span class="p">)</span>
+<span class="n">km</span><span class="p">[</span><span class="mf">1.0</span><span class="p">]</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>      <span class="c1"># switched by time 2</span>
+<span class="n">km</span><span class="p">[</span><span class="mf">0.0</span><span class="p">]</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">])</span>      <span class="c1"># not yet switched at 2</span>
+</pre></div>
+</div>
+</section>
+<section id="checked-against-r">
+<h2>Checked against R<a class="headerlink" href="#checked-against-r" title="Link to this heading"></a></h2>
+<p>The landmark data sets match <code class="docutils literal notranslate"><span class="pre">dynpred</span></code>’s <code class="docutils literal notranslate"><span class="pre">cutLM</span></code> (0.1.2) row for row;
+the Cox model at one landmark and the stratified and pooled supermodels
+match <code class="docutils literal notranslate"><span class="pre">survival</span></code>’s <code class="docutils literal notranslate"><span class="pre">coxph(...</span> <span class="pre">+</span> <span class="pre">cluster(id))</span></code> (3.8.12): coefficients,
+robust and model-based standard errors, and the window probabilities from
+<code class="docutils literal notranslate"><span class="pre">survfit</span></code>, to about 1e-10, with Efron’s and Breslow’s ties.</p>
+<p>One convention differs from <code class="docutils literal notranslate"><span class="pre">cutLM</span></code>’s long format, whose default
+(<code class="docutils literal notranslate"><span class="pre">right</span> <span class="pre">=</span> <span class="pre">TRUE</span></code>) does not use a change of covariate recorded exactly at
+the landmark: here a value recorded at <span class="math notranslate nohighlight">\(s\)</span> is known at <span class="math notranslate nohighlight">\(s\)</span>
+(<code class="docutils literal notranslate"><span class="pre">cutLM</span></code>’s <code class="docutils literal notranslate"><span class="pre">right</span> <span class="pre">=</span> <span class="pre">FALSE</span></code>, and its wide format).</p>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>van Houwelingen, H. C. (2007). Dynamic prediction by landmarking in
+event history analysis. <em>Scandinavian Journal of Statistics</em>, 34,
+70–85.</p></li>
+<li><p>van Houwelingen, H. C. and Putter, H. (2011). <em>Dynamic Prediction in
+Clinical Survival Analysis</em>. Chapman &amp; Hall/CRC.</p></li>
+<li><p>Lin, D. Y. and Wei, L. J. (1989). The robust inference for the Cox
+proportional hazards model. <em>Journal of the American Statistical
+Association</em>, 84, 1074–1078.</p></li>
+</ul>
+</section>
+<section id="api-reference">
+<h2>API reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h2>
+<p>Import everything from <code class="docutils literal notranslate"><span class="pre">surpyval</span></code> (or <code class="docutils literal notranslate"><span class="pre">surpyval.univariate.landmark</span></code>).</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.landmark">
+<span class="sig-prename descclassname"><span class="pre">surpyval.univariate.landmark.</span></span><span class="sig-name descname"><span class="pre">landmark</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">life</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">at</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">horizon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">interactions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.landmark" title="Link to this definition"></a></dt>
+<dd><p>The landmark data of <code class="docutils literal notranslate"><span class="pre">life</span></code> at the landmark time(s) <code class="docutils literal notranslate"><span class="pre">at</span></code>, as a
+<code class="xref py py-class docutils literal notranslate"><span class="pre">SurpyvalData</span></code> (R <code class="docutils literal notranslate"><span class="pre">dynpred</span></code>’s <code class="docutils literal notranslate"><span class="pre">cutLM</span></code>).</p>
+<p>At a landmark <code class="docutils literal notranslate"><span class="pre">L</span></code>, keep the units still at risk (entered by <code class="docutils literal notranslate"><span class="pre">L</span></code> and
+followed event-free past it), enter them at <code class="docutils literal notranslate"><span class="pre">L</span></code> (<code class="docutils literal notranslate"><span class="pre">tl</span> <span class="pre">=</span> <span class="pre">L</span></code>), cut
+their follow-up at <code class="docutils literal notranslate"><span class="pre">L</span> <span class="pre">+</span> <span class="pre">horizon</span></code> (an event after that, or a unit
+still running then, is right censored at <code class="docutils literal notranslate"><span class="pre">L</span> <span class="pre">+</span> <span class="pre">horizon</span></code>), and give
+them their covariates as known at <code class="docutils literal notranslate"><span class="pre">L</span></code>: the fixed ones, and the last
+value at or before <code class="docutils literal notranslate"><span class="pre">L</span></code> of the time-varying ones and of each
+measurement read on the units (<code class="docutils literal notranslate"><span class="pre">life.m</span></code>).
+Because only units at risk at <code class="docutils literal notranslate"><span class="pre">L</span></code> and only what was known at <code class="docutils literal notranslate"><span class="pre">L</span></code>
+are used, a model of this data never borrows from the future: it has
+no immortal-time bias.</p>
+<p>With several landmarks the landmark data sets are stacked into one
+(the “super landmark data set” of van Houwelingen, 2007), in which a
+unit appears once for each landmark it is at risk at. The landmark is
+then a covariate column, <code class="docutils literal notranslate"><span class="pre">L</span></code>, and with <code class="docutils literal notranslate"><span class="pre">interactions=True</span></code> so is
+each covariate times <code class="docutils literal notranslate"><span class="pre">L</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;z*L&quot;</span></code>): fit a Cox model to it
+(<code class="docutils literal notranslate"><span class="pre">CoxPH.fit(data)</span></code>, stratified by <code class="docutils literal notranslate"><span class="pre">L</span></code> or not) for a supermodel,
+with standard errors clustered on the unit, as each unit has several
+rows; <code class="xref py py-class docutils literal notranslate"><span class="pre">LandmarkCox</span></code> does this and predicts from it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>life</strong> (<a class="reference internal" href="surpyval.utilities.html#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData"><em>SurpyvalData</em></a>) – The units’ lifetimes: time <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code> (0 the event, 1 still
+running), counts <code class="docutils literal notranslate"><span class="pre">n</span></code>, entry <code class="docutils literal notranslate"><span class="pre">tl</span></code>, unit ids <code class="docutils literal notranslate"><span class="pre">i</span></code> and
+covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code>. A covariate that changes is given as rows of
+the unit, <code class="docutils literal notranslate"><span class="pre">(tl,</span> <span class="pre">x]</span></code> stretches with <code class="docutils literal notranslate"><span class="pre">Z</span></code> fixed in each, only
+the last ending in the event (or as a <code class="docutils literal notranslate"><span class="pre">StepSchedule</span></code> or
+<code class="docutils literal notranslate"><span class="pre">CovariatePath</span></code> per unit, from <code class="docutils literal notranslate"><span class="pre">from_items</span></code>); a gap between a
+unit’s rows, or an event before its last row, is refused.
+Readings taken on the units are its measurements <code class="docutils literal notranslate"><span class="pre">m</span></code>. The last
+reading of each measurement at or before <code class="docutils literal notranslate"><span class="pre">L</span></code> becomes a
+covariate named after it; a unit at
+risk with no reading of one by <code class="docutils literal notranslate"><span class="pre">L</span></code> is left out of that
+landmark, with a warning that counts them.</p></li>
+<li><p><strong>at</strong> (<em>float</em><em> or </em><em>array_like</em>) – The landmark time(s) <code class="docutils literal notranslate"><span class="pre">L</span></code>.</p></li>
+<li><p><strong>horizon</strong> (<em>float</em>) – The window <code class="docutils literal notranslate"><span class="pre">w</span></code>: follow-up is cut at <code class="docutils literal notranslate"><span class="pre">L</span> <span class="pre">+</span> <span class="pre">w</span></code>.</p></li>
+<li><p><strong>interactions</strong> (<em>bool</em><em>, </em><em>optional</em>) – With several landmarks, add each covariate times <code class="docutils literal notranslate"><span class="pre">L</span></code> as a
+column (<code class="docutils literal notranslate"><span class="pre">&quot;z*L&quot;</span></code>).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>One row per unit at risk at each landmark, ordered by landmark,
+with <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">tl</span></code> (the landmark) and <code class="docutils literal notranslate"><span class="pre">Z</span></code> (named
+by <code class="docutils literal notranslate"><span class="pre">covariate_names</span></code>). Each row’s <code class="docutils literal notranslate"><span class="pre">attributes</span></code> hold its unit
+(<code class="docutils literal notranslate"><span class="pre">&quot;i&quot;</span></code>) and landmark (<code class="docutils literal notranslate"><span class="pre">&quot;L&quot;</span></code>); with one landmark the units are
+also its <code class="docutils literal notranslate"><span class="pre">i</span></code>. (Stacked, a unit’s rows overlap in time, each
+running from its landmark, which <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> does not allow
+for one unit’s rows, so there the unit is in the attributes
+only.)</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="surpyval.utilities.html#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData">SurpyvalData</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>Three units with a fixed covariate; at the landmark 2 the first has
+failed already, and the follow-up of the others is cut at 2 + 3:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">SurpyvalData</span><span class="p">,</span> <span class="n">landmark</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">life</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mf">1.5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">4</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">Z</span><span class="o">=</span><span class="p">[[</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">]],</span>
+<span class="gp">... </span>                    <span class="n">i</span><span class="o">=</span><span class="p">[</span><span class="s2">"a"</span><span class="p">,</span> <span class="s2">"b"</span><span class="p">,</span> <span class="s2">"c"</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">landmark</span><span class="p">(</span><span class="n">life</span><span class="p">,</span> <span class="n">at</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">horizon</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span><span class="o">.</span><span class="n">i</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">x</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">c</span><span class="p">,</span> <span class="n">data</span><span class="o">.</span><span class="n">tl</span>
+<span class="go">(['b', 'c'], array([5., 4.]), array([1, 1]), array([2., 2.]))</span>
+</pre></div>
+</div>
+<p>Stacked over two landmarks, the landmark becomes a covariate:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">data</span> <span class="o">=</span> <span class="n">landmark</span><span class="p">(</span><span class="n">life</span><span class="p">,</span> <span class="n">at</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">horizon</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span><span class="o">.</span><span class="n">covariate_names</span>
+<span class="go">['Z0', 'L']</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">data</span><span class="o">.</span><span class="n">Z</span>
+<span class="go">array([[1., 0.],</span>
+<span class="go">       [0., 0.],</span>
+<span class="go">       [1., 0.],</span>
+<span class="go">       [0., 2.],</span>
+<span class="go">       [1., 2.]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.landmark_kaplan_meier">
+<span class="sig-prename descclassname"><span class="pre">surpyval.univariate.landmark.</span></span><span class="sig-name descname"><span class="pre">landmark_kaplan_meier</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">life</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">at</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">horizon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">by</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.landmark_kaplan_meier" title="Link to this definition"></a></dt>
+<dd><p>The Kaplan-Meier estimate of survival from the landmark <code class="docutils literal notranslate"><span class="pre">at</span></code>, for
+each group of units by the value(s) of their covariates <code class="docutils literal notranslate"><span class="pre">by</span></code> as
+known at <code class="docutils literal notranslate"><span class="pre">at</span></code> (the simple landmark analysis of van Houwelingen and
+Putter, 2011).</p>
+<p>Each estimate is of <span class="math notranslate nohighlight">\(P(T &gt; x \mid T &gt; L, \text{group at } L)\)</span>
+for <code class="docutils literal notranslate"><span class="pre">x</span></code> from <code class="docutils literal notranslate"><span class="pre">L</span></code> to <code class="docutils literal notranslate"><span class="pre">L</span> <span class="pre">+</span> <span class="pre">horizon</span></code>: the units at risk at <code class="docutils literal notranslate"><span class="pre">L</span></code>,
+entered at <code class="docutils literal notranslate"><span class="pre">L</span></code>, grouped by what was known about them at <code class="docutils literal notranslate"><span class="pre">L</span></code>. Its
+bounds are the Kaplan-Meier estimate’s own (<code class="docutils literal notranslate"><span class="pre">cb</span></code>), as each unit is
+counted once.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>life</strong> (<a class="reference internal" href="surpyval.utilities.html#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData"><em>SurpyvalData</em></a>) – The units’ lifetimes and covariates, as <code class="xref py py-func docutils literal notranslate"><span class="pre">landmark()</span></code>
+takes them.</p></li>
+<li><p><strong>at</strong> (<em>float</em>) – The landmark time <code class="docutils literal notranslate"><span class="pre">L</span></code>.</p></li>
+<li><p><strong>horizon</strong> (<em>float</em>) – The window <code class="docutils literal notranslate"><span class="pre">w</span></code>: follow-up is cut at <code class="docutils literal notranslate"><span class="pre">L</span> <span class="pre">+</span> <span class="pre">w</span></code>.</p></li>
+<li><p><strong>by</strong> (<em>str</em><em> or </em><em>list</em><em> of </em><em>str</em><em>, </em><em>optional</em>) – The covariates to group by (names, as the landmark data’s
+<code class="docutils literal notranslate"><span class="pre">covariate_names</span></code>). Default: one estimate of every unit at risk.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">{group:</span> <span class="pre">NonParametric}</span></code>: the group is the covariate’s value
+(a tuple of values for several), or <code class="docutils literal notranslate"><span class="pre">None</span></code> without <code class="docutils literal notranslate"><span class="pre">by</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>dict</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">SurpyvalData</span><span class="p">,</span> <span class="n">landmark_kaplan_meier</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">life</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">8</span><span class="p">],</span> <span class="n">c</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span>
+<span class="gp">... </span>                    <span class="n">Z</span><span class="o">=</span><span class="p">[[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">]],</span>
+<span class="gp">... </span>                    <span class="n">covariate_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"z"</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span> <span class="o">=</span> <span class="n">landmark_kaplan_meier</span><span class="p">(</span><span class="n">life</span><span class="p">,</span> <span class="n">at</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">horizon</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">by</span><span class="o">=</span><span class="s2">"z"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">sorted</span><span class="p">(</span><span class="n">km</span><span class="p">)</span>
+<span class="go">[0.0, 1.0]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">km</span><span class="p">[</span><span class="mf">1.0</span><span class="p">]</span><span class="o">.</span><span class="n">sf</span><span class="p">([</span><span class="mi">3</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">6</span><span class="p">])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([0.667, 0.333, 0.333])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">surpyval.univariate.landmark.</span></span><span class="sig-name descname"><span class="pre">LandmarkCox</span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">SerialisableMixin</span></code></p>
+<p>Landmark Cox models and the dynamic predictions they give
+(van Houwelingen, 2007; van Houwelingen and Putter, 2011).</p>
+<p>A dynamic prediction is the chance that a unit still event-free at
+time <code class="docutils literal notranslate"><span class="pre">s</span></code> has its event within the next <code class="docutils literal notranslate"><span class="pre">w</span></code>, given what is known
+about it at <code class="docutils literal notranslate"><span class="pre">s</span></code>: <span class="math notranslate nohighlight">\(P(T \le s + w \mid T &gt; s, Z(s))\)</span>. Landmarking
+answers it directly. At a landmark time <code class="docutils literal notranslate"><span class="pre">s</span></code>, take the units still at
+risk, their covariates as known at <code class="docutils literal notranslate"><span class="pre">s</span></code>, and their follow-up cut at
+<code class="docutils literal notranslate"><span class="pre">s</span> <span class="pre">+</span> <span class="pre">w</span></code> (<code class="xref py py-func docutils literal notranslate"><span class="pre">landmark()</span></code>), and fit a Cox model to
+them. Because only units still at risk at <code class="docutils literal notranslate"><span class="pre">s</span></code> are used, and only
+what was known about them at <code class="docutils literal notranslate"><span class="pre">s</span></code>, the prediction never uses the
+future, so it has no immortal-time bias.</p>
+<p>With one landmark the model is that Cox model. With several, the
+landmark data sets are stacked and fitted together as a <em>supermodel</em>:
+the effect of each covariate may change smoothly with the landmark,</p>
+<div class="math notranslate nohighlight">
+\[h(t \mid Z(s), s) = h_0(t \mid s)
+\exp\big(\beta(s)' Z(s)\big), \qquad s \le t \le s + w,
+\qquad \beta(s) = \beta_0 + \beta_1 u + \dots + \beta_d u^d,\]</div>
+<p>with <span class="math notranslate nohighlight">\(u = (s - s_1) / (s_L - s_1)\)</span> (0 at the first landmark, 1
+at the last), or any basis of <code class="docutils literal notranslate"><span class="pre">s</span></code> given as <code class="docutils literal notranslate"><span class="pre">basis</span></code>. The baseline
+hazard is either a separate one at each landmark
+(<code class="docutils literal notranslate"><span class="pre">baseline=&quot;stratified&quot;</span></code>) or one shared baseline
+<span class="math notranslate nohighlight">\(h_0(t) \exp(\theta(s))\)</span> with <span class="math notranslate nohighlight">\(\theta(s) = \theta_1 u +
+\dots + \theta_d u^d\)</span> (<code class="docutils literal notranslate"><span class="pre">baseline=&quot;pooled&quot;</span></code>), which predicts at any
+<code class="docutils literal notranslate"><span class="pre">s</span></code> between the first and last landmark. A unit appears once for
+each landmark it is at risk at, so its rows are correlated; the
+standard errors are therefore the robust (sandwich) ones, clustered on
+the unit (R’s <code class="docutils literal notranslate"><span class="pre">coxph(...</span> <span class="pre">+</span> <span class="pre">cluster(id))</span></code>), and so are the bounds on
+the predictions.</p>
+<p>Fit with <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.fit" title="surpyval.univariate.landmark.LandmarkCox.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a> or <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.fit_from_df" title="surpyval.univariate.landmark.LandmarkCox.fit_from_df"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit_from_df()</span></code></a>.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.params">
+<span class="sig-name descname"><span class="pre">params</span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.params" title="Link to this definition"></a></dt>
+<dd><p>The coefficients, named by <code class="docutils literal notranslate"><span class="pre">parameter_names</span></code>: each covariate’s
+effect at the first landmark (<code class="docutils literal notranslate"><span class="pre">&quot;z&quot;</span></code>), its change along the
+basis (<code class="docutils literal notranslate"><span class="pre">&quot;z*u&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;z*u^2&quot;</span></code>, …) and, for a pooled baseline,
+the baseline’s terms (<code class="docutils literal notranslate"><span class="pre">&quot;u&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;u^2&quot;</span></code>, …).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.landmarks">
+<span class="sig-name descname"><span class="pre">landmarks</span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.landmarks" title="Link to this definition"></a></dt>
+<dd><p>The landmark times fitted.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>numpy.ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.window">
+<span class="sig-name descname"><span class="pre">window</span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.window" title="Link to this definition"></a></dt>
+<dd><p>The prediction window <code class="docutils literal notranslate"><span class="pre">w</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.baseline">
+<span class="sig-name descname"><span class="pre">baseline</span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.baseline" title="Link to this definition"></a></dt>
+<dd><p><code class="docutils literal notranslate"><span class="pre">&quot;stratified&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;pooled&quot;</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.feature_names">
+<span class="sig-name descname"><span class="pre">feature_names</span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.feature_names" title="Link to this definition"></a></dt>
+<dd><p>The covariates’ names.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>list of str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.cox">
+<span class="sig-name descname"><span class="pre">cox</span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.cox" title="Link to this definition"></a></dt>
+<dd><p>The Cox model of the stacked data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="regression/cox_ph.html#surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel" title="surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel">SemiParametricRegressionModel</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.Hf">
+<span class="sig-name descname"><span class="pre">Hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.Hf" title="Link to this definition"></a></dt>
+<dd><p>The cumulative hazard from the landmark <code class="docutils literal notranslate"><span class="pre">s</span></code> to <code class="docutils literal notranslate"><span class="pre">x</span></code>, for a unit
+event-free at <code class="docutils literal notranslate"><span class="pre">s</span></code> with covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code> known at <code class="docutils literal notranslate"><span class="pre">s</span></code>. 0 for
+<code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">&lt;=</span> <span class="pre">s</span></code>; <code class="docutils literal notranslate"><span class="pre">nan</span></code> (with a warning) past the horizon <code class="docutils literal notranslate"><span class="pre">s</span> <span class="pre">+</span> <span class="pre">w</span></code>.
+<code class="docutils literal notranslate"><span class="pre">Z</span></code> is one row for every <code class="docutils literal notranslate"><span class="pre">x</span></code> or one row per <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.aliased">
+<em class="property"><span class="k"><span class="pre">property</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">aliased</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">NDArray</span></em><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.aliased" title="Link to this definition"></a></dt>
+<dd><p>The columns of <code class="docutils literal notranslate"><span class="pre">Z</span></code> none of whose coefficients the data can
+determine (<code class="docutils literal notranslate"><span class="pre">nan</span></code> in <code class="docutils literal notranslate"><span class="pre">params</span></code>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.beta">
+<span class="sig-name descname"><span class="pre">beta</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.beta" title="Link to this definition"></a></dt>
+<dd><p>Each covariate’s effect (log hazard ratio) at landmark(s) <code class="docutils literal notranslate"><span class="pre">s</span></code>:
+<code class="docutils literal notranslate"><span class="pre">beta(s)</span></code>, shape <code class="docutils literal notranslate"><span class="pre">np.shape(s)</span> <span class="pre">+</span> <span class="pre">(p,)</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.beta_cb">
+<span class="sig-name descname"><span class="pre">beta_cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.beta_cb" title="Link to this definition"></a></dt>
+<dd><p>Robust Wald bounds on <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.beta" title="surpyval.univariate.landmark.LandmarkCox.beta"><code class="xref py py-meth docutils literal notranslate"><span class="pre">beta()</span></code></a> at <code class="docutils literal notranslate"><span class="pre">s</span></code>: shape <code class="docutils literal notranslate"><span class="pre">np.shape(s)</span>
+<span class="pre">+</span> <span class="pre">(p,</span> <span class="pre">2)</span></code> two-sided, <code class="docutils literal notranslate"><span class="pre">np.shape(s)</span> <span class="pre">+</span> <span class="pre">(p,)</span></code> one-sided
+(<code class="docutils literal notranslate"><span class="pre">bound='lower'</span></code> or <code class="docutils literal notranslate"><span class="pre">'upper'</span></code>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.cb">
+<span class="sig-name descname"><span class="pre">cb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">on</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'sf'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'two-sided'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'log-log'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.cb" title="Link to this definition"></a></dt>
+<dd><p>Robust pointwise confidence bounds on the dynamic survival
+(<a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.sf" title="surpyval.univariate.landmark.LandmarkCox.sf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sf()</span></code></a>, the default, as for every model), the dynamic
+prediction (<a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.ff" title="surpyval.univariate.landmark.LandmarkCox.ff"><code class="xref py py-meth docutils literal notranslate"><span class="pre">ff()</span></code></a>, <code class="docutils literal notranslate"><span class="pre">on=&quot;ff&quot;</span></code>) or <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.Hf" title="surpyval.univariate.landmark.LandmarkCox.Hf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Hf()</span></code></a>, from the
+landmark <code class="docutils literal notranslate"><span class="pre">s</span></code> to <code class="docutils literal notranslate"><span class="pre">x</span></code>.</p>
+<p>The standard error of <span class="math notranslate nohighlight">\(\log \hat H(x \mid s, Z)\)</span> is the
+infinitesimal jackknife: each stacked row’s influence on the
+baseline hazard over <span class="math notranslate nohighlight">\((s, x]\)</span> and on the coefficients,
+summed over the rows of each unit (a unit appears at several
+landmarks), and squared and added over the units. It is the
+robust variance that the coefficients’ standard errors use, carried
+to the prediction; at tied times it takes Breslow’s form of the
+baseline. The bound is normal on the scale of <code class="docutils literal notranslate"><span class="pre">bound_type</span></code>:
+<code class="docutils literal notranslate"><span class="pre">&quot;log-log&quot;</span></code> (the default, <span class="math notranslate nohighlight">\(H e^{\pm z\,\mathrm{se}}\)</span>),
+<code class="docutils literal notranslate"><span class="pre">&quot;log&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;plain&quot;</span></code>, as for <code class="xref py py-meth docutils literal notranslate"><span class="pre">CoxPH()</span></code>’s
+<code class="docutils literal notranslate"><span class="pre">cb</span></code>. Only these Wald bounds are offered: the stacked rows have
+no likelihood of their own for a likelihood-ratio bound, and no
+bootstrap is built (resample the units, refit, and take
+quantiles, for one).</p>
+<p>Returns <code class="docutils literal notranslate"><span class="pre">[lower,</span> <span class="pre">upper]</span></code> on a last axis of 2 for two-sided
+bounds, one value per <code class="docutils literal notranslate"><span class="pre">x</span></code> otherwise.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.covariance">
+<span class="sig-name descname"><span class="pre">covariance</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">robust</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.covariance" title="Link to this definition"></a></dt>
+<dd><p>The coefficients’ covariance: the robust one, clustered on the
+unit (the default), or, with <code class="docutils literal notranslate"><span class="pre">robust=False</span></code>, the model-based
+one, which treats a unit’s rows at different landmarks as
+independent and is too small for a supermodel.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.ff">
+<span class="sig-name descname"><span class="pre">ff</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.ff" title="Link to this definition"></a></dt>
+<dd><p>The dynamic failure probability <span class="math notranslate nohighlight">\(P(T \le x \mid T &gt; s,
+Z(s))\)</span> (see <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.sf" title="surpyval.univariate.landmark.LandmarkCox.sf"><code class="xref py py-meth docutils literal notranslate"><span class="pre">sf()</span></code></a>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.fit">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fit</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">life</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">at</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">horizon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">baseline</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'stratified'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">degree</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">NDArray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ArrayLike</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">varying</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tie_method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'efron'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">unknown</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox" title="surpyval.univariate.landmark.landmark_cox.LandmarkCox"><span class="pre">LandmarkCox</span></a></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.fit" title="Link to this definition"></a></dt>
+<dd><p>Fit a landmark Cox model (one landmark) or supermodel (several) to
+the landmark data of <code class="docutils literal notranslate"><span class="pre">life</span></code> (see <code class="xref py py-func docutils literal notranslate"><span class="pre">landmark()</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>life</strong> (<a class="reference internal" href="surpyval.utilities.html#surpyval.utils.surpyval_data.SurpyvalData" title="surpyval.utils.surpyval_data.SurpyvalData"><em>SurpyvalData</em></a>) – The units’ lifetimes: time <code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code> (0 the event, 1 still
+running), counts <code class="docutils literal notranslate"><span class="pre">n</span></code>, entry <code class="docutils literal notranslate"><span class="pre">tl</span></code>, unit ids <code class="docutils literal notranslate"><span class="pre">i</span></code>,
+covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code> (rows of a unit for one that changes) and
+measurements <code class="docutils literal notranslate"><span class="pre">m</span></code>; the covariates at each landmark are those
+known then (see <code class="xref py py-func docutils literal notranslate"><span class="pre">landmark()</span></code>).</p></li>
+<li><p><strong>at</strong> (<em>float</em><em> or </em><em>array_like</em>) – The landmark times <code class="docutils literal notranslate"><span class="pre">L</span></code>.</p></li>
+<li><p><strong>horizon</strong> (<em>float</em>) – The prediction window <code class="docutils literal notranslate"><span class="pre">w</span></code>; follow-up is cut at <code class="docutils literal notranslate"><span class="pre">L</span> <span class="pre">+</span> <span class="pre">w</span></code>.</p></li>
+<li><p><strong>baseline</strong> (<em>{'stratified'</em><em>, </em><em>'pooled'}</em><em>, </em><em>optional</em>) – A baseline hazard of its own at each landmark (the default),
+or one shared baseline moved by the basis terms in <code class="docutils literal notranslate"><span class="pre">L</span></code>.</p></li>
+<li><p><strong>degree</strong> (<em>int</em><em>, </em><em>optional</em>) – The degree of the polynomial in <code class="docutils literal notranslate"><span class="pre">u</span></code> for the covariate
+effects (and a pooled baseline’s terms). Default 2, or one
+less than the number of landmarks if that is smaller (0 for a
+single landmark: a Cox model at that landmark).</p></li>
+<li><p><strong>basis</strong> (<em>callable</em><em>, </em><em>optional</em>) – Instead of the polynomial, a function of the landmark times
+(a 1-D array) returning one column per basis term (a spline
+basis, for example); the constant is always added. A model
+with a basis of its own cannot be saved by <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.to_dict" title="surpyval.univariate.landmark.LandmarkCox.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a>.</p></li>
+<li><p><strong>varying</strong> (<em>list</em><em>, </em><em>optional</em>) – The covariates (names, or positions in the landmark data’s
+<code class="docutils literal notranslate"><span class="pre">Z</span></code>) whose effect changes with the landmark. Default: every
+covariate. The others have one effect at every landmark.</p></li>
+<li><p><strong>tie_method</strong> (<em>{'efron'</em><em>, </em><em>'breslow'}</em><em>, </em><em>optional</em>) – The Cox model’s handling of tied times.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox" title="surpyval.univariate.landmark.LandmarkCox">LandmarkCox</a></p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<p>A fixed covariate <code class="docutils literal notranslate"><span class="pre">z</span></code> whose effect fades: the chance of the
+event within 2 time units of each landmark:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">surpyval</span><span class="w"> </span><span class="kn">import</span> <span class="n">LandmarkCox</span><span class="p">,</span> <span class="n">SurpyvalData</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">z</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">binomial</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mi">400</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">t</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">weibull</span><span class="p">(</span><span class="mf">1.5</span><span class="p">,</span> <span class="mi">400</span><span class="p">)</span> <span class="o">*</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">z</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">life</span> <span class="o">=</span> <span class="n">SurpyvalData</span><span class="p">(</span><span class="n">x</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="mi">6</span><span class="p">),</span> <span class="n">c</span><span class="o">=</span><span class="p">(</span><span class="n">t</span> <span class="o">&gt;</span> <span class="mi">6</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">),</span>
+<span class="gp">... </span>                    <span class="n">Z</span><span class="o">=</span><span class="n">z</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">],</span> <span class="n">covariate_names</span><span class="o">=</span><span class="p">[</span><span class="s2">"z"</span><span class="p">])</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span> <span class="o">=</span> <span class="n">LandmarkCox</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">life</span><span class="p">,</span> <span class="n">at</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="n">horizon</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+<span class="gp">... </span>                        <span class="n">degree</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">],</span> <span class="p">[[</span><span class="mi">0</span><span class="p">],</span> <span class="p">[</span><span class="mi">1</span><span class="p">]])</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="go">array([[0.274, 0.517],</span>
+<span class="go">       [0.492, 0.675]])</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.fit_from_df">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fit_from_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">df</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">x_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">at</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">horizon</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">c_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tl_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">i_col</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z_cols</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">baseline</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'stratified'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">degree</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">basis</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">NDArray</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">ArrayLike</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">varying</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tie_method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'efron'</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">unknown</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox" title="surpyval.univariate.landmark.landmark_cox.LandmarkCox"><span class="pre">LandmarkCox</span></a></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.fit_from_df" title="Link to this definition"></a></dt>
+<dd><p>Fit from a DataFrame of the units’ rows: the columns of the time
+(<code class="docutils literal notranslate"><span class="pre">x_col</span></code>), censoring flag, count, entry, unit id and covariates,
+read by <code class="xref py py-meth docutils literal notranslate"><span class="pre">SurpyvalData.from_dataframe</span></code> (a covariate that changes
+as several rows of a unit, with <code class="docutils literal notranslate"><span class="pre">i_col</span></code> and <code class="docutils literal notranslate"><span class="pre">tl_col</span></code>); the
+rest is as <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.fit" title="surpyval.univariate.landmark.LandmarkCox.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>. Measurements need a <code class="docutils literal notranslate"><span class="pre">SurpyvalData</span></code> with
+<code class="docutils literal notranslate"><span class="pre">m</span></code> and <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.fit" title="surpyval.univariate.landmark.LandmarkCox.fit"><code class="xref py py-meth docutils literal notranslate"><span class="pre">fit()</span></code></a>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.from_dict">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_dict</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox" title="surpyval.univariate.landmark.landmark_cox.LandmarkCox"><span class="pre">LandmarkCox</span></a></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.from_dict" title="Link to this definition"></a></dt>
+<dd><p>Rebuild the model from <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.to_dict" title="surpyval.univariate.landmark.LandmarkCox.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> (by refitting).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.from_json">
+<em class="property"><span class="k"><span class="pre">classmethod</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">PathLike</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.from_json" title="Link to this definition"></a></dt>
+<dd><p>Load a model from a JSON file written by <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.to_json" title="surpyval.univariate.landmark.LandmarkCox.to_json"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_json()</span></code></a>, or
+from the JSON text it returned (a string starting with <code class="docutils literal notranslate"><span class="pre">{</span></code>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.predict">
+<span class="sig-name descname"><span class="pre">predict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">window</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.predict" title="Link to this definition"></a></dt>
+<dd><p>The dynamic prediction: the chance of the event within <code class="docutils literal notranslate"><span class="pre">window</span></code>
+(default the fitted <code class="docutils literal notranslate"><span class="pre">w</span></code>, at most it) of the landmark <code class="docutils literal notranslate"><span class="pre">s</span></code>, for
+a unit event-free at <code class="docutils literal notranslate"><span class="pre">s</span></code> with covariates <code class="docutils literal notranslate"><span class="pre">Z</span></code> known at <code class="docutils literal notranslate"><span class="pre">s</span></code>,
+<span class="math notranslate nohighlight">\(P(T \le s + w \mid T &gt; s, Z(s))\)</span>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">s</span></code> is one landmark or several; <code class="docutils literal notranslate"><span class="pre">Z</span></code> one covariate profile (a
+1-D row) or several (rows). The result has shape <code class="docutils literal notranslate"><span class="pre">np.shape(s)</span></code>
+for one profile, <code class="docutils literal notranslate"><span class="pre">np.shape(s)</span> <span class="pre">+</span> <span class="pre">(k,)</span></code> for <code class="docutils literal notranslate"><span class="pre">k</span></code> profiles.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.sf">
+<span class="sig-name descname"><span class="pre">sf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.sf" title="Link to this definition"></a></dt>
+<dd><p>The dynamic survival <span class="math notranslate nohighlight">\(P(T &gt; x \mid T &gt; s, Z(s))\)</span>, for <code class="docutils literal notranslate"><span class="pre">x</span></code>
+from <code class="docutils literal notranslate"><span class="pre">s</span></code> to the horizon <code class="docutils literal notranslate"><span class="pre">s</span> <span class="pre">+</span> <span class="pre">w</span></code> (1 before <code class="docutils literal notranslate"><span class="pre">s</span></code>; <code class="docutils literal notranslate"><span class="pre">nan</span></code> past
+the horizon, with a warning).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.standard_errors">
+<span class="sig-name descname"><span class="pre">standard_errors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">robust</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">NDArray</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.standard_errors" title="Link to this definition"></a></dt>
+<dd><p>The coefficients’ standard errors (robust by default; see
+<a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.covariance" title="surpyval.univariate.landmark.LandmarkCox.covariance"><code class="xref py py-meth docutils literal notranslate"><span class="pre">covariance()</span></code></a>).</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.summary">
+<span class="sig-name descname"><span class="pre">summary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">robust</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.summary" title="Link to this definition"></a></dt>
+<dd><p>The coefficients’ table: estimate, standard error (robust,
+clustered on the unit, by default), z, p-value and the Wald
+bounds of the coefficient and of the hazard ratio <code class="docutils literal notranslate"><span class="pre">exp(coef)</span></code>,
+with the columns of every regression model’s <code class="docutils literal notranslate"><span class="pre">summary</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.table">
+<span class="sig-name descname"><span class="pre">table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">Z</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">landmarks</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ArrayLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">window</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alpha_ci</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'log-log'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Any</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.table" title="Link to this definition"></a></dt>
+<dd><p>The dynamic prediction table: for each landmark (default: those
+fitted) and covariate profile (the rows of <code class="docutils literal notranslate"><span class="pre">Z</span></code>; a DataFrame’s
+index labels the profiles), the chance of the event within
+<code class="docutils literal notranslate"><span class="pre">window</span></code> (default the fitted <code class="docutils literal notranslate"><span class="pre">w</span></code>) and its robust bounds.</p>
+<p>Returns a DataFrame with the columns <code class="docutils literal notranslate"><span class="pre">landmark</span></code>, <code class="docutils literal notranslate"><span class="pre">profile</span></code>,
+<code class="docutils literal notranslate"><span class="pre">probability</span></code>, <code class="docutils literal notranslate"><span class="pre">lower</span></code> and <code class="docutils literal notranslate"><span class="pre">upper</span></code>.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">dict</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.to_dict" title="Link to this definition"></a></dt>
+<dd><p>Serialise the model to a plain, JSON-serialisable dict. The data
+(<code class="docutils literal notranslate"><span class="pre">life</span></code>, by its own <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>) and the options are stored and
+the model is refitted on loading, so it predicts and bounds
+exactly as the original. A model with a basis of its own
+(<code class="docutils literal notranslate"><span class="pre">basis=</span></code>) cannot be saved.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">PathLike</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">with_data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span></span><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.to_json" title="Link to this definition"></a></dt>
+<dd><p>Write <a class="reference internal" href="#surpyval.univariate.landmark.LandmarkCox.to_dict" title="surpyval.univariate.landmark.LandmarkCox.to_dict"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_dict()</span></code></a> to <code class="docutils literal notranslate"><span class="pre">fp</span></code> as strict JSON, or return it.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fp</strong> (<em>str</em><em> or </em><em>os.PathLike</em><em>, </em><em>optional</em>) – The file to write. Without it the JSON is returned as a
+string (as <code class="docutils literal notranslate"><span class="pre">pandas.DataFrame.to_json</span></code> does), which
+<code class="docutils literal notranslate"><span class="pre">from_json</span></code> also reads.</p></li>
+<li><p><strong>with_data</strong> (<em>bool</em><em>, </em><em>optional</em>) – Write <code class="docutils literal notranslate"><span class="pre">to_dict(with_data=True)</span></code>, which also stores the fitted
+data, for the models whose <code class="docutils literal notranslate"><span class="pre">to_dict</span></code> takes <code class="docutils literal notranslate"><span class="pre">with_data</span></code>
+(the univariate <code class="docutils literal notranslate"><span class="pre">Parametric</span></code> and <code class="docutils literal notranslate"><span class="pre">NonParametric</span></code>); a
+<code class="docutils literal notranslate"><span class="pre">TypeError</span></code> for any other model. Defaults to <code class="code docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="surpyval.univariate.landmark.LandmarkCox.unit">
+<span class="sig-name descname"><span class="pre">unit</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#surpyval.univariate.landmark.LandmarkCox.unit" title="Link to this definition"></a></dt>
+<dd><p>a label, set by
+<code class="docutils literal notranslate"><span class="pre">unit=</span></code> on <code class="docutils literal notranslate"><span class="pre">fit</span></code>, <code class="docutils literal notranslate"><span class="pre">fit_from_df</span></code> and <code class="docutils literal notranslate"><span class="pre">from_params</span></code>, shown
+in the <code class="docutils literal notranslate"><span class="pre">repr</span></code> and on plots and saved by <code class="docutils literal notranslate"><span class="pre">to_dict</span></code>. None is
+unknown. See <code class="xref py py-mod docutils literal notranslate"><span class="pre">surpyval.utils.units</span></code>. (Not <code class="docutils literal notranslate"><span class="pre">units</span></code>, which
+names the items measured: a degradation model’s unit ids.)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The unit of the data the model describes (#845)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Joint%20Models.html" class="btn btn-neutral float-left" title="Joint Models" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="Multivariate%20Analysis.html" class="btn btn-neutral float-right" title="Multivariate Analysis" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

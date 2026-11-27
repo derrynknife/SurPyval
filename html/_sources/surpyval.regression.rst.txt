@@ -1,0 +1,105 @@
+Regression Modelling
+=====================
+
+Models in which covariates change the survival of an individual unit.
+The families differ in *how* a covariate acts: multiplying the hazard,
+adding to it, scaling time, or shifting the odds.
+
+The univariate regression models are importable directly from
+``surpyval``. For the theory see :doc:`regression analysis`; for a
+narrative introduction with worked examples, see
+:doc:`Regression Modelling with SurPyval`. Tree-based models are under
+:doc:`surpyval.ml`, and regression for recurrent events under
+:doc:`surpyval.counting`. Excess hazard regression, where the covariates
+act on the hazard beyond a population's own rates, is documented with
+net survival in :doc:`univariate/relative_survival`.
+
+Semi-Parametric Models
+----------------------
+
+No assumed baseline distribution: the shape of the baseline is left to
+the data, and only the covariate effect is parameterised.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/cox_ph
+    regression/interval_cox
+    regression/additive_hazards
+    regression/aalen_additive
+    regression/proportional_odds
+    regression/buckley_james
+    regression/quantile_regression
+
+Parametric Models
+-----------------
+
+A fitted baseline distribution combined with a covariate function. The
+page below covers the proportional-hazards, accelerated-failure-time,
+proportional-odds, parametric additive-hazards and accelerated-life
+families, the fitted model they all return, and the time-varying
+covariate paths (step schedules and continuously varying paths) the PH,
+AFT, AH and PO families can be evaluated along.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/parametric
+
+Which Family a Model Is
+-----------------------
+
+A fitted parametric regression model names its family in ``model.kind``.
+Compare it with the constants in ``surpyval.univariate.regression.kinds``
+rather than with a string:
+
+.. automodule:: surpyval.univariate.regression.kinds
+    :members:
+    :no-index:
+
+Covariates on Every Parameter
+-----------------------------
+
+Distributional regression: each parameter of the distribution (the scale
+and the shape, say) has its own linear predictor and link. See
+:doc:`Distributional Regression` for the guide.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/distributional
+    regression/mixture_cure
+    regression/zero_inflated
+
+Correlated Observations
+-----------------------
+
+For data arriving in groups that share an unobserved effect.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/frailty
+
+Regression on a Probability or a Mean
+-------------------------------------
+
+Pseudo-observations: regression directly on the survival probability at
+chosen times, the restricted mean survival time, or a cause's cumulative
+incidence, with robust standard errors. See :doc:`Pseudo-Observations`
+for the guide.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/pseudo
+
+Plotting
+--------
+
+The coefficients of one or more models, with their intervals.
+
+.. toctree::
+    :maxdepth: 1
+
+    regression/plot_coefficients

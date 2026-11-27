@@ -1,0 +1,433 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parametric &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Parametric Model" href="univariate/parametric_class.html" />
+    <link rel="prev" title="Pooled Rates Across Sources" href="univariate/pooled_rate.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Parametric</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#parametric-class">Parametric Class</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="univariate/parametric_class.html">Parametric Model</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#joint-likelihood-contours">Joint Likelihood Contours</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="univariate/likelihood_contour.html">Joint Likelihood Contours</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#distribution-classes">Distribution Classes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="univariate/exponential.html">Exponential Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/hypoexponential.html">Hypoexponential Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/weibull.html">Weibull Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/expo_weibull.html">Exponentiated Weibull Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/gumbel.html">Gumbel Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/gumbel_lev.html">Gumbel Largest Extreme Value Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/gamma.html">Gamma Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/normal.html">Normal Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/lognormal.html">LogNormal Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/logistic.html">Logistic Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/loglogistic.html">LogLogistic Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/uniform.html">Uniform Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/rayleigh.html">Rayleigh Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/beta.html">Beta Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/beta4.html">Four-Parameter Beta Distribution</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#discrete-distribution-classes">Discrete Distribution Classes</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="univariate/geometric.html">Geometric Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/poisson.html">Poisson Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/binomial.html">Binomial Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/negative_binomial.html">Negative Binomial Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/beta_geometric.html">Beta-Geometric Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/discrete_weibull.html">Discrete Weibull Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/discretize.html">Discretized Continuous Distributions</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#special-distributions">Special Distributions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="univariate/bernoulli.html">Bernoulli Distribution</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/fixed_event_probability.html">Fixed Event Probability</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/exact_event_time.html">Exact Event Time</a></li>
+<li class="toctree-l4"><a class="reference internal" href="univariate/degenerate.html">Degenerate Distributions</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#flexible-parametric-royston-parmar">Flexible Parametric (Royston-Parmar)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="univariate/royston_parmar.html">Royston-Parmar Flexible Parametric Model</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#custom-distributions">Custom Distributions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="univariate/custom.html">Custom Distributions</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#zero-failure-analysis-weibayes">Zero-Failure Analysis (Weibayes)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="univariate/weibayes.html">Weibayes</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#mixture-modelling">Mixture Modelling</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="univariate/mixture.html">Mixture Models</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#equivalent-time-scales">Equivalent Time Scales</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="univariate/equivalence.html">Equivalent Time Scales</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.counting.html">Recurrent Event Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="surpyval.html">API</a></li>
+      <li class="breadcrumb-item active">Parametric</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/surpyval.parametric.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="parametric">
+<h1>Parametric<a class="headerlink" href="#parametric" title="Link to this heading"></a></h1>
+<p>Lifetime distributions with a fixed functional form, fitted by estimating
+a few parameters. Each distribution is exported as a ready-made instance
+(<code class="docutils literal notranslate"><span class="pre">surpyval.Weibull</span></code>, <code class="docutils literal notranslate"><span class="pre">surpyval.LogNormal</span></code>, …). Its <code class="docutils literal notranslate"><span class="pre">fit</span></code> accepts
+any mix of observed, censored and truncated data and returns a
+<a class="reference internal" href="univariate/parametric_class.html"><span class="doc">Parametric</span></a> model; its
+<code class="docutils literal notranslate"><span class="pre">from_params</span></code> builds the same model from known parameters. The
+distribution’s own functions (<code class="docutils literal notranslate"><span class="pre">sf</span></code>, <code class="docutils literal notranslate"><span class="pre">ff</span></code>, <code class="docutils literal notranslate"><span class="pre">df</span></code>, <code class="docutils literal notranslate"><span class="pre">hf</span></code>, <code class="docutils literal notranslate"><span class="pre">Hf</span></code>,
+<code class="docutils literal notranslate"><span class="pre">qf</span></code>, <code class="docutils literal notranslate"><span class="pre">mean</span></code>, <code class="docutils literal notranslate"><span class="pre">moment</span></code>, <code class="docutils literal notranslate"><span class="pre">random</span></code>, …) can also be called directly
+with the parameters as extra arguments, for example
+<code class="docutils literal notranslate"><span class="pre">Weibull.sf(x,</span> <span class="pre">alpha,</span> <span class="pre">beta)</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">fit</span></code> supports five estimation methods (<code class="docutils literal notranslate"><span class="pre">how='MLE'</span></code>, <code class="docutils literal notranslate"><span class="pre">'MPP'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'MOM'</span></code>, <code class="docutils literal notranslate"><span class="pre">'MSE'</span></code>, <code class="docutils literal notranslate"><span class="pre">'MPS'</span></code>), fixed parameters (<code class="docutils literal notranslate"><span class="pre">fixed</span></code>), an offset
+(<code class="docutils literal notranslate"><span class="pre">offset=True</span></code>), a limited failure population (<code class="docutils literal notranslate"><span class="pre">lfp=True</span></code>) and zero
+inflation (<code class="docutils literal notranslate"><span class="pre">zi=True</span></code>); <a class="reference internal" href="comparison_and_validation.html#surpyval.fit_best.fit_best" title="surpyval.fit_best.fit_best"><code class="xref py py-func docutils literal notranslate"><span class="pre">fit_best()</span></code></a> fits every
+candidate distribution and keeps the best (see
+<a class="reference internal" href="comparison_and_validation.html"><span class="doc">Comparison Tests and Validation Metrics</span></a>). The theory is in
+<a class="reference internal" href="Parametric%20Estimation.html"><span class="doc">Parametric Estimation</span></a> and worked examples are in
+<a class="reference internal" href="Parametric%20SurPyval%20Modelling.html"><span class="doc">Parametric SurPyval Modelling</span></a>.</p>
+<section id="parametric-class">
+<h2>Parametric Class<a class="headerlink" href="#parametric-class" title="Link to this heading"></a></h2>
+<p>The fitted model every distribution’s <code class="docutils literal notranslate"><span class="pre">fit</span></code> and <code class="docutils literal notranslate"><span class="pre">from_params</span></code>
+returns.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="univariate/parametric_class.html">Parametric Model</a></li>
+</ul>
+</div>
+</section>
+<section id="joint-likelihood-contours">
+<h2>Joint Likelihood Contours<a class="headerlink" href="#joint-likelihood-contours" title="Link to this heading"></a></h2>
+<p>The joint likelihood-ratio confidence region of a fit’s two parameters,
+and a plot of one or more of them.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="univariate/likelihood_contour.html">Joint Likelihood Contours</a></li>
+</ul>
+</div>
+</section>
+<section id="distribution-classes">
+<h2>Distribution Classes<a class="headerlink" href="#distribution-classes" title="Link to this heading"></a></h2>
+<p>Continuous lifetime distributions.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="univariate/exponential.html">Exponential Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/hypoexponential.html">Hypoexponential Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/weibull.html">Weibull Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/expo_weibull.html">Exponentiated Weibull Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/gumbel.html">Gumbel Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/gumbel_lev.html">Gumbel Largest Extreme Value Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/gamma.html">Gamma Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/normal.html">Normal Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/lognormal.html">LogNormal Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/logistic.html">Logistic Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/loglogistic.html">LogLogistic Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/uniform.html">Uniform Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/rayleigh.html">Rayleigh Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/beta.html">Beta Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/beta4.html">Four-Parameter Beta Distribution</a></li>
+</ul>
+</div>
+</section>
+<section id="discrete-distribution-classes">
+<h2>Discrete Distribution Classes<a class="headerlink" href="#discrete-distribution-classes" title="Link to this heading"></a></h2>
+<p>Discrete lifetimes on the positive integers, for cycle- or
+demand-counted data. All accept the same censoring and truncation
+formats as the continuous distributions.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="univariate/geometric.html">Geometric Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/poisson.html">Poisson Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/binomial.html">Binomial Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/negative_binomial.html">Negative Binomial Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/beta_geometric.html">Beta-Geometric Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/discrete_weibull.html">Discrete Weibull Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/discretize.html">Discretized Continuous Distributions</a></li>
+</ul>
+</div>
+</section>
+<section id="special-distributions">
+<h2>Special Distributions<a class="headerlink" href="#special-distributions" title="Link to this heading"></a></h2>
+<p>Per-demand and degenerate models with no (or a fixed) time dimension,
+for composing into mixtures, competing risks and demand studies.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="univariate/bernoulli.html">Bernoulli Distribution</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/fixed_event_probability.html">Fixed Event Probability</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/exact_event_time.html">Exact Event Time</a></li>
+<li class="toctree-l1"><a class="reference internal" href="univariate/degenerate.html">Degenerate Distributions</a></li>
+</ul>
+</div>
+</section>
+<section id="flexible-parametric-royston-parmar">
+<h2>Flexible Parametric (Royston-Parmar)<a class="headerlink" href="#flexible-parametric-royston-parmar" title="Link to this heading"></a></h2>
+<p>A spline model for data whose hazard no standard distribution fits.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="univariate/royston_parmar.html">Royston-Parmar Flexible Parametric Model</a></li>
+</ul>
+</div>
+</section>
+<section id="custom-distributions">
+<h2>Custom Distributions<a class="headerlink" href="#custom-distributions" title="Link to this heading"></a></h2>
+<p>Define a new distribution from its cumulative hazard function alone.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="univariate/custom.html">Custom Distributions</a></li>
+</ul>
+</div>
+</section>
+<section id="zero-failure-analysis-weibayes">
+<h2>Zero-Failure Analysis (Weibayes)<a class="headerlink" href="#zero-failure-analysis-weibayes" title="Link to this heading"></a></h2>
+<p>The bound on a Weibull scale of known shape when there are too few
+failures to fit one, including none.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="univariate/weibayes.html">Weibayes</a></li>
+</ul>
+</div>
+</section>
+<section id="mixture-modelling">
+<h2>Mixture Modelling<a class="headerlink" href="#mixture-modelling" title="Link to this heading"></a></h2>
+<p>A population made of several sub-populations, each with its own
+distribution of the same family.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="univariate/mixture.html">Mixture Models</a></li>
+</ul>
+</div>
+</section>
+<section id="equivalent-time-scales">
+<h2>Equivalent Time Scales<a class="headerlink" href="#equivalent-time-scales" title="Link to this heading"></a></h2>
+<p>One life measured on a main clock (hours, say) and a subordinate second
+clock (starts) read at the same moments, combined into one age
+<code class="docutils literal notranslate"><span class="pre">x</span> <span class="pre">+</span> <span class="pre">k</span> <span class="pre">x2</span></code> with <code class="docutils literal notranslate"><span class="pre">k</span></code> learned from the data. The data are univariate:
+<code class="docutils literal notranslate"><span class="pre">x</span></code>, <code class="docutils literal notranslate"><span class="pre">c</span></code>, <code class="docutils literal notranslate"><span class="pre">n</span></code>, <code class="docutils literal notranslate"><span class="pre">t</span></code> on the main clock, plus <code class="docutils literal notranslate"><span class="pre">x2</span></code> (an array or a
+<code class="docutils literal notranslate"><span class="pre">SecondaryClock</span></code>). See
+<a class="reference internal" href="Equivalent%20Time%20Scales.html"><span class="doc">Equivalent Time Scales</span></a> for the guide.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="univariate/equivalence.html">Equivalent Time Scales</a></li>
+</ul>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="univariate/pooled_rate.html" class="btn btn-neutral float-left" title="Pooled Rates Across Sources" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="univariate/parametric_class.html" class="btn btn-neutral float-right" title="Parametric Model" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,431 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recurrent Event Models &mdash; SurPyval  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="_static/jupyter-sphinx.css" />
+      <link rel="stylesheet" type="text/css" href="_static/thebelab.css" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=30646c52"></script>
+      <script src="_static/thebelab-helper.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Parametric Recurrence Model" href="counting/parametric_recurrence_model.html" />
+    <link rel="prev" title="Competing Risks" href="surpyval.competing_risks.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search"  style="background: #ea5454" >
+
+          
+          
+          <a href="index.html">
+            
+              <img src="_static/logo.png" class="logo" alt="Logo"/>
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quickstart &amp; Intro</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Choosing%20a%20Model.html">Choosing a Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Survival%20Analysis%20from%20Scratch.html">Survival Analysis from Scratch</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Types%20of%20Data.html">Types of Data</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Model.html">The data model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Conventions.html">Conventions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Glossary.html">Glossary</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Design%20Principles.html">Design Principles</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Handy%20References%20-%20Aide-m%C3%A9moire.html">Handy References - Aide-mémoire</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Data%20Wrangler%20Examples.html">Data Wrangling Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Weighted%20Data.html">Weighted Data</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Survival Analysis</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20Estimation.html">Non-Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20Estimation.html">Parametric Estimation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="regression%20analysis.html">Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20Analysis.html">Competing Risks Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Analysis.html">Recurrent Event Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html">Recurrent Event Regression Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Analysis.html">Degradation Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Joint%20Models.html">Joint Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Landmark%20Analysis.html">Landmark Analysis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Analysis.html">Multivariate Analysis</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval Modelling</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Non-Parametric%20SurPyval%20Modelling.html">Non-Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Parametric%20SurPyval%20Modelling.html">Parametric SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Hazard%20Ratio.html">Hazard Ratio</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Bayesian%20Fitting%20with%20SurPyval.html">Bayesian Fitting with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pooling%20Rates%20Across%20Sources.html">Pooling Rates Across Sources</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Regression%20Modelling%20with%20SurPyval.html">Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Distributional%20Regression.html">Distributional Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Mixture-Cure%20Regression.html">Mixture-Cure Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Equivalent%20Time%20Scales.html">Equivalent Time Scales</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Zero-Inflated%20Regression.html">Zero-Inflated Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Interval-Censored%20Cox%20Regression.html">Interval-Censored Cox Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Pseudo-Observations.html">Pseudo-Observations</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Adjusted%20Survival%20Curves.html">Adjusted Survival Curves</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Relative%20Survival.html">Relative Survival</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Model%20Diagnostics.html">Model Diagnostics</a></li>
+<li class="toctree-l1"><a class="reference internal" href="applications.html">Example Applications</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Competing%20Risks%20SurPyval%20Modelling.html">Competing Risks SurPyval Modelling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multi-State%20Models.html">Multi-State Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html">Recurrent Event Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html">Recurrent Event Regression Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Intervention%20Analysis%20with%20SurPyval.html">Intervention Analysis with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Software%20Reliability%20Growth.html">Software Reliability Growth</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Degradation%20Modelling%20with%20SurPyval.html">Degradation Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Multivariate%20Modelling%20with%20SurPyval.html">Multivariate Modelling with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Test%20Planning%20with%20SurPyval.html">Test Planning with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="PyMC%20with%20SurPyval.html">PyMC with SurPyval</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Torch%20with%20SurPyval.html">Torch with SurPyval</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">SurPyval</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="surpyval.html">API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="surpyval.nonparametric.html">Non-Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.parametric.html">Parametric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.bayes.html">Bayesian Fitting</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.regression.html">Regression Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.ml.html">Machine Learning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.competing_risks.html">Competing Risks</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Recurrent Event Models</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#recurrent-event-poisson-process-models">Recurrent Event (Poisson Process) Models</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="counting/parametric_recurrence_model.html">Parametric Recurrence Model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/hpp.html">HPP</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/duane.html">Duane</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/cox_lewis.html">Cox-Lewis</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/crow_amsaa.html">Crow-AMSAA</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#software-reliability-growth-models">Software Reliability Growth Models</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="counting/goel_okumoto.html">Goel-Okumoto</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/yamada_delayed_s.html">Yamada Delayed S-Shaped</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/inflection_s.html">Inflection S-Shaped</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/musa_okumoto.html">Musa-Okumoto</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/rayleigh_defects.html">Rayleigh Defects</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/clocks.html">Testing Effort and Change Points</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#models-of-the-times-between-failures">Models of the Times Between Failures</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="counting/jelinski_moranda.html">Jelinski-Moranda</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/littlewood_verrall.html">Littlewood-Verrall</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#non-parametric-models">Non-Parametric Models</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="counting/nonparametric_mcf.html">Non-Parametric Counting (MCF)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/mcf_diff.html">Comparing Two MCFs</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#panel-counts">Panel Counts</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="counting/panel_count.html">Panel Counts (Events Counted at Inspections)</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#renewal-models">Renewal Models</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="counting/renewal_model.html">Renewal Model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/grp.html">Generalized Renewal Process</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/g1_rp.html">Generalized One Renewal Process</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/ara.html">Arithmetic Reduction of Age (ARA)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/ari.html">Arithmetic Reduction of Intensity (ARI)</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#competing-risks-marked-models">Competing Risks (Marked) Models</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="counting/cause_specific_mcf.html">Cause-Specific MCF</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/cause_specific_nhpp.html">Cause-Specific NHPP</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/cause_specific_proportional_intensity.html">Cause-Specific Proportional Intensity</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#recurrent-event-regression-models">Recurrent Event Regression Models</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="counting/proportional_intensity_models.html">Proportional Intensity Regression Model</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/hpp_pi.html">HPP Regression</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/nhpp_pi.html">NHPP Regression</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/recurrent_cox.html">Semi-Parametric Recurrent-Event Regression</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/joint_frailty.html">Joint Frailty Model (Recurrent and Terminal Events)</a></li>
+<li class="toctree-l4"><a class="reference internal" href="counting/shared_frailty.html">Shared Frailty (Poisson Processes Whose Units Differ)</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#trend-tests-and-diagnostics">Trend Tests and Diagnostics</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="counting/trend_tests.html">Trend Tests and Diagnostics</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#interventions">Interventions</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="counting/intervention.html">Intervention Test</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.degradation.html">Degradation Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.multivariate.html">Multivariate Modelling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.test_planning.html">Test Planning</a></li>
+<li class="toctree-l2"><a class="reference internal" href="comparison_and_validation.html">Comparison Tests and Validation Metrics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.serialisation.html">Saving and Loading Models</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.utilities.html">Utilities</a></li>
+<li class="toctree-l2"><a class="reference internal" href="surpyval.datasets.html">Datasets</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html">v0.28 (14 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-27-13-november-2026">v0.27 (13 November 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-26-31-october-2026">v0.26 (31 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-25-17-october-2026">v0.25 (17 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-24-9-october-2026">v0.24 (9 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-23-4-october-2026">v0.23 (4 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-22-3-october-2026">v0.22 (3 October 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-21-0-28-september-2026">v0.21.0 (28 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-20-0-23-september-2026">v0.20.0 (23 September 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-19-0-4-august-2026">v0.19.0 (4 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-18-0-2-august-2026">v0.18.0 (2 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-17-0-1-august-2026">v0.17.0 (1 August 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-16-0-22-jul-2026">v0.16.0 (22 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-2-20-jul-2026">v0.15.2 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-1-20-jul-2026">v0.15.1 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-15-0-20-jul-2026">v0.15.0 (20 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-14-0-19-jul-2026">v0.14.0 (19 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-13-0-18-jul-2026">v0.13.0 (18 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-12-0-15-jul-2026">v0.12.0 (15 Jul 2026)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-1-0-25-mar-2022">v0.10.1.0 (25 Mar 2022)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-1-22-nov-2021">v0.10.0.1 (22 Nov 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-10-0-9-aug-2021">v0.10.0 (9 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-9-0-5-aug-2021">v0.9.0 (5 Aug 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-8-0-27-july-2021">v0.8.0 (27 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="changelog.html#v0-7-0-19-july-2021">v0.7.0 (19 July 2021)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Deprecation%20Policy.html">Deprecation Policy</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Community Guidelines</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="Support.html">Support</a></li>
+<li class="toctree-l1"><a class="reference external" href="https://github.com/derrynknife/SurPyval/issues">Report an Issue</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="acknowledgements.html">Acknowledgements</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu"  style="background: #ea5454" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">SurPyval</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="surpyval.html">API</a></li>
+      <li class="breadcrumb-item active">Recurrent Event Models</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/surpyval.counting.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="recurrent-event-models">
+<h1>Recurrent Event Models<a class="headerlink" href="#recurrent-event-models" title="Link to this heading"></a></h1>
+<p>Models for items that can have the same event many times – repairable
+systems that fail and are repaired, patients with repeated
+hospitalisations. The data are each item’s event times, measured from
+the start of its life, with a right-censored (<code class="docutils literal notranslate"><span class="pre">c=1</span></code>) row marking the
+end of its observation. Import everything on these pages from
+<code class="docutils literal notranslate"><span class="pre">surpyval.recurrent</span></code>. The theory is in
+<a class="reference internal" href="Recurrent%20Event%20Analysis.html"><span class="doc">Recurrent Event Analysis</span></a> and
+<a class="reference internal" href="Recurrent%20Event%20Regression%20Analysis.html"><span class="doc">Recurrent Event Regression Analysis</span></a>; worked examples are in
+<a class="reference internal" href="Recurrent%20Event%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Modelling with SurPyval</span></a> and
+<a class="reference internal" href="Recurrent%20Event%20Regression%20Modelling%20with%20SurPyval.html"><span class="doc">Recurrent Event Regression Modelling with SurPyval</span></a>.</p>
+<p>Each fitter below returns one of three fitted-model classes: a
+<a class="reference internal" href="counting/parametric_recurrence_model.html"><span class="doc">ParametricRecurrenceModel</span></a>
+(the Poisson processes), a <a class="reference internal" href="counting/renewal_model.html"><span class="doc">RenewalModel</span></a>
+(the renewal and imperfect-repair models) or a
+<a class="reference internal" href="counting/proportional_intensity_models.html"><span class="doc">ProportionalIntensityModel</span></a>
+(the regression models; the semi-parametric ones return a
+<a class="reference internal" href="counting/recurrent_cox.html"><span class="doc">RecurrentCoxModel</span></a>). The non-parametric and cause-specific fitters
+return a fitted instance of their own class.</p>
+<section id="recurrent-event-poisson-process-models">
+<h2>Recurrent Event (Poisson Process) Models<a class="headerlink" href="#recurrent-event-poisson-process-models" title="Link to this heading"></a></h2>
+<p>Processes whose events arrive at a rate that depends only on the
+system’s age (or not at all, for the HPP), so a repair leaves the
+system as it was just before the failure (“as bad as old”).</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="counting/parametric_recurrence_model.html">Parametric Recurrence Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/hpp.html">HPP</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/duane.html">Duane</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/cox_lewis.html">Cox-Lewis</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/crow_amsaa.html">Crow-AMSAA</a></li>
+</ul>
+</div>
+</section>
+<section id="software-reliability-growth-models">
+<h2>Software Reliability Growth Models<a class="headerlink" href="#software-reliability-growth-models" title="Link to this heading"></a></h2>
+<p>Poisson processes for faults found and removed during testing: the
+intensity falls as the testing goes on. Fitted to failure times or to
+the failures counted in each period of testing.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="counting/goel_okumoto.html">Goel-Okumoto</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/yamada_delayed_s.html">Yamada Delayed S-Shaped</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/inflection_s.html">Inflection S-Shaped</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/musa_okumoto.html">Musa-Okumoto</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/rayleigh_defects.html">Rayleigh Defects</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/clocks.html">Testing Effort and Change Points</a></li>
+</ul>
+</div>
+</section>
+<section id="models-of-the-times-between-failures">
+<h2>Models of the Times Between Failures<a class="headerlink" href="#models-of-the-times-between-failures" title="Link to this heading"></a></h2>
+<p>Models of one test campaign’s times between failures that are not
+Poisson processes: a whole number of faults (Jelinski-Moranda), or a
+rate that is itself uncertain (Littlewood-Verrall).</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="counting/jelinski_moranda.html">Jelinski-Moranda</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/littlewood_verrall.html">Littlewood-Verrall</a></li>
+</ul>
+</div>
+</section>
+<section id="non-parametric-models">
+<h2>Non-Parametric Models<a class="headerlink" href="#non-parametric-models" title="Link to this heading"></a></h2>
+<p>The mean cumulative function estimated without assuming a process, and
+the comparison of two groups’ MCFs.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="counting/nonparametric_mcf.html">Non-Parametric Counting (MCF)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/mcf_diff.html">Comparing Two MCFs</a></li>
+</ul>
+</div>
+</section>
+<section id="panel-counts">
+<h2>Panel Counts<a class="headerlink" href="#panel-counts" title="Link to this heading"></a></h2>
+<p>Events counted at inspections, with no event times: the mean cumulative
+function and a proportional means regression.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="counting/panel_count.html">Panel Counts (Events Counted at Inspections)</a></li>
+</ul>
+</div>
+</section>
+<section id="renewal-models">
+<h2>Renewal Models<a class="headerlink" href="#renewal-models" title="Link to this heading"></a></h2>
+<p>Processes in which a repair restores the system part of the way to new
+(or all the way, for an ordinary renewal process).</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="counting/renewal_model.html">Renewal Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/grp.html">Generalized Renewal Process</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/g1_rp.html">Generalized One Renewal Process</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/ara.html">Arithmetic Reduction of Age (ARA)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/ari.html">Arithmetic Reduction of Intensity (ARI)</a></li>
+</ul>
+</div>
+</section>
+<section id="competing-risks-marked-models">
+<h2>Competing Risks (Marked) Models<a class="headerlink" href="#competing-risks-marked-models" title="Link to this heading"></a></h2>
+<p>Recurrent processes with several kinds of event, each with its own
+intensity (and, for the last, its own covariate effects).</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="counting/cause_specific_mcf.html">Cause-Specific MCF</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/cause_specific_nhpp.html">Cause-Specific NHPP</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/cause_specific_proportional_intensity.html">Cause-Specific Proportional Intensity</a></li>
+</ul>
+</div>
+</section>
+<section id="recurrent-event-regression-models">
+<h2>Recurrent Event Regression Models<a class="headerlink" href="#recurrent-event-regression-models" title="Link to this heading"></a></h2>
+<p>Intensities that depend on covariates.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="counting/proportional_intensity_models.html">Proportional Intensity Regression Model</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/hpp_pi.html">HPP Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/nhpp_pi.html">NHPP Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/recurrent_cox.html">Semi-Parametric Recurrent-Event Regression</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/joint_frailty.html">Joint Frailty Model (Recurrent and Terminal Events)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="counting/shared_frailty.html">Shared Frailty (Poisson Processes Whose Units Differ)</a></li>
+</ul>
+</div>
+</section>
+<section id="trend-tests-and-diagnostics">
+<h2>Trend Tests and Diagnostics<a class="headerlink" href="#trend-tests-and-diagnostics" title="Link to this heading"></a></h2>
+<p>Tests of whether the event rate is changing, and the result classes of
+the tests and of the models’ goodness-of-fit methods.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="counting/trend_tests.html">Trend Tests and Diagnostics</a></li>
+</ul>
+</div>
+</section>
+<section id="interventions">
+<h2>Interventions<a class="headerlink" href="#interventions" title="Link to this heading"></a></h2>
+<p>Whether the rate of failures changed at an intervention (a design
+change, a corrective action), with the evidence to say so.</p>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="counting/intervention.html">Intervention Test</a></li>
+</ul>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="surpyval.competing_risks.html" class="btn btn-neutral float-left" title="Competing Risks" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="counting/parametric_recurrence_model.html" class="btn btn-neutral float-right" title="Parametric Recurrence Model" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2020-2026, Derryn Knife.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
