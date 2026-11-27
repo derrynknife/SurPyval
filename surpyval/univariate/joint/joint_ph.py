@@ -1897,6 +1897,102 @@ def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return aliased_columns(gram, len(Z), constant)
 
 
+#: A path of one's own whose hazard integral over age, split at its
+#: half, differs from the one rule over it by more than this (relative)
+#: on the probe items gets the warning (:func:`_check_kinks`). The split
+#: rule is far more accurate than the one, so the difference estimates
+#: the one rule's error: a corner gives 1e-4 or more (7e-4 for a line
+#: turning to rise 3 a year), as does a smooth but very steep or sudden
+#: path (7.6e-3 for an exponential rising 8.9 times; 3.9e-3 for a
+#: logistic step of 3 over 30 days); gentle smooth paths stay below it
+#: (a quadratic rising steeply, 1.5e-6 at two years).
+_KINK_TOL = 1e-5
+
+
+def _own_paths(path: Any) -> list:
+    """The path model of ``path`` (a :class:`PathFunction`) where it is a
+    user's own, not the package's, with no ``breaks``: one whose kinks
+    the fit cannot know of (a list, empty otherwise)."""
+    out = []
+    for part in [path.model]:
+        base = getattr(part, "base", part)
+        own = not type(base).__module__.startswith("surpyval.degradation")
+        if own and not tuple(getattr(base, "breaks", ()) or ()):
+            out.append(base)
+    return out
+
+
+def _check_kinks(model: Model, arrays: JointArrays, theta: dict) -> None:
+    """Warn where a path of one's own (with no ``breaks``) seems to have
+    a kink: on up to five items (those observed longest), each one's
+    cumulative hazard to its age along its mean path, by the one rule
+    and by the same rule on each half of the ages, differs by more than
+    :data:`_KINK_TOL`. A corner in the path is where the rule loses its
+    accuracy; naming it in ``breaks`` splits the integral there."""
+    if model.layout.n_markers != 1 or not _own_paths(model.path):
+        return
+    from ._likelihood import log_cumhaz, log_cumhaz_between
+
+    T = np.asarray(arrays.T, dtype=float)
+    order = np.argsort(-T)[:5]
+    order = order[T[order] > 0]
+    if not order.size:
+        return
+    probe = arrays.take(order)
+    layout = model.layout
+    mu = np.asarray(theta["mu"], dtype=float)
+    Delta = np.asarray(theta["Delta"], dtype=float)
+    start: dict[str, Any] = dict(
+        mu=mu,
+        Delta=Delta,
+        L=np.asarray(theta["L"], dtype=float),
+        sigma=float(np.ravel(theta["sigma"])[0]),
+        alpha=float(np.ravel(theta.get("alpha", 1.0))[0]),
+        beta=float(np.ravel(theta.get("beta", 1.0))[0]),
+        gamma=np.zeros(layout.p),
+        zeta=np.zeros(layout.n_links) + 0.5,
+    )
+    if "alpha" not in theta:
+        start["alpha"] = float(np.median(T[T > 0]))
+    means = mu[None, :] + probe.Z @ Delta.T
+    params = means[:, None, :]
+    t = T[order]
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            whole = np.exp(
+                log_cumhaz(start, model.path, params, probe, t, model.centre)
+            )[:, 0]
+            first = np.exp(
+                log_cumhaz(
+                    start, model.path, params, probe, t / 2, model.centre
+                )
+            )[:, 0]
+            second = np.exp(
+                log_cumhaz_between(
+                    start, model.path, params, probe, t / 2, t, model.centre
+                )
+            )[:, 0]
+        except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+            return
+    off = np.abs((first + second) / whole - 1.0)
+    off = off[np.isfinite(off)]
+    if off.size and float(off.max()) > _KINK_TOL:
+        name = _own_paths(model.path)[0].name
+        warnings.warn(
+            f"The rule that integrates the hazard over age loses accuracy "
+            f"along the {name} path: on the items observed longest the "
+            f"integral changes by {float(off.max()):.1g} of itself when "
+            "split at half the age (an estimate of the rule's error; a "
+            f"smooth, gentle path's is below {_KINK_TOL:g}). This comes "
+            "of a corner in the path (its slope jumps) or a very steep or "
+            "sudden change. Give the path's class a 'breaks' attribute "
+            "with the ages of its corners, or ages through its steep part "
+            "(breaks = (365.0,)): the integrals are then split there.",
+            stacklevel=caller_stacklevel(),
+        )
+
+
 def _with_placed_path(fitter: JointPHFitter, records: list) -> JointPHFitter:
     """``fitter``, or a copy of it whose path has its knots placed from
     the records' reading ages: for a path made of joined pieces (a
@@ -2093,6 +2189,7 @@ def _fit(
     if theta is None:
         theta = marker_start(model, ages, values, Z - zbar, counts)
     _check_markers(fitter, theta["mu"], "the readings put")
+    _check_kinks(model, arrays, theta)
     total = float(np.sum(counts))
     fit_model, path_u = model, None
     if how == "two-stage":

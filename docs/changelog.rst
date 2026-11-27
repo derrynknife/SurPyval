@@ -986,6 +986,19 @@ v0.30 (unreleased)
   points asked about are in, not the whole grid: 200 resamples of 400
   pairs at two points take 0.8 s, not 2.5 s. The bounds are the same
   to the last digit.
+- **Joint models warn where a path of one's own defeats the integration
+  rule (a kink, or a very steep change).** A path whose
+  slope jumps at an age (a corner) needs the integrals of the hazard
+  split there, which a path names in ``breaks`` as a spline's knots are;
+  :doc:`Joint Models` now says so. Without it the one rule over the
+  corner is off by 1e-4 to 1e-3 of the cumulative hazard for a modest
+  turn (4e-4 on a line turning at day 365; 1.9e-3 with a 90-day lag) and
+  9% for a sharp one; with it, 3e-15. The fit now warns that its
+  integration rule loses accuracy along a path of one's own with no
+  ``breaks`` (a corner, or a very steep or sudden change), naming
+  ``breaks``, where the integral changes by more than 1e-5 when split at
+  half the age, on the five items observed longest (one marker only). Fits on the package's paths, and on smooth
+  paths of one's own, give no warning and their numbers do not change.
 - **Joint models take failures of unknown mode.** A failure with no
   mode in ``e`` (``None``), which the fit of failure modes refused, is
   now fitted as a failure by one mode or another: its likelihood is the
