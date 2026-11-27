@@ -481,7 +481,10 @@ v0.30 (unreleased)
   each unit's next failure from its own history (``next_failure_sf``,
   ``next_failure_cri``, ``next_failure_qf``) and the predictive number
   of failures in the next period (``count``), with the uncertainty in
-  the parameters included. The repair parameter with no prior is
+  the parameters included (``count``'s Monte Carlo error is in its
+  ``mean_se``). It warns where the data say little about the repair
+  (its posterior 95% interval at least 75% as wide as its prior's). The
+  repair parameter with no prior is
   uniform over its range (a Kijima ``q`` from 0 to 2). With a
   two-parameter life the posterior is exact, on a new grid laid out
   slice by slice along the repair parameter

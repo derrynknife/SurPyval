@@ -670,15 +670,31 @@ class SimulatedCount:
     unit_means : numpy.ndarray
         The expected number for each unit.
     replicates : int
-        The simulated futures the distribution is made of (the Monte
-        Carlo error of :attr:`mean` is about its standard deviation over
-        the square root of this).
+        The simulated futures the distribution is made of.
+    draws : int
+        The posterior draws they were simulated under.
+    mean_se : float
+        The Monte Carlo standard error of :attr:`mean`: the standard
+        deviation of the draws' own mean counts over the square root of
+        the number of draws. The futures simulated under one draw share
+        its parameters, so they are not independent of each other, and
+        the error is larger than the count's standard deviation over the
+        square root of :attr:`replicates`.
     """
 
     def __init__(
         self, totals: npt.NDArray, unit_means: npt.NDArray, duration: float
     ) -> None:
-        totals = np.asarray(totals, dtype=int)
+        # (one row per posterior draw, one column per future under it)
+        by_draw = np.atleast_2d(np.asarray(totals, dtype=int))
+        self.draws = int(by_draw.shape[0])
+        draw_means = by_draw.mean(axis=1)
+        self.mean_se = (
+            float(np.std(draw_means, ddof=1) / np.sqrt(self.draws))
+            if self.draws > 1
+            else float("nan")
+        )
+        totals = by_draw.reshape(-1)
         self.duration = float(duration)
         self.unit_means = np.asarray(unit_means, dtype=float)
         self.units = int(self.unit_means.size)
@@ -721,9 +737,10 @@ class SimulatedCount:
         over = f" over {self.units} units" if self.units != 1 else ""
         return (
             f"Predicted failures in the next {self.duration:g}{over}: mean "
-            f"{self.mean:.4g}, 90% predictive interval {lo:g} to {hi:g}, "
-            f"P(none) {float(self.pmf(0)):.3g} ({self.replicates} "
-            "simulated futures)"
+            f"{self.mean:.4g} (Monte Carlo error {self.mean_se:.2g}), 90% "
+            f"predictive interval {lo:g} to {hi:g}, P(none) "
+            f"{float(self.pmf(0)):.3g} ({self.replicates} simulated "
+            f"futures under {self.draws} posterior draws)"
         )
 
 
@@ -1268,7 +1285,7 @@ class BayesianRenewal(BayesianResult):
                 totals[d] = np.bincount(rep, minlength=int(items))
                 per_unit += np.bincount(unit, minlength=U)
         n = int(draws) * int(items)
-        return SimulatedCount(totals.reshape(-1), per_unit / n, duration)
+        return SimulatedCount(totals, per_unit / n, duration)
 
     # -- what it does not have --------------------
     def param_cb(self, *args: Any, **kwargs: Any) -> Any:
@@ -1287,6 +1304,9 @@ class BayesianRenewal(BayesianResult):
 #: life's axes, the most each may grow to, and the most points a lattice
 #: may hold.
 SLICES, SLICES_MAX = 61, 481
+#: The fewest slices, and points across a slice, a lattice may start
+#: with (``points=`` smaller is raised to them).
+SLICES_MIN, ACROSS_MIN = 21, 7
 ACROSS = {1: 41, 2: 15}
 ACROSS_MAX = {1: 241, 2: 61}
 POINTS_MAX = 300_000
@@ -1319,15 +1339,19 @@ class SlicedGrid:
     across_sd: float
 
 
-def _wall(work: Any, inside: float, outside: float, y: npt.NDArray) -> float:
-    """Where along the repair parameter the density stops (a prior's
-    end), between ``inside`` and ``outside``, by bisection to the
-    double's precision; just inside it."""
+def _wall(
+    prior_ok: Any, inside: float, outside: float, y: npt.NDArray
+) -> float:
+    """Where along the repair parameter the prior ends, between
+    ``inside`` (where it has density) and ``outside`` (where it has
+    none), by bisection to the double's precision; just inside it. Only
+    the prior's support is a wall: where the likelihood is zero depends
+    on the life's parameters (an ARI intensity that turns negative for
+    some shapes and not others), so it is never taken as one."""
     y = np.asarray(y, dtype=float)
 
     def finite(s: float) -> bool:
-        with np.errstate(all="ignore"):
-            return bool(np.isfinite(work(np.r_[s, y][None, :])[0]))
+        return bool(prior_ok(s, y))
 
     a, b = float(inside), float(outside)
     for _ in range(200):
@@ -1357,6 +1381,8 @@ def sliced_grid(
     points: int | None = None,
     tol: float | None = None,
     flat_names: list[str] | None = None,
+    prior_ok: Any = None,
+    tails: Any = None,
 ) -> SlicedGrid:
     """
     The posterior of a repair parameter and one or two life parameters on
@@ -1385,8 +1411,17 @@ def sliced_grid(
     3. Evaluate a second lattice shifted by half a cell on every axis,
        compare the two's summaries (each parameter's 2.5%, 50% and 97.5%
        points), and refine both until half their difference is within
-       ``tol`` of the 95% interval's width; past the budget, refuse with
-       the numbers.
+       ``tol`` of the 95% interval's width, and the probabilities of the
+       intervals ``tails`` (pairs of ends on the repair parameter's
+       unconstrained scale: the mass near each end of its range) within
+       ``tol``; past the budget, refuse with the numbers. Each slice's
+       mass is spread evenly over its cell, so an interval's end inside
+       a cell takes its share of it.
+
+    ``prior_ok(s, y)`` says whether the prior has density at ``s`` along
+    the repair parameter (the life at ``y``): where a slice has no
+    density at all and the prior does, the walk stops there without
+    taking it as the prior's end.
 
     An end of the repair parameter's range is at infinity on its
     unconstrained scale (``log q``, ``logit rho``): mass piled against it
@@ -1401,22 +1436,34 @@ def sliced_grid(
     d = mode.size
     k = d - 1
     tol = TOLERANCE[d] if tol is None else tol
-    walk = _walk(work, mode, float(np.sqrt(cov[0, 0])), flat_names)
+    walk = _walk(work, mode, float(np.sqrt(cov[0, 0])), flat_names, prior_ok)
     lattice = _Lattices(work, mode, walk, points)
     widened = lattice.widen(flat_names)
     u, _, lw, log_cell = lattice.evaluate(False)
 
-    def summarised(u: npt.NDArray, lw: npt.NDArray) -> npt.NDArray:
+    def summarised(
+        u: npt.NDArray, lw: npt.NDArray, shift: bool, across_only: Any
+    ) -> tuple:
         w = np.exp(lw - logsumexp(lw))
-        return np.asarray(summary(u, w, lattice.shape(1)), dtype=float)
+        out = np.asarray(summary(u, w, lattice.shape(1)), dtype=float)
+        mass = lattice.masses(w, tails or [], shift, across_only)
+        return out, mass
+
+    def difference(a: tuple, b: tuple) -> float:
+        # the quantiles as a share of the 95% width; the probabilities as
+        # they are
+        found = _difference(a[0], b[0])
+        if a[1].size:
+            found = max(found, float(np.max(np.abs(a[1] - b[1]))))
+        return found
 
     # 3. the self-check
     refinements = 0
     while True:
         ua, lwa = u, lw
         ub, _, lwb, _ = lattice.evaluate(True)
-        sa = summarised(ua, lwa)
-        err = _difference(sa, summarised(ub, lwb))
+        sa = summarised(ua, lwa, False, None)
+        err = difference(sa, summarised(ub, lwb, True, None))
         if 0.5 * err <= tol:
             break
         # which spacing is short: the lattice shifted along one axis at a
@@ -1426,8 +1473,8 @@ def sliced_grid(
         uc, _, lwc, _ = lattice.evaluate(True, across_only=False)
         ud, _, lwd, _ = lattice.evaluate(True, across_only=True)
         sizes = lattice.refined(
-            _difference(sa, summarised(uc, lwc)),
-            _difference(sa, summarised(ud, lwd)),
+            difference(sa, summarised(uc, lwc, True, False)),
+            difference(sa, summarised(ud, lwd, True, True)),
             tol,
         )
         if refinements >= 3 or sizes is None:
@@ -1491,7 +1538,40 @@ def _slice_at(work: Any, s: float, y0: npt.NDArray) -> tuple:
     return y, L, value + float(np.sum(np.log(np.diag(L))))
 
 
-def _walk(work: Any, mode: npt.NDArray, sd: float, flat_names: Any) -> dict:
+def _slice_from(
+    work: Any, s: float, starts: list, spread: npt.NDArray | None = None
+) -> Any:
+    """:func:`_slice_at` from the first of ``starts`` that has density
+    in the slice, or ``None`` where none has. Where none of ``starts``
+    has, the points ``spread`` (a Cholesky factor of the life's spread)
+    away from the first along each axis, out to 16 of them, are tried:
+    the life's support can depend on the repair parameter (an ARI
+    reduction that a smaller shape makes larger than the intensity), so
+    the last slice's peak can be outside the next slice's support."""
+    from surpyval.bayes.engines.grid import GridError
+
+    candidates = list(starts)
+    if spread is not None:
+        y = np.asarray(starts[0], dtype=float)
+        for size in (1.0, 2.0, 4.0, 8.0, 16.0):
+            for j in range(spread.shape[1]):
+                for sign in (1.0, -1.0):
+                    candidates.append(y + sign * size * spread[:, j])
+    for y in candidates:
+        try:
+            return _slice_at(work, s, y)
+        except GridError:
+            continue
+    return None
+
+
+def _walk(
+    work: Any,
+    mode: npt.NDArray,
+    sd: float,
+    flat_names: Any,
+    prior_ok: Any = None,
+) -> dict:
     """Step 1 of :func:`sliced_grid`: the walk out from the peak along the
     repair parameter, in even steps on the stretched scale (each a few
     standard deviations far out in a tail), to where the posterior is
@@ -1509,20 +1589,26 @@ def _walk(work: Any, mode: npt.NDArray, sd: float, flat_names: Any) -> dict:
     reach, walls = {}, {}
     limit = int(np.ceil(_u_of(REPAIR_REACH) / WALK_STEP))
     for side in (-1, 1):
-        y = y0
+        y, L = y0, L0
         for j in range(1, limit + 2):
             if j > limit:
                 raise GridError(_improper_message(flat_names))
             s = centre + side * sd * _stretched(j * WALK_STEP)
-            try:
-                y, L, psi = _slice_at(work, s, y)
-            except GridError:
-                # the prior ends (a uniform prior's end): found to the
-                # double's precision, and the lattice ends there
-                inner = centre + side * sd * _stretched((j - 1) * WALK_STEP)
-                walls[side] = _wall(work, inner, s, y)
+            found = _slice_from(work, s, [y, y0], L)
+            if found is None:
+                if prior_ok is not None and not prior_ok(s, y):
+                    # the prior ends (a uniform prior's end): found to the
+                    # double's precision, and the lattice ends there
+                    inner = centre + side * sd * _stretched(
+                        (j - 1) * WALK_STEP
+                    )
+                    walls[side] = _wall(prior_ok, inner, s, y)
+                # (else no life the slice can start from has any density
+                # there: the lattice reaches it, and holds no mass past
+                # it)
                 reach[side] = j
                 break
+            y, L, psi = found
             knots[side * j] = (y, L)
             if psi - psi0 < np.log(EDGE):
                 reach[side] = j
@@ -1572,12 +1658,15 @@ class _Lattices:
         self.spread_of = _pchip(walk["s"], np.array(entries))
         # ``points``: the starting slices, and across each slice as many
         # in proportion (an odd number, so a lattice keeps its centre)
-        self.ns = SLICES if points is None else max(int(points), 5)
+        # (at least SLICES_MIN slices and ACROSS_MIN across: on coarser
+        # lattices the two offset ones can agree by chance)
+        self.ns = SLICES if points is None else max(int(points), SLICES_MIN)
         self.ns_max = max(SLICES_MAX, self.ns)
         self.mz = ACROSS[k]
         if points is not None:
             self.mz = max(
-                5, 2 * int(round(0.5 * ACROSS[k] * self.ns / SLICES)) + 1
+                ACROSS_MIN,
+                2 * int(round(0.5 * ACROSS[k] * self.ns / SLICES)) + 1,
             )
         self.mz_max = max(ACROSS_MAX[k], self.mz)
         self.across = _u_of(START_HALF_WIDTH)
@@ -1643,6 +1732,34 @@ class _Lattices:
         log_cell = float(np.log(ds) + self.k * np.log(dz))
         return u, lp, lp + log_dv, log_cell
 
+    def masses(
+        self, w: npt.NDArray, intervals: list, shift: bool, across_only: Any
+    ) -> npt.NDArray:
+        """The posterior mass of each interval ``(a, b)`` of the repair
+        parameter's unconstrained scale, each slice's mass spread evenly
+        over its cell on the stretched scale (clipped to the lattice's
+        range)."""
+        from surpyval.bayes.engines.grid import _u_of
+
+        if not intervals:
+            return np.zeros(0)
+        vs, ds, _, _ = self._axes(shift, across_only)
+        per_slice = np.asarray(w).reshape(self.ns, -1).sum(axis=1)
+        v_lo, v_hi = self.walk["v"]
+        left = np.clip(vs - 0.5 * ds, v_lo, v_hi)
+        right = np.clip(vs + 0.5 * ds, v_lo, v_hi)
+        width = np.where(right > left, right - left, 1.0)
+        sd = self.walk["sd"]
+        out = []
+        for a, b in intervals:
+            va = -np.inf if a == -np.inf else _u_of((a - self.centre) / sd)
+            vb = np.inf if b == np.inf else _u_of((b - self.centre) / sd)
+            overlap = np.clip(
+                np.minimum(right, vb) - np.maximum(left, va), 0.0, None
+            )
+            out.append(float(np.sum(per_slice * overlap / width)))
+        return np.asarray(out)
+
     def widen(self, flat_names: Any) -> int:
         """Step 2: widen across the slices until every face is below
         ``EDGE`` of the peak; how many times."""
@@ -1700,6 +1817,26 @@ class _Lattices:
 
     def across_sd(self) -> float:
         return _stretched(self.across)
+
+
+def _landmark_intervals(family: str, t: Any, within: float) -> list:
+    """Each of the family's landmarks' neighbourhoods (``within`` of it,
+    as :meth:`BayesianRenewal.repair_mass` takes them) as an interval of
+    the repair parameter's unconstrained scale ``t``."""
+
+    def phi(value: float) -> float:
+        with np.errstate(all="ignore"):
+            return float(t.to_phi(value))
+
+    out = []
+    for _, value, side in _LANDMARKS[family]:
+        if side < 0:
+            out.append((-np.inf, phi(value + within)))
+        elif side > 0:
+            out.append((phi(value - within), np.inf))
+        else:
+            out.append((phi(value - within), phi(value + within)))
+    return out
 
 
 def _sliced_fit(target: RenewalTarget, priors: Any, points: Any) -> Any:
@@ -1763,6 +1900,18 @@ def _sliced_fit(target: RenewalTarget, priors: Any, points: Any) -> Any:
     centres = bound.centres()
     if theta is not None and np.isfinite(centres).any():
         starts.append(np.where(np.isnan(centres), starts[0], centres))
+    # each with the repair parameter moved towards its lower end too: the
+    # support of the others can depend on it (an ARI intensity that a
+    # large reduction makes negative), and near 0 every family is
+    # defined (minimal repair for ARA and ARI, perfect for a Kijima q)
+    t0 = bound.transforms[0]
+    for start in list(starts):
+        r = float(t0.to_theta(start[0]))
+        for value in (0.5 * r, 0.1 * r, 1e-3):
+            moved = np.array(start, dtype=float)
+            with np.errstate(all="ignore"):
+                moved[0] = float(t0.to_phi(value))
+            starts.append(moved)
     with np.errstate(all="ignore"):
         starts = [
             s if rp is None else rp.forward(np.asarray(s)[None, :])[0]
@@ -1777,6 +1926,14 @@ def _sliced_fit(target: RenewalTarget, priors: Any, points: Any) -> Any:
             "maximum-likelihood fit's parameters "
             f"({', '.join(bound.free_names)}). Check the priors' ranges."
         )
+
+    def prior_ok(s: float, y: npt.NDArray) -> bool:
+        with np.errstate(all="ignore"):
+            phi = to_phi(np.r_[s, y][None, :])
+            return bool(np.isfinite(bound.log_prior(phi))[0])
+
+    tails = _landmark_intervals(target.family_name, bound.transforms[0], 0.05)
+
     try:
         grid = sliced_grid(
             work,
@@ -1784,6 +1941,8 @@ def _sliced_fit(target: RenewalTarget, priors: Any, points: Any) -> Any:
             summary,
             points=points,
             flat_names=bound.improper_names,
+            prior_ok=prior_ok,
+            tails=tails,
         )
     except GridError as e:
         raise ValueError(str(e)) from None
@@ -1878,7 +2037,59 @@ def fit(
             result=BayesianRenewal,
         )
     _warn_default_edge(model)
+    _warn_prior_only(model)
     return model
+
+
+#: The repair parameter is "mostly the prior's" where its posterior 95%
+#: interval is at least this share of its prior's 95% interval's width
+#: (both on the parameter's own scale).
+PRIOR_ONLY_SHARE = 0.75
+
+
+def _warn_prior_only(model: BayesianRenewal) -> None:
+    """Warn where the data say little about the repair parameter: its
+    posterior 95% interval is at least :data:`PRIOR_ONLY_SHARE` of its
+    prior's (for a prior on it alone)."""
+    from surpyval.bayes.model import _fmt, _prior_interval
+    from surpyval.utils.warnings import caller_stacklevel
+
+    name = model.restoration_name
+    if name not in model.priors.single:
+        return
+    bound = model._bound()
+    t = bound.transforms[0]
+    prior = _prior_interval(bound, name, t, 0.05)
+    if prior is None or not np.all(np.isfinite(prior)):
+        return
+    lo, hi = (float(v) for v in model.param_cri(name))
+    width = float(prior[1] - prior[0])
+    if not width > 0 or (hi - lo) < PRIOR_ONLY_SHARE * width:
+        return
+    life_flat = [n for n in bound.improper_names if n != name]
+    if life_flat:
+        why = (
+            " With no prior on the life ("
+            + ", ".join(life_flat)
+            + "), the posterior can drift to a life whose hazard hardly "
+            "changes with age (a Weibull shape near 1), where the age a "
+            "repair leaves makes no difference. Give the life a prior from "
+            "comparable lives (priors=surpyval.prior.from_model(life_fit)), "
+            f"or {name} a prior from engineering judgement."
+        )
+    else:
+        why = (
+            f" More failures a system, or a prior on {name} from "
+            "engineering judgement, would say more."
+        )
+    warnings.warn(
+        f"The data say little about the repair: {name}'s posterior 95% "
+        f"interval ({_fmt(lo)} to {_fmt(hi)}) is "
+        f"{(hi - lo) / width:.0%} as wide as its prior's ({_fmt(prior[0])} "
+        f"to {_fmt(prior[1])}), so the answer about the repair is mostly "
+        f"the prior's.{why}",
+        stacklevel=caller_stacklevel(),
+    )
 
 
 def _warn_default_edge(model: BayesianRenewal) -> None:

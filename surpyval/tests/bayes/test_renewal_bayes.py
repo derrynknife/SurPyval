@@ -339,3 +339,126 @@ def test_against_pymc():
     p = reference["perfect_within_0.05"]
     se = np.sqrt(p * (1 - p) / 10_000)
     assert model.repair_mass(0.05)[PERFECT] == pytest.approx(p, abs=4 * se)
+
+
+# -- fixes after review --------------------
+
+
+def test_count_error_is_the_spread_between_draws(at_end):
+    # The futures under one draw share its parameters: the mean's error
+    # is the draws' means' spread over the square root of the draws.
+    # Over 12 seeds the mean's own spread is within chance of it (a
+    # spread from 11 degrees of freedom: 0.71 to 1.29 of the truth 95% of
+    # the time).
+    counts = [
+        at_end.count(10.0, draws=100, items=10, random_state=s)
+        for s in range(12)
+    ]
+    spread = np.std([c.mean for c in counts], ddof=1)
+    stated = np.mean([c.mean_se for c in counts])
+    assert 0.6 < spread / stated < 1.6
+    assert "Monte Carlo error" in repr(counts[0])
+    assert counts[0].draws == 100
+
+
+def _exponential_like():
+    rng = np.random.default_rng(5)
+    x, i, c = [], [], []
+    for k in range(3):
+        t = np.cumsum(rng.exponential(10.0, size=8))
+        t = t[t < 60.0]
+        x += [*t, 60.0]
+        i += [k] * (len(t) + 1)
+        c += [0] * len(t) + [1]
+    return x, i, c
+
+
+def test_a_repair_the_data_say_little_about_warns():
+    # The rule (fixed before it was run on any data): the repair
+    # parameter's posterior 95% interval is at least 75% as wide as its
+    # prior's.
+    x, i, c = _exponential_like()
+    with pytest.warns(UserWarning, match="say little about the repair"):
+        ARA.fit_bayes(x, i, c=c, m=2)
+    pumps = (
+        [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60, 5, 18, 30, 50, 60.0],
+        [1] * 6 + [2] * 5 + [3] * 5,
+        [0] * 5 + [1] + [0] * 4 + [1] + [0] * 4 + [1],
+    )
+    life = sp.Weibull.fit([12.0, 9.5, 15.2, 7.8, 11.4, 18.9, 10.3, 13.7])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        ARA.fit_bayes(
+            pumps[0],
+            pumps[1],
+            c=pumps[2],
+            m=2,
+            priors=sp.prior.from_model(life),
+        )
+
+
+def test_ari_with_a_falling_baseline_against_a_brute_force():
+    # A power-law baseline with beta below 1: the intensity after a
+    # failure, lambda_0(t) - rho lambda_0(T), turns negative for large
+    # rho and small beta, so the likelihood's support in rho depends on
+    # beta. Only the prior's support may end the grid.
+    d = ARI.from_params([2.0, 0.8], 0.3, m=1).time_terminated_simulation_data(
+        100.0, items=5, random_state=2
+    )
+    priors = {
+        "rho": sp.prior.uniform(0, 1),
+        "alpha": sp.LogNormal.from_params([np.log(2.0), 0.5]),
+        "beta": sp.LogNormal.from_params([np.log(0.8), 0.2]),
+    }
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = ARI.fit_bayes(d.x, d.i, c=d.c, m=1, priors=priors)
+    target = model.target
+    nr, na = 300, 120
+    rho = (np.arange(nr) + 0.5) / nr
+    la = np.log(2.0) + 0.5 * np.linspace(-6, 6, na)
+    lb = np.log(0.8) + 0.2 * np.linspace(-6, 6, na)
+    R, A, B = np.meshgrid(rho, la, lb, indexing="ij")
+    theta = np.column_stack([R.ravel(), np.exp(A.ravel()), np.exp(B.ravel())])
+    ll = np.concatenate(
+        [
+            target.log_lik(theta[k : k + 200_000])
+            for k in range(0, len(theta), 200_000)
+        ]
+    )
+    # (the support in rho does depend on beta)
+    finite = np.isfinite(ll).reshape(nr, -1).mean(axis=1)
+    assert finite[0] == 1.0 and finite[-1] < 0.6
+    lp = (
+        ll
+        + stats.norm.logpdf(A.ravel(), np.log(2.0), 0.5)
+        + stats.norm.logpdf(B.ravel(), np.log(0.8), 0.2)
+    )
+    log_z = (
+        logsumexp(lp)
+        - np.log(nr)
+        + np.log(la[1] - la[0])
+        + np.log(lb[1] - lb[0])
+    )
+    assert model.log_evidence == pytest.approx(log_z, abs=1e-3)
+    w = np.exp(lp - logsumexp(lp)).reshape(nr, -1).sum(axis=1)
+    for e in (0.1, 0.3, 0.5, 0.7):
+        assert model._cdf(e) == pytest.approx(w[rho < e].sum(), abs=2e-3)
+
+
+def test_a_coarse_grid_is_raised_and_states_its_error(at_end):
+    coarse = ARA.fit_bayes(
+        *AT_END[:2], c=AT_END[2], m=1, priors=PROPER, points=5
+    )
+    assert coarse.diagnostics["points_per_dim"][0] >= 21
+    fine = ARA.fit_bayes(
+        *AT_END[:2], c=AT_END[2], m=1, priors=PROPER, points=241
+    )
+    error = coarse.diagnostics["integration_error"]
+    for key, value in coarse.repair_mass(0.05).items():
+        assert abs(value - fine.repair_mass(0.05)[key]) <= error
+    width = np.diff(fine.param_cri("rho"))[0]
+    assert np.all(
+        np.abs(coarse.param_cri("rho") - fine.param_cri("rho"))
+        <= error * width
+    )

@@ -816,14 +816,20 @@ failure), with the uncertainty in the parameters averaged in;
 ``next_failure_cri`` its credible interval and ``next_failure_qf`` its
 quantiles. ``count`` is the predictive distribution of the number of
 failures over the three pumps in the next 20 weeks (mean 5.6, 90%
-between 4 and 8), simulated from 400 posterior draws with a fixed seed.
+between 4 and 8), simulated from 400 posterior draws with a fixed seed;
+its ``mean_se`` is the Monte Carlo error of the mean, from the spread of
+the draws' own means (the futures simulated under one draw share its
+parameters, so they are not independent).
 
 **Why the life's prior matters.** With an Exponential life (a Weibull
 ``beta`` of 1) the age a repair leaves makes no difference, so every
 repair efficiency fits equally well. With no prior on the life the
 posterior spreads towards ``beta = 1``, where the repair is not
 determined: on these data, the repair efficiency's interval is then
-0.04 to 0.997. A prior on the life from comparable lives
+0.04 to 0.997, and the fit warns that the data say little about the
+repair (it does wherever the repair parameter's posterior 95% interval
+is at least 75% as wide as its prior's). A prior on the life from
+comparable lives
 (``prior.from_model(life_fit)``, or ``weight=`` to count it for less)
 keeps the life where the evidence puts it, and the data then speak about
 the repair. The prior on the repair efficiency itself is a judgement:
@@ -839,10 +845,15 @@ tail. Walking out from the peak in growing steps, the grid follows the
 tail until the density is ``1e-8`` of the peak's (for the example, 21
 standard deviations of the peak's curvature towards ``rho = 1``, to
 within ``2e-11`` of it), or to a uniform prior's end, where the density
-stops and the grid ends exactly. Across each slice, the life's
+stops and the grid ends exactly (only the prior's end: where the
+likelihood itself is zero depends on the life's parameters, as for an
+ARI intensity that a large reduction turns negative, the walk looks for
+the life's support again in each slice). Across each slice, the life's
 parameters are laid on their conditional peak and spread, which change
 along the repair parameter. A second grid offset by half a cell checks
-the first, and both are refined until they agree. The mass within a
+the first, and both are refined until they agree, both in each
+parameter's quantiles and in the mass near each end of the repair
+parameter's range. The mass within a
 distance of an end is then the posterior probability of an interval the
 grid holds: on the example, refining the grid from 121 to 241 slices
 (and from 37 to 61 points across each) moves the mass within 0.05 of
