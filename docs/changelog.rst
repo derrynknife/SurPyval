@@ -469,6 +469,19 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Rank-based semi-parametric AFT regression: ``RankAFT``.** A second
+  accelerated-failure-time estimator with no assumed error distribution,
+  beside ``BuckleyJames``: it solves the Gehan (default) or log-rank
+  estimating equations of the residuals' ranks (``rank_weights=``), with
+  induced smoothing (Brown and Wang) for sandwich standard errors, so
+  ``summary()``, ``covariance()``, ``standard_errors()`` and
+  ``param_cb()`` (Wald, or ``method="bootstrap"``) need no resampling.
+  The log-rank root is the fixed point of weighted Gehan refits from the
+  Gehan estimate. Predictions (``sf``, ``ff``, ``Hf``, ``qf``, ``cs``)
+  read the residual Kaplan-Meier, as ``BuckleyJames``'s do, and the two
+  now share that code (``BuckleyJames``'s numbers are unchanged).
+  Checked against exact linear-programme solutions, least squares,
+  ``BuckleyJames`` and a seeded simulation (see the docs page).
 - **Promotion-time (bounded cumulative hazard) cure regression:
   ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
   ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,
