@@ -51,6 +51,26 @@ estimate from time 0, floored at 0, so survival stays in :math:`[0, 1]`
 and never rises; ``cumulative_coefficients`` reports the estimate as it
 is.
 
+**Where the fit stops.** At each event time the additive part is a
+least-squares fit over the units at risk, so it needs enough of them to
+separate the additive covariates. Where they run out before the last
+event (for example, every unit with a binary additive covariate at 1 has
+left), the fit stops at the last time it can estimate, warns with that
+time and the number of events left out, and records it in
+``stopped_at``; every prediction after it (``sf``, ``ff``, ``Hf``,
+``qf``, ``cb``, ``cumulative_coefficients`` and their bounds) is ``nan``
+rather than a curve held flat, which would understate the risk. A fit
+that does not stop has ``stopped_at`` ``nan`` and holds its curves after
+the last event time, as the other semi-parametric models do.
+
+**How far to trust the bounds.** The bounds are large-sample. Late in
+follow-up, with only a handful of units at risk, the pointwise bounds on
+the curves and the cumulative coefficients cover less often than stated
+(about 92% for a nominal 95% with 4 units at risk, in one simulation).
+Where the additive estimate falls and the prediction is held at its
+running maximum, ``cb`` places the raw estimate's standard error about
+the held value; it does not allow for the holding.
+
 **The estimating equations.** With additive covariates :math:`X_i` (a
 leading 1) and multiplicative ones :math:`Z_i`,
 :math:`h_i(t) = \{X_i'\alpha(t)\} e^{\beta' Z_i}`. At each event time the

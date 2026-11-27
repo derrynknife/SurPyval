@@ -229,6 +229,17 @@ def reg_data():
     return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
 
 
+def tail_censored_reg_data():
+    """``reg_data`` with follow-up ending at 13.6: the 4 units still at
+    risk then are censored. A model whose additive part is a
+    least-squares fit at each event time (the Cox-Aalen model) cannot
+    estimate an increment where one unit is at risk, as at ``reg_data``'s
+    last time, and its predictions are nan after where it stops."""
+    d = reg_data()
+    d["c"] = np.where(d["x"] > 13.6, 1, d["c"])
+    return d
+
+
 def ic_reg_data():
     """The regression fixture's 30 lives seen at inspections every 2: an
     interval ``(lo, lo + 2]`` for most, every fifth from the third exact,

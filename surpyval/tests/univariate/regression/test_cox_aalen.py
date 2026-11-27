@@ -110,6 +110,8 @@ def test_baseline_alone_additive_is_cox_with_delayed_entry():
     )
 
 
+# The second data set's fit stops before its last event (one is left).
+@pytest.mark.filterwarnings("ignore:CoxAalen stopped at")
 def test_every_covariate_additive_is_aalen():
     for data in (_rossi(), _simulate(300, 2, entry=True)):
         if len(data) == 3:
@@ -304,6 +306,45 @@ def test_refusals_and_aliasing():
     np.testing.assert_allclose(
         model.beta[0], CoxAalen.fit(x, Z, c=c, additive=[1]).beta[0]
     )
+
+
+def _stops_early(seed=0, N=400):
+    """An additive binary ``a`` whose ``a = 1`` units have all left by
+    t = 3 while the others fail on to t = 10: past 3, ``X'WX`` is
+    singular. The hazard is ``0.18 exp(0.3 z)`` (``a`` has no effect),
+    so the truth at t = 9 for ``z = 0`` is ``exp(-1.62) = 0.198``."""
+    rng = np.random.default_rng(seed)
+    a = rng.binomial(1, 0.5, N).astype(float)
+    z = rng.normal(size=N)
+    t = rng.exponential(1 / (0.18 * np.exp(0.3 * z)), N)
+    end = np.where(a == 1, rng.uniform(0.5, 3, N), 10.0)
+    return np.minimum(t, end), (t > end).astype(int), np.c_[z, a]
+
+
+def test_a_fit_that_stops_early_warns_and_predicts_nan_beyond():
+    x, c, Z = _stops_early()
+    with pytest.warns(
+        UserWarning, match=r"stopped at t = 2\.98.*later events"
+    ):
+        model = CoxAalen.fit(x, Z, c=c, additive=[1])
+    stop = model.stopped_at
+    assert stop == model.x[-1] < x[c == 0].max()
+    t = np.array([1.0, stop, 9.0])
+    for out in (model.sf(t, [0, 0]), model.ff(t, [0, 0]), model.Hf(t, [0, 0])):
+        assert np.all(np.isfinite(out[:2])) and np.isnan(out[2])
+    assert np.isnan(model.cb(t, [0, 0])[2]).all()
+    assert np.isfinite(model.cb(t, [0, 0])[:2]).all()
+    assert np.isnan(model.qf(0.9, [0, 0]))
+    assert np.isnan(model.cumulative_coefficients([9.0]).to_numpy()).all()
+    assert np.isnan(model.cumulative_coefficients_cb([9.0])).all()
+    back = CoxAalenModel.from_json(model.to_json())
+    assert back.stopped_at == stop and np.isnan(back.sf(9.0, [0, 0]))
+    # A fit that does not stop says so with nan, and predicts after its
+    # last event time as before (held).
+    x2, c2, _, Z2 = _simulate(200, 9)
+    full = CoxAalen.fit(x2, Z2, c=c2, additive=[1])
+    assert np.isnan(full.stopped_at)
+    assert np.isfinite(full.sf(1e3, [1.0, 0.5]))
 
 
 # -- R -----------------------------------------------------------------------

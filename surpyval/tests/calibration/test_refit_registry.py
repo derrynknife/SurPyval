@@ -1841,8 +1841,8 @@ EXCLUDED: dict[str, str] = {
     "not be monotone, and the fixture's sf exceeds 1 (1.054 at t = 1 at "
     "the row (0, -0.8)) even where beta'Z >= 0: not a distribution to "
     "draw from",
-    "CoxAalen": "as for AalenAdditive: the fixture's fit (30 rows, 24 "
-    "event times) has an additive part that falls at up to 9 of its steps "
+    "CoxAalen": "as for AalenAdditive: the fixture's fit (30 rows, 20 "
+    "event times) has an additive part that falls at up to 6 of its steps "
     "for a row, so the curve drawn from (its running maximum) is not a "
     "Cox-Aalen model in Z: its own study, "
     "calibration/test_coverage_cox_aalen.py, simulates from a true "

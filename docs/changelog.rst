@@ -428,7 +428,10 @@ v0.30 (unreleased)
   ``cumulative_coefficients`` and their bounds for the additive part, and
   ``sf``, ``ff``, ``Hf``, ``qf``, ``random`` and ``cb`` for predictions
   (a falling additive estimate is held at its running maximum, as in
-  ``AalenAdditive``).
+  ``AalenAdditive``). Where too few units are left at risk to separate
+  the additive covariates before the last event, the fit stops there,
+  warns with the time and the events left out (``stopped_at``), and
+  every prediction after it is ``nan``.
 - **Promotion-time (bounded cumulative hazard) cure regression:
   ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
   ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,

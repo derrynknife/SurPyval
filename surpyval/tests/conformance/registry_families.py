@@ -38,6 +38,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     reg_data,
     stratified_reg_data,
     stress_data,
+    tail_censored_reg_data,
     uni_data,
 )
 from surpyval.univariate.regression import kinds
@@ -1395,6 +1396,8 @@ def _semi_parametric():
     cox_aalen = regression(
         "CoxAalen",
         sp.CoxAalen,
+        # Censored at the end (see tail_censored_reg_data).
+        data=tail_censored_reg_data,
         # The second column additive, the first multiplicative.
         fit=_fit(sp.CoxAalen, additive=[1]),
         model_class="surpyval.univariate.regression.CoxAalenModel",

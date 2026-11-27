@@ -410,6 +410,32 @@ def _robust_middle(
     return (n[:, None] * eps).T @ eps
 
 
+def _warn_if_stopped(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    times: npt.NDArray,
+    who: str,
+) -> float:
+    """Warn, naming the time and the events left out, when the estimate
+    stops before the last event time; return that time (``nan`` when it
+    does not stop)."""
+    events = (c == 0) & (n > 0)
+    last = float(x[events].max())
+    stop = float(times[-1])
+    if stop >= last:
+        return float("nan")
+    left = float(n[events & (x > stop)].sum())
+    warnings.warn(
+        f"{who} stopped at t = {stop:.6g}, before the last event time "
+        f"({last:.6g}): beyond it too few units are at risk to separate the "
+        f"additive covariates, so {left:g} later events are left out and "
+        "every prediction after it is nan. Make fewer covariates additive, "
+        "or end the analysis at that time."
+    )
+    return stop
+
+
 def _aliased(Z: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
     """The columns of ``Z`` the fit cannot separate: constant (the
     baseline absorbs it, in either part) or a linear combination of the
@@ -502,6 +528,10 @@ class CoxAalenModel(
     formula: str | None = None
     _model_spec: object = None
     _fit_data: tuple | None = None
+    #: Where the fit stopped before the last event time (``X'WX``
+    #: singular beyond it), else ``nan``; every prediction beyond it is
+    #: ``nan``.
+    stopped_at: float = float("nan")
 
     _NO_LIKELIHOOD_WHY = (
         "the Cox-Aalen model is fitted by estimating equations (the score "
@@ -663,6 +693,12 @@ class CoxAalenModel(
 
     # -- the cumulative coefficients --------------------------------------
 
+    def _beyond(self, t: npt.NDArray) -> npt.NDArray:
+        """Whether each time is after the fit stopped short of the data
+        (see :attr:`stopped_at`)."""
+        with np.errstate(invalid="ignore"):
+            return np.asarray(t, dtype=float) > self.stopped_at
+
     def _index(self, t: npt.NDArray) -> npt.NDArray:
         return np.searchsorted(self.x, t, side="right") - 1
 
@@ -709,7 +745,7 @@ class CoxAalenModel(
         t = self.x if x is None else np.atleast_1d(np.asarray(x, float))
         cols = self._check_terms(terms)
         values = self._at(self.A, t)[:, cols]
-        values[np.isnan(t)] = np.nan
+        values[np.isnan(t) | self._beyond(t)] = np.nan
         return pd.DataFrame(
             values,
             index=pd.Index(t, name="time"),
@@ -733,6 +769,7 @@ class CoxAalenModel(
         t = self.x if x is None else np.atleast_1d(np.asarray(x, float))
         cols = self._check_terms(terms)
         A = self._at(self.A, t)[:, cols]
+        A[np.isnan(t) | self._beyond(t)] = np.nan
         var = np.diagonal(self._at(self._A_cov, t), axis1=1, axis2=2)
         with np.errstate(invalid="ignore"):
             se = np.sqrt(np.maximum(var[:, cols], 0.0))
@@ -768,6 +805,7 @@ class CoxAalenModel(
         H = np.where(idx >= 0, grid[at, which], 0.0) * risk
         H_star = np.where(idx >= 0, peaks[at, which], 0.0) * risk
         bad = np.isnan(x) | np.isnan(X).any(axis=1) | np.isnan(risk)
+        bad = bad | self._beyond(x)
         H = np.where(bad, np.nan, H)
         H_star = np.where(bad, np.nan, np.where(x <= 0, 0.0, H_star))
         return H_star, H, X, Zm, x, risk
@@ -828,7 +866,11 @@ class CoxAalenModel(
 
         def invert(U: npt.NDArray, row: npt.NDArray) -> npt.NDArray:
             H = self.Hf(self.x, row) if self.x.size else np.zeros(0)
-            return step_draws(H, self.x, U)
+            out = step_draws(H, self.x, U)
+            # A draw past where the fit stopped is unknown, not "outlived".
+            if np.isfinite(self.stopped_at):
+                out = np.where(np.isinf(out), np.nan, out)
+            return out
 
         return draws_by_row(size, rows, random_state, invert)
 
@@ -955,6 +997,9 @@ class CoxAalenModel(
             "aliased": self.aliased.tolist(),
             "n_iter": int(self.n_iter),
             "converged": bool(self.converged),
+            "stopped_at": (
+                None if np.isnan(self.stopped_at) else float(self.stopped_at)
+            ),
         }
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
@@ -993,6 +1038,8 @@ class CoxAalenModel(
         out._aliased = np.array(model_dict["aliased"], dtype=int)
         out.n_iter = int(model_dict["n_iter"])
         out.converged = bool(model_dict["converged"])
+        stop = model_dict.get("stopped_at")
+        out.stopped_at = float("nan") if stop is None else float(stop)
         restore_covariate_meta(out, model_dict)
         return out
 
@@ -1135,6 +1182,7 @@ class CoxAalen_(FitterRepr):
                 "time: too few units are at risk to separate the additive "
                 "covariates. Make fewer of them additive."
             )
+        stopped_at = _warn_if_stopped(x_a, c_a, n_a, times, "CoxAalen")
         beta_k, pieces, n_iter, converged = _solve(
             x_a, c_a, n_a, tl_a, X, Zm, times, tol, max_iter
         )
@@ -1195,6 +1243,7 @@ class CoxAalen_(FitterRepr):
         model.n_iter = n_iter
         model.converged = converged
         model._fit_data = (x_a, c_a, n_a, tl_a, Z_a)
+        model.stopped_at = stopped_at
         return model
 
     @takes_unit
