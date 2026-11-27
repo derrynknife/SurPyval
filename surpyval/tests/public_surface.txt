@@ -211,6 +211,7 @@ surpyval.PseudoRegressionResult
 surpyval.QuantileRegression
 surpyval.QuantileRegressionModel
 surpyval.RandomEffect
+surpyval.RankAFT
 surpyval.RateTable
 surpyval.Rayleigh
 surpyval.RayleighDefects
@@ -451,6 +452,8 @@ surpyval.pymc.SUPPORTED
 surpyval.pymc.censored_likelihood
 surpyval.pymc.group_models
 surpyval.pymc.log_likelihood
+surpyval.pymc.mixture_likelihood
+surpyval.pymc.mixture_log_likelihood
 surpyval.pymc.nhpp_likelihood
 surpyval.pymc.nhpp_log_likelihood
 surpyval.pymc.pooled_likelihood
@@ -799,6 +802,8 @@ surpyval.univariate.regression.PseudoRegressionResult
 surpyval.univariate.regression.QuantileRegression
 surpyval.univariate.regression.QuantileRegressionModel
 surpyval.univariate.regression.RandomEffect
+surpyval.univariate.regression.RankAFT
+surpyval.univariate.regression.RankAFTModel
 surpyval.univariate.regression.RoystonParmarPH
 surpyval.univariate.regression.RoystonParmarPO
 surpyval.univariate.regression.RoystonParmarRegression

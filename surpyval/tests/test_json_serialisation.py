@@ -45,6 +45,7 @@ from surpyval import (
     Parametric,
     ProportionalOdds,
     QuantileRegression,
+    RankAFT,
     RoystonParmar,
     SurpyvalData,
     Turnbull,
@@ -468,6 +469,7 @@ def _build(name):
             *_semipar_data(5)[:2], c=_semipar_data(5)[2]
         ),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
+        "rank_aft": lambda: RankAFT.fit(*_semipar_data(3)[:2]),
         "quantile_regression": lambda: QuantileRegression.fit(
             *_semipar_data(3)
         ),
@@ -678,6 +680,8 @@ def _build(name):
         "bayesian_cause_specific": lambda: CauseSpecificNHPP.fit_bayes(
             *_recurrent_marked_data()[:3], e=_recurrent_marked_data()[3]
         ),
+        "bayesian_renewal": _bayesian_renewal,
+        "bayesian_mixture_cure": _bayesian_mixture_cure,
         "bayesian_process": lambda: GammaProcess.fit_bayes(
             *_process_data(1, monotone=True), threshold=15.0
         ),
@@ -741,6 +745,7 @@ CASES = [
     "additive_hazards",
     "aalen_additive",
     "buckley_james",
+    "rank_aft",
     "quantile_regression",
     "proportional_odds",
     "interval_cox",
@@ -806,6 +811,8 @@ CASES = [
     "bayesian_recurrence",
     "bayesian_proportional_intensity",
     "bayesian_cause_specific",
+    "bayesian_renewal",
+    "bayesian_mixture_cure",
     "bayesian_process",
     "bayesian_competing_risks",
     "bayesian_multistate",
@@ -813,6 +820,27 @@ CASES = [
     "bayesian_competing_risks_regression",
     "bayesian_multistate_regression",
 ]
+
+
+def _bayesian_renewal():
+    """The Bayesian imperfect-repair fit of two systems (as the
+    ``fit_bayes`` example of ``ARA``)."""
+    x = np.array([3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60])
+    i = np.array([1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
+    c = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+    return surpyval.recurrent.ARA.fit_bayes(x, i, c=c, m=2)
+
+
+def _bayesian_mixture_cure():
+    """The Bayesian mixture-cure fit of 150 units with one binary
+    covariate (as the ``fit_bayes`` example of ``MixtureCure``)."""
+    rng = np.random.default_rng(3)
+    Z = rng.binomial(1, 0.5, size=(150, 1)).astype(float)
+    cured = rng.uniform(size=150) < np.where(Z[:, 0] > 0, 0.5, 0.25)
+    life = Weibull.random(150, 10.0, 2.0, random_state=4)
+    x = np.where(cured, 40.0, np.minimum(life, 40.0))
+    c = np.where(cured | (life > 40.0), 1, 0)
+    return surpyval.MixtureCure(Weibull).fit_bayes(x, Z, c)
 
 
 def _bayesian_result():

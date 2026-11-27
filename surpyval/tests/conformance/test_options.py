@@ -72,6 +72,16 @@ _GROWTH_ANSWERS = (
 )
 
 NOT_SWEPT = {
+    "cure_cri": "a Bayesian mixture-cure fit's credible interval of the "
+    "cured fraction at one covariate row (the posterior's quantiles of "
+    "MixtureCureModel.cure_probability, not a function of time); checked "
+    "against the draws' own values in tests/bayes/test_mixture_cure_bayes.py",
+    "next_failure_cri": "a Bayesian renewal fit's credible interval of "
+    "each unit's next-failure survival function (a units-by-times "
+    "matrix, from each unit's own history, not a function of the case's "
+    "times alone): the posterior's quantiles of RenewalModel."
+    "next_failure_sf, checked point by point against the model's own in "
+    "tests/bayes/test_renewal_bayes.py",
     "next_failure_sf_cb": "the reliability over a mission from each unit's "
     "age, " + _GROWTH_ANSWERS,
     "expected_events_cb": "the events expected in a stretch of time (two "
@@ -223,7 +233,7 @@ def _level(spec, alpha):
 
 def _parameters(model):
     """(names, estimates, supports) of the parameters ``param_cb`` takes."""
-    if type(model).__name__ == "BayesianRegression":
+    if type(model).__name__ in ("BayesianRegression", "BayesianMixtureCure"):
         # the posterior medians of the distribution's parameters, then of
         # the coefficients
         names = list(model.parameter_names)
@@ -233,6 +243,7 @@ def _parameters(model):
     if type(model).__name__ in (
         "BayesianRecurrence",
         "BayesianProportionalIntensity",
+        "BayesianRenewal",
     ):
         # the posterior medians of the process's parameters (then of the
         # coefficients), each in its target's range
@@ -562,9 +573,10 @@ def _of_a_skewed_mean(case, spec):
     # above the upper quantile (on this case's last query time, 2.3e-5
     # against an 80% interval's upper end of 3.8e-6). Its ordering, levels
     # and transforms are checked by the other sweeps.
-    return case.model_class.endswith("BayesianRegression") and (
-        spec.method == "cri"
-    )
+    # (a mixture-cure regression's Bayesian fit is one too)
+    return case.model_class.endswith(
+        ("BayesianRegression", "BayesianMixtureCure")
+    ) and (spec.method == "cri")
 
 
 # A percentile bootstrap interval need not contain the estimate (its ends

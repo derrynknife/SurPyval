@@ -433,7 +433,7 @@ def horizon_importance(
     or AUC. See
     :meth:`~surpyval.ml.forest.forest.RandomSurvivalForest.feature_importances`.
     """
-    from surpyval.metrics.validation import _auc_td, _brier_score
+    from surpyval.metrics.validation import brier_score_at, time_dependent_auc
 
     check_option("metric", metric, _METRICS)
     horizons = validate_1d(times, "times").astype(float)
@@ -495,14 +495,14 @@ def horizon_importance(
     def score(pred: NDArray) -> NDArray:
         if metric == "brier":
             return np.asarray(
-                _brier_score(
+                brier_score_at(
                     x_rows, c_rows, pred, horizons, None, None, e_rows, cause
                 )[1],
                 dtype=float,
             )
         risk = pred if event is not None else 1.0 - pred
         return np.asarray(
-            _auc_td(
+            time_dependent_auc(
                 x_rows,
                 c_rows,
                 risk,

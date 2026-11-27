@@ -235,6 +235,7 @@ DECLARED_ATTRIBUTES = frozenset(
         "surpyval.univariate.regression.AdditiveHazardsModel",
         "surpyval.univariate.regression.AalenAdditiveModel",
         "surpyval.univariate.regression.BuckleyJamesModel",
+        "surpyval.univariate.regression.RankAFTModel",
         "surpyval.univariate.regression.QuantileRegressionModel",
         "surpyval.univariate.competing_risks.regression.fine_gray"
         ".FineGrayModel",
@@ -340,6 +341,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.univariate.regression.BuckleyJamesModel": (
         "the Buckley-James estimating equations, by iterated least squares"
     ),
+    "surpyval.univariate.regression.RankAFTModel": (
+        "the induced-smoothed Gehan or log-rank estimating equations, by "
+        "Newton's method"
+    ),
     "surpyval.univariate.regression.QuantileRegressionModel": (
         "censored quantile regression's estimating equations, a linear "
         "programme at each level of a grid"
@@ -390,6 +395,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
         "a posterior, not a maximum: the Laplace engine's checks against "
         "the exact posterior take the place of a verified maximum"
     ),
+    "surpyval.bayes.regression.BayesianMixtureCure": (
+        "a posterior, not a maximum: the Laplace engine's checks against "
+        "the exact posterior take the place of a verified maximum"
+    ),
     **{
         f"surpyval.recurrent.{_name}": (
             "a posterior, not a maximum: the grid's check of its own "
@@ -417,6 +426,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
             "surpyval.multistate.bayes.BayesianMultiStateRegression",
         )
     },
+    "surpyval.recurrent.renewal.bayes.BayesianRenewal": (
+        "a posterior, not a maximum: the grid sliced along the repair "
+        "parameter checks its own accuracy in place of a verified maximum"
+    ),
 }
 
 # Properties that refit the model (the slow ones).
@@ -1161,6 +1174,30 @@ def _frailty_family():
             },
         )
     )
+    # The inverse Gaussian and positive stable frailties, whose group
+    # integrals are closed forms of the Laplace transform's derivatives.
+    for family in ("inverse_gaussian", "positive_stable"):
+        fitter = sp.Frailty(sp.Weibull, family=family)
+        out.append(
+            replace(
+                out[0],
+                name=f"WeibullFrailty[{family}]",
+                fitters=(),
+                fit=_fit(fitter),
+                paths={
+                    "fit_from_df": lambda d, f=fitter: f.fit_from_df(
+                        pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                            x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                        ),
+                        x_col="x",
+                        group_col="g",
+                        Z_cols=["z0", "z1"],
+                        c_col="c",
+                        n_col="n",
+                    )
+                },
+            )
+        )
     return out
 
 
@@ -1335,6 +1372,44 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+
+    def _rank(weights):
+        def from_df(d):
+            return sp.RankAFT.fit_from_df(
+                pd.DataFrame(
+                    {"x": d["x"], "c": d["c"], "n": d["n"]}
+                    | {"z0": d["Z"][:, 0], "z1": d["Z"][:, 1]}
+                ),
+                x_col="x",
+                Z_cols=["z0", "z1"],
+                c_col="c",
+                n_col="n",
+                rank_weights=weights,
+            )
+
+        return regression(
+            "RankAFT" if weights == "gehan" else f"RankAFT[{weights}]",
+            sp.RankAFT,
+            fitters=("surpyval.RankAFT",) if weights == "gehan" else (),
+            fit=_fit(sp.RankAFT, rank_weights=weights),
+            model_class="surpyval.univariate.regression.RankAFTModel",
+            functions=("sf", "ff", "Hf"),
+            # As BuckleyJames: one covariate vector per call.
+            z_style="single",
+            paths={"fit_from_df": from_df},
+            exclude={
+                "df_hf_sf": "RankAFTModel has no hf or df",
+                "row_independence": "documented to take one covariate "
+                "vector per call, so there are no rows to mix up",
+                "random_sf": NO_RANDOM,
+            },
+            draw=None,
+            coefficients=_beta,
+            intercept=True,
+        )
+
+    rank_gehan = _rank("gehan")
+    rank_logrank = _rank("logrank")
     qr = regression(
         "QuantileRegression",
         sp.QuantileRegression,
@@ -1448,13 +1523,41 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+    # The inverse Gaussian and positive stable frailties (EM on the full
+    # likelihood with Breslow's ties).
+    laplace_cox = [
+        replace(
+            cox_frailty,
+            name=f"CoxFrailty[{family}]",
+            fitters=(),
+            fit=_fit(sp.CoxFrailty, family=family, tie_method="breslow"),
+            paths={
+                "fit_from_df": lambda d, fam=family: sp.CoxFrailty.fit_from_df(
+                    pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                        x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                    ),
+                    x_col="x",
+                    group_col="g",
+                    Z_cols=["z0", "z1"],
+                    c_col="c",
+                    n_col="n",
+                    family=fam,
+                    tie_method="breslow",
+                )
+            },
+        )
+        for family in ("inverse_gaussian", "positive_stable")
+    ]
     return [
         cox,
         strat,
         cox_frailty,
+        *laplace_cox,
         cox_me,
         ah,
         bj,
+        rank_gehan,
+        rank_logrank,
         qr,
         portnoy,
         po,
