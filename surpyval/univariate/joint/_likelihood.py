@@ -940,7 +940,18 @@ class Layout:
     path is their paths' parameters one marker after another, ``links``
     are ``(marker, link)`` pairs, and log ``sigma`` is one entry a marker
     (``unpack`` gives ``sigma`` ``(n_markers,)``); the rest is as
-    above."""
+    above.
+
+    ``loaded`` ``(j, place, at, sign)`` holds the items' spread on an
+    edge of the valid covariance matrices: the path parameter ``j`` (by
+    place in the path, not in ``varying``) varies between items as an
+    exact multiple ``lam`` of the varying one at ``place`` (of
+    ``varying``), about their means, ``theta_j = mean_j + lam (theta_v -
+    mean_v)``: a correlation of ``sign`` (+-1) between the two. ``lam``
+    is one entry of the vector after the spread's (``unpack`` gives it as
+    ``"lam"``); ``at`` is ``j``'s place among the varying parameters of
+    the model with ``j`` varying freely (:attr:`full_varying`), whose
+    order the reported parameters keep. ``None``: no such parameter."""
 
     P: int
     p: int
@@ -955,9 +966,13 @@ class Layout:
     shared_hazard: Any = None
     shared_links: Any = None
     n_markers: int = 1
+    loaded: Any = None
 
     def __post_init__(self) -> None:
         self.links = tuple(self.links)
+        if self.loaded is not None:
+            j, place, at, sign = self.loaded
+            self.loaded = (int(j), int(place), int(at), float(sign))
         self.shifts = (
             np.ones((self.P, self.p), dtype=bool)
             if self.shifts is None
@@ -1007,8 +1022,35 @@ class Layout:
     @property
     def n_spread(self) -> int:
         """The number of estimated spread parameters: ``q`` sds and the
-        correlations within the blocks."""
-        return self.q + len(self.lower)
+        correlations within the blocks (and ``lam``, :attr:`loaded`)."""
+        return self.q + len(self.lower) + self.n_loaded
+
+    @property
+    def n_loaded(self) -> int:
+        return 0 if self.loaded is None else 1
+
+    @property
+    def full_varying(self) -> tuple:
+        """The varying parameters (by place in the path) with the one
+        :attr:`loaded` among them where it is, as the model with it
+        varying freely has them."""
+        if self.loaded is None:
+            return tuple(self.varying)
+        j, _, at, _ = self.loaded
+        out = list(self.varying)
+        out.insert(at, j)
+        return tuple(out)
+
+    @property
+    def full_blocks(self) -> tuple:
+        """:attr:`blocks` of :attr:`full_varying`: the parameter
+        :attr:`loaded` in the block of the one it is a multiple of."""
+        if self.loaded is None:
+            return tuple(self.blocks)
+        _, place, at, _ = self.loaded
+        out = list(self.blocks)
+        out.insert(at, self.blocks[place])
+        return tuple(out)
 
     @property
     def common(self) -> tuple:
@@ -1114,6 +1156,8 @@ class Layout:
         n_lower = len(self.lower)
         lower = u[i : i + n_lower]
         i += n_lower
+        lam = u[i] if self.loaded is not None else None
+        i += self.n_loaded
         same = self.correlated
         rows = []
         k = 0
@@ -1138,11 +1182,13 @@ class Layout:
         )
         # the survival part starts after the noise
         i += self.n_markers - 1
+        loaded = {} if lam is None else {"lam": lam}
         if self.n_causes > 1:
             slots = self.cause_slots
             block = u[i + 1 : i + 1 + self.n_survival]
             each = [block[slots[c]] for c in range(self.n_causes)]
             return {
+                **loaded,
                 "mu": mu,
                 "Delta": Delta,
                 "L": L,
@@ -1155,6 +1201,7 @@ class Layout:
                 "zeta": anp.stack([v[2 + n_hazard :] for v in each]),
             }
         return {
+            **loaded,
             "mu": mu,
             "Delta": Delta,
             "L": L,
@@ -1169,6 +1216,8 @@ class Layout:
         L = np.asarray(theta["L"], dtype=float)
         q = self.q
         lower = [L[r, c] for r, c in self.lower]
+        if self.loaded is not None:
+            lower.append(float(theta["lam"]))
         Delta = np.asarray(theta["Delta"], dtype=float).reshape(self.P, self.p)
         if self.n_causes > 1:
             C = self.n_causes
@@ -1426,13 +1475,34 @@ def _path_params(theta: dict, layout: Layout, Z: Any, nodes: Any) -> Any:
     varying ones: ``(N, K, P)``, the common ones its mean."""
     means = theta["mu"][None, :] + anp.dot(Z, anp.transpose(theta["Delta"]))
     N, K = nodes.shape[0], nodes.shape[1]
+    loaded = layout.loaded
     cols = []
     for j in range(layout.P):
         if j in layout.varying:
             cols.append(nodes[..., layout.varying.index(j)])
+        elif loaded is not None and j == loaded[0]:
+            # a multiple of a varying one's departure from its mean
+            v = layout.varying[loaded[1]]
+            cols.append(
+                means[:, j : j + 1]
+                + theta["lam"] * (nodes[..., loaded[1]] - means[:, v : v + 1])
+            )
         else:
             cols.append(anp.broadcast_to(means[:, j : j + 1], (N, K)))
     return anp.stack(cols, axis=-1)
+
+
+def varying_jacobian(J: Any, layout: Layout, theta: dict) -> Any:
+    """The Jacobian in the varying parameters from ``J`` ``(..., P)``,
+    the one in every path parameter: its columns of the varying ones,
+    and, where a parameter is a multiple of one of them
+    (:attr:`Layout.loaded`), that parameter's column times the
+    multiple added to that one's."""
+    out = np.array(np.asarray(J)[..., list(layout.varying)])
+    if layout.loaded is not None:
+        j, place, _, _ = layout.loaded
+        out[..., place] += float(theta["lam"]) * np.asarray(J)[..., j]
+    return out
 
 
 def _at(path: Any, params: Any, ages: npt.NDArray) -> Any:
@@ -1798,9 +1868,11 @@ def _mode_objective(
     centre: float,
     readings: bool,
     upper: npt.NDArray | None = None,
+    prior: bool = True,
 ) -> tuple:
     """``-log`` of the integrand at the varying parameters ``b`` ``(N,
-    q)``, its gradient and its Gauss-Newton curvature. With ``upper``,
+    q)``, its gradient and its Gauss-Newton curvature (``prior``
+    false: without the prior's terms). With ``upper``,
     a row with a finite one fails in ``(t, upper]``: its lifetime term is
     ``S(t) - S(upper)``, whose curvature is taken as that of ``-log(1 -
     exp(-Delta))`` in the interval's cumulative hazard ``Delta`` along
@@ -1819,7 +1891,9 @@ def _mode_objective(
         out = []
         for k, (_, model, _) in enumerate(path.terms):
             m = model.path(ages, *np.moveaxis(P, -1, 0))
-            J = path_jacobian(model, ages, np.array(P))[..., V]
+            J = varying_jacobian(
+                path_jacobian(model, ages, np.array(P)), layout, theta
+            )
             out.append((zeta[k], m, J))
         return out
 
@@ -1850,7 +1924,7 @@ def _mode_objective(
         if readings and several_markers(path):
             s2m = np.asarray(path.noise(theta["sigma"], arrays)) ** 2
             m, J = path.reading_jacobians(params, arrays)
-            J = J[..., V]
+            J = varying_jacobian(J, layout, theta)
             r = np.where(arrays.mask, arrays.values - m, 0.0)
             J = np.where(arrays.mask[..., None], J, 0.0)
             f = f + np.sum(r**2 / (2 * s2m), axis=1)
@@ -1861,7 +1935,9 @@ def _mode_objective(
             ages = arrays.ages
             P = np.broadcast_to(params[:, None, :], ages.shape + (layout.P,))
             m = path.model.path(ages, *np.moveaxis(P, -1, 0))
-            J = path_jacobian(path.model, ages, np.array(P))[..., V]
+            J = varying_jacobian(
+                path_jacobian(path.model, ages, np.array(P)), layout, theta
+            )
             r = np.where(arrays.mask, arrays.values - m, 0.0)
             J = np.where(arrays.mask[..., None], J, 0.0)
             f = f + np.sum(r**2, axis=1) / (2 * s2)
@@ -1973,6 +2049,8 @@ def _mode_objective(
                     H = H + curve[:, None, None] * np.einsum(
                         "ni,nj->nij", g_delta, g_delta
                     )
+        if not prior:
+            return f, g, H
         # the prior
         Lc = np.asarray(theta["L"], dtype=float)
         Dinv = np.linalg.inv(Lc @ Lc.T)
@@ -2219,10 +2297,75 @@ def modes(
     # floored, so the grid has a scale in every direction
     vals, vecs = np.linalg.eigh(cov)
     floor = np.maximum(vals.max(axis=-1, keepdims=True), 1e-300) * 1e-12
+    floored = np.any(vals < floor, axis=-1) & ~bad
     vals = np.maximum(vals, floor)
     root = np.einsum("nij,nj->nij", vecs, np.sqrt(vals))
     cov = np.einsum("nij,nkj->nik", root, root)
-    return b, scale[None, :, None] * np.linalg.cholesky(cov)
+    root = scale[None, :, None] * np.linalg.cholesky(cov)
+    if floored.any():
+        # The floor widens the grid in a direction the integrand is
+        # far narrower in, and the grid's sum is then wrong (by 1.8 in
+        # one item's log-likelihood on a fixture with a level, a rate
+        # and a curvature varying, near a correlation of +-1). There the
+        # curvature is too ill-conditioned to invert as it is: it is
+        # taken in the prior's own coordinates instead.
+        root[floored] = _whitened_root(
+            theta,
+            layout,
+            path,
+            arrays.take(floored),
+            b[floored],
+            d[floored],
+            t[floored],
+            centre,
+            readings,
+            None if upper is None else upper[floored],
+            root[floored],
+        )
+    return b, root
+
+
+def _whitened_root(
+    theta: dict,
+    layout: Layout,
+    path: Any,
+    arrays: JointArrays,
+    b: npt.NDArray,
+    d: npt.NDArray,
+    t: npt.NDArray,
+    centre: float,
+    readings: bool,
+    upper: npt.NDArray | None,
+    fallback: npt.NDArray,
+) -> npt.NDArray:
+    """The lower Cholesky factor ``(N, q, q)`` of the inverse curvature
+    of the integrand at its modes ``b`` taken in the prior's own
+    coordinates: with ``L`` the prior's factor, the curvature there is
+    ``I + L' H L`` (``H`` the readings' and the lifetime's, without the
+    prior's), well conditioned however near singular the prior is; its
+    inverse in the parameters is ``A A'`` with ``A = L C^-T`` (``C C'``
+    its factorisation), whose lower factor is the transpose of the
+    triangle of the QR factorisation of ``A'``: no matrix is formed
+    that squares ``L``'s condition number. ``fallback`` where the
+    curvature there is not positive definite."""
+    _, _, H = _mode_objective(
+        theta, layout, path, arrays, b, d, t, centre, readings, upper, False
+    )
+    Lc = np.asarray(theta["L"], dtype=float)
+    out = np.array(fallback, dtype=float)
+    q = Lc.shape[0]
+    for n in range(len(b)):
+        Hw = Lc.T @ H[n] @ Lc + np.eye(q)
+        try:
+            C = np.linalg.cholesky(0.5 * (Hw + Hw.T))
+        except np.linalg.LinAlgError:
+            continue
+        A = Lc @ np.linalg.inv(C).T
+        R = np.linalg.qr(A.T, mode="r")
+        lower = R.T * np.sign(np.diag(R))[None, :]
+        if np.all(np.isfinite(lower)) and np.all(np.diag(lower) > 0):
+            out[n] = lower
+    return out
 
 
 def continued_modes(

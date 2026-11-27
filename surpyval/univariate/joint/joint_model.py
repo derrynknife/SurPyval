@@ -392,12 +392,20 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
             parts.append(anp.reshape(shift, (p,)))
         elif kept.size:
             parts.append(anp.stack([shift[k] for k in kept]))
-    if q:
+    same = layout.correlated
+    if layout.loaded is not None:
+        # the spread of the model with the parameter held as a multiple
+        # of another varying freely: its varying parameters' order
+        D = _loaded_spread(theta, layout)
+        q = D.shape[0]
+        labels = np.asarray(layout.full_blocks, dtype=int)
+        same = labels[:, None] == labels[None, :]
+    elif q:
         L = theta["L"]
         D = anp.dot(L, anp.transpose(L))
+    if q:
         sd = anp.sqrt(anp.stack([D[i, i] for i in range(q)]))
         parts.append(sd)
-        same = layout.correlated
         corr = [
             D[i, j] / (sd[i] * sd[j])
             for i in range(q)
@@ -429,6 +437,44 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
         )
     parts.append(zeta)
     return anp.concatenate(parts)
+
+
+def _pair(name: str, varying: list) -> tuple:
+    """The two varying parameters of the correlation ``name``
+    (``corr_<a>_<b>``); empty where it is not one of theirs."""
+    for i, a in enumerate(varying):
+        for b in varying[i + 1 :]:
+            if name == f"corr_{a}_{b}":
+                return (a, b)
+    return ()
+
+
+def _loaded_spread(theta: dict, layout: Layout) -> Any:
+    """The items' spread ``D`` of a layout with a parameter held as a
+    multiple of a varying one (:attr:`Layout.loaded`), in the order of
+    :attr:`Layout.full_varying`: the varying ones' ``L L'``, and the
+    held one's row ``lam`` times that one's (its variance ``lam^2``
+    times that one's). Its rank is one short; differentiable by
+    autograd."""
+    L = theta["L"]
+    q = layout.q
+    D = anp.dot(L, anp.transpose(L)) if q else anp.zeros((0, 0))
+    _, place, at, _ = layout.loaded
+    lam = theta["lam"]
+    row = [lam * D[place, c] for c in range(q)]
+    full_rows = []
+    for r in range(q + 1):
+        if r == at:
+            full_rows.append(
+                anp.stack(row[:at] + [lam * lam * D[place, place]] + row[at:])
+            )
+            continue
+        own = r if r < at else r - 1
+        entries = [D[own, c] for c in range(q)]
+        full_rows.append(
+            anp.stack(entries[:at] + [lam * D[own, place]] + entries[at:])
+        )
+    return anp.stack(full_rows)
 
 
 def _per_scale(layout: Layout, beta: Any) -> Any:
@@ -467,8 +513,17 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         mus.append(params[i] + anp.dot(shift, zbar))
         shifts.append(shift)
         i += 1 + n
-    sd = params[i : i + q]
-    i += q
+    sd = params[i : i + q + layout.n_loaded]
+    i += q + layout.n_loaded
+    lam = None
+    if layout.loaded is not None:
+        # every sd of the model with the parameter held as a multiple of
+        # another varying freely, but no correlation of it: it is +-1
+        # with that one (``sign``), and those with the others follow
+        _, place, at, sign = layout.loaded
+        held = sd[at]
+        sd = anp.concatenate([sd[:at], sd[at + 1 :]])
+        lam = sign * held / sd[place]
     same = layout.correlated
     n_corr = len(layout.lower)
     corr = params[i : i + n_corr]
@@ -505,6 +560,7 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
     i += layout.n_markers - 1
     if layout.n_causes > 1:
         return {
+            **({} if lam is None else {"lam": lam}),
             "mu": anp.stack(mus),
             "Delta": anp.stack(shifts) if p else anp.zeros((P, 0)),
             "L": L,
@@ -518,6 +574,7 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
     gamma = layout._gamma(params[i + 3 : i + 3 + n_hazard])
     zeta = params[i + 3 + n_hazard : i + 3 + n_hazard + layout.n_links]
     return {
+        **({} if lam is None else {"lam": lam}),
         "mu": anp.stack(mus),
         "Delta": anp.stack(shifts) if p else anp.zeros((P, 0)),
         "L": L,
@@ -854,6 +911,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     _centre: Any = 0.0
     _zbar: npt.NDArray
     _covariance: npt.NDArray | None = None
+    #: ``(k, j)``: the varying parameter ``k`` the fit holds as an exact
+    #: multiple of the varying ``j`` about their means (a correlation of
+    #: +-1 between them, :attr:`perfect_correlations`); None: none.
+    _proportional: tuple | None = None
     _neg_ll: float
     #: The path part of the internal estimates (``mu``, ``Delta``, ``L``,
     #: ``sigma``), a start for another link's fit of the same data
@@ -955,6 +1016,24 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         ]
 
     @property
+    def perfect_correlations(self) -> list[str]:
+        """The correlations between two varying parameters that the fit
+        holds at +1 or -1, the edge of the valid ones (as
+        ``corr_<a>_<b>``): one parameter's spread between items is then
+        an exact multiple of the other's, each item's departure from the
+        mean in it that multiple of its departure in the other. The fit
+        is the one with that one integrated over and the other a fixed
+        multiple of it; the correlation has no standard error, and the
+        correlations of the held parameter with the others follow from
+        the other's. Empty where none is held."""
+        if self._proportional is None:
+            return []
+        k, j = self._proportional
+        varying = list(self.varying)
+        a, b = sorted((k, j), key=varying.index)
+        return [f"corr_{a}_{b}"]
+
+    @property
     def _varying_fitted(self) -> list[str]:
         """The varying parameters with a spread above 0, those the
         likelihood integrates over."""
@@ -967,6 +1046,22 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         kept = [self.feature_names[k] for k in self._kept]
         shifts, hazard = self._covariate_parts()
         varying = self._varying_fitted
+        loaded = None
+        if self._proportional is not None:
+            # one varying parameter a multiple of another
+            k, j = self._proportional
+            full = list(varying)
+            varying = [v for v in full if v != k]
+            params = np.asarray(self.params, dtype=float)
+            corr = params[
+                list(self.parameter_names).index(self.perfect_correlations[0])
+            ]
+            loaded = (
+                names.index(k),
+                varying.index(j),
+                full.index(k),
+                float(np.sign(corr)),
+            )
         return Layout(
             len(names),
             len(kept),
@@ -981,6 +1076,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             block_labels(self.random_effects_structure, varying),
             **self._cause_layout(kept),
             n_markers=1 if self.markers is None else len(self.markers),
+            loaded=loaded,
         )
 
     def _cause_layout(self, kept: list) -> dict:
@@ -1067,6 +1163,15 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             for k, name in enumerate(self.parameter_names):
                 if name in dropped:
                     out[k] = False
+        if self._proportional is not None:
+            # the held parameter's correlations: +-1 with the one it is a
+            # multiple of, and those with the others follow from its
+            held_k = self._proportional[0]
+            for k, name in enumerate(self.parameter_names):
+                if name.startswith("corr_") and held_k in _pair(
+                    name, list(self.varying)
+                ):
+                    out[k] = False
         return out
 
     @property
@@ -1101,9 +1206,83 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         )
 
     def _theta(self, params: Any = None) -> dict:
-        if params is None:
+        own = params is None
+        if own:
+            self._check_edges()
             params = np.asarray(self.params, dtype=float)[self._estimated]
-        return internal_theta(params, self._layout, self._refs)
+        with np.errstate(all="ignore"):
+            theta = internal_theta(params, self._layout, self._refs)
+        if own:
+            self._check_resolved(theta)
+        if own and not np.all(np.isfinite(np.asarray(theta["L"], float))):
+            # (a fit always gives a valid spread; a dict edited by hand,
+            # or written elsewhere, may not)
+            names = [
+                n
+                for n in self.parameter_names
+                if n.startswith(("sd_", "corr_"))
+            ]
+            raise ValueError(
+                "The model's spread between items ("
+                + ", ".join(names)
+                + ") is not a valid covariance matrix: its correlations "
+                "are not positive definite (or an sd is not above 0). Each "
+                "correlation must be between -1 and 1 and together they "
+                "must be consistent; check the values in 'params' (a "
+                "correlation of exactly +-1 is a fit held on its edge, "
+                "saved with 'proportional')."
+            )
+        return theta
+
+    def _check_edges(self) -> None:
+        """Refuse a correlation of exactly +-1 that the model does not
+        hold (``perfect_correlations``): a fit on that edge saves which
+        parameter is the multiple of which; without it the spread is
+        singular and the likelihood not defined."""
+        held = set(self.perfect_correlations)
+        names = list(self.parameter_names)
+        params = np.asarray(self.params, dtype=float)
+        for name in names:
+            if name.startswith("corr_") and name not in held:
+                value = params[names.index(name)]
+                if np.isfinite(value) and abs(value) == 1.0:
+                    raise ValueError(
+                        f"{name} is exactly {value:+g}, a singular spread, "
+                        "and the model does not hold it there (no "
+                        "'proportional' in its dict): its likelihood is not "
+                        "defined. A fit on that edge is saved with "
+                        "'proportional' naming the "
+                        "parameter held as a multiple of the other; otherwise "
+                        "give a correlation strictly between -1 and 1."
+                    )
+
+    def _check_resolved(self, theta: dict) -> None:
+        """Refuse a spread above 0 but too small for the integration to
+        resolve, by the same rule as a fit's search
+        (``joint_ph._resolved_spreads``, its first part): a varying
+        parameter's own spread (its Cholesky diagonal) below 1e-9 of its
+        mean value (``mu``, at the covariates' means). There the nodes'
+        offsets are lost to rounding and the likelihood is wrong; a fit
+        never reports one (its search does not step there, and a spread
+        at 0 is saved as exactly 0)."""
+        layout = self._layout
+        L = np.asarray(theta["L"], dtype=float)
+        if not L.size:
+            return
+        mu = np.asarray(theta["mu"], dtype=float)
+        names = list(self.path_model.parameter_names)
+        for k, j in enumerate(layout.varying):
+            own, value = L[k, k], mu[j]
+            if np.isfinite(own) and 0.0 < own < 1e-9 * abs(value):
+                v = names[j]
+                raise ValueError(
+                    f"The spread of {v} of its own is {own:.3g}, above 0 but "
+                    f"below 1e-9 of {v}'s mean ({value:.6g}): too small for "
+                    "the integration over the items to resolve (its nodes "
+                    "would sit within rounding of each other). A spread that "
+                    f"small is 0: set sd_{v} (and its correlations) to 0 for "
+                    f"the model with {v} common to all items."
+                )
 
     def covariance(self) -> npt.NDArray:
         """The parameters' covariance, in the order of
@@ -1263,6 +1442,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             if name not in self.parameter_names
             or not name.startswith(("sd_", "corr_"))
         ]
+        held = self.perfect_correlations or nested.perfect_correlations
+        if held and list(self.varying) == list(nested.varying):
+            raise ValueError(
+                "A likelihood-ratio test of a correlation held at +-1 "
+                f"({held[0]}) against a free one is not taken: the two fits "
+                "have the same parameters, and the null is on the edge of "
+                "the valid correlations, where the statistic's reference is "
+                "a mixture whose weights depend on the information matrix. "
+                "The held fit is the free model's maximum, so its neg_ll() "
+                "is the free model's."
+            )
         if fewer and others:
             raise ValueError(
                 "A likelihood-ratio test of fewer varying parameters "
@@ -1292,7 +1482,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 "nested in it or this fit did not reach its maximum "
                 "(check both models' 'maximum')."
             )
-        statistic = max(2.0 * gain, 0.0)
+        # a gain within round-off of 0 (two searches reaching one
+        # maximum by different steps) is 0: chi-squared on 0 degrees of
+        # freedom, in the boundary mixture below, is a point at 0, and a
+        # statistic of 1e-13 would halve the p-value
+        statistic = 2.0 * gain if gain > 1e-9 * max(1.0, abs(ll)) else 0.0
         p_value = float(chi2.sf(statistic, df))
         if fewer and len(dropped) == 1:
             # one spread on its lower bound, 0, under the null: half
@@ -1802,15 +1996,25 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         """What the printout's ``Fit`` line says."""
         if self.how != "two-stage":
             held = self.spreads_at_zero
-            if not held:
-                return f"maximum {self.maximum}"
-            sds = ", ".join(f"sd_{v}" for v in held)
-            common = ", ".join(held)
-            return (
-                f"maximum {self.maximum}, with {sds} at the lower bound, "
-                f"0 (the fit with {common} common to all items; no "
-                "standard error there: compare by aic())"
-            )
+            line = f"maximum {self.maximum}"
+            if held:
+                sds = ", ".join(f"sd_{v}" for v in held)
+                common = ", ".join(held)
+                line += (
+                    f", with {sds} at the lower bound, 0 (the fit with "
+                    f"{common} common to all items; no standard error "
+                    "there: compare by aic())"
+                )
+            if self._proportional is not None:
+                k, j = self._proportional
+                name = self.perfect_correlations[0]
+                value = self.params[list(self.parameter_names).index(name)]
+                line += (
+                    f", with {name} at its edge, {value:+g} ({k} an exact "
+                    f"multiple of {j} about their means; no standard error "
+                    "there)"
+                )
+            return line
         line = (
             "two-stage (approximate: the paths from the readings alone, "
             "then the lifetimes with each item's predicted path taken as "
@@ -2838,6 +3042,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 }
             ),
             **self._causes_entry(),
+            **(
+                {}
+                if self._proportional is None
+                else {"proportional": list(self._proportional)}
+            ),
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
             **({} if self.how == "MLE" else {"how": self.how}),
@@ -3012,6 +3221,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 f"names {how!r}."
             )
         out.how = how
+        # saved before a correlation could be held at +-1: none is
+        proportional = model_dict.get("proportional")
+        out._proportional = (
+            None if proportional is None else tuple(proportional)
+        )
         neg_ll = model_dict["_neg_ll"]
         out._neg_ll = np.nan if neg_ll is None else float(neg_ll)
         out.k = int(np.sum(~np.isnan(out.params)))

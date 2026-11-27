@@ -611,3 +611,26 @@ def test_a_larger_model_is_never_worse_than_the_nested_one_with_modes():
     assert bend.spreads_at_zero == ["s1"]
     assert bend.maximum == "verified"
     assert not [w for w in caught if "verified maximum" in str(w.message)]
+
+
+def test_a_spread_too_small_to_resolve_is_refused(straight, bend_varying):
+    """A bend's sd of 1e-20 (a dict edited by hand) is below what the
+    integration resolves: the nodes' offsets fall within rounding of the
+    bend's value, and on the two-mode fixture the likelihood read 107
+    too high there. It is refused; a small sd it resolves (1e-7) gives
+    the held fit's likelihood."""
+    from surpyval.univariate.joint import JointModel
+    from surpyval.univariate.joint.joint_ph import search_space
+
+    model, _ = bend_varying
+    names = list(model.parameter_names)
+
+    def with_sd(sd):
+        d = model.to_dict()
+        d["params"][names.index("sd_s1")] = sd
+        return JointModel.from_dict(d)
+
+    with pytest.raises(ValueError, match="too small for the integration"):
+        search_space(with_sd(1e-20), **straight)
+    f, u, _ = search_space(with_sd(1e-7), **straight)
+    assert float(f(u)) == pytest.approx(model.neg_ll(), abs=1e-4)

@@ -224,6 +224,69 @@ v0.30 (unreleased)
     taken from the accurate ``log_sf``.
   - ``Gompertz.qf(1)`` and ``isf(0)`` with shape 0 are ``inf`` (they
     were nan).
+- **Joint models hold a correlation of +-1 on its edge, and place their
+  nodes right near a nearly singular spread.** Three changes, each
+  leaving a verified fit with its spread clear of both edges bit for bit
+  as it was (checked on nine fixtures: straight lines with one or two
+  parameters varying, quadratic, a cubic with four varying, two failure
+  modes, accelerated, slope link, Laplace's approximation and
+  uncorrelated spreads; estimates, standard errors, ``neg_ll()`` and
+  predictions).
+
+  - Where two varying parameters are perfectly correlated (one's spread
+    between items an exact multiple of the other's), the search stalled
+    short of that edge, unverified, with a warning. Such a fit is now
+    made on the edge (the one parameter integrated over, the other its
+    fitted multiple) and held there unless the likelihood rises off it:
+    the correlation is exactly +1 or -1 with no standard error, named
+    in the new ``perfect_correlations``, and the ``Fit`` line says so.
+    On 16 simulated fleets of 150 items on straight lines with a rate
+    spread of 0 to 0.05 a year, the 8 that ended unverified (rate sds
+    0.0016 to 0.027 a year, a correlation of -0.998 and the like) are
+    now all verified and held at a correlation of +-1, each with a
+    negative log-likelihood no higher than before (up to 0.010 lower:
+    2428.7427 to 2428.7326; 2432.286370 to 2432.286303 on the fleet a
+    test pins); the other 8 are unchanged.
+  - Within about 1e-10 of a singular spread the integrand's curvature is
+    too ill-conditioned to invert as it was, and the eigenvalue floor
+    that kept the nodes' scale widened them in the narrow direction, so
+    the grid overstated the likelihood there. Such items' nodes are now
+    placed from the curvature in the prior's own coordinates. Only a fit
+    that landed exactly on a singular spread was affected, and those
+    ended unverified; the likelihood was right everywhere else. On
+    ``joint_data`` with a quadratic path and its level, rate and
+    curvature varying, the search had landed on such a point (three
+    correlations making the matrix singular, ``corr_a_b`` 0.997) and
+    reported 406.38, unverified: there the likelihood read 406.94 by
+    the 7-point nodes (422.5 by 15, 437.8 by 31), but 494.19 at
+    ``corr_a_b`` 1e-10 lower and anywhere below, and 1e-10 above it the
+    matrix is no longer positive definite. It now reads 494.19 there by
+    every grid size, in line with a Monte Carlo integral.
+  - In the searches made in handling an edge (the fit on the edge and
+    the search off it), a round whose step (with the nodes held) cannot
+    be taken even in part once the nodes are placed again now takes the
+    step of minus the whitened gradient (the held nodes' Newton step,
+    ``-H^-1 g``) where the gradient is not yet zero by the verification
+    rule (above 1e-4 standard errors). The first search is as it was, so
+    a fit that needs no edge handling is unchanged. The quadratic fit
+    above then reaches 479.3549 (correlations 0.62, -0.24, 0.61), no worse
+    than the fit with the curvature common (479.6325). It is a maximum
+    (every perturbation raises the negative log-likelihood) on the edge
+    of the valid spreads with no pair at +-1 (the curvature's own spread
+    about 1.4e-10, an exact combination of the level and the rate), which
+    is not held, so it ends unverified, with the warning (before, it
+    stalled at 479.465).
+  - The rule that keeps a search off an edge (a spread at 0, or a
+    correlation of +-1) now asks for a rise of 1e-4 in log-likelihood,
+    an absolute amount; it was one part in a million of the
+    log-likelihood, which is 0.1 at a log-likelihood of 1e5. Where the
+    first answer already beats the fit on the edge, the search off the
+    edge starts from that answer rather than from the edge.
+  - ``JointModel.likelihood_ratio_test`` takes a gain in log-likelihood
+    within round-off of 0 (1e-9 of it) as 0. With a spread held at 0
+    the statistic could be 1e-13 rather than 0, and chi-squared on 0
+    degrees of freedom in the boundary mixture then halved the p-value
+    (0.5 for 1).
 - **Joint models hold a spread at 0 on its lower bound (#1334).** Where
   the data put the spread between items of a varying parameter at 0 (any
   parameter, any path, one marker or several), the search, which works
@@ -1763,6 +1826,24 @@ v0.30 (unreleased)
 
 **Fixed.**
 
+- **A joint fit can no longer report a likelihood from a spread too small
+  to integrate.** At an sd below about 1e-11 to 1e-13 of a varying
+  parameter's value the error becomes material: the adaptive nodes'
+  offsets come within a few units of the last place of the value, the
+  prior's term at them is lost to rounding and the change of variables
+  no longer cancels it, so the likelihood reads too high (on the
+  fixture below the onset is lower, its bend's value being large): on the two-mode spline fixture with
+  the bend varying (held at a spread of 0, 985.8987), a bend sd of 1e-14
+  moved it by 0.003, 1e-16 by 2.3, and 1e-18 or below by 107 (878.50). A
+  search could step there and keep it. Now a search does not step a
+  spread's own part below 1e-9 of its value or 1e-8 of the spread that
+  moves a marker by 1% of the noise; an answer in effect at a spread of
+  0 (or a correlation of +-1) that beats the fit held there by more
+  than 1e-4 is taken as the artefact it is, with a warning, and the
+  held fit reported; and a saved model with a spread above 0 but below
+  1e-9 of its parameter's value is refused, saying to set it to 0.
+  Ordinary fits are unchanged (the bit-for-bit fixtures and the 16
+  straight-line fleets).
 - **The Bayesian renewal and mixture-cure fits follow the DataFrame and
   serialisation conventions.** ``MixtureCure.fit_bayes_from_df`` names
   its columns (``x_col``, ``Z_cols``, ``c_col``, ``n_col``, ``tl_col``,
