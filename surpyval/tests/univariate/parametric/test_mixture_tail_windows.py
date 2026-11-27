@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 
 import surpyval as sp
+from surpyval.utils.warnings import ignoring_warnings
 
 
 @pytest.fixture(autouse=True)
@@ -156,9 +157,11 @@ def test_each_components_window_is_exact_in_both_tails(name):
             float(mp.log(_mp_window(name, lo, hi, p))) for lo, hi in windows
         ]
         # The log to 1e-12: each window's probability to 1e-12 relative,
-        # however small it is. (One window, the second Gumbel's under the
-        # first, has a log of -3082, far below the smallest float; there
-        # the log itself is held to a few of its last digits, 1e-15.)
+        # however small it is. The relative term was added after the first
+        # run: one window, the second Gumbel's under the first, has a log
+        # of -3082 (far below the smallest float), where 1e-12 absolute is
+        # within a few spacings of doubles; there the log is held to 1e-15
+        # relative, a few of its last digits, instead.
         np.testing.assert_allclose(got, expected, rtol=1e-15, atol=1e-12)
 
 
@@ -253,3 +256,57 @@ def test_a_window_with_no_probability_leaves_the_gradient_finite(tl):
 
     assert np.isfinite(fun(theta))
     assert np.all(np.isfinite(grad(fun)(theta)))
+
+
+def _left_truncated_gamma_intervals():
+    """200 draws from an even mixture of Gamma(3, 0.5) and Gamma(30,
+    0.5), as inspection intervals of width 2, left truncated at the
+    intervals' 20% point (the rows below it dropped)."""
+    true = sp.MixtureModel.from_params(
+        sp.Gamma, [[3, 0.5], [30, 0.5]], [0.5, 0.5]
+    )
+    x = np.sort(true.random(200, random_state=7))
+    lo = np.floor(x / 2) * 2
+    tl = np.quantile(lo, 0.2)
+    keep = lo > tl
+    return lo[keep], lo[keep] + 2, np.full(keep.sum(), tl)
+
+
+def test_a_left_truncated_gamma_mixture_leaves_its_degenerate_point():
+    # Before the windows were exact this fit stopped, "verified", at a
+    # degenerate first component (shape 7.5e-7, weight 1 - 1.3e-6); the
+    # rule, fixed before the run: the fit's log-likelihood is above that
+    # point's by more than 0.1, and it is not reported "verified" at a
+    # component with a shape below 1e-4
+    xl, xr, tl = _left_truncated_gamma_intervals()
+    with ignoring_warnings():
+        fit = sp.MixtureModel.fit(xl=xl, xr=xr, tl=tl, dist=sp.Gamma, m=2)
+    before = -float(
+        fit.neg_ll_of(
+            np.array([0.9999987263365633, 1.2736634370616663e-06]),
+            np.array(
+                [
+                    [7.486189541834617e-07, 0.09361714794481045],
+                    [30.109185115800617, 0.4982037144700529],
+                ]
+            ),
+        )
+    )
+    assert fit.log_likelihood > before + 0.1
+    degenerate = np.min(fit.params[:, 0]) < 1e-4
+    assert not (degenerate and fit.maximum == "verified")
+
+
+def test_rows_no_component_explains_are_counted_in_a_warning():
+    # (25 / 1) ** 400 overflows: neither component gives the window
+    # [25, 35] any probability, even in log space
+    model = _model(
+        "Weibull",
+        [[1.0, 400.0], [1.1, 400.0]],
+        [0.5, 0.5],
+        x=[[25.0, 35.0], 0.9, 1.0],
+        c=[2, 0, 0],
+        n=[3, 1, 1],
+    )
+    with pytest.warns(UserWarning, match=r"1 row\(s\) \(3 observation"):
+        model._warn_if_unexplained_rows()

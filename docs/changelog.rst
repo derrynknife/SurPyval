@@ -27,16 +27,35 @@ v0.30 (unreleased)
   interval data move at rounding level (log-likelihoods by at most 1e-12
   relative, parameters by 4e-6 relative at most, on two-component
   Weibull, LogNormal, Gamma and Gumbel fits to 200 inspection
-  intervals). A left-truncated fit is maximised by a finite-difference
-  search, which is sensitive to the last digits of its objective; on a
-  flat or ridge-like likelihood it can now stop at a different point: in
-  the same check a truncated Weibull mixture's parameters moved by 3e-4
-  relative (log-likelihood 1.5e-8 higher) and a truncated Gumbel's
-  narrow component's scale from 0.070 to 0.102 (log-likelihood 1.7e-7
-  lower, the same maximum to its tolerance), and a truncated Gamma
-  mixture that had stopped at a degenerate component (shape 7e-7, weight
-  1) now reaches a log-likelihood 0.63 higher, which it reports as
-  unverified.
+  intervals). For a very narrow window (a width about 1e-9 of its ends)
+  the log is still good only to 1e-10 to 1e-8, on either side of the
+  median.
+
+- **Some left-truncated mixture fits stop elsewhere, and their labels
+  change.** A left-truncated fit is maximised by a finite-difference
+  search, which is sensitive to the last digits of its objective, so on
+  a likelihood that is flat in some direction it can stop at a
+  different point. A narrow component (narrower than an inspection
+  interval) has a likelihood that is flat in its scale to 1e-13, so
+  that scale is not identified and neither the old nor the new value
+  is an estimate: a truncated Gumbel mixture's narrow scale moved from
+  0.070 to 0.102 for 1.7e-7 in log-likelihood, and both fits are
+  reported "verified", which they should not be (a follow-up). A
+  component heading for a degenerate limit can now reach a different
+  point and label: a truncated Gamma mixture that had stopped
+  "verified" at a degenerate component (shape 7.5e-7, weight 1 -
+  1.3e-6) now reaches a log-likelihood 0.63 higher at an interior
+  point, which it reports "unverified" (``test_mixture_tail_windows.py``
+  pins it); other such fits have gone from "verified" at a degenerate
+  point to a verified interior maximum, or from "verified" to "no finite
+  maximum" at a higher likelihood. A truncated Weibull mixture's
+  parameters moved by 3e-4 relative (log-likelihood 1.5e-8 higher).
+- **A mixture fit warns, with the count, about rows no component
+  explains.** A row (or window) that every component gives probability
+  0 at the fitted parameters, even in log space, adds the floor -1e4 to
+  the log-likelihood under each and nothing to its gradient, so the
+  fit ignores it; ``MixtureModel.fit`` now says how many there are and
+  what to check.
 
 - **A Bayesian regression's posterior no longer depends on a covariate's
   unit.** The regressions' ``fit_bayes`` (proportional hazards,

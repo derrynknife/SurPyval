@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import numbers
+import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -835,7 +836,14 @@ class MixtureModel(
         A window the component gives no probability at all (its log is
         ``-inf``) is evaluated again as the whole line, a log of 0 whose
         gradient is 0, and floored: its ``-inf`` would put a NaN into
-        the gradient of the search.
+        the gradient of the search. A row that every component floors so
+        adds ``LOG_FLOOR`` under each, and nothing to the gradient; the
+        fit warns with their count (:meth:`_warn_if_unexplained_rows`).
+
+        For a very narrow window (a width about 1e-9 of its ends) the
+        difference itself is formed from two values that agree to nine
+        digits, so its log is good to about 1e-10 to 1e-8 relative on
+        either branch.
         """
         dist = self.dist
         dist_params = [params[j] for j in range(dist.k)]
@@ -1547,7 +1555,42 @@ class MixtureModel(
             warn_unverified("The mixture fit", unverified, "check the fit")
         else:
             self.maximum = "verified"
+        self._warn_if_unexplained_rows()
         return self
+
+    def _warn_if_unexplained_rows(self) -> None:
+        """Warn, with the count, where the fitted mixture gives some rows
+        probability 0 under every component (to double precision, even in
+        log space): each such row contributes the floor ``LOG_FLOOR`` to
+        the log-likelihood under every component, and nothing to its
+        gradient, so the fit is the fit to the other rows. (A row one
+        component explains is not counted: the mixture explains it.)"""
+        data = self.data
+        with np.errstate(all="ignore"):
+            floored = np.array(
+                [
+                    np.asarray(
+                        self._component_log_likelihood(self.params[i]), float
+                    )
+                    <= LOG_FLOOR
+                    for i in range(self.m)
+                ]
+            )
+        rows = floored.all(axis=0) & (data.n > 0)
+        if not rows.any():
+            return
+        count, units = int(rows.sum()), int(data.n[rows].sum())
+        warnings.warn(
+            f"{count} row(s) ({units} observation(s)) have probability 0 "
+            "under every component at the fitted parameters, even in log "
+            f"space: each adds the floor {LOG_FLOOR:g} to the "
+            "log-likelihood and nothing to its gradient, so the fit "
+            "ignores them. Check those rows (a time outside every "
+            "component's support, or a window far in every tail), or fit "
+            "another distribution or more components.",
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
 
     def _warn_if_lfp_limit(self) -> bool:
         """Warn when a component has run off past the data (#650), and
