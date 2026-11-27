@@ -43,7 +43,7 @@ from surpyval import plotting
 from surpyval.univariate.regression.regression_data import prepare_Z
 from surpyval.utils import validate_1d
 from surpyval.utils.validation import check_option
-from surpyval.utils.warnings import caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -456,9 +456,8 @@ def horizon_importance(
     on = "sf" if event is None else "cif"
     if event is not None:
         forest._check_event(event)
-    with warnings.catch_warnings():
+    with ignoring_warnings(UserWarning):
         # Its warning speaks of the log-likelihood; this one is ours.
-        warnings.simplefilter("ignore", UserWarning)
         oob, _, _, n_oob = forest._oob_setup()
     scored = n_oob > 0
     if not scored.all():

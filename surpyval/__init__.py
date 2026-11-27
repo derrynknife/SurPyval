@@ -25,7 +25,7 @@ hold the rest. ``help(surpyval.Weibull)`` and the other classes document
 each model, with examples.
 """
 
-__version__ = "0.29"
+__version__ = "0.30"
 
 # First: autograd's special functions without scipy.stats (#470)
 from surpyval import _autograd_special  # noqa: F401  # isort: skip
@@ -712,11 +712,12 @@ _ELSEWHERE = {
 }
 
 # Base fitters, fitted models, results and plots, which a call returns
-# rather than a user types: deprecated at the top level in v0.29 (a
-# FutureWarning naming the subpackage; removed in v0.30), they stay in
-# their subpackages for type hints and ``isinstance``. The base fitters a
-# user builds a model with (``ProportionalHazardsFitter``) and
-# ``MixtureModel``, which a user constructs, stay here.
+# rather than a user types: deprecated at the top level in v0.29 and
+# removed in v0.30, they live in their subpackages for type hints and
+# ``isinstance``; ``surpyval.<name>`` raises an error naming the
+# subpackage. The base fitters a user builds a model with
+# (``ProportionalHazardsFitter``) and ``MixtureModel``, which a user
+# constructs, stay here.
 _MOVED = {
     **dict.fromkeys(
         ("JointModel",),
@@ -796,21 +797,15 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
         if name in DATED_DATA_FUNCTIONS:
             return dated_data_function(name)
         if name in _MOVED:
-            from surpyval.utils.deprecation import REMOVED_IN, renamed_name
-
-            home = _MOVED[name]
-            return renamed_name(
-                "surpyval",
-                name,
-                f"{home}.{name}",
-                getattr(import_module(home), name),
-                REMOVED_IN,
-                FutureWarning,
+            message = _removed_message(
+                f"module 'surpyval' has no attribute {name!r}",
+                (
+                    f"import it from {_MOVED[name]} (from {_MOVED[name]} "
+                    f"import {name})",
+                    "0.30",
+                ),
             )
-        if name == "concordance_estimate":
-            # Deprecated in v0.29: surpyval.metrics warns as it hands it.
-            return getattr(import_module("surpyval.metrics"), name)
-        if name in _REMOVED_TOP_LEVEL:
+        elif name in _REMOVED_TOP_LEVEL:
             message = _removed_message(
                 f"module 'surpyval' has no attribute {name!r}",
                 _REMOVED_TOP_LEVEL[name],

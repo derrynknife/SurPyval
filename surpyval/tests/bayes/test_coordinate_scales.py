@@ -14,7 +14,12 @@ Before, a Normal or Gumbel location in a unit of millionths was refused
 
 Rules fixed before the run: ``sf`` at the rescaled times and its
 credible interval within 1e-6 of the unscaled fit's, relative, for
-``k`` in 1e-6, 1e-3, 1e3 and 1e6.
+``k`` in 1e-6, 1e-3, 1e3 and 1e6. The regressions' check is on ``log
+sf`` (to 1e-6, or 1e-6 of ``|log sf|`` in the far tail), which is that
+rule wherever ``sf`` is not tiny: a parameter that moves by its search's
+tolerance moves ``log sf`` in proportion to ``|log sf|``, so a value of
+2.8e-21 (``log sf`` = -47) moved by 2.5e-6 relative on x86-64 Linux, 5e-8
+of its log, from the peak search's last digits.
 """
 
 import numpy as np
@@ -46,12 +51,16 @@ def test_a_regressions_posterior_follows_the_unit_of_time(fitter, k):
     got = quietly(fitter.fit_bayes, x * k, Z, c, n)
     for z in (0.0, 1.0):
         np.testing.assert_allclose(
-            got.sf(T * k, [[z]]), ref.sf(T, [[z]]), rtol=1e-6
+            np.log(got.sf(T * k, [[z]])),
+            np.log(ref.sf(T, [[z]])),
+            rtol=1e-6,
+            atol=1e-6,
         )
         np.testing.assert_allclose(
-            got.cri(T * k, [[z]], on="sf"),
-            ref.cri(T, [[z]], on="sf"),
+            np.log(got.cri(T * k, [[z]], on="sf")),
+            np.log(ref.cri(T, [[z]], on="sf")),
             rtol=1e-6,
+            atol=1e-6,
         )
 
 

@@ -15,7 +15,7 @@ import pytest
 
 import surpyval as sp
 from surpyval.univariate.parametric.optimised_fit import MPP_ONLY_OPTIONS
-from surpyval.utils.deprecation import REMOVED_IN_NEXT
+from surpyval.utils.deprecation import REMOVED_IN
 
 X = np.array([3.1, 4.7, 5.2, 6.8, 7.5, 8.9, 10.4, 11.0, 12.6, 15.3])
 C = np.array([0, 0, 0, 0, 0, 0, 0, 1, 0, 1])
@@ -44,7 +44,7 @@ def test_an_option_another_method_ignores_warns(how, option):
     message = str(warning.message)
     assert message.startswith(f"Weibull.fit: {option}=")
     assert f"how='{how}' ignored it" in message
-    assert f"From v{REMOVED_IN_NEXT} this is refused" in message
+    assert f"From v{REMOVED_IN} this is refused" in message
     assert f"drop {option}, or fit with how='MPP'" in message
     # It points at this line, not inside the package
     assert warning.filename == __file__

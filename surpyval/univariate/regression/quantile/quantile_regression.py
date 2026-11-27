@@ -622,11 +622,11 @@ class QuantileRegressionModel(NoLikelihoodMixin, SerialisableMixin):
         """Deprecated in v0.30, removed in v0.31: call
         ``param_cb(alpha_ci=..., n_boot=..., random_state=..., tau=tau)``,
         which gives the same bounds."""
-        from surpyval.utils.deprecation import REMOVED_IN_NEXT
+        from surpyval.utils.deprecation import REMOVED_IN
 
         warnings.warn(
             "QuantileRegressionModel.bootstrap_ci is deprecated and will be "
-            f"removed in v{REMOVED_IN_NEXT}; call param_cb(alpha_ci=..., "
+            f"removed in v{REMOVED_IN}; call param_cb(alpha_ci=..., "
             "n_boot=..., random_state=..., tau=tau), which gives the same "
             "bounds.",
             FutureWarning,

@@ -501,19 +501,31 @@ jobs:
             args: >-
               surpyval/tests/calibration/test_coverage_joint_causes.py
           # Several markers with failure modes: 200 fits of one to two
-          # minutes each (the full model, 250 items) on every core of one
-          # worker, so a group of its own; not yet timed in CI.
+          # minutes each on an M-series Mac (the full model, 250 items) on
+          # every core of one worker, so a group of its own. On the 0.30
+          # release run it reached its 150-minute per-test limit (the
+          # limit ends the worker, reported as a crash): the runner's
+          # cores are slower. No seed, size or tolerance changes.
           - group: joint-marker-causes
             workers: '1'
-            test-timeout: 9000
-            job-timeout: 180
+            test-timeout: 18000
+            job-timeout: 330
             args: >-
               surpyval/tests/calibration/test_coverage_joint_marker_causes.py
-          - group: joint-lag-links
+          - group: joint-lag
             workers: auto
             job-timeout: 120
             args: >-
               surpyval/tests/calibration/test_coverage_joint_lag.py
+          # The link-selection studies run their replicates on every core
+          # (process_pool), so without xdist (workers 0): beside three
+          # other workers each with its own pool, the cumulative link's
+          # study ran into its 45-minute limit on the 0.30 release run.
+          - group: joint-links
+            workers: '0'
+            test-timeout: 5400
+            job-timeout: 150
+            args: >-
               surpyval/tests/calibration/test_link_selection_joint.py
           # Two of these studies (the censored Gaussian of three series,
           # and the Cox NPMLE with interval censoring and delayed entry)
@@ -663,9 +675,12 @@ jobs:
   # M-series Mac on 30 October 2026, with PyMC 5.x compiling its graphs on
   # first use; 15 of the tests skip by design, for families without a
   # support edge at 0). The timeout makes a sampler that hangs fail here.
+  # Since the GeneralizedGamma joined the likelihood tests (v0.30) the job
+  # takes over 30 minutes on a runner: its graph takes about a minute to
+  # compile, once for each of its 30-odd row and truncation cases.
   pymc:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 

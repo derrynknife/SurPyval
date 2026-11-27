@@ -31,7 +31,6 @@ contributing :math:`\\theta f_0 e^{-\\theta F_0}`, a unit still running
 
 from __future__ import annotations
 
-import warnings
 from collections.abc import Mapping
 from typing import Any
 
@@ -45,6 +44,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.aliases import canonical_name
 from surpyval.utils.shapes import check_paired_rows, covariate_rows
+from surpyval.utils.warnings import ignoring_warnings
 
 from . import _links
 from .fitter import DistributionalFitter, uniform_draws
@@ -669,8 +669,7 @@ class PromotionTimeCureModel(DistributionalRegressionModel):
                 def surv(t: float, row: Any = row) -> float:
                     return float(self._susceptible_call("sf", t, row))
 
-                with warnings.catch_warnings():
-                    warnings.simplefilter("ignore")
+                with ignoring_warnings():
                     out[j] = quad(surv, 0.0, onp.inf, limit=200)[0]
         return float(out[0]) if out.size == 1 else out
 

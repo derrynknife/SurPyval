@@ -24,7 +24,6 @@ seen.
 import json
 from pathlib import Path
 
-import mpmath as mp
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
@@ -33,6 +32,10 @@ from scipy.optimize import minimize
 
 import surpyval as surv
 from surpyval import BirnbaumSaunders as BS
+
+# mpmath is a test dependency (the tests extra); a bare install of the
+# wheel skips these.
+mp = pytest.importorskip("mpmath")
 
 PARAMS = [(0.05, 1.0), (0.5, 10.0), (1.0, 3.0), (2.5, 200.0), (8.0, 0.01)]
 R_REFERENCE = (

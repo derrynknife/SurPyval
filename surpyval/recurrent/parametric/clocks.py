@@ -38,8 +38,8 @@ from scipy.stats import chi2
 from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.recurrent.parametric.counting_process import Boxable
-from surpyval.utils.deprecation import fit_entry
 from surpyval.utils.model_data import event_data
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import refuses_surpyval_data_with
 from surpyval.utils.warnings import collecting_warnings, ignoring_warnings
@@ -469,7 +469,8 @@ class EffortClock(_ClockFitter):
             data, onp.asarray(self.effort.cumulative(x_unique)), mcf_hat
         )
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     def _fit_from_recurrent_data(
         self,
@@ -771,7 +772,8 @@ class ChangePoint(_ClockFitter):
             )
         )
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     def _fit_from_recurrent_data(
         self,

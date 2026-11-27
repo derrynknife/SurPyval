@@ -193,8 +193,9 @@ __all__ = [
 ]
 
 # The power and sample-size functions of one design each, replaced in
-# v0.29 by the design's one function (each still reachable, with a
-# FutureWarning naming the call that replaces it, until v0.30).
+# v0.29 by the design's one function and removed in v0.30: each name
+# raises an error naming the call that replaces it. (The module each
+# lived in is kept beside the call, for reference.)
 _REPLACED = {
     "logrank_events": (
         "comparison",
@@ -285,22 +286,12 @@ _REPLACED = {
 
 def __getattr__(name: str) -> Any:
     if name in _REPLACED:
-        import importlib
+        from surpyval.utils.removed_names import raise_removed
 
-        from surpyval.utils.deprecation import REMOVED_IN, renamed_name
-
-        module, new = _REPLACED[name]
-        value = getattr(
-            importlib.import_module(f"surpyval.test_planning.{module}"),
-            f"_{name}",
-        )
-        return renamed_name(
+        raise_removed(
             "surpyval.test_planning",
             name,
-            new,
-            value,
-            REMOVED_IN,
-            FutureWarning,
+            (f"use {_REPLACED[name][1]}", "0.30"),
         )
     raise AttributeError(
         f"module 'surpyval.test_planning' has no attribute {name!r}"

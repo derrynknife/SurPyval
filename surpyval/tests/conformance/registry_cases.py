@@ -6006,8 +6006,10 @@ def _starve(case):
         "RankAFT",
         "RankAFT[logrank]",
         "CompetingRisks[interval]",
+        "CoxAalen",
     ):
-        # (CompetingRisks[interval]: the self-consistency EM of the NPMLE)
+        # (CompetingRisks[interval]: the self-consistency EM of the NPMLE;
+        # CoxAalen: the Newton steps for its multiplicative coefficients)
         return lambda d: fit({**d, "max_iter": 1})
     if name.startswith("WeibullAL"):
         # The life model's first parameter (the first is a fixed

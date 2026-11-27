@@ -60,7 +60,7 @@ from typing import Any
 
 import numpy as np
 
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 
 from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
@@ -203,7 +203,7 @@ def _drawdown(H: np.ndarray) -> np.ndarray:
     return (peak - H).max(axis=-2)
 
 
-@renamed_arguments(REMOVED_IN_NEXT, FutureWarning, alpha="alpha_ci")
+@renamed_arguments(REMOVED_IN, FutureWarning, alpha="alpha_ci")
 def falls(
     model: Any,
     n_sim: int = 1000,

@@ -2081,8 +2081,8 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         the changes (see :mod:`surpyval.multistate._tvc`)."""
         from surpyval.univariate.regression.tvc_path import CovariatePath
         from surpyval.utils.surpyval_data import (
-            _PATH_STEPS,
-            _refined_on_paths,
+            PATH_STEPS,
+            refined_on_paths,
         )
 
         what = "time_varying_covariates"
@@ -2106,9 +2106,9 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
             return model, int(split.x.size)
 
         if any(isinstance(p, CovariatePath) for _, p in units):
-            model, count = fitted(_PATH_STEPS)
-            return _refined_on_paths(fitted, model, count)
-        return fitted(_PATH_STEPS)[0]
+            model, count = fitted(PATH_STEPS)
+            return refined_on_paths(fitted, model, count)
+        return fitted(PATH_STEPS)[0]
 
     @classmethod
     @takes_unit

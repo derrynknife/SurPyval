@@ -46,7 +46,7 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.utils import optional_column
-from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -64,6 +64,7 @@ from surpyval.utils.recurrent_data import (
     takes_terminal_column,
 )
 from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import (
@@ -435,7 +436,8 @@ class CauseSpecificNHPP(SerialisableMixin):
             end = float(x_upper.max())
         return entry, end
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     @classmethod
     @refuses_unmodelled_data

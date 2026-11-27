@@ -285,14 +285,21 @@ def test_a_time_of_none_or_the_last_reading_is_the_list_form():
     assert listed.censored_at is None
 
 
-@pytest.mark.parametrize("time", [80.0, 85.0])
-def test_a_time_at_or_past_the_crossing_is_refused(time):
+@pytest.mark.parametrize("past", [0.0, 5.0])
+def test_a_time_at_or_past_the_crossing_is_refused(past):
     # unit 2's path crosses at 80, after its last reading at 60: running
-    # at 80 or later, by its path it failed unseen
+    # at its crossing or later, by its path it failed unseen. "At" is the
+    # crossing the fit computes (80 to within the least squares' last
+    # bits, which differ by platform: just above 80 on x86-64 Linux), not the
+    # literal 80.
     x, y, i = _data()
+    crossing = DegradationAnalysis.fit(
+        x, y, i, threshold=THRESHOLD
+    ).pseudo_failure_times[2]
+    assert crossing == pytest.approx(CROSSING[2], rel=1e-12)
     with pytest.raises(ValueError, match=r"censored_units.*\[2\].*failed"):
         DegradationAnalysis.fit(
-            x, y, i, threshold=THRESHOLD, censored_units={2: time}
+            x, y, i, threshold=THRESHOLD, censored_units={2: crossing + past}
         )
 
 

@@ -816,11 +816,21 @@ def test_power_exponential_activation_energy_is_arrhenius_at_constant_v():
         power_exp = surpyval.AcceleratedLife(
             surpyval.Weibull, surpyval.life_models.PowerExponential
         ).fit(x, Z=Z)
-    for method in ("wald", "lr"):
+    # The likelihood-ratio interval is the same to the last digits (both
+    # profile one likelihood). The Wald interval is not compared: each
+    # model's comes from its own finite-difference Hessian, taken at the
+    # point its search stopped (2e-8 apart), so its last digits are the
+    # platform's (the lower bound 2.7e-7 relative apart on arm64 macOS,
+    # 1.8e-6 on x86-64 Linux); its estimate is.
+    for method, keys in (
+        ("wald", ("activation_energy",)),
+        ("lr", ("activation_energy", "lower", "upper")),
+    ):
         expected = arrhenius.activation_energy(method=method)
         found = power_exp.activation_energy(method=method)
         assert found["parameter"] == "a"
-        for key in ("activation_energy", "lower", "upper"):
+        assert found["lower"] < found["activation_energy"] < found["upper"]
+        for key in keys:
             assert found[key] == pytest.approx(expected[key], rel=1e-6)
     assert "Activation energy   : 0.6178 eV" in repr(power_exp)
 

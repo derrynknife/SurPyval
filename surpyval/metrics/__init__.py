@@ -54,19 +54,26 @@ __all__ = [
 
 def __getattr__(name: str) -> Any:
     if name == "concordance_estimate":
-        from surpyval.utils.deprecation import REMOVED_IN, renamed_name
-
-        from .concordance import concordance_with_se
-
-        return renamed_name(
-            "surpyval.metrics",
-            name,
-            "concordance_index(x, c, risk, weighting=..., tau=..., "
-            "alpha_ci=...)",
-            concordance_with_se,
-            REMOVED_IN,
-            FutureWarning,
+        from surpyval.utils.removed_names import (
+            CONCORDANCE_ESTIMATE_REMOVED,
+            from_import,
+            removed_message,
         )
+
+        message = removed_message(
+            f"module 'surpyval.metrics' has no attribute {name!r}",
+            CONCORDANCE_ESTIMATE_REMOVED,
+        )
+        if from_import():
+            raise ImportError(
+                message.replace(
+                    "module 'surpyval.metrics' has no attribute",
+                    "cannot import name",
+                    1,
+                ),
+                name="surpyval.metrics",
+            )
+        raise AttributeError(message)
     raise AttributeError(
         f"module 'surpyval.metrics' has no attribute {name!r}"
     )

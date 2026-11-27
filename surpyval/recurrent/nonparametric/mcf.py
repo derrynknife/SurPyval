@@ -21,7 +21,7 @@ from surpyval.univariate.nonparametric._support import (
 )
 from surpyval.utils.bounds import labels_two_sided
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
-from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -38,6 +38,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
@@ -660,7 +661,8 @@ class NonParametricCounting(
         out.var = np.cumsum(step_var)
         return out
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     @refuses_unmodelled_data
     def _fit_from_recurrent_data(

@@ -13,12 +13,8 @@ from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.renewal.renewal_model import (
     discount_weight_derivatives,
 )
-from surpyval.utils.deprecation import (
-    REMOVED_IN,
-    RenamedAttribute,
-    ambiguous_item_ids,
-    fit_entry,
-)
+from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.removed_names import RemovedName
 
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
@@ -553,7 +549,8 @@ class ARI(RenewalBayesMixin, RenewalFitMixin):
             )
         return negll_func
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     @refuses_unmodelled_data
     def _fit_from_recurrent_data(
@@ -826,10 +823,8 @@ class ARI(RenewalBayesMixin, RenewalFitMixin):
             **fit_options,
         )
 
-    #: The old name of :meth:`from_params` (deprecated in v0.29).
-    fit_from_parameters = RenamedAttribute(
-        "from_params", REMOVED_IN, FutureWarning
-    )
+    #: The old name of :meth:`from_params` (removed in v0.30).
+    fit_from_parameters = RemovedName("use 'from_params'", "0.30")
 
     def from_params(
         self,

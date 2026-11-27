@@ -53,9 +53,10 @@ _VAR_FUNCS: dict[str, Callable[..., Any]] = {
     "Fleming-Harrington": _fleming_harrington_variance,
 }
 
-# The submodules of the same names as the functions above (``kaplan_meier``
-# and the rest): the package's attribute is the deprecated function, not
-# the module (which ``import`` reached before, as the function shadowed it).
+# The submodules of the same names as the functions removed in v0.30
+# (``kaplan_meier`` and the rest): the package's attribute is the removal
+# hint below, not the module (which ``import`` reached before, as the
+# function shadowed it).
 for _name in (
     "fleming_harrington",
     "kaplan_meier",
@@ -66,62 +67,43 @@ for _name in (
     globals().pop(_name, None)
 del _name
 
-#: The names public until v0.29 that are the fitters' internal steps, each
-#: with what to use instead (reachable here, with a FutureWarning, until
-#: v0.30).
-_INTERNAL = {
-    "kaplan_meier": ("_kaplan_meier", "KaplanMeier.fit(x, c, n, t)"),
-    "nelson_aalen": ("_nelson_aalen", "NelsonAalen.fit(x, c, n, t)"),
-    "fleming_harrington": (
-        "_fleming_harrington",
-        "FlemingHarrington.fit(x, c, n, t)",
-    ),
-    "turnbull": ("_turnbull", "Turnbull.fit(x, c, n, t)"),
+#: The names public until v0.29 that are the fitters' internal steps,
+#: removed in v0.30, each with what to use instead.
+_REMOVED = {
+    "kaplan_meier": "KaplanMeier.fit(x, c, n, t)",
+    "nelson_aalen": "NelsonAalen.fit(x, c, n, t)",
+    "fleming_harrington": "FlemingHarrington.fit(x, c, n, t)",
+    "turnbull": "Turnbull.fit(x, c, n, t)",
     "greenwood_variance": (
-        "_greenwood_variance",
-        "KaplanMeier.fit(...).cb(...), whose Greenwood bounds use it",
+        "KaplanMeier.fit(...).cb(...), whose Greenwood bounds use it"
     ),
-    "nelson_aalen_variance": (
-        "_nelson_aalen_variance",
-        "NelsonAalen.fit(...).cb(...)",
-    ),
-    "fleming_harrington_variance": (
-        "_fleming_harrington_variance",
-        "FlemingHarrington.fit(...).cb(...)",
-    ),
+    "nelson_aalen_variance": "NelsonAalen.fit(...).cb(...)",
+    "fleming_harrington_variance": "FlemingHarrington.fit(...).cb(...)",
     "rank_adjust": (
-        "_rank_adjust",
-        "plotting_positions(x, c, n, how=...), which adjusts the ranks",
+        "plotting_positions(x, c, n, how=...), which adjusts the ranks"
     ),
     "canonical_heuristic": (
-        "_canonical_heuristic",
-        "plotting_positions(..., how=...), which reads the name in any case",
+        "plotting_positions(..., how=...), which reads the name in any case"
     ),
     "FIT_FUNCS": (
-        "_FIT_FUNCS",
         "the fitters KaplanMeier, NelsonAalen, FlemingHarrington and "
-        "Turnbull",
+        "Turnbull"
     ),
-    "VAR_FUNCS": ("_VAR_FUNCS", "the fitters' cb()"),
+    "VAR_FUNCS": "the fitters' cb()",
     "PLOTTING_METHODS": (
-        "_PLOTTING_METHODS",
-        "the how= names listed by plotting_positions' documentation",
+        "the how= names listed by plotting_positions' documentation"
     ),
 }
 
 
 def __getattr__(name: str) -> Any:
-    if name in _INTERNAL:
-        from surpyval.utils.deprecation import REMOVED_IN, renamed_name
+    if name in _REMOVED:
+        from surpyval.utils.removed_names import raise_removed
 
-        private, new = _INTERNAL[name]
-        return renamed_name(
+        raise_removed(
             "surpyval.univariate.nonparametric",
             name,
-            new,
-            globals()[private],
-            REMOVED_IN,
-            FutureWarning,
+            (f"use {_REMOVED[name]}", "0.30"),
         )
     raise AttributeError(
         f"module 'surpyval.univariate.nonparametric' has no attribute "

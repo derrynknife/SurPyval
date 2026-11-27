@@ -97,11 +97,19 @@ def test_lazy_names_are_the_packages_names() -> None:
         "PowerExponential",
     }
     # and the result, model and base-fitter classes taken off the top
-    # level (surpyval._MOVED), which warn there
+    # level (surpyval._MOVED, removed there in v0.30)
     moved |= {
         k
         for k, v in surpyval._MOVED.items()
         if v == "surpyval.univariate.regression"
+    }
+    # and the fitted-model and base-fitter classes added since, which were
+    # never at the top level (a fit returns them; they are for type hints)
+    moved |= {
+        "CoxAalenModel",
+        "PromotionTimeCureFitter",
+        "PromotionTimeCureModel",
+        "RankAFTModel",
     }
     assert exported | moved == set(regression.__all__)
     assert not exported & moved

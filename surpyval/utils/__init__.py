@@ -236,33 +236,25 @@ def validate_fine_gray_inputs(
     return out + tuple(np.asarray(a) for a in label_kept)
 
 
-#: The data handlers' internal steps, public until v0.29 (each still
-#: reachable here, with a FutureWarning, until v0.30). Each has no public
-#: replacement: ``SurpyvalData`` (or ``xcnt_handler``) runs them.
-_INTERNAL = {
-    "coerce_xcnt_x": "SurpyvalData(x, c, n, t), which checks the times",
-    "format_truncation": "SurpyvalData(x, c, n, t, tl=, tr=), which "
+#: The data handlers' internal steps, public until v0.29 and removed in
+#: v0.30, each with what does its work. Each has no public replacement:
+#: ``SurpyvalData`` runs them.
+_REMOVED = {
+    "coerce_xcnt_x": "use SurpyvalData(x, c, n, t), which checks the times",
+    "format_truncation": "use SurpyvalData(x, c, n, t, tl=, tr=), which "
     "formats the truncation",
-    "group_xcnt": "SurpyvalData(x, c, n, t).to_xcnt() (xcnt_handler), "
-    "which groups and sorts the rows",
-    "xcnt_sort": "SurpyvalData(x, c, n, t).to_xcnt() (xcnt_handler), "
-    "which groups and sorts the rows",
-    "resolve_cr_censoring": "SurpyvalData(x, c, e=e), which reads a "
+    "group_xcnt": "use SurpyvalData(x, c, n, t).to_xcnt(), which groups "
+    "and sorts the rows",
+    "xcnt_sort": "use SurpyvalData(x, c, n, t).to_xcnt(), which groups "
+    "and sorts the rows",
+    "resolve_cr_censoring": "use SurpyvalData(x, c, e=e), which reads a "
     "missing event as a censored row",
 }
 
 
 def __getattr__(name: str) -> Any:
-    if name in _INTERNAL:
-        from surpyval.utils import data_formats
-        from surpyval.utils.deprecation import REMOVED_IN, renamed_name
+    if name in _REMOVED:
+        from surpyval.utils.removed_names import raise_removed
 
-        return renamed_name(
-            "surpyval.utils",
-            name,
-            _INTERNAL[name],
-            getattr(data_formats, name),
-            REMOVED_IN,
-            FutureWarning,
-        )
+        raise_removed("surpyval.utils", name, (_REMOVED[name], "0.30"))
     raise AttributeError(f"module 'surpyval.utils' has no attribute {name!r}")

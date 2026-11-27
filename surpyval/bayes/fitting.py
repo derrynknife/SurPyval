@@ -283,7 +283,7 @@ def _theta_of(model: Any, names: list[str]) -> npt.NDArray:
     return np.array([float(vals[n]) for n in names])
 
 
-def _search_scales(
+def search_scales(
     mle: Any, bound: BoundPriors, log_post: Any, start: npt.NDArray
 ) -> npt.NDArray:
     """The peak search's scale for each free coordinate, as a target's
@@ -534,7 +534,7 @@ def _posterior(
             f"{', '.join(bound.free_names)}."
         )
     try:
-        scales = _search_scales(mle, bound, log_post, starts[0])
+        scales = search_scales(mle, bound, log_post, starts[0])
         mode, cov, _ = find_mode(log_post, starts, scales)
         if method == "laplace":
             approx = run_laplace(log_post, mode, cov, importance=importance)

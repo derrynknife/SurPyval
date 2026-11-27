@@ -89,6 +89,11 @@ The functions
      - ``Weibull.fit``, ``WeibullAFT``, ``WeibullPH`` and the other
        ``<Dist>AFT`` / ``<Dist>PH`` fitters; ``WeibullDistributional`` for
        covariates on the shape (``anc =``)
+   * - ``flexsurvreg(Surv(t, d) ~ x, anc = list(shape = ~ x))``
+     - ``Distributional(Weibull).fit_from_df(df, x_col="t", c_col="c",
+       formulas={"alpha": "x", "beta": "x"})``: a formula per parameter
+       (``beta`` is the shape); ``Distributional`` takes the other
+       distributions too
    * - ``flexsurvspline``
      - ``RoystonParmar``, ``RoystonParmarRegression(df=, scale=)``,
        ``RoystonParmarPH``, ``RoystonParmarPO``

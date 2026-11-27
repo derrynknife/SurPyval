@@ -541,7 +541,11 @@ def test_a_lognormal_offset_profile_falls_to_its_better_normal_limit():
 
     x = _near_normal(1)
     model, d_lim = _limit_deviance("LogNormal", x)
-    assert d_lim == pytest.approx(-0.375, abs=1e-3)
+    # Where the offset search stops on this flat valley (it is not a
+    # maximum) depends on the platform's last digits: the deviance from
+    # the limit is -0.375 on arm64 macOS and -0.385 to -0.389 on x86-64
+    # Linux. What holds everywhere is its sign: the limit fits better.
+    assert d_lim < 0
 
     def nll(g):
         logs = np.log(x - g)
@@ -574,7 +578,11 @@ def test_an_offset_fit_beaten_by_its_limit_has_a_lower_bound_of_minus_inf(
     # LogNormal, seed 2, -3.4e14 at 99%; a LogLogistic, seed 4, -6.0e14
     # at 99% and 95%).
     model, d_lim = _limit_deviance(family, _near_normal(seed))
-    assert d_lim == pytest.approx(limit, abs=1e-3)
+    # ``limit`` is the deviance on arm64 macOS; where the offset search
+    # stops on the flat valley depends on the platform's last digits
+    # (-0.389 for LogNormal seed 1 and -0.515 for Gamma on x86-64 Linux),
+    # so only its sign is checked: the limit fits better.
+    assert d_lim < 0 and limit < 0
     for alpha_ci in (0.01, 0.05, 0.2):
         assert _lower(model, alpha_ci) == (-np.inf, [])
 
@@ -684,7 +692,14 @@ def test_an_offset_fit_beaten_by_its_limit_is_bounded_from_the_limit(
         limit = _LIMIT[family].fit(x)
     searches = model._lr_extended()
     assert searches._lr_reference_nll() == pytest.approx(limit.neg_ll())
-    assert searches._lr_reference_deviance() == pytest.approx(d_hat, rel=1e-2)
+    # The fit's deviance from its limit (``d_hat`` on arm64 macOS) depends
+    # on where the offset search stopped, which is platform-dependent (0.389
+    # for LogNormal and 0.515 for Gamma on x86-64 Linux); the reference is
+    # that deviance by definition, wherever the search stopped.
+    assert d_hat > 0
+    assert searches._lr_reference_deviance() == pytest.approx(
+        2.0 * (model.neg_ll() - limit.neg_ll()), rel=1e-12
+    )
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         bound = model.param_cb(

@@ -26,7 +26,7 @@ import numpy.typing as npt
 from scipy.stats import norm
 
 from surpyval.utils import validate_1d as _as_1d
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.ipcw import censoring_survival, step_left_limit
 from surpyval.utils.validation import check_option
 
@@ -914,7 +914,7 @@ def _restore_result(value: float, state: dict) -> ConcordanceResult:
     return result
 
 
-@renamed_arguments(REMOVED_IN_NEXT, FutureWarning, alpha="alpha_ci")
+@renamed_arguments(REMOVED_IN, FutureWarning, alpha="alpha_ci")
 def compare_concordance(
     x: npt.ArrayLike,
     c: npt.ArrayLike,

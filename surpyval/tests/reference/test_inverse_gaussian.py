@@ -14,7 +14,6 @@ gives NA at ``lam / mu = 500``, ``p = 1e-6``; there the check is that
 hundredth of R's standard error, standard errors to ``rtol=1e-3``.
 """
 
-import mpmath as mp
 import numpy as np
 import pytest
 from autograd import grad
@@ -25,6 +24,10 @@ import surpyval as surv
 from surpyval import InverseGaussian as IG
 
 from ._data import fixture, reference
+
+# mpmath is a test dependency (the tests extra); a bare install of the
+# wheel skips these.
+mp = pytest.importorskip("mpmath")
 
 LOGLIK = dict(abs=1e-6)
 EST_IN_SE = 0.01

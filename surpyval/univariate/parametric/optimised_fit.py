@@ -14,12 +14,12 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.deprecation import fit_entry
 from surpyval.utils.no_maximum import (
     maximum_warnings_quiet,
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.surpyval_data import (
     SurpyvalData,
     accepts_surpyval_data,
@@ -119,7 +119,7 @@ def warn_mpp_only_options(name: str, how: str, **given: Any) -> None:
     given an option only ``how="MPP"`` reads (:data:`MPP_ONLY_OPTIONS`)
     with another method: the option changes nothing, so the call does not
     do what it says. The fit and its result are unchanged; from
-    :data:`~surpyval.utils.deprecation.REMOVED_IN_NEXT` such a call is
+    :data:`~surpyval.utils.deprecation.REMOVED_IN` such a call is
     refused. An option left at its default (given or not) is not
     reported.
 
@@ -139,7 +139,7 @@ def warn_mpp_only_options(name: str, how: str, **given: Any) -> None:
     """
     if how == "MPP":
         return
-    from surpyval.utils.deprecation import REMOVED_IN_NEXT
+    from surpyval.utils.deprecation import REMOVED_IN
 
     from ..nonparametric._heuristics import canonical_heuristic
 
@@ -166,7 +166,7 @@ def warn_mpp_only_options(name: str, how: str, **given: Any) -> None:
     warnings.warn(
         f"{name}.fit: {shown} {verb} read only by how='MPP' (probability "
         f"plotting), so how='{how}' ignored {pronoun} and the result is the "
-        f"fit without {pronoun}. From v{REMOVED_IN_NEXT} this is refused: "
+        f"fit without {pronoun}. From v{REMOVED_IN} this is refused: "
         f"drop {dropped}, or fit with how='MPP'.",
         FutureWarning,
         stacklevel=caller_stacklevel(),
@@ -722,7 +722,8 @@ class OptimisedFitMixin(FitInputsMixin):
         keep = (np.asarray(non_parametric_model.d) > 0) & np.isfinite(x)
         return self.fit_from_ecdf(x[keep], F[keep])
 
-    fit_from_surpyval_data = fit_entry("_fit_from_surpyval_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_surpyval_data = RemovedName("call fit(data)", "0.30")
 
     @refuses_what_fit_cannot_take
     def _fit_from_surpyval_data(

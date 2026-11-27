@@ -18,7 +18,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 
 from .report import COLUMNS, VERDICTS, Advice, Diagnosis, make_table, verdict
 
@@ -453,7 +453,7 @@ def _covariate_names(model: Any) -> list[str]:
     return list(coefficient_names(model, len(params)))
 
 
-@renamed_arguments(REMOVED_IN_NEXT, FutureWarning, alpha="alpha_ci")
+@renamed_arguments(REMOVED_IN, FutureWarning, alpha="alpha_ci")
 def diagnose(
     model: Any,
     alpha_ci: float = 0.05,

@@ -31,6 +31,7 @@ from surpyval.utils.units import normalise_unit, takes_unit
 from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import (
     caller_stacklevel,
+    collecting_warnings,
     ignoring_warnings,
     warn_no_covariance,
 )
@@ -1957,8 +1958,7 @@ def _check_kinks(model: Model, arrays: JointArrays, theta: dict) -> None:
     means = mu[None, :] + probe.Z @ Delta.T
     params = means[:, None, :]
     t = T[order]
-    with np.errstate(all="ignore"), warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with np.errstate(all="ignore"), ignoring_warnings():
         try:
             whole = np.exp(
                 log_cumhaz(start, model.path, params, probe, t, model.centre)
@@ -2195,8 +2195,7 @@ def _fit(
     if how == "two-stage":
         u, value, cov_u, maximum = _two_stage(model, arrays, theta)
     else:
-        with warnings.catch_warnings(record=True) as first_warnings:
-            warnings.simplefilter("always")
+        with collecting_warnings() as first_warnings:
             try:
                 u, value, cov_u, maximum = _maximise(
                     model, arrays, survival_start(model, arrays, theta)
@@ -2476,8 +2475,7 @@ def _spreads_not_told_from_zero(
         try:
             trial = dict(theta, L=np.linalg.cholesky(small))
             v = layout.pack(trial)
-            with np.errstate(all="ignore"), warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with np.errstate(all="ignore"), ignoring_warnings():
                 placed, _ = place(v, model, arrays, (None, None))
                 lost = float(neg_ll(v, model, arrays, placed)) - value
         except (np.linalg.LinAlgError, ValueError, FloatingPointError):
@@ -2553,8 +2551,7 @@ def _embed(theta: dict, keep: list, q: int, sds: Any) -> dict:
 def _maximised(model: Model, arrays: JointArrays, theta: dict) -> Any:
     """:func:`_maximise`'s answer from ``theta`` with the warnings it
     gave, ``(answer, warnings)``; ``None`` where it cannot start."""
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
+    with collecting_warnings() as caught:
         try:
             answer = _maximise(model, arrays, theta, on_an_edge=True)
         except (_NoStart, np.linalg.LinAlgError, ValueError):
@@ -2666,8 +2663,7 @@ def _held_or_off(
     above = v1 < v_n - _RISE_TOL
     if above and at_the_edge:
         warned = list(warned_n)
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
+        with collecting_warnings() as caught:
             warnings.warn(
                 f"The joint fit's search reached {at_the_edge} in effect at "
                 f"its edge with a log-likelihood {v_n - v1:.3g} above the "
@@ -2818,8 +2814,7 @@ def _at_a_correlation_edge(
         sd_k = float(np.sqrt(np.sum(L[k] ** 2)))
         try:
             v = layout.pack(_proportional_theta(theta, k, j, 1e-3 * sd_k))
-            with np.errstate(all="ignore"), warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            with np.errstate(all="ignore"), ignoring_warnings():
                 placed, _ = place(v, model, arrays, (None, None))
                 lost = float(neg_ll(v, model, arrays, placed)) - value
         except (np.linalg.LinAlgError, ValueError, FloatingPointError):

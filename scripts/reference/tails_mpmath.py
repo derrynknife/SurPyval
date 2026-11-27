@@ -621,6 +621,13 @@ def _inverse_gaussian(x, mu, lam):
             raise RuntimeError(f"InverseGaussian sf lost: {x} {mu} {lam}")
 
 
+def _birnbaum_saunders(x, alpha, beta):
+    r = mp.sqrt(x / beta)
+    xi = (r - 1 / r) / alpha
+    df = mp.npdf(xi) * (r + 1 / r) / (2 * alpha * x)
+    return mp.ncdf(-xi), mp.ncdf(xi), df
+
+
 def _gengamma(x, mu, sigma, Q):
     w = (mp.log(x) - mu) / sigma
     if Q == 0:
@@ -861,6 +868,16 @@ CONTINUOUS = [
         _positive,
         lambda side, mu, lam: mpf(0),
         start=_pos_start(lambda mu, lam: mu),
+    ),
+    Continuous(
+        "BirnbaumSaunders",
+        # alpha from 1e-3 (near a Normal about beta) to 10 (a long right
+        # tail), at medians 1e-6 to 1e6
+        _product((1e-3, 0.5, 1.0, 10.0), SCALES),
+        _birnbaum_saunders,
+        _positive,
+        lambda side, alpha, beta: mpf(0),
+        start=_pos_start(lambda alpha, beta: beta),
     ),
     Continuous(
         "GeneralizedGamma",

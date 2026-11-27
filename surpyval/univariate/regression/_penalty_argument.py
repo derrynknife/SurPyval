@@ -23,7 +23,7 @@ import inspect
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
+from surpyval.utils.deprecation import REMOVED_IN, RenamedAttribute
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -253,7 +253,7 @@ def penalised_entry(new: str, advice: str) -> RenamedAttribute:
     says what to call, and runs the private method, so the model is the
     same to the last digit until v0.31 removes it.
     """
-    return _PenalisedEntry(new, REMOVED_IN_NEXT, FutureWarning, advice=advice)
+    return _PenalisedEntry(new, REMOVED_IN, FutureWarning, advice=advice)
 
 
 class _PenalisedEntry(RenamedAttribute):
@@ -278,4 +278,4 @@ class _PenalisedEntry(RenamedAttribute):
         return getattr(owner if obj is None else obj, self.new)
 
 
-__all__ = ["penalty_argument", "penalised_entry", "REMOVED_IN_NEXT"]
+__all__ = ["penalty_argument", "penalised_entry", "REMOVED_IN"]

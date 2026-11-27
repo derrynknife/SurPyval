@@ -441,7 +441,14 @@ def test_a_profile_at_every_point_is_the_fitted_models(stressed):
     slow = np.stack([m.sf(X, PROFILE) for m in models])
     np.testing.assert_allclose(life.sf(X), slow, rtol=1e-12, atol=1e-15)
     slow_ff = np.stack([m.ff(X, PROFILE) for m in models])
-    np.testing.assert_allclose(life.ff(X), slow_ff, rtol=1e-12, atol=1e-300)
+    # On log ff: far in the left tail a last-bit difference between
+    # numpy's array and scalar exp and log (as on x86-64 Linux) is
+    # amplified in proportion to |log ff| (1.8e-12 relative at ff = 5e-38,
+    # log ff = -86: 2e-14 of its log).
+    with np.errstate(divide="ignore"):
+        np.testing.assert_allclose(
+            np.log(life.ff(X)), np.log(slow_ff), rtol=1e-12, atol=1e-12
+        )
     np.testing.assert_allclose(
         stressed.sf(X, PROFILE),
         stressed.posterior.expectation(

@@ -13,12 +13,15 @@ worked out at test time from the closed forms, so nothing depends on the
 platform.
 """
 
-import mpmath as mp
 import numpy as np
 import pytest
 
 import surpyval as sp
 from surpyval.utils.warnings import ignoring_warnings
+
+# mpmath is a test dependency (the tests extra); a bare install of the
+# wheel skips these.
+mp = pytest.importorskip("mpmath")
 
 
 @pytest.fixture(autouse=True)

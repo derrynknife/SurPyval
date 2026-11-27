@@ -865,30 +865,3 @@ def test_796_aged_starts_take_the_family_seed():
         )
     assert len(starts) == 4
     assert all(np.isfinite(neg_ll(np.array(s))) for s in starts)
-
-
-@pytest.mark.parametrize(
-    "fitter, args, kwargs",
-    [
-        ("GeneralizedRenewal", ([10.0, 2.0], 0.5), {"kijima": "ii"}),
-        ("GeneralizedOneRenewal", ([10.0, 2.0], 0.5), {}),
-        ("ARA", ([10.0, 2.0], 0.4), {"m": 2}),
-        ("ARI", ([10.0, 2.0], 0.6), {"m": 1}),
-    ],
-)
-def test_fit_from_parameters_is_the_old_name_of_from_params(
-    fitter, args, kwargs
-):
-    import surpyval.recurrent as rc
-
-    renewal = getattr(rc, fitter)
-    new = renewal.from_params(*args, **kwargs)
-    with pytest.warns(FutureWarning, match="use 'from_params'") as caught:
-        old = renewal.fit_from_parameters(*args, **kwargs)
-    assert "v0.30" in str(caught[0].message)
-    assert old.to_dict() == new.to_dict()
-    x = np.array([5.0, 10.0, 20.0])
-    np.testing.assert_array_equal(
-        old.mcf(x, items=20, random_state=3),
-        new.mcf(x, items=20, random_state=3),
-    )

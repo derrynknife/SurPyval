@@ -122,7 +122,7 @@ import numpy as np
 from scipy.stats import norm
 
 from surpyval.utils.aliases import canonical_name
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _fmt, _is_cox, _note
@@ -397,7 +397,7 @@ def _risk_set_means(
     return sums[:, 1:] / sums[:, :1]
 
 
-@renamed_arguments(REMOVED_IN_NEXT, FutureWarning, alpha="alpha_ci")
+@renamed_arguments(REMOVED_IN, FutureWarning, alpha="alpha_ci")
 def calibration_curve(
     survival: Any,
     x: Any,

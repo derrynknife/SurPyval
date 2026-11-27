@@ -289,14 +289,6 @@ def test_covariates_in_both_places_are_refused():
         sp.WeibullPH.fit(SurpyvalData(X, C, Z=Z), Z=Z)
 
 
-def test_fit_from_surpyval_data_is_deprecated_for_fit_of_the_data():
-    # tests/test_fit_entries_deprecated.py checks every fitter.
-    data = SurpyvalData(X, C)
-    with pytest.warns(FutureWarning, match=r"call fit\(data\)"):
-        old = sp.Weibull.fit_from_surpyval_data(data)
-    np.testing.assert_array_equal(old.params, sp.Weibull.fit(data).params)
-
-
 # -- the dated deprecation --------------------------------------------------
 
 

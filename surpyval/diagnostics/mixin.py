@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 
 if TYPE_CHECKING:  # pragma: no cover
     from .report import Diagnosis
@@ -19,7 +19,7 @@ if TYPE_CHECKING:  # pragma: no cover
 class DiagnoseMixin:
     """Gives a fitted model :meth:`diagnose`."""
 
-    @renamed_arguments(REMOVED_IN_NEXT, FutureWarning, alpha="alpha_ci")
+    @renamed_arguments(REMOVED_IN, FutureWarning, alpha="alpha_ci")
     def diagnose(
         self,
         alpha_ci: float = 0.05,
