@@ -324,3 +324,9 @@ class AtCovariatesMixin:
         8.575
         """
         return LifeAtCovariates(self, Z)
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_one_row = life_at_one_row

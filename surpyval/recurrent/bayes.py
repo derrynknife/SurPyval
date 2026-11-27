@@ -1909,3 +1909,8 @@ __all__ = [
     "fit_cause_specific",
     "fit_proportional_intensity",
 ]
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_zero_event_data = zero_event_data

@@ -1742,3 +1742,9 @@ _document(
         "whose\n        weight is not identified, yields ``nan``.",
     ),
 )
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_auc_td = time_dependent_auc
+_brier_score = brier_score_at

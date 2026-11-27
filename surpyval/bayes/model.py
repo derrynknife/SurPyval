@@ -2992,3 +2992,10 @@ def _solve_on_log_time(f: Any, a: float, b: float, fb: float) -> float:
         maxiter=1000,
     )
     return float(np.exp(root))
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_fmt = fmt
+_prior_interval = prior_interval_text

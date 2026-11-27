@@ -1335,3 +1335,10 @@ __all__ = [
     "log_posterior",
     "prior_conflicts",
 ]
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_finish = finish_result
+_grid_summary = grid_summary_table
+_phi_mode = phi_mode

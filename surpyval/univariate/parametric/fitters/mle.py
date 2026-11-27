@@ -1291,3 +1291,9 @@ def mle(model: "Parametric") -> Any:
         results["optimizer"] = search.optimizer
 
     return results
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_offset_limit = offset_limit

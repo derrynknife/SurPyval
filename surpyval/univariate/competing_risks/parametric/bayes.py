@@ -1162,3 +1162,9 @@ def fit_joint(
 
 
 __all__ = ["BayesianCompetingRisks", "DRAWS", "SEED", "fit", "fit_joint"]
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_NODES = GAUSS_NODES
+_WEIGHTS = GAUSS_WEIGHTS

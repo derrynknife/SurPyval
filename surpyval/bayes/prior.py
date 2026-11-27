@@ -2212,3 +2212,9 @@ def check(dist: Any, priors: Any = None, **fit_options: Any) -> Any:
     from surpyval.bayes.fitting import prior_model
 
     return prior_model(dist, priors, **fit_options).prior_check()
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_fmt = fmt

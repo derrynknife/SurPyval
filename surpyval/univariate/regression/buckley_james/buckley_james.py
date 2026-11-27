@@ -722,3 +722,8 @@ class BuckleyJames_(FitterRepr):
 
 
 BuckleyJames = BuckleyJames_()
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_aliased = aliased_design_columns

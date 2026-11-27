@@ -634,3 +634,11 @@ def improper_posterior_message(flat_names: list[str] | None) -> str:
         f"{MAX_HALF_WIDTH:g} standard deviations of its curvature: the "
         "prior is too wide for these data. Give a narrower prior."
     )
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_improper_message = improper_posterior_message
+_u_of = grid_u_of
+_z_of = grid_z_of

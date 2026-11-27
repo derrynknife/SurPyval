@@ -678,3 +678,9 @@ def fit_from_df(
             ]
         )
     return fit(dist, **arrays, **options)
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_check_points = check_grid_points
