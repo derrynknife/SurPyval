@@ -426,6 +426,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
             "surpyval.multistate.bayes.BayesianMultiStateRegression",
         )
     },
+    "surpyval.recurrent.renewal.bayes.BayesianRenewal": (
+        "a posterior, not a maximum: the grid sliced along the repair "
+        "parameter checks its own accuracy in place of a verified maximum"
+    ),
 }
 
 # Properties that refit the model (the slow ones).
