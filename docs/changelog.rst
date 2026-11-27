@@ -157,6 +157,27 @@ v0.30 (unreleased)
   fit ignores it; ``MixtureModel.fit`` now says how many there are and
   what to check.
 
+- **``AalenAdditive`` no longer predicts past where its fit stopped.**
+  The estimate stops at the first event time at which the units at risk
+  cannot separate the covariates (``X'YX`` singular), and until now held
+  every curve flat after it in silence, as R's ``timereg`` does. Where
+  events went on after that time this was a wrong number. On simulated
+  data whose binary covariate's ``1`` group has all left by t = 3 while
+  the others fail on to t = 10, ``sf(9)`` for the ``0`` group was 0.591
+  (band 0.517 to 0.658) against a truth of 0.198; on a small typed-out
+  example (``scripts/reference/reference_r_aalen_stop.R``), ``sf(4)`` for
+  the ``0`` group was 0.687 where that group's own Nelson-Aalen estimate
+  is 0.403. The fit now warns with the last time estimated, the units at
+  risk at the next event time and the number of events left out, records
+  the time in ``model.stopped_at`` (``nan`` when the fit does not stop,
+  0 when no time could be estimated), and ``sf``, ``ff``, ``Hf``, ``hf``,
+  ``qf``, ``cb``, ``cumulative_coefficients`` and its bounds are ``nan``
+  after it (a ``random`` draw past it is ``nan``, not ``inf``). Up to the
+  stop the estimates are unchanged and still match ``timereg`` to
+  rounding. Fits that use every event time are unchanged. Expect it in
+  the tail of data without censoring at the end: once every unit left at
+  risk has the same value of a binary covariate, the fit stops there; on
+  R's veteran data it stops at day 411 of 999.
 - **A Bayesian regression's posterior no longer depends on a covariate's
   unit.** The regressions' ``fit_bayes`` (proportional hazards,
   accelerated failure time, and each cause's or transition's fit in
@@ -632,6 +653,21 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **The Cox-Aalen model: ``CoxAalen``.** Multiplicative Cox terms on an
+  additive Aalen baseline with time-varying effects (Scheike and Zhang
+  2002): ``additive=`` names the columns of ``Z`` that add to the hazard,
+  the rest are hazard ratios. With none additive it is ``CoxPH`` with
+  Breslow ties (coefficients, standard errors, robust covariance and
+  curve bounds agree to rounding); with all additive it is
+  ``AalenAdditive``. It reports ``summary()``, ``covariance()``,
+  ``robust_covariance()`` and Wald ``param_cb`` for the hazard ratios,
+  ``cumulative_coefficients`` and their bounds for the additive part, and
+  ``sf``, ``ff``, ``Hf``, ``qf``, ``random`` and ``cb`` for predictions
+  (a falling additive estimate is held at its running maximum, as in
+  ``AalenAdditive``). Where too few units are left at risk to separate
+  the additive covariates before the last event, the fit stops there,
+  warns with the time and the events left out (``stopped_at``), and
+  every prediction after it is ``nan``.
 - **Left-censored moves and right truncation in ``ParametricMultiState``
   and ``ParametricMultiStateRegression``.** A move known only to have
   happened by a time (``x = [-inf, xr]``, or ``c = -1`` in a

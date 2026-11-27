@@ -38,6 +38,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     reg_data,
     stratified_reg_data,
     stress_data,
+    tail_censored_reg_data,
     uni_data,
 )
 from surpyval.univariate.regression import kinds
@@ -234,6 +235,7 @@ DECLARED_ATTRIBUTES = frozenset(
         "surpyval.univariate.regression.ProportionalOddsModel",
         "surpyval.univariate.regression.AdditiveHazardsModel",
         "surpyval.univariate.regression.AalenAdditiveModel",
+        "surpyval.univariate.regression.CoxAalenModel",
         "surpyval.univariate.regression.BuckleyJamesModel",
         "surpyval.univariate.regression.RankAFTModel",
         "surpyval.univariate.regression.QuantileRegressionModel",
@@ -351,6 +353,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     ),
     "surpyval.univariate.regression.AalenAdditiveModel": (
         "Aalen's estimator, a least-squares fit at each event time"
+    ),
+    "surpyval.univariate.regression.CoxAalenModel": (
+        "the Cox-Aalen estimating equations: a least-squares fit at each "
+        "event time inside Newton's method on the score"
     ),
     "surpyval.ml.SurvivalTree": "a tree of greedy splits",
     "surpyval.ml.RandomSurvivalForest": "an ensemble of trees",
@@ -932,6 +938,17 @@ def regression(name, fitter, data=reg_data, x=X_REG, Z=Z_REG, **kw):
     )
 
 
+def _cox_aalen_coefficients(model):
+    """A Cox-Aalen model's effects, one column per column of ``Z``: an
+    additive covariate's cumulative effect at each event time, a
+    multiplicative covariate's coefficient on every row."""
+    width = model.additive.size + model.multiplicative.size
+    out = np.empty((model.x.size, width))
+    out[:, model.additive] = model.A[:, 1:]
+    out[:, model.multiplicative] = model.beta
+    return out
+
+
 def _regression_draw(model, seed, Z, call_kwargs):
     """A regression's draw for the seed properties: 15 lifetimes at each
     of two covariate rows."""
@@ -1437,9 +1454,45 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+
+    def _cox_aalen_df(d, **kw):
+        return sp.CoxAalen.fit_from_df(
+            pd.DataFrame(
+                {"x": d["x"], "c": d["c"], "n": d["n"]}
+                | {"z0": d["Z"][:, 0], "z1": d["Z"][:, 1]}
+            ),
+            x_col="x",
+            c_col="c",
+            n_col="n",
+            additive=["z1"],
+            **kw,
+        )
+
+    cox_aalen = regression(
+        "CoxAalen",
+        sp.CoxAalen,
+        # Censored at the end (see tail_censored_reg_data).
+        data=tail_censored_reg_data,
+        # The second column additive, the first multiplicative.
+        fit=_fit(sp.CoxAalen, additive=[1]),
+        model_class="surpyval.univariate.regression.CoxAalenModel",
+        functions=("sf", "ff", "Hf"),
+        paths={
+            "fit_from_df": lambda d: _cox_aalen_df(d, Z_cols=["z0", "z1"]),
+            "formula": lambda d: _cox_aalen_df(d, formula="z0 + z1"),
+        },
+        exclude={"df_hf_sf": "CoxAalenModel has no hf or df"},
+        rtol=1e-6,
+        # One column per column of Z: an additive covariate's cumulative
+        # effect at every event time, a multiplicative one's coefficient.
+        coefficients=_cox_aalen_coefficients,
+        intercept=True,
+    )
     aalen = regression(
         "AalenAdditive",
         sp.AalenAdditive,
+        # Censored at the end (see tail_censored_reg_data).
+        data=tail_censored_reg_data,
         model_class="surpyval.univariate.regression.AalenAdditiveModel",
         paths={
             "fit_from_df": lambda d: sp.AalenAdditive.fit_from_df(
@@ -1562,6 +1615,7 @@ def _semi_parametric():
         portnoy,
         po,
         aalen,
+        cox_aalen,
         interval_cox,
         cox_interval,
     ]

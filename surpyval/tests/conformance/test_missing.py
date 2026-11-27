@@ -208,6 +208,7 @@ def _semi_parametric_fits():
         AdditiveHazards,
         BuckleyJames,
         CompetingRisksProportionalHazards,
+        CoxAalen,
         CoxPH,
         FineGray,
         ProportionalOdds,
@@ -229,6 +230,10 @@ def _semi_parametric_fits():
         ),
         ("BuckleyJames", lambda x, Z, c, e: BuckleyJames.fit(x, Z, c=c).beta),
         ("RankAFT", lambda x, Z, c, e: RankAFT.fit(x, Z, c=c).beta),
+        (
+            "CoxAalen",
+            lambda x, Z, c, e: CoxAalen.fit(x, Z, c=c, additive=[0]).A[-1],
+        ),
         (
             "QuantileRegression",
             lambda x, Z, c, e: QuantileRegression.fit(x, Z, c=c).coefs,

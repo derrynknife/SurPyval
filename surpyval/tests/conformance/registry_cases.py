@@ -5366,6 +5366,18 @@ def _bounds(case):
             else ()
         ),
         "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
+        # The delta-method Wald bounds on the curves, on each scale, and
+        # on the multiplicative coefficients.
+        "CoxAalenModel": tuple(
+            Bound(
+                "cb",
+                on=_ON_SURVIVAL,
+                kwargs={"bound_type": scale},
+                label=f"cb[{scale}]",
+            )
+            for scale in ("log-log", "log", "plain")
+        )
+        + (Bound("param_cb", kind="coef"),),
         # The Cox model's predicted curves: R's survfit conf.types
         "SemiParametricRegressionModel": tuple(
             Bound(

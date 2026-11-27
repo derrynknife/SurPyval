@@ -15,6 +15,13 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### AalenAdditive: stop where the risk set cannot separate the covariates (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Past the first event time at which `X'YX` is singular, `AalenAdditive` predicts `nan` (every prediction, the cumulative coefficients and their bounds; `random` draws `nan`), warns with the last time estimated, the units at risk at the next event time and the events left out, and records the time in `stopped_at`. `timereg` holds the cumulative coefficients flat to the end of the data instead, as SurPyval did; the two agree up to the stop. | maintainer | Holding the curve flat silently understated the risk (`sf(9)` 0.591 against a truth of 0.198 in a simulated case); a number that is unknown is `nan`, not a guess. | done |
+| A fit that cannot estimate even the first event time warns and has `stopped_at = 0` (every prediction after 0 is `nan`) rather than refusing. | proposed | Keeps fits that ran before running; the warning names the fix (fewer covariates, `penalizer=`). | done |
+
 ### Multi-state: left censoring and right truncation in the parametric spell models (27 Nov 2026)
 
 | Decision | By | Reason | Status |
@@ -3174,6 +3181,20 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | `ItemHistory` still drops an inspection with a count of 0 (its record has no place for it), so `to_surpyval_data()` writes the rows of data holding one from its arrays, not from its items' records. | proposed | Changing what an `ItemHistory` keeps is a separate decision. | done |
 | `SurpyvalData.n_items` counts a unit with several rows as one item when the data has no states; with states it is still the `n` of the unit's first row. A unit with one row is counted by its `n` as before. | proposed | In repeated-event data `n` counts events at an inspection, not units; a number shown to users was wrong (2 items for one unit). | done |
 
+### The Cox-Aalen model (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `CoxAalen.fit(x, Z, ..., additive=)`: one covariate matrix, with `additive` naming its additive columns (by position, or by name for a DataFrame or `fit_from_df`); the default, none, is Cox's model. | proposed | One `Z` keeps the predictions' and the conformance suite's interface (`sf(x, Z)`), as R's `timereg` marks the multiplicative terms in one formula. | done |
+| The additive increments are least squares weighted by `exp(beta'Z)` times the at-risk counts, and `beta` solves the full-likelihood score with them put in (Scheike and Zhang 2002), by Newton's method from 0 with step halving on `abs(U)`. The fit stops before the first event time at which `X'WX` is singular, as `AalenAdditive` does. | proposed | The published estimator; with only the baseline additive it is Cox's partial likelihood with Breslow ties. | done |
+| `covariance()` is `I^-1 Sigma I^-T` with `Sigma` the score's predictable variation; `robust_covariance()` puts the outer products of the score's martingale residuals in its place. | proposed | The estimator is not the efficient maximum-likelihood one, so `I^-1` alone is not its variance; this sandwich reduces to the inverse of Cox's information (and the robust one to Lin and Wei's) when only the baseline is additive. | done |
+| The variance of the cumulative coefficients takes the additive part's own term as its optional variation (as `AalenAdditive`) and the terms through `beta` by the predictable variation (as `CoxPH`'s Tsiatis variance). | proposed | So that both reductions hold exactly: to `AalenAdditive`'s variances with no multiplicative covariate, and to `CoxPH`'s curve bounds with only the baseline additive. Both are consistent estimates of the same variance. | done |
+| A falling additive estimate is predicted with its running maximum from 0, floored at 0 (survival in [0, 1], never rising); `cumulative_coefficients` reports the estimate as it is. | proposed | `AalenAdditive`'s rule. | done |
+| Bounds: Wald only (`param_cb`, `cumulative_coefficients_cb`, `cb` on `sf`/`ff`/`Hf` with `CoxPH.cb`'s scales); likelihood-ratio and bootstrap bounds are refused with advice; no `hf`/`df`. | proposed | No likelihood; no resampling built; the additive part is a step function. | done |
+| A column is aliased if constant or a linear combination of the other columns and the intercept, in either part. | proposed | Conservative: a multiplicative column collinear with an additive one is identifiable in principle for a continuous covariate, but not for a binary one. | done |
+| No refit-registry plan: the fixture's fit has an additive part that falls, so the curve drawn from is not a Cox-Aalen model; a calibration study simulates from a true one instead. | proposed | As for `AalenAdditive`. | done |
+| A fit that stops before the last event time (`X'WX` singular) warns with the time and the number of events left out, records it in `stopped_at`, and predicts `nan` after it (curves, quantiles, bounds, cumulative coefficients; `random` draws past it are `nan`, not `inf`). | proposed | Holding the curve flat after the stop gave a wrong number silently: in a review case `sf(9)` was 0.556 (band 0.484 to 0.622) against a truth near 0.17. | done |
+| The `CoxAalen.fit` docstring example uses seed 5, changed from seed 4 after its output was seen. | maintainer | With seed 4 the additive effect at t = 6 was 0.333 (band 0.242 to 0.424) against a truth of 0.2, 2.85 standard errors off; over 1,000 fresh seeds the pointwise coverage there is 0.946 to 0.951, so seed 4 was an unlucky draw. The maintainer kept seed 5 (27 Nov 2026): the example shows a typical fit, and the coverage study is the check. | done |
 ### Rank-based AFT (27 Nov 2026)
 
 | Decision | By | Reason | Status |

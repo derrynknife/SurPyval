@@ -422,6 +422,8 @@ The covariate shifts the absolute hazard by a constant amount at every age, rath
 
 **The positivity caveat.** Nothing constrains :math:`h_0(x) + \beta' Z` to be positive. For a strongly protective covariate the additive hazard can go negative — impossible for a real hazard. The semi-parametric ``AdditiveHazards`` predicts with the running maximum of its cumulative-hazard estimate, so its survival stays in :math:`[0, 1]` and never rises; its fitted :math:`\hat H_0` is left as estimated. The parametric models predict with the model as fitted: where :math:`h_0(x) + \beta' Z` is negative the cumulative hazard falls, survival exceeds 1 and the density is negative, and each prediction there (``sf``, ``Hf``, ``cb``, ``sf_tvc``, ...) warns once that the values are the model's, not a distribution's. The parametric likelihood needs :math:`\log h` at every failure, so surpyval's optimiser treats any parameter value that makes the hazard non-positive at an observed failure as infeasible and stays inside the feasible region. When the data would prefer a negative hazard, the fit therefore returns the best *feasible* model — pressed against the boundary, with a near-zero hazard at the earliest failures of the protected units and a baseline distorted to compensate — and warns that it has done so; it raises an error only if the optimiser ends at an infeasible point. When effects are strongly protective, the exponential link of proportional hazards, which keeps the hazard positive by construction, is the safer choice.
 
+**Cox-Aalen: both at once.** ``CoxAalen`` [ScheikeZhang2002reg]_ lets some covariates act multiplicatively (hazard ratios, as in Cox) and others additively with effects that change over time (as in Aalen): :math:`h(x \mid Z) = \{X'\alpha(x)\}\, e^{\beta' Z}`, with ``additive=`` naming the columns of ``X``. With only the baseline additive it is Cox's model with Breslow ties, and with every covariate additive Aalen's. A covariate that fails Cox's proportional-hazards check can be moved into the additive part while the others keep their hazard ratios. See :doc:`regression/cox_aalen`.
+
 Semi-Parametric — Buckley-James
 -------------------------------
 
@@ -764,6 +766,8 @@ Whatever the choice, check it: residuals and the PH test for the assumption, inf
 .. [Bennett1983reg] Bennett, S., 1983. Analysis of survival data by the proportional odds model. *Statistics in Medicine*, 2(2), pp.273-277.
 
 .. [LinYing1994reg] Lin, D.Y. and Ying, Z., 1994. Semiparametric analysis of the additive risk model. *Biometrika*, 81(1), pp.61-71.
+
+.. [ScheikeZhang2002reg] Scheike, T.H. and Zhang, M.-J., 2002. An additive-multiplicative Cox-Aalen regression model. *Scandinavian Journal of Statistics*, 29(1), pp.75-88.
 
 .. [BuckleyJames1979reg] Buckley, J. and James, I., 1979. Linear regression with censored data. *Biometrika*, 66(3), pp.429-436.
 .. [Tsiatis1990reg] Tsiatis, A. A., 1990. Estimating regression parameters using linear rank tests for censored data. *Annals of Statistics*, 18(1), pp.354-372.

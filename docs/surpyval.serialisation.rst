@@ -338,11 +338,15 @@ with its own ``schema``.
      - --
    * - ``AalenAdditiveModel``
      - ``"model": "AalenAdditiveModel"``
-     - ``x``, ``B``, ``B_var``, ``B_cov``, ``n_terms``, ``penalizer``, ``aliased``
+     - ``x``, ``B``, ``B_var``, ``B_cov``, ``n_terms``, ``penalizer``, ``aliased``, ``stopped_at``
      - --
    * - ``BuckleyJamesModel``
      - ``"model": "BuckleyJamesModel"``
      - ``beta``, ``resid``, ``resid_surv``, ``n_iter``, ``converged``, ``data``
+     - --
+   * - ``CoxAalenModel``
+     - ``"model": "CoxAalenModel"``
+     - ``x``, ``A``, ``A_cov``, ``A_beta_cov``, ``beta``, ``covariance``, ``robust_covariance``, ``additive``, ``multiplicative``, ``aliased``, ``n_iter``, ``converged``, ``stopped_at``
      - --
    * - ``RankAFTModel``
      - ``"model": "RankAFTModel"``
