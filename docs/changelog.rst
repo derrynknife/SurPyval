@@ -172,6 +172,50 @@ v0.30 (unreleased)
     taken from the accurate ``log_sf``.
   - ``Gompertz.qf(1)`` and ``isf(0)`` with shape 0 are ``inf`` (they
     were nan).
+- **Joint models hold a correlation of +-1 on its edge, and place their
+  nodes right near a nearly singular spread.** Three changes, each
+  leaving a verified fit with its spread clear of both edges bit for bit
+  as it was (checked on eight fixtures: straight lines with one or two
+  parameters varying, quadratic, two failure modes, accelerated, slope
+  link, Laplace's approximation and uncorrelated spreads; estimates,
+  standard errors, ``neg_ll()`` and predictions).
+
+  - Where two varying parameters are perfectly correlated (one's spread
+    between items an exact multiple of the other's), the search stalled
+    short of that edge, unverified, with a warning. Such a fit is now
+    made on the edge (the one parameter integrated over, the other its
+    fitted multiple) and held there unless the likelihood rises off it:
+    the correlation is exactly +1 or -1 with no standard error, named
+    in the new ``perfect_correlations``, and the ``Fit`` line says so.
+    On 16 simulated fleets of 150 items on straight lines with a rate
+    spread of 0 to 0.05 a year, the 8 that ended unverified (rate sds
+    0.0016 to 0.027 a year, a correlation of -0.998 and the like) are
+    now all verified and held at a correlation of +-1, each with a
+    negative log-likelihood no higher than before (up to 0.010 lower:
+    2428.7427 to 2428.7326; 2432.286370 to 2432.286303 on the fleet a
+    test pins); the other 8 are unchanged.
+  - Near either edge the integrand's curvature is too ill-conditioned to
+    invert as it was, and the eigenvalue floor that kept the nodes'
+    scale widened them in the narrow direction, so the grid overstated
+    the likelihood. Such items' nodes are now placed from the curvature
+    in the prior's own coordinates. On ``joint_data`` with a quadratic
+    path and its level, rate and curvature varying, the fit had reached
+    406.38 (unverified, a correlation of 0.997): an artefact, since at
+    that point the likelihood by 7, 15 and 31 nodes a dimension was
+    406.9, 422.5 and 437.8, and is now 494.19 by each, in line with a
+    Monte Carlo integral.
+  - A search round whose step (with the nodes held) cannot be taken
+    even in part, once the nodes are placed again, now tries the Newton
+    step before taking the rounds as settled. The quadratic fit above
+    then reaches a verified maximum inside, 479.3549 (correlations 0.62,
+    -0.24, 0.61), no worse than the fit with the curvature common
+    (479.6325); before, it stalled at 479.465.
+  - The rule that keeps a search off an edge (a spread at 0, or a
+    correlation of +-1) now asks for a rise of 1e-4 in log-likelihood,
+    an absolute amount; it was one part in a million of the
+    log-likelihood, which is 0.1 at a log-likelihood of 1e5. Where the
+    first answer already beats the fit on the edge, the search off the
+    edge starts from that answer rather than from the edge.
 - **Joint models hold a spread at 0 on its lower bound (#1334).** Where
   the data put the spread between items of a varying parameter at 0 (any
   parameter, any path, one marker or several), the search, which works

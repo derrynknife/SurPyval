@@ -52,6 +52,7 @@ from ._likelihood import (
     path_jacobian,
     place,
     several_markers,
+    varying_jacobian,
 )
 from ._markers import (
     marker_start,
@@ -2115,19 +2116,12 @@ def _fit(
                     model, arrays, survival_start(model, arrays, theta)
                 )
         kept_warnings = list(first_warnings)
-        # A spread between items whose sd is (nearly) 0 sits where the
-        # search's log-Cholesky scale puts it at minus infinity: the
-        # likelihood is flat along it there, the search can stall short
-        # of the fit with that parameter common to all items (#1334), and
-        # the spread has no Wald standard error. Such a fit is held on
-        # that boundary, or kept off it where the likelihood rises off it
-        # (:func:`_on_the_boundary`). A verified fit with every spread
-        # clear of 0 is left as it is.
-        held_fit = _at_a_spread_of_zero(model, arrays, u, value, maximum)
-        if held_fit is not None:
-            fit_model, (u, value, cov_u, maximum), kept_warnings, path_u = (
-                held_fit
+        # a spread at 0, or a correlation at +-1, held on its edge
+        fit_model, (u, value, cov_u, maximum), kept_warnings, path_u = (
+            _on_an_edge(
+                model, arrays, (u, value, cov_u, maximum), kept_warnings
             )
+        )
         for caught in kept_warnings:
             warnings.warn_explicit(
                 caught.message,
@@ -2184,7 +2178,7 @@ def _fit(
         # held on the boundary: the fit with the spreads at 0 common to
         # all items, its parameters in their places and those spreads
         # (and their correlations) 0, with no standard errors
-        held = [path_names[j] for j in fit_model.layout.varying]
+        held = [path_names[j] for j in fit_model.layout.full_varying]
         fit_names = parameter_names(
             path_names,
             held,
@@ -2202,6 +2196,16 @@ def _fit(
         )
         estimated, covariance = _held_on_the_boundary(
             kept_names, fit_names, estimated, covariance
+        )
+    proportional = None
+    if fit_model.layout.loaded is not None:
+        proportional = _held_on_the_edge(
+            fit_model.layout,
+            path_names,
+            list(fitter.varying),
+            kept_names,
+            estimated,
+            covariance,
         )
     where = [full_names.index(name) for name in kept_names]
     params = np.full(len(full_names), np.nan)
@@ -2245,6 +2249,7 @@ def _fit(
         full_cov[np.ix_(where, where)] = covariance
         out._covariance = full_cov
     out._neg_ll = float(value)
+    out._proportional = proportional
     # the path part where it was found, a start for another link's fit
     # (on the boundary, the search off it: the spreads at 0 small)
     found = layout.unpack(u if path_u is None else path_u)
@@ -2274,11 +2279,13 @@ _NO_SPREAD = 0.01
 #: as 0.
 _OFF_START = 0.05
 
-#: A search off the boundary must beat the fit on it by this much
-#: (relative, with an absolute floor of the same in log-likelihood
-#: units) to be kept: less is round-off, and the fit on the boundary,
-#: with every other parameter's standard error, is reported.
-_RISE_TOL = 1e-6
+#: A search off the boundary must beat the fit on it by this much in
+#: log-likelihood to be kept: less is round-off of the adaptive nodes,
+#: and the fit on the boundary, with every other parameter's standard
+#: error, is reported. Absolute, not relative to the log-likelihood: a
+#: relative one is 0.1 at a log-likelihood of 1e5, a rise that would be
+#: real.
+_RISE_TOL = 1e-4
 
 
 def _spread_reach(model: Model, arrays: JointArrays, theta: dict) -> Any:
@@ -2303,9 +2310,9 @@ def _spread_reach(model: Model, arrays: JointArrays, theta: dict) -> Any:
             P = np.broadcast_to(params[:, None, :], ages.shape + (layout.P,))
             J = path_jacobian(model.path.model, ages, np.array(P))
             noise = np.full(ages.shape[1], float(np.ravel(theta["sigma"])[0]))
-        moved = np.abs(np.asarray(J, dtype=float)[..., V]) / np.reshape(
-            noise, (1, -1, 1)
-        )
+        moved = np.abs(
+            varying_jacobian(np.asarray(J, dtype=float), layout, theta)
+        ) / np.reshape(noise, (1, -1, 1))
     moved = np.where(arrays.mask[..., None] & np.isfinite(moved), moved, 0.0)
     if moved.size == 0:
         return np.zeros(len(V))
@@ -2495,21 +2502,280 @@ def _on_the_boundary(
     reach = _spread_reach(model, arrays, theta_n)
     sds = np.where(reach > 0, _OFF_START / np.where(reach > 0, reach, 1.0), 0)
     off_start = _embed(theta_n, keep, q, sds)
-    path_u = layout.pack(off_start)
-    off = _maximised(model, arrays, off_start)
+    return _held_or_off(
+        model, arrays, first, nested, got, layout.pack(off_start)
+    )
+
+
+def _held_or_off(
+    model: Model,
+    arrays: JointArrays,
+    first: tuple,
+    nested: Model,
+    got: tuple,
+    off_u: npt.NDArray,
+) -> tuple | None:
+    """:func:`_on_the_boundary`'s and :func:`_on_the_edge`'s choice
+    between the fit on the boundary ``got`` (:func:`_maximised`'s answer
+    for ``nested``) and the whole model off it: its search from the
+    first answer ``first`` ``(u, value)`` where that already beats the
+    fit on the boundary by :data:`_RISE_TOL` (it is off the boundary
+    already), else from ``off_u`` (the fit on the boundary, stepped just
+    off it). The best of the whole model's answers is kept where it beats
+    the boundary's by :data:`_RISE_TOL`; otherwise the fit is held on the
+    boundary. So the fit returned is never worse than any answer reached
+    by more than :data:`_RISE_TOL`."""
+    u1, v1 = first
+    (u_n, v_n, cov_n, max_n), warned_n = got
+    above = v1 < v_n - _RISE_TOL
+    start = (
+        _theta_of(model.layout, u1) if above else model.layout.unpack(off_u)
+    )
+    path_u = u1 if above else off_u
+    off = _maximised(model, arrays, start)
     best = None
     if off is not None:
         (u_o, v_o, cov_o, max_o), warned_o = off
         path_u = u_o
         if np.isfinite(v_o):
             best = (v_o, (model, (u_o, v_o, cov_o, max_o), warned_o, None))
-    tol = _RISE_TOL * max(1.0, abs(v_n))
-    if best is not None and best[0] < v_n - tol and best[0] <= v1:
+    if best is not None and best[0] < v_n - _RISE_TOL and best[0] <= v1:
         return best[1]
-    if v1 < v_n - tol:
+    if above:
         # the first answer is above the boundary: it stands
         return None
     return nested, (u_n, v_n, cov_n, max_n), warned_n, path_u
+
+
+def _on_an_edge(
+    model: Model, arrays: JointArrays, answer: tuple, kept: list
+) -> tuple:
+    """The fit from the search's ``answer`` ``(u, value, cov_u,
+    maximum)`` (with its warnings ``kept``) once the edges of the items'
+    spread are handled: ``(fit_model, answer, warnings, path_u)``.
+
+    A spread between items whose sd is (nearly) 0 sits where the
+    search's log-Cholesky scale puts it at minus infinity: the
+    likelihood is flat along it there, the search can stall short of the
+    fit with that parameter common to all items (#1334), and the spread
+    has no Wald standard error. Such a fit is held on that boundary, or
+    kept off it where the likelihood rises off it
+    (:func:`_on_the_boundary`). Likewise a correlation of +-1 between two
+    varying parameters, where the part of one's spread that the other's
+    does not explain is at 0 on the same log scale: held on that edge of
+    the valid covariance matrices, or kept off it
+    (:func:`_on_the_edge`). A verified fit with every spread clear of
+    both edges is left as it is. ``path_u`` is the whole model's
+    internal parameters off the edges (``None``: ``u``'s)."""
+    u, value, _, maximum = answer
+    fit_model, path_u = model, None
+    held_fit = _at_a_spread_of_zero(model, arrays, u, value, maximum)
+    if held_fit is not None:
+        fit_model, answer, kept, path_u = held_fit
+        u, value, _, maximum = answer
+    on_edge = _at_a_correlation_edge(fit_model, arrays, u, value, maximum)
+    if on_edge is not None:
+        edge_model, answer, kept, edge_u = on_edge
+        if fit_model is model:
+            path_u = edge_u
+        fit_model = edge_model
+    return fit_model, answer, kept, path_u
+
+
+def _closest_pair(model: Model, arrays: JointArrays, theta: dict) -> Any:
+    """``(moved, k, j)``: of the correlated pairs of varying parameters
+    (places in ``model.layout.varying``), the one where the part of
+    ``k``'s spread between items that ``j``'s does not explain moves an
+    item's marker the least, ``moved`` in the noise sds of its readings
+    (``sd_k sqrt(1 - corr^2)`` times :func:`_spread_reach`'s reach of
+    ``k``); of the two of a pair, ``k`` is the one whose spread moves
+    the marker less. ``None`` where no pair is correlated."""
+    layout = model.layout
+    L = np.asarray(theta["L"], dtype=float)
+    D = L @ L.T
+    sd = np.sqrt(np.diag(D))
+    reach = _spread_reach(model, arrays, theta)
+    best = None
+    for a, b in layout.lower:
+        if not (sd[a] > 0 and sd[b] > 0) or reach[a] <= 0 or reach[b] <= 0:
+            continue
+        r = float(np.clip(D[a, b] / (sd[a] * sd[b]), -1.0, 1.0))
+        if r == 0.0:
+            continue
+        k, j = (a, b) if sd[a] * reach[a] <= sd[b] * reach[b] else (b, a)
+        moved = sd[k] * np.sqrt(max(0.0, 1.0 - r * r)) * reach[k]
+        if best is None or moved < best[0]:
+            best = (moved, k, j)
+    return best
+
+
+def _proportional_theta(theta: dict, k: int, j: int, small: float) -> dict:
+    """``theta`` with the varying parameter at place ``k`` an exact
+    multiple of the one at ``j`` about their means, but for a part of
+    its own of sd ``small`` uncorrelated with every other: ``k``'s
+    covariances those of ``j`` times ``D_kj / D_jj``."""
+    L = np.asarray(theta["L"], dtype=float)
+    D = L @ L.T
+    lam = D[k, j] / D[j, j]
+    out = D.copy()
+    out[k, :] = out[:, k] = lam * D[j, :]
+    out[k, k] = lam * lam * D[j, j] + small**2
+    return dict(theta, L=np.linalg.cholesky(0.5 * (out + out.T)))
+
+
+def _with_proportional(model: Model, k: int, j: int, sign: float) -> Model:
+    """``model`` with the varying parameter at place ``k`` (of its
+    layout's varying ones) an exact multiple of the one at ``j``
+    (:attr:`Layout.loaded`)."""
+    import dataclasses
+
+    layout = model.layout
+    keep = [i for i in range(layout.q) if i != k]
+    nested = dataclasses.replace(
+        layout,
+        varying=tuple(layout.varying[i] for i in keep),
+        blocks=tuple(layout.blocks[i] for i in keep),
+        loaded=(layout.varying[k], keep.index(j), k, sign),
+    )
+    return dataclasses.replace(model, layout=nested)
+
+
+def _at_a_correlation_edge(
+    model: Model, arrays: JointArrays, u: Any, value: float, maximum: str
+) -> tuple | None:
+    """:func:`_on_the_edge`'s answer where a correlated pair of varying
+    parameters is at a correlation of +-1 at the search's answer ``u``
+    (``value``): the part of one's spread the other's does not explain
+    moves no item's marker by :data:`_NO_SPREAD` of the noise sd
+    (:func:`_closest_pair`); or, the search unverified, taking that part
+    to (nearly) 0 costs the log-likelihood less than :data:`_NOT_TOLD`.
+    ``None`` where no pair is, or the answer stands; and for a layout
+    that already holds a pair."""
+    layout = model.layout
+    if layout.loaded is not None or not layout.lower:
+        return None
+    theta = _theta_of(layout, u)
+    pair = _closest_pair(model, arrays, theta)
+    if pair is None:
+        return None
+    moved, k, j = pair
+    if not moved < _NO_SPREAD:
+        if maximum == "verified":
+            return None
+        # a search stalled on its way to the edge stops short of it
+        L = np.asarray(theta["L"], dtype=float)
+        sd_k = float(np.sqrt(np.sum(L[k] ** 2)))
+        try:
+            v = layout.pack(_proportional_theta(theta, k, j, 1e-3 * sd_k))
+            with np.errstate(all="ignore"), warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                placed, _ = place(v, model, arrays, (None, None))
+                lost = float(neg_ll(v, model, arrays, placed)) - value
+        except (np.linalg.LinAlgError, ValueError, FloatingPointError):
+            return None
+        if not (np.isfinite(lost) and lost < _NOT_TOLD):
+            return None
+    return _on_the_edge(model, arrays, (u, value), k, j)
+
+
+def _on_the_edge(
+    model: Model, arrays: JointArrays, first: tuple, k: int, j: int
+) -> tuple | None:
+    """The fit where the varying parameters at places ``k`` and ``j`` of
+    ``model.layout.varying`` are perfectly correlated, at the first
+    search's answer ``first`` ``(u, value)``: ``k`` an exact multiple of
+    ``j`` about their means, the edge of the valid covariance matrices.
+
+    The search's scale for the part of ``k``'s spread that ``j``'s does
+    not explain is its log (the log of the Cholesky factor's diagonal),
+    so the edge is at minus infinity, where the likelihood is flat along
+    it: as at a spread of 0 (:func:`_on_the_boundary`), a search stalls
+    there short of the fit on the edge. So: (1) the fit on the edge
+    (:func:`_with_proportional`: ``k`` integrated with ``j``, not over),
+    from the first answer's parameters; (2) a search of the whole model,
+    from the first answer where that beats (1), else from (1) with that
+    part small (:data:`_OFF_START`), which finds where the likelihood
+    rises off the edge (:func:`_held_or_off`).
+
+    Returns as :func:`_on_the_boundary`; ``None`` where the fit on the
+    edge cannot be made, or the answer stands."""
+    layout = model.layout
+    u1, _ = first
+    theta = _theta_of(layout, u1)
+    L = np.asarray(theta["L"], dtype=float)
+    D = L @ L.T
+    keep = [i for i in range(layout.q) if i != k]
+    lam = float(D[k, j] / D[j, j])
+    if not (np.isfinite(lam) and lam != 0.0):
+        return None
+    nested = _with_proportional(model, k, j, float(np.sign(lam)))
+    start = dict(_project(theta, keep), lam=lam)
+    got = _maximised(nested, arrays, start)
+    if got is None:
+        return None
+    from .joint_model import _loaded_spread
+
+    # (2) off the edge: k with a small part of its own, uncorrelated
+    theta_n = _theta_of(nested.layout, got[0][0])
+    reach = _spread_reach(model, arrays, theta_n)[k]
+    D = np.asarray(_loaded_spread(theta_n, nested.layout), dtype=float)
+    D[k, k] += (_OFF_START / reach) ** 2
+    off = {key: v for key, v in theta_n.items() if key != "lam"}
+    try:
+        off["L"] = np.linalg.cholesky(0.5 * (D + D.T))
+    except np.linalg.LinAlgError:
+        return None
+    return _held_or_off(model, arrays, first, nested, got, layout.pack(off))
+
+
+def _held_on_the_edge(
+    layout: Layout,
+    path_names: list,
+    varying: list,
+    names: list,
+    estimated: npt.NDArray,
+    covariance: npt.NDArray | None,
+) -> tuple:
+    """``(k, j)``, the names of the parameter held as a multiple of
+    another (:attr:`Layout.loaded`) and of that one, with the reported
+    ``estimated`` (named ``names``) and their ``covariance`` made exact
+    in place: the correlation of the two exactly the multiple's sign,
+    with no standard error (``nan``), and the held one's correlations
+    with the others that sign times the other one's (as the fit on the
+    edge has them, to rounding)."""
+    j_path, place, _, _ = layout.loaded
+    k_name = path_names[j_path]
+    j_name = path_names[layout.varying[place]]
+    sign = None
+    for i, name in enumerate(names):
+        pair = _pair_of(name, varying)
+        if set(pair) == {k_name, j_name}:
+            sign = float(np.sign(estimated[i]))
+            estimated[i] = sign
+            if covariance is not None:
+                covariance[i, :] = covariance[:, i] = np.nan
+    for i, name in enumerate(names):
+        pair = _pair_of(name, varying)
+        if k_name in pair and j_name not in pair and sign is not None:
+            other = pair[0] if pair[1] == k_name else pair[1]
+            twin = names.index(_corr_name(j_name, other, varying))
+            estimated[i] = sign * estimated[twin]
+    return (k_name, j_name)
+
+
+def _pair_of(name: str, varying: list) -> tuple:
+    """The two varying parameters of the correlation ``name``; empty
+    where it is not one."""
+    for i, a in enumerate(varying):
+        for b in varying[i + 1 :]:
+            if name == f"corr_{a}_{b}":
+                return (a, b)
+    return ()
+
+
+def _corr_name(a: str, b: str, varying: list) -> str:
+    first, second = sorted((a, b), key=varying.index)
+    return f"corr_{first}_{second}"
 
 
 def _held_on_the_boundary(
@@ -2787,17 +3053,28 @@ def _descend(
                 options={"gtol": 1e-7, "maxiter": 5000},
             )
         step = result.x if np.all(np.isfinite(result.x)) else 0 * result.x
-        size = 1.0
-        while True:
-            trial = u + S @ (size * step)
-            new_value, new_placed, new_starts = evaluated(trial, starts)
-            if new_value <= value + 1e-12 * max(1.0, abs(value)):
-                break
-            size /= 4.0
-            if size < 1e-6:
-                trial, new_value, new_placed = u, value, placed
-                new_starts = starts
-                break
+        trial, new_value, new_placed, new_starts, size, ok = _backtracked(
+            u, value, placed, starts, S @ step, evaluated
+        )
+        if not ok:
+            # The search with the nodes held runs off to where they are
+            # far from the integrand (near the edge of the valid spreads,
+            # where it is flat along a log sd), and no part of its step
+            # improves the likelihood with the nodes placed again. The
+            # Newton step from here (in the whitened coordinates, minus
+            # the gradient) is the local one; it is tried before the
+            # rounds are taken as settled. A fit whose steps improve, as
+            # an ordinary one's do, never takes it.
+            with np.errstate(all="ignore"):
+                _, grad = search(u, placed)
+            if np.all(np.isfinite(grad)):
+                newton = -(S.T @ np.asarray(grad, dtype=float))
+                tried = _backtracked(
+                    u, value, placed, starts, S @ newton, evaluated
+                )
+                if tried[5]:
+                    trial, new_value, new_placed, new_starts, size, _ = tried
+                    step = newton
         moved = float(np.max(np.abs(size * step), initial=0.0))
         settled = abs(value - new_value) <= _ROUND_TOL * max(1.0, abs(value))
         u, value, placed, starts = trial, new_value, new_placed, new_starts
@@ -2805,6 +3082,30 @@ def _descend(
             converged = True
             break
     return u, value, placed, starts, converged
+
+
+def _backtracked(
+    u: npt.NDArray,
+    value: float,
+    placed: tuple,
+    starts: tuple,
+    delta: npt.NDArray,
+    evaluated: Any,
+) -> tuple:
+    """The step ``delta`` from ``u`` taken as far as the likelihood by
+    nodes placed at the new point improves on ``value`` (quartered until
+    it does): ``(u, value, placed, starts, size, ok)``; where no step
+    down to a millionth does, ``u`` itself (``ok`` false, ``size`` the
+    last tried)."""
+    size = 1.0
+    while True:
+        trial = u + size * delta
+        new_value, new_placed, new_starts = evaluated(trial, starts)
+        if new_value <= value + 1e-12 * max(1.0, abs(value)):
+            return trial, new_value, new_placed, new_starts, size, True
+        size /= 4.0
+        if size < 1e-6:
+            return u, value, placed, starts, size, False
 
 
 def _runaway_hazard_coefficients(

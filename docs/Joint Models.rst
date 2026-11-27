@@ -372,15 +372,16 @@ by as much as 1% of the readings' noise at any reading age), or ends
 unverified with a spread whose removal costs the log-likelihood less
 than 1.92 (the data cannot tell it from 0 at the 5% level), the fit is
 made again with those parameters common to all items, and then the full
-model is searched once more from there, with their spreads small. If
-that search rises off the edge (by more than one part in a million of
-the log-likelihood), its answer is kept. Otherwise the fit is held on
-the edge. A verified fit with every spread clear of 0 is not searched
-again, so ordinary fits cost nothing more. A small spread just off 0 (above
-the 1% rule, with the likelihood rising a little off the edge) is not
-held, and its fit can still end unverified, with the warning; ask
-whether the parameter varies by comparing it with the fit where it is
-common, by ``aic()`` or ``likelihood_ratio_test`` (below).
+model is searched once more from there, with their spreads small (or,
+where the first answer already beats the fit on the edge, from that
+answer). If that search rises off the edge (by more than 1e-4 in
+log-likelihood, an absolute amount: round-off of the adaptive nodes is
+below it), its answer is kept. Otherwise the fit is held on the edge.
+Either way the fit reported is never worse than any answer the searches
+reached by more than that 1e-4. A verified fit with every spread clear of
+0 is not searched again, so ordinary fits cost nothing more. Ask whether
+the parameter varies by comparing it with the fit where it is common, by
+``aic()`` or ``likelihood_ratio_test`` (below).
 
 Second, what is reported. A fit held on the edge says so:
 
@@ -403,6 +404,58 @@ out, its p-value is half that of chi-squared on the correlations left
 out and half on those and the sd (Self and Liang, 1987; Stram and Lee,
 1994), smaller than the plain chi-squared p-value. For a spread held at 0
 the statistic is 0 and the p-value 1.
+
+A correlation of +-1: one parameter a multiple of another
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The spread has a second edge. Two varying parameters can be perfectly
+correlated: each item's rate, say, is its level's departure from the
+fleet's mean times a fixed number, so an item that starts high rises
+slowly by exactly as much as its start predicts. Nothing of the rate's
+spread is then its own. This is common where a parameter barely varies
+in truth: on straight lines whose rates are all the same, the fit often
+estimates a small rate spread tied entirely to the level (a correlation
+of -1) rather than none at all, because that fits the readings' small
+wobbles a little better.
+
+The search meets this edge as it meets a spread of 0: the part of the
+rate's spread that the level's does not explain is, on the search's log
+scale, at minus infinity, so the search stalls short of it and ends
+unverified. So, where that part moves no item's marker by 1% of the
+noise at any reading age, or the search ends unverified and removing
+that part costs the log-likelihood less than 1.92, the fit is made on
+the edge: the level is integrated over, item by item, and the rate is
+the fitted multiple of its departure. Then the full model is searched
+from there with the rate given a small part of its own, as for a spread
+at 0, and kept if the likelihood rises off the edge by more than 1e-4.
+
+A fit held on this edge says so:
+
+- ``model.perfect_correlations`` names the correlation
+  (``["corr_a_b"]``), and the printout's ``Fit`` line says ``with
+  corr_a_b at its edge, -1 (b an exact multiple of a about their
+  means)``.
+- The correlation is exactly +1 or -1, with no standard error
+  (``nan``), for the reason a spread at 0 has none. The held parameter's
+  sd is the multiple times the other's, with its standard error; its
+  correlations with any other varying parameter are the other one's,
+  times that sign.
+- Everything else (estimates, standard errors, ``neg_ll()``,
+  predictions, ``maximum``) is the fit on the edge's, and ``aic()``
+  counts the correlation as a parameter.
+
+Only a pair is held: one parameter a multiple of one other. A spread of
+three or more parameters can also sit on the edge without any pair at
++-1 (its correlation matrix singular in a direction mixing them all);
+such a fit is not held, and can end unverified with the warning.
+
+Near either edge the spread is nearly singular, and the grid's nodes are
+placed by the inverse of the integrand's curvature there, a matrix too
+ill-conditioned to invert as it is (its smallest eigenvalue below a
+millionth of a millionth of its largest, in each parameter's own scale).
+There the curvature is taken in the prior's own coordinates instead,
+where it is well conditioned; before, the nodes were placed too wide in
+the narrow direction and the grid overstated the likelihood.
 
 The data: readings on the item records
 --------------------------------------
