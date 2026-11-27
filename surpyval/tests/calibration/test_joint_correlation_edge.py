@@ -10,7 +10,12 @@ stalled near a correlation of 0.997 between the rate and the curvature
 (479.465, unverified, gradients of 0.3 standard errors) until a round
 whose step failed tried minus the whitened gradient. It now reaches
 479.3549, no worse than the fit with the curvature common (479.6325),
-but unverified (its gradient still above the rule there).
+and a maximum (the largest gradient 4e-4 standard errors; every
+perturbation raises the negative log-likelihood), but on the edge of the
+valid spreads with no pair at +-1: the curvature's own spread is about
+1.4e-10, an exact linear combination of the level and the rate. That
+edge is not held, so the maximum cannot be certified: it ends
+unverified.
 The fit takes about two minutes, so it runs with the calibration
 studies; nothing in it is random."""
 
@@ -32,6 +37,6 @@ def test_quadratic_with_every_parameter_varying_reaches_the_maximum():
             **data
         )
     assert abs(every.neg_ll() - 479.3549) < 1e-3
-    # as it stands: the gradient there is still above the rule
+    # a maximum on the rank-one edge, which is not held: uncertified
     assert every.maximum == "unverified"
     assert every.neg_ll() <= common.neg_ll() + 1e-4

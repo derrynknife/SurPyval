@@ -2279,6 +2279,12 @@ _NO_SPREAD = 0.01
 #: as 0.
 _OFF_START = 0.05
 
+#: A spread whose own part moves no item's marker by this much of the
+#: noise is at its edge in effect: the likelihood there is within about
+#: (number of readings) * this^2 / 2 of the edge's, far below
+#: :data:`_RISE_TOL` (:func:`_held_or_off`).
+_AT_THE_EDGE = 1e-6
+
 #: A search off the boundary must beat the fit on it by this much in
 #: log-likelihood to be kept: less is round-off of the adaptive nodes,
 #: and the fit on the boundary, with every other parameter's standard
@@ -2502,8 +2508,21 @@ def _on_the_boundary(
     reach = _spread_reach(model, arrays, theta_n)
     sds = np.where(reach > 0, _OFF_START / np.where(reach > 0, reach, 1.0), 0)
     off_start = _embed(theta_n, keep, q, sds)
+    # the first answer's spreads at 0 in effect, by the noise they move
+    theta_1 = _theta_of(layout, first[0])
+    sd_1 = np.sqrt(np.sum(np.asarray(theta_1["L"], dtype=float) ** 2, axis=1))
+    reach_1 = _spread_reach(model, arrays, theta_1)
+    tiny = any(
+        reach_1[k] > 0 and sd_1[k] * reach_1[k] < _AT_THE_EDGE for k in dropped
+    )
     return _held_or_off(
-        model, arrays, first, nested, got, layout.pack(off_start)
+        model,
+        arrays,
+        first,
+        nested,
+        got,
+        layout.pack(off_start),
+        "a spread of 0" if tiny else "",
     )
 
 
@@ -2514,6 +2533,7 @@ def _held_or_off(
     nested: Model,
     got: tuple,
     off_u: npt.NDArray,
+    at_the_edge: str = "",
 ) -> tuple | None:
     """:func:`_on_the_boundary`'s and :func:`_on_the_edge`'s choice
     between the fit on the boundary ``got`` (:func:`_maximised`'s answer
@@ -2524,10 +2544,34 @@ def _held_or_off(
     off it). The best of the whole model's answers is kept where it beats
     the boundary's by :data:`_RISE_TOL`; otherwise the fit is held on the
     boundary. So the fit returned is never worse than any answer reached
-    by more than :data:`_RISE_TOL`."""
+    by more than :data:`_RISE_TOL`.
+
+    ``at_the_edge`` names what of the first answer is in effect on the
+    boundary (a spread moving no item's marker by :data:`_AT_THE_EDGE`
+    of the noise; empty where nothing is). The likelihood is continuous
+    there, so such an answer cannot beat the fit on the boundary by
+    more than round-off: where it does, by more than
+    :data:`_RISE_TOL`, it is an artefact of the arithmetic (as a spread
+    below :func:`_resolved_spreads`), and the fit on the boundary is
+    kept, with a warning."""
     u1, v1 = first
     (u_n, v_n, cov_n, max_n), warned_n = got
     above = v1 < v_n - _RISE_TOL
+    if above and at_the_edge:
+        warned = list(warned_n)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            warnings.warn(
+                f"The joint fit's search reached {at_the_edge} in effect at "
+                f"its edge with a log-likelihood {v_n - v1:.3g} above the "
+                "fit held on that edge, which cannot be: the likelihood is "
+                "continuous there, so the gain is an artefact of the "
+                "arithmetic (a spread too small for the integration to "
+                "resolve). The fit held on the edge is reported.",
+                stacklevel=2,
+            )
+        warned += list(caught)
+        return nested, (u_n, v_n, cov_n, max_n), warned, off_u
     start = (
         _theta_of(model.layout, u1) if above else model.layout.unpack(off_u)
     )
@@ -2675,11 +2719,16 @@ def _at_a_correlation_edge(
             return None
         if not (np.isfinite(lost) and lost < _NOT_TOLD):
             return None
-    return _on_the_edge(model, arrays, (u, value), k, j)
+    return _on_the_edge(model, arrays, (u, value), k, j, moved < _AT_THE_EDGE)
 
 
 def _on_the_edge(
-    model: Model, arrays: JointArrays, first: tuple, k: int, j: int
+    model: Model,
+    arrays: JointArrays,
+    first: tuple,
+    k: int,
+    j: int,
+    on_it: bool = False,
 ) -> tuple | None:
     """The fit where the varying parameters at places ``k`` and ``j`` of
     ``model.layout.varying`` are perfectly correlated, at the first
@@ -2725,7 +2774,15 @@ def _on_the_edge(
         off["L"] = np.linalg.cholesky(0.5 * (D + D.T))
     except np.linalg.LinAlgError:
         return None
-    return _held_or_off(model, arrays, first, nested, got, layout.pack(off))
+    return _held_or_off(
+        model,
+        arrays,
+        first,
+        nested,
+        got,
+        layout.pack(off),
+        "a correlation of +-1" if on_it else "",
+    )
 
 
 def _held_on_the_edge(
@@ -2851,6 +2908,49 @@ class _NoStart(ValueError):
     """The likelihood is not finite at a fit's starting values."""
 
 
+#: The smallest own spread (Cholesky diagonal) of a varying parameter a
+#: search may step to, relative to its value (the items' mean of it) and
+#: to the spread that moves an item's marker by 1% of the noise
+#: (:func:`_resolved_spreads`).
+_RESOLVED_TO_VALUE = 1e-9
+_RESOLVED_TO_REACH = 1e-8
+
+
+def _resolved_spreads(
+    model: Model, arrays: JointArrays, theta: dict
+) -> npt.NDArray:
+    """Each varying parameter's smallest own spread (its Cholesky
+    diagonal) that the adaptive nodes resolve, ``(q,)``: 1e-9 of the
+    largest of the items' mean values of it, and 1e-8 of the spread that
+    moves an item's marker by 1% of the noise (:data:`_NO_SPREAD` over
+    its reach, :func:`_spread_reach`), whichever is larger. Below the
+    first, the nodes' offsets from the mode fall to a few units of the
+    last place of the parameter's value, the prior's term at them is
+    lost to rounding, and the change of variables no longer cancels it:
+    on a two-mode spline fixture a bend's spread of 1e-14 moved the
+    log-likelihood by 0.003, 1e-16 by 2.3 and 1e-18 by 107. A search
+    does not step there; a spread so small is at 0 (held there by
+    :func:`_on_the_boundary`)."""
+    layout = model.layout
+    if not layout.q:
+        return np.zeros(0)
+    V = list(layout.varying)
+    mu = np.asarray(theta["mu"], dtype=float)
+    Delta = np.asarray(theta["Delta"], dtype=float)
+    means = mu[None, V] + np.asarray(arrays.Z, dtype=float) @ Delta[V].T
+    value = np.max(np.abs(means), axis=0) if means.size else np.zeros(len(V))
+    try:
+        reach = np.asarray(_spread_reach(model, arrays, theta), dtype=float)
+    except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+        reach = np.zeros(len(V))
+    by_reach = np.where(
+        reach > 0,
+        _RESOLVED_TO_REACH * _NO_SPREAD / np.where(reach > 0, reach, 1.0),
+        0.0,
+    )
+    return np.maximum(_RESOLVED_TO_VALUE * value, by_reach)
+
+
 def _maximise(
     model: Model, arrays: JointArrays, theta: dict, on_an_edge: bool = False
 ) -> tuple:
@@ -2870,9 +2970,19 @@ def _maximise(
     search = value_and_grad(objective)
     curvature = hessian(objective)
 
+    diagonal = layout.P + layout.n_shifts + np.arange(layout.q)
+    # (a start below them is let be: the search only does not step down)
+    floors = np.minimum(
+        _resolved_spreads(model, arrays, theta), np.exp(u[diagonal])
+    )
+
     def evaluated(v: npt.NDArray, starts: tuple) -> tuple:
         """The likelihood at ``v`` by the nodes placed there (``inf``
-        where they cannot be placed), with the nodes and the modes."""
+        where they cannot be placed, or a varying parameter's own spread
+        is below what they resolve, :func:`_resolved_spreads`), with the
+        nodes and the modes."""
+        if np.any(np.exp(np.asarray(v, dtype=float)[diagonal]) < floors):
+            return np.inf, None, starts
         try:
             with np.errstate(all="ignore"):
                 placed, starts = place(v, model, arrays, starts)

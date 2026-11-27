@@ -270,9 +270,12 @@ v0.30 (unreleased)
     rule (above 1e-4 standard errors). The first search is as it was, so
     a fit that needs no edge handling is unchanged. The quadratic fit
     above then reaches 479.3549 (correlations 0.62, -0.24, 0.61), no worse
-    than the fit with the curvature common (479.6325), but ends
-    unverified, with the warning: its gradient is still above the rule
-    there (before, it stalled at 479.465).
+    than the fit with the curvature common (479.6325). It is a maximum
+    (every perturbation raises the negative log-likelihood) on the edge
+    of the valid spreads with no pair at +-1 (the curvature's own spread
+    about 1.4e-10, an exact combination of the level and the rate), which
+    is not held, so it ends unverified, with the warning (before, it
+    stalled at 479.465).
   - The rule that keeps a search off an edge (a spread at 0, or a
     correlation of +-1) now asks for a rise of 1e-4 in log-likelihood,
     an absolute amount; it was one part in a million of the
@@ -1663,6 +1666,22 @@ v0.30 (unreleased)
 
 **Fixed.**
 
+- **A joint fit can no longer report a likelihood from a spread too small
+  to integrate.** Below about 1e-16 of a varying parameter's value, the
+  adaptive nodes' offsets fall within rounding of it, the prior's term
+  at them is lost and the change of variables no longer cancels it, so
+  the likelihood reads too high: on the two-mode spline fixture with
+  the bend varying (held at a spread of 0, 985.8987), a bend sd of 1e-14
+  moved it by 0.003, 1e-16 by 2.3, and 1e-18 or below by 107 (878.50). A
+  search could step there and keep it. Now a search does not step a
+  spread's own part below 1e-9 of its value or 1e-8 of the spread that
+  moves a marker by 1% of the noise; an answer in effect at a spread of
+  0 (or a correlation of +-1) that beats the fit held there by more
+  than 1e-4 is taken as the artefact it is, with a warning, and the
+  held fit reported; and a saved model with a spread above 0 but below
+  1e-9 of its parameter's value is refused, saying to set it to 0.
+  Ordinary fits are unchanged (the bit-for-bit fixtures and the 16
+  straight-line fleets).
 - **A strong prior far from the estimate no longer refuses a Bayesian
   fit.** A prior given as a distribution (``sp.Normal.from_params([0,
   0.02])`` on a coefficient the data put at 1.36, 68 of its standard
