@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from surpyval.torch._logp import log1mexp
 from surpyval.torch._optional import torch as _torch
 from surpyval.torch.data import Targets
 
@@ -181,27 +180,29 @@ def cox_nll(
     )
     log_w = torch.log(count) + eta
 
-    # The weight of the rows with x >= t, and of those with entry >= t
-    # (never failed-before-entry: entry < x), at each failure time t, as
-    # suffix sums of the sorted logs.
-    def suffix_logsum(keys: Any, log_values: Any) -> Any:
-        order = torch.argsort(keys)
-        sorted_keys = keys[order]
+    # The weight of the rows at risk at each failure time t (entry < t <= x).
+    # Without delayed entry, this is a suffix sum over sorted exit times.
+    # With delayed entry, sum over each risk set directly (in chunks along
+    # times) rather than subtracting the late-entry suffix sum, which cancels
+    # whenever a not-yet-entered row has a much larger risk score.
+    if bool((entry >= times[0]).any()):
+        chunks = []
+        for start in range(0, len(times), 512):
+            t_chunk = times[start : start + 512]
+            in_set = (entry[:, None] < t_chunk[None, :]) & (
+                x[:, None] >= t_chunk[None, :]
+            )
+            masked = torch.where(in_set, log_w[:, None], -float("inf"))
+            chunks.append(torch.logsumexp(masked, dim=0))
+        log_risk = torch.cat(chunks)
+    else:
+        order = torch.argsort(x)
+        sorted_x = x[order]
         tail = torch.flip(
-            torch.logcumsumexp(torch.flip(log_values[order], [0]), 0), [0]
+            torch.logcumsumexp(torch.flip(log_w[order], [0]), 0), [0]
         )
         tail = torch.cat([tail, tail.new_full((1,), -float("inf"))])
-        return tail[torch.searchsorted(sorted_keys, times, right=False)]
-
-    log_risk = suffix_logsum(x, log_w)
-    if bool(torch.isfinite(entry).any()):
-        log_late = suffix_logsum(entry, log_w)
-        log_risk = log_risk + log1mexp(
-            torch, torch.clamp(log_late - log_risk, max=-0.0)
-        )
-        log_risk = torch.where(
-            torch.isfinite(log_late), log_risk, suffix_logsum(x, log_w)
-        )
+        log_risk = tail[torch.searchsorted(sorted_x, times, right=False)]
 
     at = torch.searchsorted(times, x[failed])
     linear = (count[failed] * eta[failed]).sum()
@@ -222,13 +223,17 @@ def cox_nll(
         first = torch.cumsum(steps, 0) - steps
         position = torch.arange(int(steps.sum()), device=eta.device)
         l_of = (position - first[which]).to(dtype)
+        log_w_failed = log_w[failed]
+        shift = torch.full_like(times, -float("inf")).scatter_reduce(
+            0, at, log_w_failed.detach(), reduce="amax", include_self=True
+        )
         log_tied = (
             torch.log(
                 torch.zeros_like(times).index_add(
-                    0, at, count[failed] * torch.exp(eta[failed] - eta.max())
+                    0, at, torch.exp(log_w_failed - shift[at])
                 )
             )
-            + eta.max()
+            + shift
         )
         share = torch.exp(log_tied - log_risk)[which] * l_of / whole[which]
         log_terms = (log_risk[which] + torch.log1p(-share)).sum()

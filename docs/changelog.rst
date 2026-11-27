@@ -1864,6 +1864,15 @@ v0.30 (unreleased)
 
 **Changed.**
 
+- **``surpyval.torch.cox_nll`` stays finite and keeps exact gradients at
+  wide risk-score spreads and with delayed entry.** Efron's tied-failure
+  sum now shifts each failure time by its own maximum rather than the
+  batch's ``eta.max()`` (avoiding underflow to Breslow and ``nan``/``inf``
+  gradients when an unrelated row has a much larger risk score), and
+  delayed-entry risk sets are summed directly rather than by subtracting
+  the not-yet-entered suffix sum (avoiding cancellation when a
+  late-entering row has a large risk score).
+
 - **No warning on a spline bend whose spread is estimated at 0.**
   Joint models on a ``SplinePath`` with bends in ``varying`` warned
   where a bend's spread between items was estimated at its lower bound,
