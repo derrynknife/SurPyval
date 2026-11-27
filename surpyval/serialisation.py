@@ -58,6 +58,7 @@ _TAGGED_MODELS: dict[str, str] = {
     "AalenAdditiveModel": (
         "surpyval.univariate.regression.additive_hazards.aalen_additive"
     ),
+    "CoxAalenModel": "surpyval.univariate.regression.cox_aalen.cox_aalen",
     "AdditiveHazardsModel": (
         "surpyval.univariate.regression.additive_hazards.additive_hazards"
     ),

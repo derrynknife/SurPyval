@@ -163,6 +163,7 @@ _LAZY = {
             "CovariatePath",
             "CoxFrailty",
             "CoxMixedEffects",
+            "CoxAalen",
             "CoxPH",
             "ExponentialAFT",
             "ExponentialAH",

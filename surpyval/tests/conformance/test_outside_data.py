@@ -57,6 +57,7 @@ RULES = {
     "CoxMixedEffects": "hold",
     "AdditiveHazards": "hold",
     "AalenAdditive": "hold",
+    "CoxAalen": "hold",
     "ProportionalOdds": "hold",
     "BuckleyJames": "hold",
     "RankAFT": "hold",
@@ -116,6 +117,7 @@ WITHOUT_SET_SUPPORT = {
     "AalenAdditive": "non-parametric regression: the explicit support is "
     "for the univariate non-parametric estimates only",
     "ProportionalOdds": _SEMI,
+    "CoxAalen": _SEMI,
     "BuckleyJames": _SEMI,
     "RankAFT": _SEMI,
     "RankAFT[logrank]": _SEMI,

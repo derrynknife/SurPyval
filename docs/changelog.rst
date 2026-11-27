@@ -553,6 +553,21 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **The Cox-Aalen model: ``CoxAalen``.** Multiplicative Cox terms on an
+  additive Aalen baseline with time-varying effects (Scheike and Zhang
+  2002): ``additive=`` names the columns of ``Z`` that add to the hazard,
+  the rest are hazard ratios. With none additive it is ``CoxPH`` with
+  Breslow ties (coefficients, standard errors, robust covariance and
+  curve bounds agree to rounding); with all additive it is
+  ``AalenAdditive``. It reports ``summary()``, ``covariance()``,
+  ``robust_covariance()`` and Wald ``param_cb`` for the hazard ratios,
+  ``cumulative_coefficients`` and their bounds for the additive part, and
+  ``sf``, ``ff``, ``Hf``, ``qf``, ``random`` and ``cb`` for predictions
+  (a falling additive estimate is held at its running maximum, as in
+  ``AalenAdditive``). Where too few units are left at risk to separate
+  the additive covariates before the last event, the fit stops there,
+  warns with the time and the events left out (``stopped_at``), and
+  every prediction after it is ``nan``.
 - **Left-censored moves and right truncation in ``ParametricMultiState``
   and ``ParametricMultiStateRegression``.** A move known only to have
   happened by a time (``x = [-inf, xr]``, or ``c = -1`` in a
