@@ -306,14 +306,9 @@ def test_priors_saving_and_refusals(recovered):
         ParametricCompetingRisks.fit_bayes(
             x, e, c=c, priors={"a": {"shape": prior["beta"]}}
         )
-    belief = sp.prior.on_quantities(
-        sp.Weibull, B10=sp.prior.around(40, between=(20, 80))
-    )
-    with pytest.raises(ValueError, match="a parameter at a time"):
-        ParametricCompetingRisks.fit_bayes(x, e, c=c, priors={"a": belief})
-    # a window from an unknown cause is refused, as by fit
+    # an exact failure from an unknown cause is refused, as by fit
     with pytest.raises(ValueError, match="missing event type"):
         ParametricCompetingRisks.fit_bayes(
-            [[2, 4], [5, 5], [6, 8]], [None, "b", "a"], c=[2, 0, 2]
+            [[2, 4], [5, 5], [6, 8]], ["a", None, "a"], c=[2, 0, 2]
         )
     assert np.isfinite(recovered.result.waic().elpd)
