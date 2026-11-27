@@ -341,9 +341,9 @@ def test_data_arguments_beside_data_are_refused(cls, Z, opts):
 
 @pytest.mark.parametrize("cls, Z, opts", FITS, ids=IDS)
 def test_interval_and_left_censored_rows_are_refused(cls, Z, opts):
-    # Interval-censored moves (c = 2) are taken by the parametric fits
-    # (test_interval.py) and refused by the others; a left-censored row
-    # (c = -1) is refused by all.
+    # Interval-censored moves (c = 2) and left-censored ones (c = -1) are
+    # taken by the parametric fits (test_interval.py,
+    # test_parametric_truncation.py) and refused by the others.
     zkw = {"Z": [[0.0], [1], [0], [1], [0], [1]]} if Z else {}
     base = dict(
         e=["ill", "dead", "ill", None, "dead", "dead"],
@@ -361,8 +361,13 @@ def test_interval_and_left_censored_rows_are_refused(cls, Z, opts):
     left = sp.SurpyvalData(
         x=[2.0, 6, 3, 8, 4, 6], c=[0, 0, 0, 1, 0, -1], **base
     )
-    with pytest.raises(ValueError, match=r"Rows 5 are left censored"):
-        cls.fit(left, **opts)
+    if cls in (MultiState, MultiStateProportionalHazards):
+        with pytest.raises(ValueError, match=r"Rows 5 are left censored"):
+            cls.fit(left, **opts)
+    else:
+        # (as the move in (0, 6] of x = [-inf, 6] in the arrays)
+        model = cls.fit(left, **opts)
+        assert np.isfinite(model.log_likelihood)
 
 
 def test_other_refusals():

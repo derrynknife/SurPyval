@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.multistate import _core, _forward, _semimarkov
+from surpyval.multistate import _core, _forward, _semimarkov, _tvc
 from surpyval.multistate._base import (
     check_bound_args,
     probability_bounds,
@@ -57,11 +57,96 @@ def _check_reset(fitters: list, tm: TransitionMatrix, arg: str) -> None:
             )
 
 
+def _previous_rows(data: SpellData) -> npt.NDArray:
+    """Each row's unit's row before it (by entry time), ``-1`` for a
+    unit's first row (every row, without ``i``)."""
+    prev = np.full(data.x.size, -1, dtype=np.intp)
+    if not data.ids_given:
+        return prev
+    order = np.lexsort((data.tl, data.cluster))
+    same = data.cluster[order[1:]] == data.cluster[order[:-1]]
+    prev[order[1:][same]] = order[:-1][same]
+    return prev
+
+
+def _with_carry_on(data: SpellData, carry_on: Any) -> SpellData:
+    """``data`` with the rows marked in ``carry_on`` taken, on the reset
+    clock, as carrying on the stay of their unit's row before; each
+    marked row checked to be that: the same unit and state, starting
+    where the row before was censored."""
+    from dataclasses import replace
+
+    if carry_on is None:
+        return data
+    carry = np.asarray(carry_on)
+    if carry.shape != data.x.shape:
+        raise ValueError(
+            f"'carry_on' must be one True or False per row ({data.x.size}); "
+            f"got shape {np.shape(carry_on)}."
+        )
+    if carry.dtype != bool:
+        if not np.all(np.isin(carry, (0, 1))):
+            raise ValueError(
+                "'carry_on' must be True (the row carries on its unit's "
+                "stay from the row before) or False for each row."
+            )
+        carry = carry.astype(bool)
+    if not np.any(carry):
+        return data
+    if not data.ids_given:
+        raise ValueError(
+            "'carry_on' marks rows that carry on their unit's stay from "
+            "the row before, so 'i' (the unit of each row) is needed."
+        )
+    prev = _previous_rows(data)
+    marked = np.flatnonzero(carry)
+    p = prev[marked]
+    ok = p >= 0
+    ok[ok] = (
+        (data.g[p[ok]] == data.g[marked[ok]])
+        & (data.h[p[ok]] < 0)
+        & np.isfinite(data.tl[marked[ok]])
+        & (data.tl[marked[ok]] == data.x[p[ok]])
+    )
+    if not np.all(ok):
+        bad = marked[~ok]
+        k = int(bad[0])
+        raise ValueError(
+            f"{bad.size} row(s) marked in 'carry_on' do not carry on the "
+            f"row before them (the first is row {k}): a row that carries "
+            "on a stay is the same unit's next row, in the same state, "
+            "starting (tl) exactly where the row before ended censored "
+            "(x, with no 'e'). Correct the rows' tl, state or e, or unmark "
+            "the row if it starts a new stay."
+        )
+    return replace(data, carry=carry)
+
+
+def _stays(data: SpellData) -> npt.NDArray:
+    """On the reset clock, the time each row's stay in its state began:
+    its ``tl`` (0 where it was observed from the start of the clock), or,
+    for a row marked as carrying on its unit's stay from the row before
+    (``data.carry``: a stay split into rows), that row's, so the time in
+    the state runs on and does not restart. Rows are never taken to
+    carry on unless marked: a unit censored in a state and renewed in it
+    at the same time (a repair as good as new) starts a new stay."""
+    stay = np.where(np.isfinite(data.tl), data.tl, 0.0)
+    if data.carry is None:
+        return stay
+    prev = _previous_rows(data)
+    order = np.lexsort((data.tl, data.cluster))
+    for row in order.tolist():
+        if data.carry[row]:
+            stay[row] = stay[prev[row]]
+    return stay
+
+
 def _durations(data: SpellData) -> npt.NDArray:
-    """The time each spell spent in its state, ``x - tl`` (``x`` where
-    the spell was observed from the start of the clock)."""
-    entry = np.where(np.isfinite(data.tl), data.tl, 0.0)
-    dur = data.x - entry
+    """The time each spell spent in its state by its end, ``x`` minus
+    the start of its stay (:func:`_stays`: ``tl``, or ``0`` where the
+    spell was observed from the start of the clock, or the start of the
+    stay a row carries on)."""
+    dur = data.x - _stays(data)
     if np.any(dur <= 0):
         bad = int(np.flatnonzero(dur <= 0)[0])
         raise ValueError(
@@ -71,6 +156,15 @@ def _durations(data: SpellData) -> npt.NDArray:
             "spells of no length, or give each spell's start in 'tl'."
         )
     return dur
+
+
+def _reset_entries(data: SpellData) -> npt.NDArray:
+    """On the reset clock, the time already spent in the state when each
+    row starts: 0 (no truncation, ``-inf``) for a row that starts its
+    stay, the time since the stay began for a row that carries one on
+    (a left truncation on the time in the state)."""
+    entry = np.where(np.isfinite(data.tl), data.tl, 0.0) - _stays(data)
+    return np.where(entry > 0, entry, -np.inf)
 
 
 def _fitters(dist: Any, tm: TransitionMatrix, regression: bool) -> list:
@@ -149,6 +243,87 @@ def _lows(fitters: list) -> list:
     ]
 
 
+def _check_left_start(x: Any, tl: Any, fitters: list) -> None:
+    """Refuse a left-censored move (``xl = -inf``) in a spell observed from
+    the start of the clock (no ``tl``) where a transition's distribution
+    is defined below 0: the move is read as lying between the spell's
+    start and ``xr``, and there the clock has no start."""
+    arr = np.asarray(x, dtype=float)
+    if arr.ndim != 2 or not np.any(np.isneginf(arr[:, 0])):
+        return
+    if min(_lows(fitters)) >= 0:
+        return
+    left = np.isneginf(arr[:, 0])
+    start = (
+        np.full(arr.shape[0], -np.inf)
+        if tl is None
+        else np.broadcast_to(np.asarray(tl, dtype=float), arr.shape[:1])
+    )
+    bad = left & ~np.isfinite(start)
+    if np.any(bad):
+        k = int(np.flatnonzero(bad)[0])
+        raise ValueError(
+            f"{int(bad.sum())} left-censored move(s) (xl = -inf; the first "
+            f"is row {k}) are in spells observed from the start of the "
+            "clock (no tl), and a transition's distribution is defined "
+            "below 0 (Normal, Gumbel, Logistic), so the spell has no "
+            "start to read the move from. Give the spell's start in tl, "
+            "or the last time the unit was seen in its state as xl."
+        )
+
+
+def _with_truncation(data: SpellData, tr: Any, reached: Any) -> SpellData:
+    """``data`` with its right truncation (each row's cut-off ``tr``, the
+    state ``reached`` that had to be entered by then), checked."""
+    from dataclasses import replace
+
+    if tr is None:
+        if reached is not None:
+            raise ValueError(
+                "'reached' names the state a right-truncated unit had to "
+                "reach by its cut-off; give the cut-offs in 'tr' too."
+            )
+        return data
+    tau = np.asarray(tr, dtype=float)
+    if tau.ndim == 0:
+        tau = np.full(data.x.size, float(tau))
+    if tau.shape != data.x.shape:
+        raise ValueError(
+            f"'tr' must be one cut-off per row ({data.x.size}); got shape "
+            f"{np.shape(tr)}."
+        )
+    if np.any(np.isnan(tau)):
+        raise ValueError(
+            "'tr' has missing (NaN) cut-offs; use inf for a unit that was "
+            "not right truncated."
+        )
+    if not np.any(np.isfinite(tau)):
+        return data
+    tm = data.tm
+    if reached is None:
+        absorbing = list(tm.absorbing)
+        if len(absorbing) != 1:
+            raise ValueError(
+                "Right-truncated data need the state each unit had to "
+                "reach by its cut-off to be seen: give it as reached= "
+                f"(the transitions have {len(absorbing)} absorbing states, "
+                "so none is taken by default)."
+            )
+        reached = absorbing[0]
+    if reached not in tm.states:
+        raise ValueError(
+            f"reached={reached!r} is not a state (the states are "
+            f"{list(tm.states)!r})."
+        )
+    if not data.ids_given:
+        raise ValueError(
+            "Right truncation is of units (seen only if they reached a "
+            "state by a cut-off), so 'i' (the unit of each row) is "
+            "needed."
+        )
+    return replace(data, tr=tau, reached=tm.index(reached))
+
+
 class _ParametricMultiStateBase(SerialisableMixin):
     """What the parametric multi-state models share; the subclasses set
     how a transition is fitted and how its hazard is evaluated."""
@@ -182,27 +357,77 @@ class _ParametricMultiStateBase(SerialisableMixin):
         cls, data: SpellData, Z: npt.NDArray, fitters: list, clock: str
     ) -> Any:
         joint = None
-        if data.has_intervals:
+        truncated = data.tr is not None
+        if truncated:
+            from surpyval.multistate import _truncation
+
+            _truncation.check(data, np.asarray(Z, dtype=float), clock)
+        if data.has_intervals or truncated:
             from surpyval.multistate import _interval, _joint
 
             if clock == "reset":
                 _check_reset(
                     fitters, data.tm, "model" if cls._regression else "dist"
                 )
+                carried = np.isfinite(_reset_entries(data))
+                if np.any(carried):
+                    k = int(np.flatnonzero(carried)[0])
+                    raise ValueError(
+                        f"Row {k} is marked as carrying on its unit's stay "
+                        "from the row before (carry_on), and the data have "
+                        "interval-censored moves: with clock='reset' the "
+                        "two are not fitted together. Give each stay as "
+                        "one row."
+                    )
+            if truncated:
+                _truncation.check_events(data)
             lik = _interval.IntervalLikelihood(
                 data, clock, cls._row_hazard(Z), _lows(fitters)
             )
             start = _interval.midpoint_data(data, lik.succ)
             models = cls._fit_transitions(start, Z, fitters, clock)
             starts = [models[k] for k in data.tm.transitions]
+            units = _joint.coefficient_units(starts, Z)
+            what = f"The fit of {cls.__name__} to interval-censored moves"
+            if truncated:
+                what = f"The fit of {cls.__name__} to right-truncated units"
+                lik = cls._truncated(lik, data, Z, fitters)
+                # (the first-passage grids planned at the starting values,
+                # and again at the estimate, the search going on from there
+                # where they moved)
+                nodes = lik.plan(starts)
+                starts = _joint.fit(
+                    starts,
+                    lik.neg_ll,
+                    what,
+                    covariance=False,
+                    central=True,
+                    units=units,
+                ).models
+                again = lik.plan(starts)
+                if len(again) != len(nodes) or any(
+                    not np.array_equal(a, b) for a, b in zip(again, nodes)
+                ):
+                    starts = _joint.fit(
+                        starts,
+                        lik.neg_ll,
+                        what,
+                        covariance=False,
+                        central=True,
+                        units=units,
+                    ).models
             joint = _joint.fit(
                 starts,
                 lik.neg_ll,
-                f"The fit of {cls.__name__} to interval-censored moves",
+                what,
                 polish=True,
                 central=True,
-                units=_joint.coefficient_units(starts, Z),
+                units=units,
             )
+            if truncated:
+                joint = _truncation.flag_boundary(
+                    joint, data, cls._row_hazard(Z), _lows(fitters), lik.neg_ll
+                )
             models = dict(zip(data.tm.transitions, joint.models))
         else:
             models = cls._fit_transitions(data, Z, fitters, clock)
@@ -249,8 +474,11 @@ class _ParametricMultiStateBase(SerialisableMixin):
             c = np.where(data.h[rows] == to[h], 0, 1)
             if clock == "reset":
                 # The clock starts at 0 on entry to the state: no
-                # truncation.
-                extra: dict = {}
+                # truncation, but for a row that carries on a stay (a
+                # stay split into rows), which enters at the time
+                # already spent in the state.
+                tl = _reset_entries(data)[rows]
+                extra: dict = {"tl": tl} if np.any(np.isfinite(tl)) else {}
             else:
                 # An entry at or before the start of the distribution's
                 # support truncates nothing: leave it out (the fit is then
@@ -294,20 +522,48 @@ class _ParametricMultiStateBase(SerialisableMixin):
     def _warn_found(found: list) -> None:
         return None
 
+    @classmethod
+    def _truncated(
+        cls, base: Any, data: SpellData, Z: Any, fitters: list
+    ) -> Any:
+        """The likelihood of right-truncated units: ``base`` divided by
+        each unit's chance of reaching the state by its cut-off."""
+        from surpyval.multistate import _truncation
+
+        entries = data.tl[np.isfinite(data.tl)]
+        begin = min(float(entries.min()), 0.0) if entries.size else 0.0
+        span = float(np.max(data.x)) - begin
+        passage = _truncation.FirstPassage(
+            data,
+            cls._row_hazard(Z),
+            _lows(fitters),
+            span if span > 0 else 1.0,
+            np.asarray(Z, dtype=float),
+        )
+        return _truncation.TruncatedLikelihood(base, passage)
+
     def _interval_likelihood(self) -> Any:
-        """The likelihood a fit to interval-censored moves maximised over
-        every transition's parameters at once (``None`` where every
-        move's time is known and the fit is a transition at a time)."""
-        if self._joint is None or not self._data.has_intervals:
+        """The likelihood a joint fit maximised over every transition's
+        parameters at once (to interval-censored moves, or right-truncated
+        units; on the latter's grids planned at the estimate), or
+        ``None`` where every move's time is known, nothing is truncated
+        and the fit is a transition at a time."""
+        truncated = self._data.tr is not None
+        if self._joint is None or not (self._data.has_intervals or truncated):
             return None
         from surpyval.multistate import _interval
 
-        return _interval.IntervalLikelihood(
+        fitters = [m.dist for m in self._models()]
+        lik = _interval.IntervalLikelihood(
             self._data,
             self.clock,
             self._row_hazard(self._Z),
-            _lows([m.dist for m in self._models()]),
+            _lows(fitters),
         )
+        if truncated:
+            lik = self._truncated(lik, self._data, self._Z, fitters)
+            lik.plan(self._models())
+        return lik
 
     def _setup(self) -> None:
         d = self._data
@@ -321,7 +577,7 @@ class _ParametricMultiStateBase(SerialisableMixin):
         self._t = np.unique(d.x[d.h >= 0])
         self._cache = {}
         if self.clock == "reset":
-            dur = d.x - np.where(np.isfinite(tl), tl, 0.0)
+            dur = d.x - _stays(d)
             self._stay = float(np.max(dur)) if dur.size else 1.0
 
     def __getstate__(self) -> dict:
@@ -480,9 +736,27 @@ class _ParametricMultiStateBase(SerialisableMixin):
     ) -> npt.NDArray:
         raise NotImplementedError
 
+    def _zkey(self, z: Any) -> Any:
+        """The covariates ``z`` (a row, or a covariate path) as a key of
+        the cache of predictions. A path is keyed by its identity, and
+        held in the cache so that the identity is not reused."""
+        if _tvc.is_path(z):
+            self._cache.setdefault(("path", id(z)), z)
+            return ("path", id(z))
+        return tuple(z.tolist())
+
+    @staticmethod
+    def _path_origin(path: Any) -> float:
+        """Where the cumulative hazards along a covariate path are taken
+        from: its start, or 0 for a path with a value at every time."""
+        return float(path.start) if np.isfinite(path.start) else 0.0
+
     def _cumhaz(self, models: list, z: npt.NDArray) -> Any:
         """The transitions' cumulative hazards at ``t`` (their hazards
-        with ``rate``), as :func:`_forward.plan` takes them."""
+        with ``rate``), as :func:`_forward.plan` takes them; ``z`` a row
+        of covariates, or a covariate path."""
+        if _tvc.is_path(z):
+            return _tvc.path_cumhaz(models, z, self._path_origin(z))
 
         def H(t: npt.NDArray, rate: bool) -> npt.NDArray:
             out = np.empty((t.size, len(models)))
@@ -538,9 +812,13 @@ class _ParametricMultiStateBase(SerialisableMixin):
     def _grid(self, z: npt.NDArray, s: float, times: npt.NDArray) -> Any:
         """The plan of the product integral of :math:`P(s, t \\mid z)`
         at the unique ``times``."""
-        key = ("grid", tuple(z.tolist()), s, tuple(times.tolist()))
+        key = ("grid", self._zkey(z), s, tuple(times.tolist()))
         if key not in self._cache:
             tm = self.transitions
+            breaks = self._breaks()
+            if _tvc.is_path(z) and times.size:
+                # (grid nodes where the path jumps or bends)
+                breaks += _tvc.path_breaks(z, s, float(np.max(times)))
             self._cache[key] = _forward.plan(
                 self._cumhaz(self._models(), z),
                 s,
@@ -549,7 +827,7 @@ class _ParametricMultiStateBase(SerialisableMixin):
                 tm.from_index(),
                 tm.to_index(),
                 tm.n_states,
-                breaks=self._breaks(),
+                breaks=breaks,
             )
         return self._cache[key]
 
@@ -622,7 +900,7 @@ class _ParametricMultiStateBase(SerialisableMixin):
     def _reset_step(self, z: npt.NDArray) -> float:
         """The grid step of the semi-Markov solution for covariates ``z``,
         set by the fitted model (and kept for its bounds)."""
-        key = ("step", tuple(z.tolist()))
+        key = ("step", self._zkey(z))
         if key not in self._cache:
             self._cache[key] = _semimarkov.step(
                 self._semi_model(self._models(), z), self._stay
@@ -646,7 +924,7 @@ class _ParametricMultiStateBase(SerialisableMixin):
             h = step
             cells = _semimarkov.MIN_CELLS
         point = models is None
-        key = ("solution", tuple(z.tolist()), cells, h)
+        key = ("solution", self._zkey(z), cells, h)
         if point and key in self._cache:
             return self._cache[key]
         model = self._semi_model(
@@ -669,7 +947,7 @@ class _ParametricMultiStateBase(SerialisableMixin):
         if times.size == 0:
             return np.zeros((0, k, k))
         uniq, inverse = np.unique(times, return_inverse=True)
-        key = (what, tuple(z.tolist()), s, tuple(uniq.tolist()))
+        key = (what, self._zkey(z), s, tuple(uniq.tolist()))
         if key not in self._cache:
             models = None if self.clock == "reset" else self._models()
             self._cache[key] = self._matrices(models, z, s, uniq, what)
@@ -765,6 +1043,13 @@ class _ParametricMultiStateBase(SerialisableMixin):
         }
         if self._joint is not None:
             out["joint"] = self._joint.to_dict()
+        if d.tr is not None and d.reached is not None:
+            out["tr"] = [
+                None if not np.isfinite(v) else float(v) for v in d.tr
+            ]
+            out["reached"] = to_native(tm.states[int(d.reached)])
+        if d.carry is not None:
+            out["carry_on"] = [bool(v) for v in d.carry]
         return out
 
     @classmethod
@@ -785,6 +1070,14 @@ class _ParametricMultiStateBase(SerialisableMixin):
             tm,
             intervals=True,
         )
+        if model_dict.get("tr") is not None:
+            data = _with_truncation(
+                data,
+                [np.inf if v is None else v for v in model_dict["tr"]],
+                label_from_native(model_dict["reached"]),
+            )
+        if model_dict.get("carry_on") is not None:
+            data = _with_carry_on(data, model_dict["carry_on"])
         out = cls()
         out.transitions = tm
         out.models = {
@@ -798,6 +1091,8 @@ class _ParametricMultiStateBase(SerialisableMixin):
 
             out._joint = JointFit.from_dict(model_dict["joint"], out._models())
         out._data = data
+        # (no covariates; a regression's from_dict sets its own)
+        out._Z = np.zeros((data.x.size, 0))
         out._setup()
         return out
 
@@ -895,6 +1190,9 @@ class ParametricMultiState(_ParametricMultiStateBase):
         transitions: Any = None,
         dist: Any = None,
         clock: str = "forward",
+        tr: npt.ArrayLike | float | None = None,
+        reached: Any = None,
+        carry_on: npt.ArrayLike | None = None,
     ) -> ParametricMultiState:
         """
         Fit a parametric distribution to each transition of spells in
@@ -928,6 +1226,61 @@ class ParametricMultiState(_ParametricMultiStateBase):
             on the durations ``x - tl`` (``tl`` the time the unit entered
             the state; ``x`` where it is missing), with a distribution on
             (0, inf).
+        carry_on : array_like of bool, optional
+            On the reset clock, the rows that carry on their unit's stay
+            from its row before (a stay split into rows by hand): each
+            such row is fitted on the time since the stay began, left
+            truncated at the time already spent, so the time in the state
+            does not restart. A marked row must be the same unit's next
+            row, in the same state, starting where the row before was
+            censored. By default (``None``) every row is a stay of its
+            own, as for a unit renewed in its state (a repair as good as
+            new) at the time its row before was censored. Ignored on the
+            forward clock, where a row's ``tl`` already says it all.
+
+        tr : array_like or float, optional
+            Right truncation: each unit's cut-off (on each of its rows;
+            ``inf`` for a unit not truncated). A truncated unit is in the
+            data only because it reached the state ``reached`` by then
+            (a register of deaths, of failures by a date), and its
+            likelihood is divided by its chance of that, given its first
+            spell. Needs ``i``; on the forward clock only.
+        reached : state, optional
+            The state a right-truncated unit had to reach by its cut-off
+            (default the absorbing state, where the transitions have
+            exactly one).
+
+        A move at some unknown time before ``xr`` (a unit found to have
+        moved, with no last time it was seen in its state: left censored)
+        is ``x = [-inf, xr]``: the move lies between the start of its
+        spell (``tl``, or 0) and ``xr``.
+
+        Each kind of row's factor of the likelihood, for a spell in state
+        ``g`` from ``a`` (its ``tl``, or 0), where ``S_g(a, t) = exp(-sum_k
+        [H_gk(t) - H_gk(a)])`` over the transitions ``g -> k`` (on the
+        forward clock the times since the start; on the reset clock the
+        times since the stay began, ``a`` then 0 for a row that starts
+        its stay):
+
+        - a move into ``b`` at ``x``: ``S_g(a, x) h_gb(x)``;
+        - censored at ``x``: ``S_g(a, x)``;
+        - a move into ``b`` in ``(xl, xr]``: ``integral over u in (xl, xr]
+          of S_g(a, u) h_gb(u) L_b(u) du``, ``L_b(u)`` the likelihood of
+          the unit's next spell given it entered ``b`` at ``u`` (or, with
+          no next spell, the chance of staying in ``b`` from ``u`` to
+          ``xr``);
+        - left censored, a move into ``b`` before ``xr`` (``xl = -inf``):
+          the same with ``xl = a``; with two states, ``1 - S(a, xr)``, the
+          univariate left-censored (and left-truncated) factor
+          ``(F(xr) - F(a)) / S(a)``;
+        - a right-truncated unit (cut-off ``tau``, state ``reached`` =
+          ``r``): the product of its rows' factors divided by ``P(enter r
+          by tau | in g0 at t0)``, ``g0`` and ``t0`` the state and entry
+          of its first spell: element ``[g0, r]`` of the transition
+          probabilities ``P(t0, tau)`` of the model with every transition
+          out of ``r`` removed. With two states, ``1 - S(tau) / S(t0)``,
+          so the unit's factor is the univariate right-truncated
+          ``f(x) / (F(tau) - F(t0))``.
 
         Returns
         -------
@@ -964,7 +1317,10 @@ class ParametricMultiState(_ParametricMultiStateBase):
 
         _check_clock(clock)
         data = check_spells(x, e, state, tl, i, n, transitions, intervals=True)
+        data = _with_truncation(data, tr, reached)
+        data = _with_carry_on(data, carry_on)
         fitters = _fitters(Weibull if dist is None else dist, data.tm, False)
+        _check_left_start(x, tl, fitters)
         Z = np.zeros((data.x.size, 0))
         return cls._fit(data, Z, fitters, clock)
 
@@ -983,11 +1339,15 @@ class ParametricMultiState(_ParametricMultiStateBase):
         transitions: Any = None,
         dist: Any = None,
         clock: str = "forward",
+        tr_col: str | None = None,
+        reached: Any = None,
+        carry_on_col: str | None = None,
     ) -> ParametricMultiState:
         """
         Fit the model to a DataFrame of spells, one row each; the columns
         are the arguments of :meth:`fit` (``s_col`` is another name for
-        ``state_col``).
+        ``state_col``, ``tr_col`` holds the cut-offs ``tr`` and
+        ``carry_on_col`` holds ``carry_on``).
 
         Examples
         --------
@@ -1019,6 +1379,9 @@ class ParametricMultiState(_ParametricMultiStateBase):
             transitions=transitions,
             dist=dist,
             clock=clock,
+            tr=col(tr_col, "tr_col"),
+            reached=reached,
+            carry_on=col(carry_on_col, "carry_on_col"),
         )
 
     @classmethod
@@ -1111,6 +1474,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         method: str = "auto",
         points: int | None = None,
         importance: bool = False,
+        carry_on: npt.ArrayLike | None = None,
     ) -> Any:
         """
         Fit each transition's distribution by Bayes' rule: priors on its
@@ -1176,6 +1540,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
             method=method,
             points=points,
             importance=importance,
+            carry_on=carry_on,
         )
 
     @staticmethod
@@ -1604,6 +1969,10 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         transitions: Any = None,
         model: Any = None,
         clock: str = "forward",
+        time_varying_covariates: dict | None = None,
+        tr: npt.ArrayLike | float | None = None,
+        reached: Any = None,
+        carry_on: npt.ArrayLike | None = None,
     ) -> ParametricMultiStateRegression:
         """
         Fit a parametric regression to each transition of spells in
@@ -1611,20 +1980,41 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
 
         Parameters
         ----------
-        x, e, state, tl, i, n, transitions, clock
-            As for :meth:`ParametricMultiState.fit`: ``x`` may be a
+        x, e, state, tl, i, n, transitions, clock, tr, reached, carry_on
+            As for :meth:`ParametricMultiState.fit` (a right-truncated
+            unit's chance of reaching the state taken with its
+            covariates, which are then the same on each of its rows):
+            ``x`` may be a
             :class:`~surpyval.SurpyvalData` holding the spells and their
             covariates ``Z`` (named by its ``covariate_names``), and
             ``s`` is another name for ``state``.
         Z : array_like
             The covariates, one row per spell (a unit's covariates on each
             of its spells). Missing values are refused: dropping a spell
-            would cut a unit's path through its states.
+            would cut a unit's path through its states. ``None`` where
+            every covariate is in ``time_varying_covariates``.
         model : regression fitter or dict, optional
             The parametric regression of every transition (default
             ``WeibullPH``), such as ``ExponentialPH``, ``WeibullAFT`` or
             ``LogNormalAFT``, or a ``{(from, to): fitter}`` dict with one
             for each.
+        time_varying_covariates : dict, optional
+            Covariates that change during a stay: ``{unit: path}``, one
+            :class:`~surpyval.StepSchedule` (or
+            :class:`~surpyval.CovariatePath`) for each unit in ``i``, on
+            the clock's time since the start. Each spell is split at its
+            unit's changes into rows with the covariates fixed (on the
+            reset clock the time in the state carries on across them),
+            and they are the columns ``time_varying_0``, ... after those
+            of ``Z``. Every transition's regression must have a hazard
+            that depends only on the covariates at the time
+            (proportional hazards, additive hazards or proportional
+            odds); accelerated failure time is refused, and so are
+            interval-censored moves. A ``CovariatePath`` is cut into
+            steps, halved until no estimate moves by more than 1% of its
+            standard error (``path_steps`` says what that took). The
+            path is taken as external: known in advance, not driven by
+            the unit's own moves.
 
         Returns
         -------
@@ -1652,12 +2042,73 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
 
         _check_clock(clock)
         data = check_spells(x, e, state, tl, i, n, transitions, intervals=True)
-        Z_arr, names = _covariates(Z, data.x.size)
+        data = _with_truncation(data, tr, reached)
+        if time_varying_covariates is not None and data.tr is not None:
+            raise ValueError(
+                "Right truncation (tr) is not taken with time-varying "
+                "covariates: the chance of reaching the state by the "
+                "cut-off would need each unit's path. Give fixed "
+                "covariates, or leave the truncation out."
+            )
+        data = _with_carry_on(data, carry_on)
+        if Z is None and time_varying_covariates is not None:
+            Z_arr, names = np.zeros((data.x.size, 0)), []
+        else:
+            Z_arr, names = _covariates(Z, data.x.size)
         fitters = _fitters(
             WeibullPH if model is None else model, data.tm, True
         )
+        _check_left_start(x, tl, fitters)
+        if time_varying_covariates is not None:
+            return cls._fit_varying(
+                data, Z_arr, names, fitters, clock, time_varying_covariates, i
+            )
         out = cls._fit_named(data, Z_arr, names, fitters, clock)
         return out
+
+    @classmethod
+    def _fit_varying(
+        cls,
+        data: SpellData,
+        Z: npt.NDArray,
+        names: list,
+        fitters: list,
+        clock: str,
+        paths: dict,
+        i: Any,
+    ) -> ParametricMultiStateRegression:
+        """The fit with each unit's covariate path: every spell split at
+        the changes (see :mod:`surpyval.multistate._tvc`)."""
+        from surpyval.univariate.regression.tvc_path import CovariatePath
+        from surpyval.utils.surpyval_data import (
+            _PATH_STEPS,
+            _refined_on_paths,
+        )
+
+        what = "time_varying_covariates"
+        _tvc.check_families(fitters, list(data.tm.transitions), what)
+        if data.has_intervals:
+            raise ValueError(
+                "time_varying_covariates cannot be taken with "
+                "interval-censored moves (x as [xl, xr]): the move's "
+                "unknown time would fall among the changes. Give each "
+                "move at a time, or leave the time-varying covariates out."
+            )
+        units = _tvc.unit_paths(paths, i, data)
+        width = units[0][1].p if units else 0
+        all_names = list(names) + [f"time_varying_{j}" for j in range(width)]
+        low = min(_lows(fitters)) if clock == "forward" else 0.0
+        low = low if np.isfinite(low) else -np.inf
+
+        def fitted(steps: int) -> tuple:
+            split, Z_split = _tvc.split(data, Z, units, low, steps)
+            model = cls._fit_named(split, Z_split, all_names, fitters, clock)
+            return model, int(split.x.size)
+
+        if any(isinstance(p, CovariatePath) for _, p in units):
+            model, count = fitted(_PATH_STEPS)
+            return _refined_on_paths(fitted, model, count)
+        return fitted(_PATH_STEPS)[0]
 
     @classmethod
     @takes_unit
@@ -1678,6 +2129,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         priors: Any = None,
         method: str = "auto",
         importance: bool = False,
+        carry_on: npt.ArrayLike | None = None,
     ) -> Any:
         """
         Fit each transition's regression by Bayes' rule: priors on its
@@ -1746,6 +2198,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
             priors=priors,
             method=method,
             importance=importance,
+            carry_on=carry_on,
         )
 
     @classmethod
@@ -1781,12 +2234,17 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         transitions: Any = None,
         model: Any = None,
         clock: str = "forward",
+        time_varying_covariates: dict | None = None,
+        tr_col: str | None = None,
+        reached: Any = None,
+        carry_on_col: str | None = None,
     ) -> ParametricMultiStateRegression:
         """
         Fit the model to a DataFrame of spells, one row each; ``Z_cols``
-        names the covariate columns, and the other columns are the
-        arguments of :meth:`fit` (``s_col`` is another name for
-        ``state_col``).
+        names the covariate columns (``None`` where every covariate is in
+        ``time_varying_covariates``, keyed by the values of ``i_col``),
+        and the other columns are the arguments of :meth:`fit` (``s_col``
+        is another name for ``state_col``).
 
         Examples
         --------
@@ -1808,9 +2266,36 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         def col(name: str | None, arg: str) -> Any:
             return None if name is None else frame_column(df, name, arg)
 
-        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        Z = np.column_stack([frame_column(df, c, "Z_cols") for c in cols])
+        cols = (
+            []
+            if Z_cols is None
+            else [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+        )
         _check_clock(clock)
+        if time_varying_covariates is not None:
+            return cls.fit(
+                _x_column(df, x_col),
+                (
+                    None
+                    if not cols
+                    else df[cols]
+                    .astype(float)
+                    .set_axis([str(c) for c in cols], axis=1)
+                ),
+                col(e_col, "e_col"),
+                col(state_col, "state_col"),
+                tl=col(tl_col, "tl_col"),
+                i=col(i_col, "i_col"),
+                n=col(n_col, "n_col"),
+                transitions=transitions,
+                model=model,
+                clock=clock,
+                time_varying_covariates=time_varying_covariates,
+                tr=col(tr_col, "tr_col"),
+                reached=reached,
+                carry_on=col(carry_on_col, "carry_on_col"),
+            )
+        Z = np.column_stack([frame_column(df, c, "Z_cols") for c in cols])
         data = check_spells(
             _x_column(df, x_col),
             col(e_col, "e_col"),
@@ -1821,12 +2306,14 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
             transitions,
             intervals=True,
         )
+        data = _with_carry_on(data, col(carry_on_col, "carry_on_col"))
         Z_arr, _ = _covariates(Z, data.x.size)
         from surpyval import WeibullPH
 
         fitters = _fitters(
             WeibullPH if model is None else model, data.tm, True
         )
+        _check_left_start(_x_column(df, x_col), col(tl_col, "tl_col"), fitters)
         return cls._fit_named(
             data, Z_arr, [str(c) for c in cols], fitters, clock
         )
@@ -2048,7 +2535,9 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
 
     # -- predictions --------------------------------------------------------
 
-    def _z(self, Z: Any) -> npt.NDArray:
+    def _z(self, Z: Any) -> Any:
+        if _tvc.is_path(Z):
+            return self._checked_path(Z)
         z = np.asarray(Z, dtype=float).ravel()
         if z.size != len(self.covariate_names):
             raise ValueError(
@@ -2056,6 +2545,45 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
                 "covariate(s)."
             )
         return z
+
+    def _checked_path(self, path: Any, s: float | None = None) -> Any:
+        """A covariate path for a prediction, or a refusal saying why
+        not."""
+        p = len(self.covariate_names)
+        if path.p != p:
+            raise ValueError(
+                f"The covariate path gives {path.p} covariate(s); the "
+                f"model has {p} ({', '.join(self.covariate_names)}): give "
+                "every covariate in the path (a constant column for one "
+                "that does not change)."
+            )
+        if self.clock == "reset":
+            raise ValueError(
+                "With clock='reset' a prediction takes each state's "
+                "hazards as functions of the time in it alone, but along a "
+                "covariate path they depend on when the state was entered "
+                "too, which the semi-Markov solution cannot take. Predict "
+                "for fixed covariates (one row, or one row per time), or "
+                "simulate the paths."
+            )
+        for pair, m in zip(self.transitions.transitions, self._models()):
+            if getattr(m, "kind", None) not in _tvc.ADDITIVE_KINDS:
+                raise ValueError(
+                    "A prediction along a covariate path takes each "
+                    "transition's hazard at a time with the covariates "
+                    f"then, but {pair!r} is a {m.kind} regression, whose "
+                    "hazard depends on the path before it. Predict for "
+                    "fixed covariates, or fit that transition with a "
+                    "proportional hazards, additive hazards or "
+                    "proportional odds regression."
+                )
+        if s is not None and s < self._path_origin(path):
+            raise ValueError(
+                f"The covariate path starts at {path.start:g}, after the "
+                f"start of the prediction, s = {s:g}: give the path from "
+                "s on, or predict from a later s."
+            )
+        return path
 
     def _rows(self, Z: Any, size: int) -> npt.NDArray:
         p = len(self.covariate_names)
@@ -2080,6 +2608,13 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         query times; NaN for a row with a missing covariate or a time
         before ``s``."""
         x = np.asarray(x, dtype=float).ravel()
+        if _tvc.is_path(Z):
+            path = self._checked_path(Z, s if np.isfinite(s) else None)
+            out = np.full(x.size, np.nan)
+            ok = np.isfinite(x) & (x >= max(s, self._path_origin(path)))
+            if np.any(ok):
+                out[ok] = value(path, x[ok])
+            return out
         rows = self._rows(Z, x.size)
         out = np.full(x.size, np.nan)
         bad = ~np.isfinite(x) | (x < s) | np.any(np.isnan(rows), axis=1)
@@ -2117,6 +2652,8 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         """
         s = self._start(s)
         z = self._z(Z)
+        if _tvc.is_path(z):
+            self._checked_path(z, s)
         k = self.transitions.n_states
         xs = np.asarray(x, dtype=float)
         flat = xs.ravel()
@@ -2334,6 +2871,9 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         m = self._models()[h]
 
         def value(z: npt.NDArray, times: npt.NDArray) -> npt.NDArray:
+            if _tvc.is_path(z):
+                H = _tvc.path_cumhaz([m], z, self._path_origin(z))
+                return np.ravel(H(times, False))
             return np.ravel(self._Hf(m, times, z))
 
         return self._by_row(x, Z, -np.inf, value)
