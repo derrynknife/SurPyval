@@ -444,8 +444,11 @@ def test_carry_on_refusals():
 
 def test_bayes_marked_split_stays_are_the_whole_stays():
     """The Bayesian fit on the reset clock: stays split by hand and
-    marked give each transition the posterior of the stays given whole
-    (the grid's points, weights and evidence)."""
+    marked give each transition the posterior of the stays given whole:
+    the same log density at every point, the same evidence and the same
+    posterior means. (Not the same grid: the grid is laid about the peak
+    the search finds, and the split data's sums, in another order, move
+    where it stops by about 2e-8 relative on x86-64 Linux.)"""
     whole, split = _up_down(n=40)
     kw = dict(transitions=[("up", "down"), ("down", "up")], clock="reset",
               dist=sp.Weibull, method="grid")  # fmt: skip
@@ -462,9 +465,13 @@ def test_bayes_marked_split_stays_are_the_whole_stays():
     for pair in a.models:
         pa, pb = a.models[pair], b.models[pair]
         assert_allclose(pb.log_evidence, pa.log_evidence, rtol=0, atol=1e-8)
-        assert_allclose(pb.posterior.points, pa.posterior.points, rtol=1e-8)
-        assert_allclose(pb.posterior.weights, pa.posterior.weights,
-                        rtol=1e-6, atol=1e-12)  # fmt: skip
+        points = pa.posterior.points
+        density_a = pa.posterior.log_density_fn(points)
+        density_b = pb.posterior.log_density_fn(points)
+        assert_allclose(density_b, density_a, rtol=1e-10)
+        for name in pa.posterior.parameter_names:
+            mean_a = pa.posterior.mean(name)
+            assert_allclose(pb.posterior.mean(name), mean_a, rtol=1e-6)
 
 
 def test_predictions_along_a_ramp(data):

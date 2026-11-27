@@ -4291,7 +4291,7 @@ def _options(
 #: stretch of a path, and halves them until no estimate moves by more than
 #: ``_PATH_TOLERANCE`` of its standard error, for at most ``_PATH_ROUNDS``
 #: halvings (8, 16, ..., 2048 steps a stretch) and ``_PATH_ROWS`` rows.
-_PATH_STEPS = 8
+PATH_STEPS = 8
 _PATH_TOLERANCE = 0.01
 _PATH_ROUNDS = 8
 _PATH_ROWS = 2_000_000
@@ -4367,15 +4367,15 @@ def _fit_tvc_from_data(
     continuous = any(
         isinstance(schedule, CovariatePath) for schedule in schedules.values()
     )
-    model, count = fitted(_PATH_STEPS)
+    model, count = fitted(PATH_STEPS)
     if not continuous:
         return model
-    return _refined_on_paths(fitted, model, count)
+    return refined_on_paths(fitted, model, count)
 
 
-def _refined_on_paths(fitted: Callable, model: Any, count: int) -> Any:
+def refined_on_paths(fitted: Callable, model: Any, count: int) -> Any:
     """The fit on continuous paths, refined: ``model`` is the fit with
-    ``_PATH_STEPS`` steps a stretch (``count`` rows), and ``fitted(steps)``
+    ``PATH_STEPS`` steps a stretch (``count`` rows), and ``fitted(steps)``
     fits with another number. The steps are halved until the estimates
     move by no more than ``_PATH_TOLERANCE`` of their standard errors
     (where a standard error is missing, of ``1e-2 max(|estimate|, 1)``),
@@ -4386,7 +4386,7 @@ def _refined_on_paths(fitted: Callable, model: Any, count: int) -> Any:
 
     from surpyval.utils.warnings import caller_stacklevel
 
-    steps, change = _PATH_STEPS, 0.0
+    steps, change = PATH_STEPS, 0.0
     converged = False
     for _ in range(_PATH_ROUNDS):
         finer, finer_count = fitted(2 * steps)

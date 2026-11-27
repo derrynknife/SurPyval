@@ -1284,6 +1284,14 @@ CONVENTIONS = {
                 # bounds along a schedule are on the expected count.
                 "ProportionalIntensityModel": "cif",
                 "CauseSpecificProportionalIntensity": "cif",
+                # The Bayesian fits of the same models, for the same
+                # reasons: a process's cri takes 'cif', 'iif' or 'mtbf'
+                # only, and a competing-risks regression's natural
+                # quantity is the incidence.
+                "BayesianRecurrence": "cif",
+                "BayesianProportionalIntensity": "cif",
+                "BayesianCauseSpecific": "cif",
+                "BayesianCompetingRisksRegression": "cif",
             },
         ),
     ),
@@ -1375,6 +1383,17 @@ def test_option_convention(key):
             s
             for s in sigs
             if s[0] in ("CoxPH", "CompetingRisksProportionalHazards")
+        ]
+        # A Cox entry point that takes tie_method as well uses "method"
+        # for something else: CoxPH.fit_case_cohort's estimator
+        # (method="prentice", "self-prentice" or "barlow", as R's cch).
+        sigs = [
+            (
+                (o, m, [p for p in ps if p.name != "method"])
+                if any(p.name == "tie_method" for p in ps)
+                else (o, m, ps)
+            )
+            for o, m, ps in sigs
         ]
     if key == "cause":
         sigs = [s for s in sigs if s[1] in _TIME_FUNCTIONS + ("mcf_cb",)]

@@ -2076,6 +2076,19 @@ The entries, in full:
 
 **Fixed.**
 
+- **A joint model's prediction where an item's curvature is exactly
+  singular.** Far beyond the data an item's hazard can leave a direction
+  of its varying parameters flat to the last bit, and the batched solve
+  for every item's search step raised ``LinAlgError: Singular matrix``
+  for them all (``qf`` of a joint model with several markers, on some
+  platforms). That item now takes the least-squares step; every other
+  item's step, and every answer that was a number, is unchanged.
+- The fits and readouts that set aside or collected warnings in three
+  places (the random forest's out-of-bag readouts, the joint model's
+  edge checks and the promotion-time cure's mean) now do so for their
+  own thread only, as the rest of the package does, so a fit in one
+  thread no longer hides or collects another thread's warnings.
+
 - **A joint fit can no longer report a likelihood from a spread too small
   to integrate.** At an sd below about 1e-11 to 1e-13 of a varying
   parameter's value the error becomes material: the adaptive nodes'
@@ -2442,6 +2455,9 @@ release that removed it and what to use instead in the message.
 
 **Documentation.**
 
+- :doc:`Coming from R` and :doc:`Coming from lifelines` map flexsurv's
+  ``anc =`` and lifelines' ``ancillary=`` (covariates on a
+  distribution's other parameters) to ``Distributional``.
 - :doc:`Speed` now says where a random survival forest's time goes
   (the split search, 86% to 89% of a tree; with Weibull leaves, solving
   each candidate child's shape about 60%), what the jackknife of a

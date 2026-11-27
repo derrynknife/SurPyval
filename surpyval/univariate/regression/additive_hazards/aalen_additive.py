@@ -159,7 +159,7 @@ def _check_penalty(penalizer: Any) -> float:
     return value
 
 
-def _risk_set_sums(
+def risk_set_sums(
     x: npt.NDArray,
     tl: npt.NDArray,
     values: npt.NDArray,
@@ -202,7 +202,7 @@ def _estimate(
     if w is not None:
         n = n * w
     XX = n[:, None, None] * X[:, :, None] * X[:, None, :]
-    S2 = _risk_set_sums(x, tl, XX, times)
+    S2 = risk_set_sums(x, tl, XX, times)
     bucket = np.searchsorted(times, x[events])
     E1 = np.zeros((times.size, q))
     np.add.at(E1, bucket, (n[events])[:, None] * X[events])

@@ -2215,6 +2215,30 @@ def _prior_scale(theta: dict) -> npt.NDArray:
     return np.where(np.isfinite(scale) & (scale > 0), scale, 1.0)
 
 
+def _newton_steps(H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
+    """Each item's Newton step ``-H^-1 g`` (``H`` is ``(N, k, k)``, ``g``
+    ``(N, k)``). A curvature that is exactly singular (an item whose
+    hazard leaves a direction flat in the last bits far beyond the data,
+    as on x86-64 Linux) made the batched solve raise for every item; that
+    item now takes the least-squares step, and one with no finite step
+    gets ``nan`` (which :func:`modes` reads as no step)."""
+    with np.errstate(all="ignore"):
+        try:
+            return -np.linalg.solve(H, g[..., None])[..., 0]
+        except np.linalg.LinAlgError:
+            pass
+        out = np.full(g.shape, np.nan)
+        for k in range(H.shape[0]):
+            try:
+                out[k] = -np.linalg.solve(H[k], g[k])
+            except np.linalg.LinAlgError:
+                try:
+                    out[k] = -np.linalg.lstsq(H[k], g[k], rcond=None)[0]
+                except (np.linalg.LinAlgError, ValueError):
+                    pass
+        return out
+
+
 def modes(
     theta: dict,
     layout: Layout,
@@ -2245,8 +2269,7 @@ def modes(
         theta, layout, path, arrays, b, d, t, centre, readings, upper
     )
     for _ in range(200):
-        with np.errstate(all="ignore"):
-            step = -np.linalg.solve(H, g[..., None])[..., 0]
+        step = _newton_steps(H, g)
         step = np.where(np.isfinite(step), step, 0.0)
         size = np.ones(N)
         for _ in range(40):

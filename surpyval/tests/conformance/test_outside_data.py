@@ -54,6 +54,9 @@ RULES = {
     # innermost interval as CompetingRisks[interval] is.
     "CoxPH[interval, causes]": "hold",
     "CoxFrailty": "hold",
+    # The same Breslow-type baseline under the other frailty families
+    "CoxFrailty[inverse_gaussian]": "hold",
+    "CoxFrailty[positive_stable]": "hold",
     "CoxMixedEffects": "hold",
     "AdditiveHazards": "hold",
     "AalenAdditive": "hold",
@@ -112,6 +115,8 @@ WITHOUT_SET_SUPPORT = {
     "CoxPH[strata]": _SEMI,
     "CoxPH[interval, causes]": _SEMI,
     "CoxFrailty": _SEMI,
+    "CoxFrailty[inverse_gaussian]": _SEMI,
+    "CoxFrailty[positive_stable]": _SEMI,
     "CoxMixedEffects": _SEMI,
     "AdditiveHazards": _SEMI,
     "AalenAdditive": "non-parametric regression: the explicit support is "

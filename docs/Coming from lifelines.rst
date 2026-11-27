@@ -87,6 +87,11 @@ Names
    * - ``WeibullAFTFitter``, ``LogNormalAFTFitter``, ``LogLogisticAFTFitter``
      - ``WeibullAFT``, ``LogNormalAFT``, ``LogLogisticAFT`` (mind the sign of
        the coefficients, below)
+   * - ``WeibullAFTFitter().fit(df, ..., ancillary=True)`` (or a DataFrame)
+     - ``Distributional(Weibull).fit_from_df(df, x_col=..., c_col=...,
+       Z_cols=[...])`` puts every covariate on the shape as well
+       (``ancillary=True``); ``formulas={"alpha": ..., "beta": ...}``
+       chooses each parameter's own (``beta`` is lifelines' ``rho_``)
    * - ``AalenAdditiveFitter``
      - ``AalenAdditive``
    * - ``AalenJohansenFitter``

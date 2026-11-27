@@ -134,7 +134,7 @@ from .._prediction import (
     unique_rows,
 )
 from .._summary import coefficient_names, coefficient_table
-from ..additive_hazards.aalen_additive import _risk_set_sums
+from ..additive_hazards.aalen_additive import risk_set_sums
 from ..proportional_hazards._curve_variance import survival_bounds
 from ..regression_data import (
     FrameDesign,
@@ -238,7 +238,7 @@ def _event_times(
     times = np.unique(x[(c == 0) & (n > 0)])
     q = X.shape[1]
     XX = n[:, None, None] * X[:, :, None] * X[:, None, :]
-    S = _risk_set_sums(x, tl, XX, times)
+    S = risk_set_sums(x, tl, XX, times)
     for k in range(times.size):
         if np.linalg.matrix_rank(S[k]) < q:
             return times[:k]
@@ -268,9 +268,9 @@ def _pieces(
     w = n * np.exp(eta - shift)
     V = np.column_stack([X, Z])
     VV = V[:, :, None] * V[:, None, :]
-    S_VV = _risk_set_sums(x, tl, w[:, None, None] * VV, times)
+    S_VV = risk_set_sums(x, tl, w[:, None, None] * VV, times)
     XVV = X[:, :, None, None] * VV[:, None, :, :]
-    S_XVV = _risk_set_sums(x, tl, w[:, None, None, None] * XVV, times)
+    S_XVV = risk_set_sums(x, tl, w[:, None, None, None] * XVV, times)
     ev = (c == 0) & (n > 0) & (x <= (times[-1] if times.size else -np.inf))
     bucket = np.searchsorted(times, x[ev])
     E_V = np.zeros((times.size, r))

@@ -368,3 +368,19 @@ def test_a_correlation_of_one_not_held_is_refused(rate_in_level):
     free._proportional = None
     with pytest.raises(ValueError, match="does not hold it there"):
         free.sf([400.0], markers={0: 3.1, 300: 3.9}, given=300)
+
+
+def test_a_singular_curvature_takes_the_least_squares_step():
+    # One item's curvature exactly singular (a flat direction far beyond
+    # the data, as x86-64 Linux met in test_611 of test_missing.py): the
+    # batched solve raised for every item. Each regular item keeps its
+    # Newton step; the singular one takes the least-squares step.
+    from surpyval.univariate.joint._likelihood import _newton_steps
+
+    H = np.array([[[2.0, 0.0], [0.0, 4.0]], [[1.0, 1.0], [1.0, 1.0]]])
+    g = np.array([[2.0, 4.0], [2.0, 2.0]])
+    step = _newton_steps(H, g)
+    np.testing.assert_allclose(step[0], [-1.0, -1.0])
+    np.testing.assert_allclose(step[1], [-1.0, -1.0])
+    nan_H = np.array([[[np.nan, 0.0], [0.0, 1.0]]])
+    assert np.isnan(_newton_steps(nan_H, np.array([[1.0, 1.0]]))).all()

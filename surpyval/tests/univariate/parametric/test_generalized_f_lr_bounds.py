@@ -37,6 +37,14 @@ def _sample(seed, n=200, c_max=25.0):
     return np.minimum(t, cens), (cens < t).astype(int)
 
 
+#: A fit "at the generalised gamma edge": P runs towards 0 along a
+#: likelihood that falls by only about 1.5 * P there, so where the search
+#: stops is the platform's (P = 4e-8 to 8e-8 on arm64 macOS, 5e-5 to 2e-4
+#: on x86-64 Linux, a log-likelihood within 3e-4 of the edge's). Three
+#: decades below the truth (P = 1) says the fit is at that edge.
+_AT_THE_EDGE = 1e-3
+
+
 def _fit(seed):
     x, c = _sample(seed)
     with warnings.catch_warnings():
@@ -146,7 +154,7 @@ def test_bound_found_from_the_generalised_gamma_edge():
     # bound was nan, its profile deviance overstated (4.67 for 2.99 at
     # sigma = 0.45) by searches that did not leave P near 0.
     model, x, c = _fit(388395554)
-    assert model.params[3] < 1e-6
+    assert model.params[3] < _AT_THE_EDGE
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         lower = model.param_cb("sigma", method="lr", bound="lower")[0]
@@ -164,7 +172,7 @@ def test_p_runs_to_infinity_where_the_limit_is_the_supremum():
     # is the whole of its space (its upper bound was nan, and then a
     # crossing read in noise at 1.1e15).
     model, x, c = _fit(997154490)
-    assert model.params[3] < 1e-6
+    assert model.params[3] < _AT_THE_EDGE
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert list(model.param_cb("P", method="lr")) == [0.0, np.inf]
@@ -243,7 +251,7 @@ def test_the_better_of_the_two_edges_is_the_one_named():
         if str(w.message).startswith("No finite maximum")
     ]
     assert len(found) == 1 and "asymmetric Laplace" in found[0]
-    assert model.params[3] < 1e-6
+    assert model.params[3] < _AT_THE_EDGE
     y = np.median(np.log(x))
     ll_limit = _best_asymmetric_laplace_ll(
         x, c, [[model.params[0], 0.0, 0.0], [y, 0.5, 1.0], [y, 1.0, 0.0]]
