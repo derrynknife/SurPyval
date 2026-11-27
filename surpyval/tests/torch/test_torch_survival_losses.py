@@ -332,3 +332,30 @@ def test_discrete_refusals_say_what_to_do():
         torch.zeros(4, dtype=F64), [0, 2, 3], c=[0, 0, 1], reduction="sum"
     )
     assert float(shared) == pytest.approx(8 * np.log(2.0), rel=1e-12)
+
+
+@pytest.mark.parametrize("ties", ["breslow", "efron"])
+def test_cox_delayed_entry_suffix_path_matches_reference_at_scale(ties):
+    # Many rows and failure times with delayed entry and ordinary risk
+    # scores: the suffix-sum path (with the direct sum only where it would
+    # cancel) gives CoxPH's likelihood and its gradient.
+    rng = np.random.default_rng(1496)
+    n = 400
+    entry = rng.uniform(0, 5, n) * (rng.uniform(size=n) < 0.5)
+    x = entry + rng.exponential(3.0, n) + 1e-3
+    c = (rng.uniform(size=n) < 0.3).astype(int)
+    eta_vals = rng.normal(0, 1.5, n)
+    y = spt.targets(x=x, c=c, tl=entry)
+    eta = torch.tensor(eta_vals, dtype=F64, requires_grad=True)
+    loss = spt.cox_nll(eta, y, ties=ties, reduction="sum")
+    loss.backward()
+    ref = _reference(x, np.eye(n), c, np.ones(n), entry, ties)
+    assert float(loss.detach()) == pytest.approx(
+        float(ref(eta_vals)), rel=1e-10
+    )
+    h = 1e-6
+    for i in rng.choice(n, 8, replace=False):
+        e = np.zeros(n)
+        e[i] = h
+        num = (ref(eta_vals + e) - ref(eta_vals - e)) / (2 * h)
+        assert float(eta.grad[i]) == pytest.approx(num, rel=1e-5, abs=1e-6)

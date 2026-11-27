@@ -1871,7 +1871,11 @@ v0.30 (unreleased)
   gradients when an unrelated row has a much larger risk score), and
   delayed-entry risk sets are summed directly rather than by subtracting
   the not-yet-entered suffix sum (avoiding cancellation when a
-  late-entering row has a large risk score).
+  late-entering row has a large risk score). The delayed-entry risk sets
+  keep the fast suffix-sum path and are summed directly only at the
+  failure times where the subtraction would cancel, so a batch with
+  delayed entry stays O((N + T) log N): 0.07 s instead of 16 s for 50,000
+  rows.
 
 - **No warning on a spline bend whose spread is estimated at 0.**
   Joint models on a ``SplinePath`` with bends in ``varying`` warned
