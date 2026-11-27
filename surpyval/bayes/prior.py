@@ -87,7 +87,7 @@ def format_number(v: float) -> str:
 
 
 # The name the summaries here use.
-_fmt = format_number
+fmt = format_number
 
 
 def _check_mass(mass: float) -> float:
@@ -251,8 +251,8 @@ class NormalOnScale(Prior):
         words = self.said or "a normal belief"
         return (
             f"{words}, read as {built}(median "
-            f"{_fmt(float(t.to_theta(m)))}, 90% between {_fmt(float(lo))} "
-            f"and {_fmt(float(hi))})"
+            f"{fmt(float(t.to_theta(m)))}, 90% between {fmt(float(lo))} "
+            f"and {fmt(float(hi))})"
         )
 
     def to_dict(self) -> dict:
@@ -270,8 +270,8 @@ class NormalOnScale(Prior):
 
 
 def _range(t: Transform) -> str:
-    lo = "-inf" if not np.isfinite(t.lower) else _fmt(t.lower)
-    hi = "inf" if not np.isfinite(t.upper) else _fmt(t.upper)
+    lo = "-inf" if not np.isfinite(t.lower) else fmt(t.lower)
+    hi = "inf" if not np.isfinite(t.upper) else fmt(t.upper)
     return f"between {lo} and {hi}"
 
 
@@ -302,7 +302,7 @@ class DistributionPrior(Prior):
             )
         self.model = model
         self.truncate = bool(truncate)
-        params = ", ".join(_fmt(p) for p in np.atleast_1d(model.params))
+        params = ", ".join(fmt(p) for p in np.atleast_1d(model.params))
         self.said = f"{model.dist.name}({params})"
 
     def _mass_inside(self, t: Transform) -> float:
@@ -483,7 +483,7 @@ class Fixed(Prior):
         self.value = float(value)
         if not np.isfinite(self.value):
             raise ValueError(f"fixed() needs a finite value; got {value}.")
-        self.said = f"fixed at {_fmt(self.value)}"
+        self.said = f"fixed at {fmt(self.value)}"
 
     def log_density_phi(self, phi: npt.NDArray, t: Transform) -> Any:
         raise RuntimeError("a fixed parameter has no density")
@@ -1296,7 +1296,7 @@ def around(
         a,
         b,
         mass,
-        said=f"about {_fmt(m)} ({mass:.0%} between {_fmt(a)} and {_fmt(b)})",
+        said=f"about {fmt(m)} ({mass:.0%} between {fmt(a)} and {fmt(b)})",
         stated=m,
     )
     try:
@@ -1305,7 +1305,7 @@ def around(
         raise ValueError(f"`m` must be a number; got {m!r}.") from None
     if not inside:
         raise ValueError(
-            f"prior.around(m={_fmt(m)}, between=({_fmt(a)}, {_fmt(b)})): "
+            f"prior.around(m={fmt(m)}, between=({fmt(a)}, {fmt(b)})): "
             "the value believed most likely, `m`, is outside the interval "
             "`between` it is said almost surely to lie in. Widen "
             "`between` to take in `m`, correct `m`, or use "
@@ -1327,7 +1327,10 @@ def between(a: float, b: float, mass: float = 0.9) -> NormalOnScale:
     '90% between 1.2 and 4'
     """
     return NormalOnScale(
-        a, b, mass, said=f"{mass:.0%} between {_fmt(a)} and {_fmt(b)}"
+        a,
+        b,
+        mass,
+        said=f"{mass:.0%} between {fmt(a)} and {fmt(b)}",
     )
 
 
@@ -1556,7 +1559,7 @@ def from_model(
     }
     said = (
         f"from an earlier {family} fit "
-        f"({', '.join(f'{n} {_fmt(x)}' for n, x in zip(names_k, v))}), "
+        f"({', '.join(f'{n} {fmt(x)}' for n, x in zip(names_k, v))}), "
         f"weight {weight:g}" + (f", widened x{widen:g}" if widen != 1 else "")
     )
     if param is None:
@@ -1671,7 +1674,7 @@ def from_params(
     z = _z(mass)
     for name, b, v in zip(dist.parameter_names, dist.bounds, values):
         t = Transform.for_bounds(b)
-        said = f"within {within:.0%} of {_fmt(v)}"
+        said = f"within {within:.0%} of {fmt(v)}"
         if t.kind == "log" and t.lower == 0:
             s = np.log1p(within) / z
             out[name] = NormalOnScale(
@@ -1711,7 +1714,7 @@ def _quantity_spec(key: str, value: Any, dist: Any) -> list[tuple]:
         out = []
         for k, p in value.items():
             if key == "R_at":
-                out.append((f"R({_fmt(k)})", ("R", float(k)), p))
+                out.append((f"R({fmt(k)})", ("R", float(k)), p))
             else:
                 if not 0 < float(k) < 1:
                     raise ValueError(
@@ -1732,7 +1735,7 @@ def _quantity_spec(key: str, value: Any, dist: Any) -> list[tuple]:
         # a quantity the fitted family names (an MTBF at a time)
         what = _FAMILY_LABELS.get(key, key[:-3].replace("_", " ") + " at")
         return [
-            (f"{what} {_fmt(k)}", ("family", key, float(k)), p)
+            (f"{what} {fmt(k)}", ("family", key, float(k)), p)
             for k, p in value.items()
         ]
     if not _is_life_distribution(dist):
@@ -2251,3 +2254,9 @@ def check(dist: Any, priors: Any = None, **fit_options: Any) -> Any:
     from surpyval.bayes.fitting import prior_model
 
     return prior_model(dist, priors, **fit_options).prior_check()
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_fmt = fmt

@@ -258,9 +258,9 @@ def test_brier_auc_and_ibs_carry_score_predictions_uncertainty():
         score_predictions,
     )
     from surpyval.metrics.validation import (
-        _auc_td,
-        _brier_score,
         _integrated_brier_score,
+        brier_score_at,
+        time_dependent_auc,
     )
 
     x, c, r, S, times = _scored()
@@ -277,19 +277,20 @@ def test_brier_auc_and_ibs_carry_score_predictions_uncertainty():
                 values, expect["estimate"].to_numpy()
             )
         # (auc_td sums its terms in another order than score_predictions:
-        # its values are its own, checked against _auc_td below, and its
-        # uncertainty is score_predictions'.)
+        # its values are its own, checked against time_dependent_auc
+        # below, and its uncertainty is score_predictions'.)
         np.testing.assert_array_equal(result.se, expect["se"].to_numpy())
         np.testing.assert_array_equal(result.lower, expect["lower"])
         np.testing.assert_array_equal(result.upper, expect["upper"])
     np.testing.assert_array_equal(
-        brier_score(x, c, S, times)[1], _brier_score(x, c, S, times)[1]
+        brier_score(x, c, S, times)[1], brier_score_at(x, c, S, times)[1]
     )
     np.testing.assert_array_equal(
-        auc_td(x, c, r, times)[1], _auc_td(x, c, r, times)[1]
+        auc_td(x, c, r, times)[1], time_dependent_auc(x, c, r, times)[1]
     )
     np.testing.assert_array_equal(
-        auc_td(x, c, 1 - S, times)[1], _auc_td(x, c, 1 - S, times)[1]
+        auc_td(x, c, 1 - S, times)[1],
+        time_dependent_auc(x, c, 1 - S, times)[1],
     )
     ibs = integrated_brier_score(x, c, S, times, alpha_ci=0.1)
     assert isinstance(ibs, Score) and isinstance(ibs, float)

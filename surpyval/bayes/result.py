@@ -126,7 +126,7 @@ def log_posterior(target: Any, bound: BoundPriors) -> Any:
     return log_post
 
 
-def _grid_summary(target: Any, bound: BoundPriors) -> Any:
+def grid_summary_table(target: Any, bound: BoundPriors) -> Any:
     """The numbers the grid's self-check holds steady: the 2.5%, 50% and
     97.5% points of each free parameter and of the family's own check
     quantities."""
@@ -202,7 +202,7 @@ def fit_target(
     """
     from surpyval.bayes.engines.grid import GridError, find_mode, run_grid
     from surpyval.bayes.engines.laplace import run_laplace
-    from surpyval.bayes.fitting import _check_points
+    from surpyval.bayes.fitting import check_grid_points
     from surpyval.bayes.model import laplace_diagnostics, warn_laplace
 
     started = time.perf_counter()
@@ -211,7 +211,7 @@ def fit_target(
         raise ValueError(
             f"method must be one of {', '.join(METHODS)}; got {method!r}."
         )
-    points = _check_points(points)
+    points = check_grid_points(points)
     bound, defaults = bind(target, priors)
     if bound.d == 0:
         raise ValueError(
@@ -261,7 +261,7 @@ def fit_target(
                 "approximate": False,
             },
         )
-        return _finish(model, bound, started)
+        return finish_result(model, bound, started)
 
     target.check_flat(bound)
     log_post = log_posterior(target, bound)
@@ -295,7 +295,7 @@ def fit_target(
     # has them (phi = inverse(u), with the change of variables in the
     # density); the points come back to phi before anything is read.
     rp = target.reparam(bound)
-    plain_summary = _grid_summary(target, bound)
+    plain_summary = grid_summary_table(target, bound)
     work: Any = log_post
     summary: Any = plain_summary
     where: Any = bound
@@ -362,7 +362,7 @@ def fit_target(
         diag = dict(laplace_diagnostics(approx, where, importance))
         diag["free_parameters"] = list(bound.free_names)
         diag.update(_working_normal(approx, rp))
-        diag["mode"] = _phi_mode(
+        diag["mode"] = phi_mode(
             bound, log_post, to_phi(approx.mode), rp, phi_scales
         )
         if target.laplace_only:
@@ -389,7 +389,7 @@ def fit_target(
             "integration_error": grid.error,
             "half_width_sd": float(np.max(grid.half_widths)),
             "widened": grid.checks.get("widened", 0),
-            "mode": _phi_mode(
+            "mode": phi_mode(
                 bound, log_post, to_phi(grid.mode), rp, phi_scales
             ),
             "log_evidence": (
@@ -399,7 +399,7 @@ def fit_target(
             "approximate": False,
         }
     model = cls._from_target(target, post, bound.spec, defaults, diag)
-    _finish(model, bound, started)
+    finish_result(model, bound, started)
     if method == "laplace":
         warn_laplace(model.diagnostics)
     return model
@@ -492,7 +492,7 @@ def _search_setup(
     """The peak search's scales in the engines' coordinates
     (:func:`_engine_scales`) and, where the engines work in a
     reparameterisation that keeps some of phi's coordinates, phi's (for
-    the peak on phi, :func:`_phi_mode`); and, with no
+    the peak on phi, :func:`phi_mode`); and, with no
     reparameterisation, the Laplace engine's refusal of a fit too
     collinear for it (:func:`_refuse_collinear`)."""
     if rp is None and method == "laplace":
@@ -579,7 +579,7 @@ def _phi_normal(approx: Any, rp: Any) -> dict | None:
     }
 
 
-def _phi_mode(
+def phi_mode(
     bound: BoundPriors,
     log_post: Any,
     at: npt.NDArray,
@@ -640,7 +640,7 @@ def _conjugate_posterior(bound: BoundPriors, case: Any) -> Posterior:
     )
 
 
-def _finish(model: Any, bound: BoundPriors, started: float) -> Any:
+def finish_result(model: Any, bound: BoundPriors, started: float) -> Any:
     """Record the prior-against-data conflicts and the time taken, and
     warn of the conflicts."""
     notes = prior_conflicts(model, bound)
@@ -661,7 +661,7 @@ def prior_conflicts(model: Any, bound: BoundPriors) -> list[str]:
     """Where the data disagree with a prior: each parameter given a
     proper prior (not a default) whose maximum-likelihood estimate, the
     data's own answer, lies outside the prior's central 99% interval."""
-    from surpyval.bayes.model import _fmt, _prior_interval
+    from surpyval.bayes.model import fmt, prior_interval_text
 
     target = model.target
     if target.mle is None:
@@ -676,11 +676,11 @@ def prior_conflicts(model: Any, bound: BoundPriors) -> list[str]:
             continue
         i = bound.names.index(name)
         t = bound.transforms[i]
-        iv = _prior_interval(bound, name, t, 1 - CONFLICT_LEVEL)
+        iv = prior_interval_text(bound, name, t, 1 - CONFLICT_LEVEL)
         if iv is None or not np.isfinite(estimates[i]):
             continue
         if not iv[0] <= estimates[i] <= iv[1]:
-            iv90 = _prior_interval(bound, name, t, 0.1)
+            iv90 = prior_interval_text(bound, name, t, 0.1)
             assert iv90 is not None
             limits = list(getattr(target, "bounds", None) or [])
             if i < len(limits) and _at_an_end_the_prior_reaches(
@@ -688,9 +688,9 @@ def prior_conflicts(model: Any, bound: BoundPriors) -> list[str]:
             ):
                 continue
             out.append(
-                f"{name} (prior 90% interval {_fmt(iv90[0])}-"
-                f"{_fmt(iv90[1])}; the maximum-likelihood estimate is "
-                f"{_fmt(float(estimates[i]))})"
+                f"{name} (prior 90% interval {fmt(iv90[0])}-"
+                f"{fmt(iv90[1])}; the maximum-likelihood estimate is "
+                f"{fmt(float(estimates[i]))})"
             )
     return out
 
@@ -793,7 +793,7 @@ class PredictiveCheck:
         self.ok = bool(P_EXTREME < self.p_value < 1 - P_EXTREME)
 
     def __repr__(self) -> str:
-        from surpyval.bayes.model import _fmt
+        from surpyval.bayes.model import fmt
 
         lo, hi = self.interval
         verdict = (
@@ -803,8 +803,8 @@ class PredictiveCheck:
         )
         lines = [
             f"Posterior predictive check on {self.statistic}",
-            f"  observed            {_fmt(self.observed)}",
-            f"  replicates (90%)    {_fmt(lo)} - {_fmt(hi)} "
+            f"  observed            {fmt(self.observed)}",
+            f"  replicates (90%)    {fmt(lo)} - {fmt(hi)} "
             f"({len(self.replicated) - self.failed} data sets)",
             f"  share at or above   {self.p_value:.3f}: {verdict}",
         ]
@@ -1094,7 +1094,7 @@ class BayesianResult(SerialisableMixin):
         interval) and the posterior of each free parameter, side by
         side.
         """
-        from surpyval.bayes.model import Comparison, _prior_interval
+        from surpyval.bayes.model import Comparison, prior_interval_text
 
         interval_levels(alpha_ci, "two-sided")
         bound = self._bound()
@@ -1112,7 +1112,7 @@ class BayesianResult(SerialisableMixin):
             described = bound.descriptions.get(name)
             interval = None
             if name in self.priors.single:
-                interval = _prior_interval(bound, name, t, alpha_ci)
+                interval = prior_interval_text(bound, name, t, alpha_ci)
             table[name] = {
                 "prior": described
                 or f"no prior given; flat on {t.scale_name}",
@@ -1139,7 +1139,7 @@ class BayesianResult(SerialisableMixin):
         """The fit in words: the data, the priors (the defaults marked),
         the posterior of each parameter, how it was computed and where
         the data disagree with a prior."""
-        from surpyval.bayes.model import _fmt, _how_computed
+        from surpyval.bayes.model import _how_computed, fmt
 
         lvl = f"{1 - alpha_ci:.0%}"
         lines = [self._headline()]
@@ -1156,7 +1156,7 @@ class BayesianResult(SerialisableMixin):
             if j.is_likelihood:
                 lines.append(f"  and {j.describe()}")
         for name, v in self.fixed.items():
-            lines.append(f"  {name}: fixed at {_fmt(float(v))}")
+            lines.append(f"  {name}: fixed at {fmt(float(v))}")
         width = max(len(s) for s in names)
         lines.append(
             f"Posterior{' ' * max(width - 7, 1)}  median   {lvl} credible "
@@ -1172,12 +1172,12 @@ class BayesianResult(SerialisableMixin):
             i = names.index(name)
             lo, hi = self.param_cri(name, alpha_ci)
             lines.append(
-                f"  {name:<{width}}  {_fmt(float(self.params[i])):>8}   "
-                f"{_fmt(float(lo))} - {_fmt(float(hi))}"
+                f"  {name:<{width}}  {fmt(float(self.params[i])):>8}   "
+                f"{fmt(float(lo))} - {fmt(float(hi))}"
                 + (
                     ""
                     if estimates is None
-                    else f"      {_fmt(float(estimates[i]))}"
+                    else f"      {fmt(float(estimates[i]))}"
                 )
             )
         lines.append(_how_computed(self))
@@ -1510,3 +1510,10 @@ __all__ = [
     "log_posterior",
     "prior_conflicts",
 ]
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_finish = finish_result
+_grid_summary = grid_summary_table
+_phi_mode = phi_mode

@@ -59,7 +59,7 @@ def event_data(
     """The event histories as ``CrowAMSAA.fit`` reads them, and that fit
     (``None`` where the data have no events)."""
     from surpyval.recurrent import CrowAMSAA
-    from surpyval.recurrent.bayes import _zero_event_data
+    from surpyval.recurrent.bayes import zero_event_data
     from surpyval.utils.event_history_data import EventHistoryData
     from surpyval.utils.no_maximum import quiet_maximum_warnings
     from surpyval.utils.warnings import ignoring_warnings
@@ -77,7 +77,7 @@ def event_data(
                 mle = CrowAMSAA.fit(x, i=i, c=c, n=n, t=t, tl=tl, tr=tr)
         return mle.data, mle
     except ValueError as err:
-        data = _zero_event_data(x, i, c, n, t, tl, tr, None)
+        data = zero_event_data(x, i, c, n, t, tl, tr, None)
         if data is None:
             raise ValueError(f"{what}: {err}") from None
         return data, None

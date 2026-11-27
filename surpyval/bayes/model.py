@@ -29,7 +29,7 @@ from surpyval.bayes.prior import (
     NormalOnScale,
     PowerPrior,
     PriorSpec,
-    _fmt,
+    fmt,
     quantity_at,
     shifted,
 )
@@ -1952,7 +1952,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         rows = {}
         for name in bound.free_names:
             t = bound.transforms[bound.names.index(name)]
-            prior_iv = _prior_interval(bound, name, t, alpha_ci)
+            prior_iv = prior_interval_text(bound, name, t, alpha_ci)
             mle_val = mle_iv = None
             if mle is not None:
                 try:
@@ -1997,7 +1997,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             assert x is not None
             v = quantity_at(self.dist, ("R" if on == "sf" else "F", x), th)
             label = f"{'reliability' if on == 'sf' else 'failure probability'}"
-            label += f" at {_fmt(x)}"
+            label += f" at {fmt(x)}"
         elif on == "mean":
             v = self._component_means()
             label = "mean life"
@@ -2212,16 +2212,16 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             if p.is_fixed or not p.proper:
                 continue
             t = bound.transforms[bound.names.index(name)]
-            iv = _prior_interval(bound, name, t, 0.01)
+            iv = prior_interval_text(bound, name, t, 0.01)
             if iv is None:
                 continue
             med = float(self.posterior.quantile(name, 0.5))
             if not iv[0] <= med <= iv[1]:
-                iv90 = _prior_interval(bound, name, t, 0.1)
+                iv90 = prior_interval_text(bound, name, t, 0.1)
                 assert iv90 is not None
                 msgs.append(
-                    f"{name} (prior 90% interval {_fmt(iv90[0])}-"
-                    f"{_fmt(iv90[1])}; the posterior median is {_fmt(med)})"
+                    f"{name} (prior 90% interval {fmt(iv90[0])}-"
+                    f"{fmt(iv90[1])}; the posterior median is {fmt(med)})"
                 )
         if msgs:
             warnings.warn(
@@ -2453,7 +2453,7 @@ def _combine(a: SurpyvalData, b: SurpyvalData) -> SurpyvalData:
     return SurpyvalData(x=x, c=c, n=n, t=t, unit=ua if ua is not None else ub)
 
 
-def _prior_interval(
+def prior_interval_text(
     bound: Any, name: str, t: Transform, alpha: float
 ) -> tuple[float, float] | None:
     """The equal-tailed prior interval of one parameter where its prior is
@@ -2575,7 +2575,7 @@ class Comparison:
             lines.append(
                 f"    prior       {r['prior']}"
                 + (
-                    f"; {lvl} {_fmt(pi[0])} - {_fmt(pi[1])}"
+                    f"; {lvl} {fmt(pi[0])} - {fmt(pi[1])}"
                     if pi is not None
                     else ""
                 )
@@ -2583,18 +2583,18 @@ class Comparison:
             if r["mle"] is not None:
                 mi = r["mle_interval"]
                 ci = (
-                    f" ({lvl} confidence interval {_fmt(mi[0])} - "
-                    f"{_fmt(mi[1])})"
+                    f" ({lvl} confidence interval {fmt(mi[0])} - "
+                    f"{fmt(mi[1])})"
                     if mi is not None
                     else ""
                 )
-                lines.append(f"    max. lik.   {_fmt(r['mle'])}{ci}")
+                lines.append(f"    max. lik.   {fmt(r['mle'])}{ci}")
             else:
                 lines.append("    max. lik.   none (the fit fails)")
             po = r["posterior_interval"]
             lines.append(
-                f"    posterior   {_fmt(r['posterior_median'])} "
-                f"({lvl} credible interval {_fmt(po[0])} - {_fmt(po[1])})"
+                f"    posterior   {fmt(r['posterior_median'])} "
+                f"({lvl} credible interval {fmt(po[0])} - {fmt(po[1])})"
             )
         return "\n".join(lines)
 
@@ -2658,7 +2658,7 @@ class PriorCheck:
             f"  {'':10}{'median':>12}   {lvl} prior interval",
         ]
         for k, (med, lo, hi) in self.table.items():
-            lines.append(f"  {k:10}{_fmt(med):>12}   {_fmt(lo)} - {_fmt(hi)}")
+            lines.append(f"  {k:10}{fmt(med):>12}   {fmt(lo)} - {fmt(hi)}")
         return "\n".join(lines)
 
 
@@ -2727,13 +2727,13 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
             )
             first = False
     for k, v in model.fixed.items():
-        lines.append(f"            {k}: fixed at {_fmt(v)}")
+        lines.append(f"            {k}: fixed at {fmt(v)}")
     lines.append(f"Posterior   {'median':>10}   {lvl} credible interval")
     for name in model.posterior.free_names:
         lo, med, hi = model.posterior.quantile(
             name, [alpha_ci / 2, 0.5, 1 - alpha_ci / 2]
         )
-        lines.append(f"  {name:<10}{_fmt(med):>10}   {_fmt(lo)} - {_fmt(hi)}")
+        lines.append(f"  {name:<10}{fmt(med):>10}   {fmt(lo)} - {fmt(hi)}")
     life = float(model.dist.support[0]) == 0
     lab = "B10 life" if life else "10% point"
     with ignoring_warnings():
@@ -2741,8 +2741,8 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
             b10 = float(model.quantile_cri(0.1, point=True))
             b_lo, b_hi = model.quantile_cri(0.1, alpha_ci=alpha_ci)
             lines.append(
-                f"{lab:<12}{_fmt(b10):>10}{unit}   {_fmt(b_lo)} - "
-                f"{_fmt(b_hi)}{unit}"
+                f"{lab:<12}{fmt(b10):>10}{unit}   {fmt(b_lo)} - "
+                f"{fmt(b_hi)}{unit}"
             )
         except ValueError:
             pass
@@ -2753,8 +2753,8 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
             )
             lab = "Mean life" if life else "Mean"
             lines.append(
-                f"{lab:<12}{_fmt(med):>10}{unit}   {_fmt(lo)} - "
-                f"{_fmt(hi)}{unit}"
+                f"{lab:<12}{fmt(med):>10}{unit}   {fmt(lo)} - "
+                f"{fmt(hi)}{unit}"
             )
     lines += _what_the_prior_did(model, alpha_ci)
     lines.append(_how_computed(model))
@@ -2788,9 +2788,7 @@ def _what_the_prior_did(model: BayesianParametric, alpha_ci: float) -> list:
                 iv = np.asarray(mle.param_cb(name, alpha_ci=alpha_ci), float)
         except (ValueError, AttributeError, KeyError):
             continue
-        parts.append(
-            f"{name} {_fmt(v)} ({lvl} CI {_fmt(iv[0])}-{_fmt(iv[1])})"
-        )
+        parts.append(f"{name} {fmt(v)} ({lvl} CI {fmt(iv[0])}-{fmt(iv[1])})")
         lo, hi = model.posterior.quantile(
             name, [alpha_ci / 2, 1 - alpha_ci / 2]
         )
@@ -2994,3 +2992,10 @@ def _solve_on_log_time(f: Any, a: float, b: float, fb: float) -> float:
         maxiter=1000,
     )
     return float(np.exp(root))
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_fmt = fmt
+_prior_interval = prior_interval_text

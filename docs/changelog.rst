@@ -324,6 +324,69 @@ v0.30 (unreleased)
     taken from the accurate ``log_sf``.
   - ``Gompertz.qf(1)`` and ``isf(0)`` with shape 0 are ``inf`` (they
     were nan).
+- **Joint models hold a correlation of +-1 on its edge, and place their
+  nodes right near a nearly singular spread.** Three changes, each
+  leaving a verified fit with its spread clear of both edges bit for bit
+  as it was (checked on nine fixtures: straight lines with one or two
+  parameters varying, quadratic, a cubic with four varying, two failure
+  modes, accelerated, slope link, Laplace's approximation and
+  uncorrelated spreads; estimates, standard errors, ``neg_ll()`` and
+  predictions).
+
+  - Where two varying parameters are perfectly correlated (one's spread
+    between items an exact multiple of the other's), the search stalled
+    short of that edge, unverified, with a warning. Such a fit is now
+    made on the edge (the one parameter integrated over, the other its
+    fitted multiple) and held there unless the likelihood rises off it:
+    the correlation is exactly +1 or -1 with no standard error, named
+    in the new ``perfect_correlations``, and the ``Fit`` line says so.
+    On 16 simulated fleets of 150 items on straight lines with a rate
+    spread of 0 to 0.05 a year, the 8 that ended unverified (rate sds
+    0.0016 to 0.027 a year, a correlation of -0.998 and the like) are
+    now all verified and held at a correlation of +-1, each with a
+    negative log-likelihood no higher than before (up to 0.010 lower:
+    2428.7427 to 2428.7326; 2432.286370 to 2432.286303 on the fleet a
+    test pins); the other 8 are unchanged.
+  - Within about 1e-10 of a singular spread the integrand's curvature is
+    too ill-conditioned to invert as it was, and the eigenvalue floor
+    that kept the nodes' scale widened them in the narrow direction, so
+    the grid overstated the likelihood there. Such items' nodes are now
+    placed from the curvature in the prior's own coordinates. Only a fit
+    that landed exactly on a singular spread was affected, and those
+    ended unverified; the likelihood was right everywhere else. On
+    ``joint_data`` with a quadratic path and its level, rate and
+    curvature varying, the search had landed on such a point (three
+    correlations making the matrix singular, ``corr_a_b`` 0.997) and
+    reported 406.38, unverified: there the likelihood read 406.94 by
+    the 7-point nodes (422.5 by 15, 437.8 by 31), but 494.19 at
+    ``corr_a_b`` 1e-10 lower and anywhere below, and 1e-10 above it the
+    matrix is no longer positive definite. It now reads 494.19 there by
+    every grid size, in line with a Monte Carlo integral.
+  - In the searches made in handling an edge (the fit on the edge and
+    the search off it), a round whose step (with the nodes held) cannot
+    be taken even in part once the nodes are placed again now takes the
+    step of minus the whitened gradient (the held nodes' Newton step,
+    ``-H^-1 g``) where the gradient is not yet zero by the verification
+    rule (above 1e-4 standard errors). The first search is as it was, so
+    a fit that needs no edge handling is unchanged. The quadratic fit
+    above then reaches 479.3549 (correlations 0.62, -0.24, 0.61), no worse
+    than the fit with the curvature common (479.6325). It is a maximum
+    (every perturbation raises the negative log-likelihood) on the edge
+    of the valid spreads with no pair at +-1 (the curvature's own spread
+    about 1.4e-10, an exact combination of the level and the rate), which
+    is not held, so it ends unverified, with the warning (before, it
+    stalled at 479.465).
+  - The rule that keeps a search off an edge (a spread at 0, or a
+    correlation of +-1) now asks for a rise of 1e-4 in log-likelihood,
+    an absolute amount; it was one part in a million of the
+    log-likelihood, which is 0.1 at a log-likelihood of 1e5. Where the
+    first answer already beats the fit on the edge, the search off the
+    edge starts from that answer rather than from the edge.
+  - ``JointModel.likelihood_ratio_test`` takes a gain in log-likelihood
+    within round-off of 0 (1e-9 of it) as 0. With a spread held at 0
+    the statistic could be 1e-13 rather than 0, and chi-squared on 0
+    degrees of freedom in the boundary mixture then halved the p-value
+    (0.5 for 1).
 - **Joint models hold a spread at 0 on its lower bound (#1334).** Where
   the data put the spread between items of a varying parameter at 0 (any
   parameter, any path, one marker or several), the search, which works
@@ -568,6 +631,92 @@ v0.30 (unreleased)
   changes.
 
 **Added.**
+
+- **Left-censored moves and right truncation in ``ParametricMultiState``
+  and ``ParametricMultiStateRegression``.** A move known only to have
+  happened by a time (``x = [-inf, xr]``, or ``c = -1`` in a
+  ``SurpyvalData``, which every multi-state model refused before) is read
+  as a move between the start of its spell and ``xr``, on either clock.
+  ``tr=`` (``tr_col``, or a ``SurpyvalData``'s ``tr``) with ``reached=``
+  fits units seen only because they reached a state by a cut-off: each
+  unit's likelihood is divided by its chance of reaching the state by
+  then (the first passage, by the forward equations), every transition
+  fitted at once; forward clock only. With two states both equal the
+  univariate fits (``Weibull.fit`` with ``c = -1``, and with ``tr``) to
+  1e-8 in the log-likelihood; a simulated register of deaths is
+  recovered with ``tr`` and is 9 to 18 standard errors off without it.
+  Where a hazard runs to 0 under the truncation (the truncated units
+  carry little information on its level) the fit warns that it has no
+  finite maximum and gives ``nan`` standard errors for that transition
+  (the others' conditional on it held there);
+  a transition with no moves in truncated data is refused, saying why
+  (by design, such data may show none). A left-censored move in a spell
+  with no ``tl`` on a baseline defined below 0 is refused.
+  Fixed on the way: a ``ParametricMultiState`` reloaded by ``from_dict``
+  from a joint fit (to interval-censored moves) lacked its covariate
+  array, so ``_interval_likelihood()`` failed on it.
+- **Time-varying covariates in ``ParametricMultiStateRegression``.**
+  ``fit(..., time_varying_covariates={unit: StepSchedule or
+  CovariatePath})`` (and ``fit_from_df``, and a ``SurpyvalData`` holding
+  them by unit) splits every spell at its unit's changes inside the fit,
+  on either clock (on the reset clock the time in the state carries on
+  across the splits), with delayed entry kept; the fit equals the fit to
+  the stays split by hand. A ``CovariatePath`` is cut into steps, halved
+  until the estimates settle (``path_steps``). Predictions on the forward
+  clock take a covariate path in place of a row of covariates
+  (``occupancy``, ``transition_probabilities``, ``length_of_stay``,
+  ``cb``, ``cumulative_hazard``), checked against an ODE solution of the
+  forward equations. Refused, saying what to do: accelerated failure
+  time regressions with time-varying covariates; predictions along a
+  path on the reset clock; and data with interval-censored moves
+  (``x`` as ``[xl, xr]``) together with time-varying covariates.
+- **``carry_on=`` for stays split into rows by hand (reset clock).**
+  ``ParametricMultiState`` and ``ParametricMultiStateRegression`` (``fit``,
+  ``fit_from_df`` as ``carry_on_col``, and ``fit_bayes``) take a True or
+  False per row: a marked row carries on its unit's stay from the row
+  before, so on the reset clock its time in the state runs on (left
+  truncated at the time already spent) instead of restarting. Unmarked
+  rows are stays of their own, as before, which is right for a unit
+  renewed in its state (a repair as good as new) at the time its row
+  before was censored. A marked row that is not its unit's next row in
+  the same state, starting where the row before was censored, is
+  refused. No existing fit's numbers change.
+- **``ParametricPanelMultiStateRegression(..., coarsen=)``: grouping a
+  covariate measured at every visit.** On the forward clock each distinct
+  row of covariates is a product integral of its own, so a covariate with
+  a new value at each visit makes a slow fit. ``coarsen=k`` cuts every
+  covariate with more than ``k`` distinct values into ``k`` equal-count
+  bins (as ``pandas.qcut``), each value replaced by its bin's mean; a
+  function, or a dict by covariate name, may be given instead. It is an
+  approximation and is off by default; the fit equals the fit to the
+  covariates grouped the same way by hand, and ``model.coarsened`` reports
+  what was grouped. On a simulated 100-unit illness-death model with 740
+  distinct values of a visit-level covariate, 10 bins cut the fit from
+  228 s to 25 s and moved that covariate's coefficient by 0.1 of its
+  standard error (see "Grouping a covariate measured at every visit" in
+  the multi-state guide).
+- **Inverse Gaussian and positive stable shared frailties:
+  ``family="inverse_gaussian"`` and ``family="positive_stable"``** for
+  ``Frailty(dist, family=...)``, ``CoxFrailty.fit(..., family=...)`` and
+  ``frailty=`` on ``CrowAMSAA``, ``Duane``, ``CoxLewis`` and
+  ``ProportionalIntensityNHPP``. The inverse Gaussian frailty has mean 1
+  and variance ``theta``; the positive stable one has Laplace transform
+  ``exp(-s^(1 - theta))``, no finite mean, ``theta`` equal to Kendall's
+  tau, and a population curve that is still one of proportional hazards,
+  with the coefficients multiplied by ``1 - theta``. Each group's integral
+  is a closed form of the Laplace transform's derivatives (whole counts
+  only; at most 1000 events in a group for the positive stable, whose
+  recursion costs the square of the count), checked against direct integration over the frailty's density
+  and, for the positive stable, arbitrary-precision derivatives. The Cox
+  fit of these families is EM on the full likelihood (Breslow's ties),
+  with standard errors from its observed information; where ``theta`` is
+  estimated at its boundary 0 the fit is the one without frailty, with a
+  warning, and ``theta`` has no Wald standard error. Not yet for these
+  families: penalised fits, ``diagnose()``, ``JointFrailty``, and, for
+  the positive stable frailty of repairable units, the population's mean
+  count (infinite) and intervals on each cluster's frailty. No number of
+  the gamma or log-normal fits changes (compared to the last digit on 30
+  fits).
 
 - **Bayesian fits of the renewal and imperfect-repair processes:
   ``GeneralizedRenewal.fit_bayes``, ``ARA.fit_bayes`` and
@@ -937,6 +1086,36 @@ v0.30 (unreleased)
   points asked about are in, not the whole grid: 200 resamples of 400
   pairs at two points take 0.8 s, not 2.5 s. The bounds are the same
   to the last digit.
+- **Joint models warn where a path of one's own defeats the integration
+  rule (a kink, or a very steep change).** A path whose
+  slope jumps at an age (a corner) needs the integrals of the hazard
+  split there, which a path names in ``breaks`` as a spline's knots are;
+  :doc:`Joint Models` now says so. Without it the one rule over the
+  corner is off by 1e-4 to 1e-3 of the cumulative hazard for a modest
+  turn (4e-4 on a line turning at day 365; 1.9e-3 with a 90-day lag) and
+  9% for a sharp one; with it, 3e-15. The fit now warns that its
+  integration rule loses accuracy along a path of one's own with no
+  ``breaks`` (a corner, or a very steep or sudden change), naming
+  ``breaks``, where the integral changes by more than 1e-5 when split at
+  half the age, on the five items observed longest (one marker only). Fits on the package's paths, and on smooth
+  paths of one's own, give no warning and their numbers do not change.
+- **Joint models take failures of unknown mode.** A failure with no
+  mode in ``e`` (``None``), which the fit of failure modes refused, is
+  now fitted as a failure by one mode or another: its likelihood is the
+  sum over the modes of each mode's term (the hazard of failing at all
+  times every mode's survival for an exact failure; the chance of
+  failing in its interval by any mode for an inspected one), with one
+  marker or several. Checked against a dense-grid integral of that sum
+  (the package's fixture of every kind of item with three modes hidden:
+  within 1.2e-4 in all) and, item by item, against the sum of its
+  likelihoods with each mode (to 1e-9 at the fitted parameters; to
+  about 1e-6 away from them, as each label's nodes are placed for it).
+  A fit with every mode known is unchanged (bit for bit). The
+  printout's ``Failure modes`` line counts the failures of unknown mode;
+  ``n_events_by_cause`` holds the known ones. The modes are taken as
+  unrecorded for reasons unrelated to which mode it was. Where ``e``
+  names one mode only and the other failures have none, the fit warns
+  that it is the model of one kind of failure.
 - **Joint models of several markers take failure modes.**
   ``JointPH(Weibull, {"vibration": ..., "temperature": ...}).fit(...,
   e=modes)`` (or ``e_col=``, or the records' event types) fits each
@@ -1776,6 +1955,32 @@ v0.30 (unreleased)
   fitted both ways.
 
 **Fixed.**
+
+- **A joint fit can no longer report a likelihood from a spread too small
+  to integrate.** At an sd below about 1e-11 to 1e-13 of a varying
+  parameter's value the error becomes material: the adaptive nodes'
+  offsets come within a few units of the last place of the value, the
+  prior's term at them is lost to rounding and the change of variables
+  no longer cancels it, so the likelihood reads too high (on the
+  fixture below the onset is lower, its bend's value being large): on the two-mode spline fixture with
+  the bend varying (held at a spread of 0, 985.8987), a bend sd of 1e-14
+  moved it by 0.003, 1e-16 by 2.3, and 1e-18 or below by 107 (878.50). A
+  search could step there and keep it. Now a search does not step a
+  spread's own part below 1e-9 of its value or 1e-8 of the spread that
+  moves a marker by 1% of the noise; an answer in effect at a spread of
+  0 (or a correlation of +-1) that beats the fit held there by more
+  than 1e-4 is taken as the artefact it is, with a warning, and the
+  held fit reported; and a saved model with a spread above 0 but below
+  1e-9 of its parameter's value is refused, saying to set it to 0.
+  Ordinary fits are unchanged (the bit-for-bit fixtures and the 16
+  straight-line fleets).
+- **The Bayesian renewal and mixture-cure fits follow the DataFrame and
+  serialisation conventions.** ``MixtureCure.fit_bayes_from_df`` names
+  its columns (``x_col``, ``Z_cols``, ``c_col``, ``n_col``, ``tl_col``,
+  ...) as the regression fitters' does; ``fit_bayes`` of ``ARA``, ``ARI``
+  and ``GeneralizedRenewal`` takes ``unit=``; ``BayesianRenewal`` and
+  ``BayesianMixtureCure`` are on the serialisation page with round-trip
+  tests.
 
 - **``BirnbaumSaunders.hf`` is right however far out.** Far above the
   median the hazard was taken as the difference of the logs of the
