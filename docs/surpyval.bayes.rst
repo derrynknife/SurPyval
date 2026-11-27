@@ -83,6 +83,25 @@ failure cause:
 .. autoclass:: surpyval.recurrent.BayesianCauseSpecific
    :members:
 
+Renewal and imperfect-repair processes
+--------------------------------------
+
+``GeneralizedRenewal.fit_bayes``, ``ARA.fit_bayes`` and
+``ARI.fit_bayes``; see "Repairable systems: how good is a repair?" in
+:doc:`Bayesian Fitting with SurPyval`. The posterior of the repair
+parameter and a two-parameter life is computed on a grid sliced along
+the repair parameter (:func:`~surpyval.recurrent.renewal.bayes.sliced_grid`).
+
+.. automethod:: surpyval.recurrent.renewal._bayes_fit.RenewalBayesMixin.fit_bayes
+
+.. autoclass:: surpyval.recurrent.renewal.bayes.BayesianRenewal
+   :members:
+
+.. autoclass:: surpyval.recurrent.renewal.bayes.SimulatedCount
+   :members:
+
+.. autofunction:: surpyval.recurrent.renewal.bayes.sliced_grid
+
 Degradation processes
 ---------------------
 

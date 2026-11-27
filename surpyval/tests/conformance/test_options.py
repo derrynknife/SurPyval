@@ -72,6 +72,12 @@ _GROWTH_ANSWERS = (
 )
 
 NOT_SWEPT = {
+    "next_failure_cri": "a Bayesian renewal fit's credible interval of "
+    "each unit's next-failure survival function (a units-by-times "
+    "matrix, from each unit's own history, not a function of the case's "
+    "times alone): the posterior's quantiles of RenewalModel."
+    "next_failure_sf, checked point by point against the model's own in "
+    "tests/bayes/test_renewal_bayes.py",
     "next_failure_sf_cb": "the reliability over a mission from each unit's "
     "age, " + _GROWTH_ANSWERS,
     "expected_events_cb": "the events expected in a stretch of time (two "
@@ -233,6 +239,7 @@ def _parameters(model):
     if type(model).__name__ in (
         "BayesianRecurrence",
         "BayesianProportionalIntensity",
+        "BayesianRenewal",
     ):
         # the posterior medians of the process's parameters (then of the
         # coefficients), each in its target's range

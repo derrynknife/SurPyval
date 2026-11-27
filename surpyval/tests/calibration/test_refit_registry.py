@@ -1751,6 +1751,12 @@ EXCLUDED: dict[str, str] = {
         "a posterior, whose calibration is the simulation-based "
         "calibration study (calibration/test_sbc_recurrent_bayes.py)",
     ),
+    **dict.fromkeys(
+        ("GeneralizedRenewal[bayes]", "ARA[bayes]", "ARI[bayes]"),
+        "a posterior, not a point estimate to recover: its calibration, "
+        "with truths piled against perfect repair, is the simulation-based "
+        "calibration study (calibration/test_sbc_renewal_bayes.py)",
+    ),
     "CauseSpecificNHPP[bayes]": "a posterior, not a point estimate to "
     "recover: each cause's process is fitted by its own fit_bayes, "
     "checked in tests/bayes/test_recurrent_bayes_more.py (no "
