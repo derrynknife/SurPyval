@@ -3351,7 +3351,13 @@ def accepts_surpyval_data(method: F) -> F:
             else:
                 lost.append("event types")
         if data.time_varying_covariates is not None:
-            lost.append("time-varying covariates")
+            if "time_varying_covariates" in names:
+                # (a multi-state regression: each unit's path, by its i)
+                filled["time_varying_covariates"] = dict(
+                    data.time_varying_covariates
+                )
+            else:
+                lost.append("time-varying covariates")
         lost += _fill_histories(data, names, state, filled)
         filled.update(markers)
         if lost:

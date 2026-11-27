@@ -381,6 +381,14 @@ class MixtureCureFitter(DistributionalFitter):
     def fit_bayes_from_df(
         self,
         df: Any,
+        x_col: str | None = None,
+        Z_cols: str | list[str] | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
         *,
         priors: Any = None,
         importance: bool = False,
@@ -389,8 +397,9 @@ class MixtureCureFitter(DistributionalFitter):
     ) -> Any:
         """:meth:`fit_bayes` on the columns of a DataFrame, named as
         ``fit_from_df`` names them (``x_col``, ``Z_cols``, ``c_col``,
-        ``n_col``, ...); a coefficient is then named by its parameter and
-        its covariate's column."""
+        ``n_col``, ``tl_col``, ``tr_col``, ``xl_col``, ``xr_col``); a
+        coefficient is then named by its parameter and its covariate's
+        column."""
         from surpyval.bayes.regression import fit_from_df as _fit_from_df
         from surpyval.utils.dataframe import as_pandas as _as_pandas
 
@@ -400,6 +409,20 @@ class MixtureCureFitter(DistributionalFitter):
             priors=priors,
             importance=importance,
             method=method,
+            x_col=x_col,
+            Z_cols=Z_cols,
+            c_col=c_col,
+            n_col=n_col,
+            **{
+                k: v
+                for k, v in (
+                    ("xl_col", xl_col),
+                    ("xr_col", xr_col),
+                    ("tl_col", tl_col),
+                    ("tr_col", tr_col),
+                )
+                if v is not None
+            },
             **columns,
         )
 

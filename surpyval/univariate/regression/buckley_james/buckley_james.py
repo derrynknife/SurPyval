@@ -110,7 +110,7 @@ def _wls_slope(Z: npt.NDArray, Y: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return np.linalg.solve(A, b.ravel())
 
 
-def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
+def aliased_design_columns(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     """The columns whose coefficients the least-squares step cannot
     determine (#476), to be aliased (see
     :mod:`surpyval.univariate.regression._aliasing`).
@@ -628,7 +628,7 @@ class BuckleyJames_(FitterRepr):
                 "estimate."
             )
         p = Z_a.shape[1]
-        aliased = _aliased(Z_a, n_a)
+        aliased = aliased_design_columns(Z_a, n_a)
         kept = np.setdiff1d(np.arange(p), aliased)
         if aliased.size:
             warn_aliased(
@@ -722,3 +722,8 @@ class BuckleyJames_(FitterRepr):
 
 
 BuckleyJames = BuckleyJames_()
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_aliased = aliased_design_columns

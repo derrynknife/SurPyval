@@ -532,6 +532,92 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Left-censored moves and right truncation in ``ParametricMultiState``
+  and ``ParametricMultiStateRegression``.** A move known only to have
+  happened by a time (``x = [-inf, xr]``, or ``c = -1`` in a
+  ``SurpyvalData``, which every multi-state model refused before) is read
+  as a move between the start of its spell and ``xr``, on either clock.
+  ``tr=`` (``tr_col``, or a ``SurpyvalData``'s ``tr``) with ``reached=``
+  fits units seen only because they reached a state by a cut-off: each
+  unit's likelihood is divided by its chance of reaching the state by
+  then (the first passage, by the forward equations), every transition
+  fitted at once; forward clock only. With two states both equal the
+  univariate fits (``Weibull.fit`` with ``c = -1``, and with ``tr``) to
+  1e-8 in the log-likelihood; a simulated register of deaths is
+  recovered with ``tr`` and is 9 to 18 standard errors off without it.
+  Where a hazard runs to 0 under the truncation (the truncated units
+  carry little information on its level) the fit warns that it has no
+  finite maximum and gives ``nan`` standard errors for that transition
+  (the others' conditional on it held there);
+  a transition with no moves in truncated data is refused, saying why
+  (by design, such data may show none). A left-censored move in a spell
+  with no ``tl`` on a baseline defined below 0 is refused.
+  Fixed on the way: a ``ParametricMultiState`` reloaded by ``from_dict``
+  from a joint fit (to interval-censored moves) lacked its covariate
+  array, so ``_interval_likelihood()`` failed on it.
+- **Time-varying covariates in ``ParametricMultiStateRegression``.**
+  ``fit(..., time_varying_covariates={unit: StepSchedule or
+  CovariatePath})`` (and ``fit_from_df``, and a ``SurpyvalData`` holding
+  them by unit) splits every spell at its unit's changes inside the fit,
+  on either clock (on the reset clock the time in the state carries on
+  across the splits), with delayed entry kept; the fit equals the fit to
+  the stays split by hand. A ``CovariatePath`` is cut into steps, halved
+  until the estimates settle (``path_steps``). Predictions on the forward
+  clock take a covariate path in place of a row of covariates
+  (``occupancy``, ``transition_probabilities``, ``length_of_stay``,
+  ``cb``, ``cumulative_hazard``), checked against an ODE solution of the
+  forward equations. Refused, saying what to do: accelerated failure
+  time regressions with time-varying covariates; predictions along a
+  path on the reset clock; and data with interval-censored moves
+  (``x`` as ``[xl, xr]``) together with time-varying covariates.
+- **``carry_on=`` for stays split into rows by hand (reset clock).**
+  ``ParametricMultiState`` and ``ParametricMultiStateRegression`` (``fit``,
+  ``fit_from_df`` as ``carry_on_col``, and ``fit_bayes``) take a True or
+  False per row: a marked row carries on its unit's stay from the row
+  before, so on the reset clock its time in the state runs on (left
+  truncated at the time already spent) instead of restarting. Unmarked
+  rows are stays of their own, as before, which is right for a unit
+  renewed in its state (a repair as good as new) at the time its row
+  before was censored. A marked row that is not its unit's next row in
+  the same state, starting where the row before was censored, is
+  refused. No existing fit's numbers change.
+- **``ParametricPanelMultiStateRegression(..., coarsen=)``: grouping a
+  covariate measured at every visit.** On the forward clock each distinct
+  row of covariates is a product integral of its own, so a covariate with
+  a new value at each visit makes a slow fit. ``coarsen=k`` cuts every
+  covariate with more than ``k`` distinct values into ``k`` equal-count
+  bins (as ``pandas.qcut``), each value replaced by its bin's mean; a
+  function, or a dict by covariate name, may be given instead. It is an
+  approximation and is off by default; the fit equals the fit to the
+  covariates grouped the same way by hand, and ``model.coarsened`` reports
+  what was grouped. On a simulated 100-unit illness-death model with 740
+  distinct values of a visit-level covariate, 10 bins cut the fit from
+  228 s to 25 s and moved that covariate's coefficient by 0.1 of its
+  standard error (see "Grouping a covariate measured at every visit" in
+  the multi-state guide).
+- **Inverse Gaussian and positive stable shared frailties:
+  ``family="inverse_gaussian"`` and ``family="positive_stable"``** for
+  ``Frailty(dist, family=...)``, ``CoxFrailty.fit(..., family=...)`` and
+  ``frailty=`` on ``CrowAMSAA``, ``Duane``, ``CoxLewis`` and
+  ``ProportionalIntensityNHPP``. The inverse Gaussian frailty has mean 1
+  and variance ``theta``; the positive stable one has Laplace transform
+  ``exp(-s^(1 - theta))``, no finite mean, ``theta`` equal to Kendall's
+  tau, and a population curve that is still one of proportional hazards,
+  with the coefficients multiplied by ``1 - theta``. Each group's integral
+  is a closed form of the Laplace transform's derivatives (whole counts
+  only; at most 1000 events in a group for the positive stable, whose
+  recursion costs the square of the count), checked against direct integration over the frailty's density
+  and, for the positive stable, arbitrary-precision derivatives. The Cox
+  fit of these families is EM on the full likelihood (Breslow's ties),
+  with standard errors from its observed information; where ``theta`` is
+  estimated at its boundary 0 the fit is the one without frailty, with a
+  warning, and ``theta`` has no Wald standard error. Not yet for these
+  families: penalised fits, ``diagnose()``, ``JointFrailty``, and, for
+  the positive stable frailty of repairable units, the population's mean
+  count (infinite) and intervals on each cluster's frailty. No number of
+  the gamma or log-normal fits changes (compared to the last digit on 30
+  fits).
+
 - **Bayesian fits of the renewal and imperfect-repair processes:
   ``GeneralizedRenewal.fit_bayes``, ``ARA.fit_bayes`` and
   ``ARI.fit_bayes``.** Priors on the repair parameter (Kijima's ``q``,
@@ -1775,6 +1861,14 @@ v0.30 (unreleased)
   1e-9 of its parameter's value is refused, saying to set it to 0.
   Ordinary fits are unchanged (the bit-for-bit fixtures and the 16
   straight-line fleets).
+- **The Bayesian renewal and mixture-cure fits follow the DataFrame and
+  serialisation conventions.** ``MixtureCure.fit_bayes_from_df`` names
+  its columns (``x_col``, ``Z_cols``, ``c_col``, ``n_col``, ``tl_col``,
+  ...) as the regression fitters' does; ``fit_bayes`` of ``ARA``, ``ARI``
+  and ``GeneralizedRenewal`` takes ``unit=``; ``BayesianRenewal`` and
+  ``BayesianMixtureCure`` are on the serialisation page with round-trip
+  tests.
+
 - **``BirnbaumSaunders.hf`` is right however far out.** Far above the
   median the hazard was taken as the difference of the logs of the
   density and the survival function. That lost about ``xi**2`` of the
