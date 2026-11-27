@@ -10,6 +10,7 @@ import autograd.numpy as anp
 import numpy as np
 import numpy.typing as npt
 from autograd import make_jvp
+from autograd.scipy.special import logsumexp
 from scipy.stats import norm
 
 from surpyval.serialisation import (
@@ -35,6 +36,7 @@ from surpyval.utils.validation import (
 from ._likelihood import (
     EFFECTS,
     GH_FIT,
+    GH_PREDICT,
     INTEGRATIONS,
     JointArrays,
     Layout,
@@ -49,6 +51,7 @@ from ._likelihood import (
     check_random_effects,
     check_weight,
     continued_modes,
+    log1mexp,
     log_integrals,
     log_integrand,
     scatter,
@@ -68,7 +71,7 @@ if TYPE_CHECKING:
     from .dynamic import DynamicPrediction
 
 #: The functions ``cb`` bounds ('R' and 'F' are 'sf' and 'ff').
-_CB_ON = ("sf", "R", "ff", "F")
+_CB_ON = ("sf", "R", "ff", "F", "cif")
 
 #: Each link in words, for the printout.
 _LINK_WORDS = {
@@ -2232,6 +2235,114 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
         return f, after, False
 
+    def _check_mode(self, mode: Any) -> int | None:
+        """The place of the failure mode ``mode`` among the model's
+        ``causes`` (``None`` for every mode together)."""
+        if mode is None:
+            return None
+        if self.causes is None:
+            raise ValueError(
+                "This joint model has one way of failing (it was fitted "
+                "without failure modes, e=): leave 'mode' out, and "
+                "cif(x) is ff(x). Fit with each failure's mode as e= for "
+                "the chance of each."
+            )
+        names = [str(c) for c in self.causes]
+        if str(mode) not in names:
+            raise ValueError(
+                f"'mode' is one of the model's failure modes, "
+                f"{list(self.causes)!r}; got {mode!r}."
+            )
+        return names.index(str(mode))
+
+    def _log_cif_function(
+        self, x: npt.NDArray, Z: Any, markers: Any, given: Any
+    ) -> tuple:
+        """``(f, after, missing)``: ``f(params)``, the log of the item's
+        chance of failing by each mode by each age of ``x`` after
+        ``given`` (``u``), ``(n_modes, n_after)``, as a function of the
+        estimated parameters; the mask of those ages; and whether the
+        item's covariates are missing.
+
+        Each mode's chance is the chance of failing at all by ``x``,
+        ``1 - sf(x)`` (:meth:`_log_sf_function`'s), times the mode's
+        share of it: over the item's path parameters given its readings
+        and its survival to ``u`` (``b``, on the nodes placed there),
+
+            share_k(x) = E[F(x | b) G_k(x | b) / sum_j G_j(x | b)]
+                         / E[F(x | b)],
+
+        with ``F(x | b) = 1 - S(x | b) / S(u | b)``, exact, and ``G_k(x
+        | b) = int_u^x h_k(s | b) S(s | b) / S(u | b) ds`` by the
+        cumulative hazard's Gauss-Legendre rule
+        (:func:`log_cause_fails_between`). The share is taken at each
+        node, inside the integral over age and the average over the
+        path, so the result is ``E[G_k(x | b)]``, the mode's cumulative
+        incidence from ``u``. So the modes' chances add to
+        ``1 - sf(x)`` whatever the rule's error, which moves only the
+        split between them. The nodes are held at the fitted parameters
+        while differentiating."""
+        f_sf, after, missing = self._log_sf_function(x, Z, markers, given)
+        if missing:
+            return None, after, True
+        n_modes = len(self.causes or [])
+        if not after.any():
+            return (lambda params: np.zeros((n_modes, 0))), after, False
+        z, ages, values, u = self._question(Z, markers, given)
+        kept = self._kept
+        zc = (z[kept] - self._zbar).reshape(1, -1)
+        xs = np.asarray(x, dtype=float)[after]
+        n = xs.size
+        model = self._likelihood_model()
+        theta = self._theta()
+        at_u = self._item_arrays(np.array([u]), zc, ages, values)
+        mode, root = continued_modes(
+            theta, model.layout, model.path, at_u, np.array([u]), model.centre
+        )
+        nodes = model.prediction_nodes(mode, root, theta, at_u, np.array([u]))
+        if not isinstance(nodes, tuple):
+            raise NotImplementedError(
+                "The chance of each failure mode is integrated on a grid "
+                f"of the varying parameters, which a model of more than "
+                f"{max(GH_PREDICT)} of them has none of (its predictions "
+                "use Laplace's approximation). Fit with fewer varying "
+                "parameters, or use sf for the chance of failing at all."
+            )
+        b, logw = nodes
+        rows = np.repeat(np.array([u]), n)
+        same = (np.repeat(b, n, axis=0), np.repeat(logw, n, axis=0))
+        base = self._item_arrays(rows, zc, ages, values)
+        by_mode = []
+        for k in range(n_modes):
+            each = self._item_arrays(rows, zc, ages, values)
+            each.e = np.full(n, k)
+            by_mode.append(each)
+        zero = np.zeros(n)
+
+        def f(params: Any) -> Any:
+            th = internal_theta(params, model.layout, self._refs)
+            # log weight, prior, readings and S(u | b) at each node
+            at = log_integrand(th, model, base, same, rows, zero, True)
+            # S(x | b) on the same nodes
+            to_x = log_integrand(th, model, base, same, xs, zero, True)
+            log_F = log1mexp(anp.log(at - to_x))
+            log_G = anp.stack(
+                [
+                    log_integrand(th, model, arr, same, rows, zero, True, xs)
+                    - at
+                    for arr in by_mode
+                ]
+            )
+            log_split = log_G - logsumexp(log_G, axis=0)
+            log_share = (
+                logsumexp((at + log_F)[None] + log_split, axis=-1)
+                - logsumexp(at + log_F, axis=-1)[None]
+            )
+            log_total = log1mexp(anp.log(-f_sf(params)))
+            return log_total[None] + log_share
+
+        return f, after, False
+
     @keeps_query_shape
     def sf(
         self,
@@ -2450,10 +2561,14 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        mode: Any = None,
     ) -> npt.NDArray:
         """
         Confidence bounds on one item's survival (``on="sf"``, the
-        default) or failure probability (``on="ff"``) to each age ``x``,
+        default), failure probability (``on="ff"``) or, with failure
+        modes, chance of failing by the mode ``mode`` (``on="cif"``; the
+        delta method on ``log(-log(1 - cif))``, the same scale) to each
+        age ``x``,
         given its covariates, readings and the age it was last seen
         running (as for :meth:`sf`), from the uncertainty of the
         parameters: the delta method, with the parameters' covariance, on
@@ -2472,13 +2587,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             The item, as for :meth:`sf` (an ``ItemLifetime`` as ``Z``
             stands for all three).
         on : str, optional
-            ``"sf"`` (or ``"R"``) or ``"ff"`` (or ``"F"``).
+            ``"sf"`` (or ``"R"``), ``"ff"`` (or ``"F"``) or ``"cif"``.
         alpha_ci : float, optional
             The total tail probability: 0.05 (the default) gives 95%
             bounds.
         bound : str, optional
             ``"two-sided"`` (``[lower, upper]`` on a last axis),
             ``"lower"`` or ``"upper"``.
+        mode : optional
+            With ``on="cif"``, one of the model's failure modes
+            (``causes``); ``None`` (the default) for any, which is
+            ``on="ff"``.
 
         Examples
         --------
@@ -2504,8 +2623,18 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         check_alpha_ci(alpha_ci)
         check_option("on", on, _CB_ON)
         check_option("bound", bound, BOUNDS)
+        k = self._check_mode(mode)
+        if on == "cif" and k is None:
+            on = "ff"
+        elif on != "cif" and k is not None:
+            raise ValueError(
+                "'mode' is for the chance of failing by a mode, on='cif'; "
+                f"got on={on!r}."
+            )
         cov = self.covariance()
         x = np.asarray(x, dtype=float)
+        if on == "cif" and k is not None:
+            return self._cif_cb(x, Z, markers, given, k, alpha_ci, bound)
         f, after, missing = self._log_sf_function(x, Z, markers, given)
         tail, signs = bound_signs(alpha_ci, bound)
         if on in ("ff", "F"):
@@ -2540,6 +2669,49 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 )
         if on in ("ff", "F"):
             out = 1.0 - out
+        return out if bound == "two-sided" else out[..., 0]
+
+    def _cif_cb(
+        self,
+        x: npt.NDArray,
+        Z: Any,
+        markers: Any,
+        given: Any,
+        k: int,
+        alpha_ci: float,
+        bound: str,
+    ) -> npt.NDArray:
+        """:meth:`cb` on the chance of failing by the mode at place
+        ``k``: the delta method on ``log(-log(1 - cif))``, the nodes held
+        at the fitted parameters (``[0, 0]`` up to ``given``)."""
+        cov = self.covariance()
+        f, after, missing = self._log_cif_function(x, Z, markers, given)
+        tail, signs = bound_signs(alpha_ci, bound)
+        q = norm.ppf(1 - tail)
+        out = np.zeros(x.shape + (signs.size,))
+        out[np.isnan(x)] = np.nan
+        if missing:
+            out[:] = np.nan
+        elif after.any():
+            est = self._estimated
+            params = np.asarray(self.params, dtype=float)[est]
+            sub = cov[np.ix_(est, est)]
+            if self.how == "two-stage":
+                sub = np.where(np.isfinite(sub), sub, 0.0)
+
+            def log_H(v: Any) -> Any:
+                # the cif's own cumulative hazard, log(-log(1 - cif))
+                return anp.log(-anp.log1p(-anp.exp(f(v)[k])))
+
+            with np.errstate(all="ignore"):
+                jvp = make_jvp(log_H)(params)
+                columns = [jvp(e)[1] for e in np.eye(params.size)]
+                centre = log_H(params)
+                J = np.stack(columns, axis=-1)
+                se = np.sqrt(np.einsum("mi,ij,mj->m", J, sub, J))
+                out[after] = -np.expm1(
+                    -np.exp(centre[:, None] + signs[None, :] * q * se[:, None])
+                )
         return out if bound == "two-sided" else out[..., 0]
 
     # -- saving and loading ----------------------------------------------

@@ -1002,15 +1002,32 @@ Exponential causes, or a Weibull and an Exponential) and by the Laplace
 engine beyond. ``model.joint`` says which was done, ``model.posterior``
 is the joint posterior (its parameters named ``wear.beta``,
 ``crack.failure_rate``), and each of ``model.models`` is its cause's
-marginal. Priors are still one set for every cause or a set a cause,
-given a parameter at a time. The window's integral is taken at every
+marginal. Priors are still one set for every cause or a set a cause:
+a parameter at a time, or a cause's joint prior
+(``prior.on_quantities`` with a belief about a cause's B10 life,
+``prior.from_model`` with an earlier fit of that cause,
+``prior.MultivariateNormal``), which is put on that cause's parameters
+(``wear.alpha`` and ``wear.beta``) and means exactly what it means in the
+cause's own fit. The window's integral is taken at every
 posterior point on the cause's own probability scale, by a 48-point
 Gauss-Legendre rule (to about 1e-9 against adaptive quadrature in the
 tests). With flat priors the posterior's peak is the maximum-likelihood
 estimate, and with no windows in the data the joint fit gives the same
-posterior as the fit a cause at a time. A window whose cause is not
-known (a part found failed, cause unrecorded) is not taken, by ``fit``
-or ``fit_bayes``.
+posterior as the fit a cause at a time.
+
+A part found failed whose cause was not recorded (``e`` missing, ``c``
+of 2, or -1 for a window from its entry) is taken too, by ``fit`` and
+``fit_bayes`` alike: all it says is that the part's first failure, of
+whichever kind, came in the window, so its contribution is the all-cause
+survival over the window, :math:`S(x_l) - S(x_r)` (the sum of the
+causes' incidences over it). It tells the fit mostly about how long
+parts last; about which cause ended them it says only a little, through
+the shape of the all-cause survival. This assumes that whether a cause
+goes unrecorded does not depend on which cause it was (an inspection
+that cannot tell wear from a crack is fine; one that records cracks and
+loses the cause of worn parts is not, and would bias the split). WAIC and leave-one-out
+(``model.result.waic()``, ``loo()``) take left truncation (``tl``) on
+this path: each row's log-likelihood carries its own entry term.
 
 The same holds for a **multi-state model**: units moving between
 healthy, degraded and failed, say, with a distribution for the hazard of

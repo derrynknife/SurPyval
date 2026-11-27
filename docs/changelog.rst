@@ -417,6 +417,63 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Promotion-time (bounded cumulative hazard) cure regression:
+  ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
+  ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,
+  ``GammaPromotionTimeCure`` and ``ExponentialPromotionTimeCure``
+  built. The survival is ``exp(-theta(z) F0(t))`` for a lifetime
+  distribution ``F0``, so a fraction ``exp(-theta(z))`` never fails; by
+  default the covariates act on ``theta`` through a log link, which
+  makes it a proportional hazards model with a bounded baseline
+  cumulative hazard (``exp(coef)`` a hazard ratio). It sits beside
+  ``MixtureCure`` and shares its interface: ``cure_probability``,
+  ``susceptible_probability``, ``cure_given_survival``,
+  ``susceptible=True``, ``follow_up()``, every bound type, the saved
+  form, and a warning when follow-up shows no plateau. Checked against
+  an independently written likelihood, its limit with no cure
+  (``WeibullPH``) and simulation; see :doc:`Mixture-Cure Regression`.
+- **Cox fits to case-cohort and nested case-control samples:
+  ``CoxPH.fit_case_cohort`` and ``CoxPH.fit_nested_case_control``.** A
+  case-cohort sample (a random subcohort plus every case) is fitted by
+  Prentice's, Self and Prentice's, Lin and Ying's or Barlow's estimator,
+  or, for a subcohort drawn within strata, Borgan's I or II, each with
+  its design-based variance, with delayed entry; the coefficients and
+  standard errors match R's ``survival::cch`` (and ``coxph`` with
+  Barlow's weights) on the Wilms tumour example to about 1e-9. Its
+  baseline is weighted to stand for the cohort, so the curves are given
+  (their bounds refuse). A nested case-control sample (each case with
+  controls drawn from its risk set) is fitted by the conditional logistic
+  likelihood, as ``clogit``; it has no baseline, so its curves refuse.
+  See :doc:`Case-Cohort and Nested Case-Control`.
+- ``WeightedCox`` (internal) takes a multiplier ``rho`` of a row's
+  place in the risk sums only (an offset of ``log rho``), which the
+  case-cohort fits use; its default 1 changes nothing.
+- **``fit_bayes_from_df`` for the competing-risks and multi-state
+  fitters.** ``ParametricCompetingRisks``,
+  ``ParametricCompetingRisksRegression``, ``ParametricMultiState`` and
+  ``ParametricMultiStateRegression`` read the columns of a DataFrame
+  (pandas, or polars and Arrow as their ``fit_from_df`` take) named as
+  their ``fit_from_df`` names them, and pass the Bayesian options to
+  ``fit_bayes`` unchanged. A coefficient of a regression is named in
+  ``priors`` by its column, as ``fit_from_df`` names it. The same fits as
+  ``fit_bayes`` on the arrays (the conformance suite's data-frame path).
+
+- **The chance of each failure mode for a running item in a joint
+  model.** ``JointModel.predict(...).cif(x, mode)`` is the chance that
+  the item fails by ``mode`` by age ``x``, given its readings and that
+  it was running at the age now; ``total_cif(x)`` is the chance of
+  failing by any (``ff``), and the modes' chances and ``sf`` add to 1
+  (to 2e-13 on the test model). ``cb(x, on="cif", mode=)`` gives Wald
+  bounds by the delta method on ``log(-log(1 - cif))``, as ``ff``'s
+  (``JointModel.cb`` takes ``on="cif"`` and ``mode`` too), and
+  ``to_dict()`` carries each mode's curve and bounds under ``"cif"``.
+  Checked against a brute-force two-dimensional integral over the
+  item's path (1e-8 or less within 500 days of now, 1.3e-5 at 1100 days
+  beyond, the time rule's error), against ``ParametricCompetingRisks`` with the
+  marker effects 0 (1.1e-11 relative) and the bounds against central
+  differences (1%). A calibration study of the bounds is in
+  ``tests/calibration/test_coverage_joint_cif.py``; an R ``JM``
+  reference script, not yet run, in ``scripts/reference/``.
 - **Extremely randomised survival trees and forests:
   ``splitrule="random"``.** ``SurvivalTree.fit`` and
   ``RandomSurvivalForest.fit`` draw one cut for each feature considered
@@ -477,6 +534,32 @@ v0.30 (unreleased)
   conformance test hands each registered ``fit_from_df`` entry point a
   Polars-like frame, so a new entry point that reads its frame without
   converting it fails.
+- **Competing risks: failures found in a window whose cause was not
+  recorded.** ``ParametricCompetingRisks.fit`` and ``fit_bayes`` take a
+  row found failed in a window (``c`` of 2, or -1 from its entry) with
+  no cause (``e`` missing), where both refused it before. It contributes
+  the probability of a failure of any cause in the window, the all-cause
+  survival over it, :math:`S(x_l) - S(x_r)`; the maximum-likelihood fit
+  and the Bayesian target share the term. Checked against the sum of the
+  causes' sub-densities integrated by adaptive quadrature (1e-9), the
+  Bayesian target against the fit's likelihood (1e-10), and the
+  flat-prior peak against the maximum-likelihood estimate (2e-5). An
+  exact failure (``c = 0``) still needs its cause, and data whose
+  failures all lack a cause are refused, saying what to do. It assumes
+  that whether a cause goes unrecorded does not depend on which cause it
+  was.
+- **Competing risks with failures in a window: a cause's joint prior.**
+  On the joint path (``fit_bayes`` with failures found in a window) a
+  cause may now have ``prior.on_quantities``, ``prior.from_model`` or
+  ``prior.MultivariateNormal`` priors (``priors={"a": belief}``), put on
+  that cause's parameters (``a.alpha``, ``a.beta``) and bound to its
+  distribution as the cause's own ``fit_bayes`` binds them; with exact
+  data the joint path gives the cause's own posterior (means to 1e-8).
+  A joint prior across causes is still refused.
+- **WAIC and leave-one-out with left truncation on the joint
+  competing-risks path.** Each row's log-likelihood now carries its own
+  entry term, so ``model.result.waic()`` and ``loo()`` take ``tl``
+  where they refused it.
 
 - **Two more bivariate survival estimators, and Kendall's tau from
   them.** ``surpyval.multivariate.Dabrowska.fit(x, c, n,
@@ -1467,6 +1550,19 @@ v0.30 (unreleased)
   fitted both ways.
 
 **Fixed.**
+
+- **A strong prior far from the estimate no longer refuses a Bayesian
+  fit.** A prior given as a distribution (``sp.Normal.from_params([0,
+  0.02])`` on a coefficient the data put at 1.36, 68 of its standard
+  deviations away) had its log density taken as ``log(df)``, which
+  underflows to ``-inf`` past about 38 standard deviations, and only the
+  maximum-likelihood fit and the priors' centre were tried as starts, so
+  the fit was refused ("No starting point"). The log density is now the
+  distribution's own ``log_df``, and the maximum-likelihood start with
+  each prior-bearing parameter moved to its prior's centre is tried too.
+  The case above now fits, its posterior within the Laplace engine's
+  stated accuracy of a brute-force lattice posterior (0.27 standard
+  deviations at most, against 0.1 of the 95% interval's width).
 
 - **``fit_best`` no longer warns that a default candidate was set aside
   when a regular fit was chosen.** With the GeneralizedF among the

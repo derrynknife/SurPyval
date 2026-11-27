@@ -15,6 +15,33 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### Promotion-time cure regression (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `PromotionTimeCure(F0, covariates=, links=)`, with prebuilt `WeibullPromotionTimeCure`, `LogNormal...`, `LogLogistic...`, `Gamma...`, `Exponential...`: a distributional regression of the defective distribution `S(t) = exp(-theta F0(t))`, parameters F0's then `theta`, as `MixtureCure` is of the limited-failure one, so the fits, bounds, saved form and conformance are that family's. | proposed | The two cure models should feel like one feature; the family already gives every bound. | done |
+| The new parameter is `theta`, the ceiling of the cumulative hazard (the mean number of latent causes), log link, SurPyval's sign (+: more failures); the cure fraction is `cure_probability(Z) = exp(-theta(z))`. flexsurvcure's `theta` is the cure fraction itself; we expect its `link = "loglog"` coefficients to be ours, which is unverified until the R script is first run. | proposed | `theta` is the literature's name (Yakovlev-Tsodikov; Chen-Ibrahim-Sinha); the log link makes `exp(coef)` a hazard ratio. | done |
+| Default covariates: every column on `theta`, none on F0 (the proportional hazards form). | proposed | The issue's default; it makes the model PH on the cumulative-hazard scale. | done |
+| F0 any continuous built-in on the positive half-line whose distribution function reaches 1 (Weibull, Exponential, Gamma, LogNormal, LogLogistic, Rayleigh, InverseGaussian, BirnbaumSaunders, GeneralizedGamma, ExpoWeibull); Gompertz refused (with a negative shape its own F0 is defective), whole-line and discrete ones refused. | proposed | A defective F0 makes the cure fraction unidentifiable. | done |
+| `susceptible=True` is the distribution of a unit that does fail, `(S - e^-theta) / (1 - e^-theta)` (not F0, which is the promotion-time distribution); its mean by numerical integration. | proposed | The same meaning as the mixture model's `susceptible=True`. | done |
+| `distribution_at` refuses (no univariate promotion-time distribution exists); the global likelihood-ratio test's null is the promotion-time fit with no covariates. | proposed | A univariate model would be a separate feature. | gap |
+| The no-plateau case warns through `warn_no_maximum` that the cure fraction is not identified (theta to infinity); the fit then equals `WeibullPH`'s (log-likelihood to 1e-9). | proposed | As the mixture model warns for `lfp_p -> 1`. | done |
+| flexsurvcure is not installed: the R comparison is scripted (`reference_r_promotion_time_cure.R`, not run; its link mapping to be confirmed on first run) with a test that skips until its JSON exists. Nothing claims agreement with flexsurvcure. | proposed | No R package installs without the owner's OK. | open |
+| No direct bound on `cure_probability`: the docs give the recipe, `param_cb("theta", Z=...)` mapped through `exp(-theta)`; a direct bound for both cure models is a follow-up. | proposed | The mapping is exact for a monotone function. | gap |
+### Case-cohort and nested case-control Cox fits (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Two fit methods on `CoxPH`: `fit_case_cohort(x, Z, subcohort, cohort_size, c=, tl=, method=, sampling_strata=, robust=, tie_method=)` and `fit_nested_case_control(Z, case, sets, tie_method=)`, returning `CaseCohortModel` and `NestedCaseControlModel` (subclasses of the Cox model, not new top-level fitters). | proposed | They are Cox fits to sampled data; a method on the existing fitter is where a user looks, and the models keep every Cox prediction and summary. | done |
+| Methods `"prentice"` (default, as `cch`), `"self-prentice"`, `"lin-ying"`, `"barlow"`, `"borgan-i"`, `"borgan-ii"`; the sampling strata of the Borgan methods are `sampling_strata` (not `strata`, which in `CoxPH.fit` means separate baselines). | proposed | `cch`'s names and default; the stratified sampling does not stratify the model. | done |
+| Every variance is R's `cch`'s to the letter, including Prentice's taken from the Self-Prentice estimating equation at its own estimate; Barlow's (not in `cch`) is the robust variance of `coxph` with Barlow's weights clustered on the unit (Therneau and Li 1999). | proposed | The reference matches to about 1e-9; the two estimators share their asymptotic variance (Self and Prentice 1988). | done |
+| A case-cohort model has a baseline: Breslow's on risk sets weighted by the inverse of each member's sampling probability (subcohort `N / n`, per stratum for Borgan I; a case 1 at its event; Lin-Ying and Borgan II their own weights), so the curves are offered; their `cb` refuses. | proposed | The sampling fraction is known, so the baseline is estimable; with the whole cohort it is the ordinary Breslow baseline (tested), and a seeded 10% subcohort is within 15% of the cohort's. The variance of the weighted baseline under sampling is not built. | done (bounds: gap) |
+| A case-cohort model refuses `neg_ll`, the information criteria, the likelihood-ratio test, residuals, `diagnose`, `robust_covariance`, concordance and `to_dict`; a nested case-control model refuses every curve (no baseline) but gives the log-likelihood, LRT and criteria (a true conditional likelihood). | proposed | A pseudo-likelihood is not the data's likelihood; the saved form has no field for a design. | done |
+| Nested case-control default `tie_method="exact"` (the conditional likelihood, `clogit`'s default), fitted as a Cox model stratified by set at one time with the Kalbfleisch-Prentice likelihood; a set with no case or no control is dropped with a warning. No baseline (Langholz-Borgan) estimator. | proposed | It needs the cohort's risk-set sizes, which the usual sample does not hold. | gap |
+| No missing covariates in a case-cohort or nested case-control fit (refused, saying to drop or impute), as `cch`. | proposed | Dropping a row changes the sample design silently (in a matched set it can remove the case or the only control). | done |
+| Lin-Ying and Borgan II refuse a subcohort (or sampling stratum) with fewer than two non-cases; Prentice, Self-Prentice and Borgan I refuse a case time with no subcohort member at risk; each says which method to use instead. | proposed | The fits otherwise returned meaningless numbers or nan standard errors with only numpy warnings. | done |
+| The reference JSON (`tests/reference/data/case_cohort_r.json`) embeds R's `survival::nwtco` whole (National Wilms Tumor Study; Breslow and Chatterjee 1999; `survival` is LGPL) and `datasets::infert`, as the package already ships `survival`'s data sets; source and licence are noted in the script and the test. | proposed | The whole-cohort test (the whole cohort as the subcohort is the ordinary Cox fit) needs every child. | done |
+
 ### The Birnbaum-Saunders, built in (27 Nov 2026)
 
 | Decision | By | Reason | Status |
@@ -68,6 +95,19 @@ Design decisions made while working on the open issues, with the reason for each
 | The object's own module name (`type(obj).__module__`) says whether it is Polars or Arrow, so neither library is imported for a pandas user, and neither is a dependency; both are in the `tests` extra only. | proposed | `import surpyval` stays light, and the issue asks for no hard dependency. | done |
 | The conversion is the library's own `to_pandas` (Polars' needs PyArrow); a null is then a missing value as in pandas. A Polars `LazyFrame` is collected first. Other Arrow-compatible frames (the Arrow C stream interface) are not read. | proposed | The simplest conversion that keeps a null as pandas keeps it; wider interchange is a later decision. | done |
 | A conformance test hands every registered `*_from_df` entry point a Polars-like object with nothing but `to_pandas`, and compares the fit with the pandas one. | proposed | The first run found 66 entry points that read the frame directly; the test keeps new ones honest without needing Polars installed. | done |
+### fit_bayes_from_df for the competing-risks and multi-state fitters (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| The regressions' `fit_bayes_from_df` (competing risks and multi-state) name a coefficient in `priors` and in the result by its column, as `WeibullPH.fit_bayes_from_df` and their `fit_from_df` do; arrays keep their names (`coef_0` for a cause's regression, `z0` for a transition's). The Bayesian options after the columns are keyword-only on `ParametricCompetingRisks.fit_bayes_from_df` (`dist`, `tl_col`, `xl_col`, `xr_col` too). | proposed | One name for a covariate's coefficient across a data frame's fits. Keyword-only avoids the positional mismatch with `fit_from_df`'s `how`. | done |
+
+### Competing risks on the joint (window) path: unknown causes, joint priors, WAIC with entry (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| A failure found in a window with no cause contributes S(a) - S(b) (over S(tl)), in the maximum-likelihood fit and the Bayesian target alike; an exact failure with no cause is still refused. | proposed | It is the sum of the causes' window terms, so the likelihood stays one model's; an exact failure without a cause needs a model of which cause it was, which this is not. | done |
+| A cause's joint prior on the joint path is bound to that cause's distribution on its columns (`CauseJointPrior`); its names are the cause's (`a.alpha`); a joint prior across causes is refused. A prior needing a fit's target (`prior.from_fit`) is refused there by its own message. | proposed | The prior means what it means in the cause's own fit; with exact data the joint path reproduces the factorised posterior. | done |
+| On the joint path each prepared row's WAIC/LOO term carries its own entry term +H(tl). | proposed | The entry term belongs to the unit that entered; the terms times counts still sum to the log-likelihood. | done |
 ### A Bayesian regression's peak search in standardised units (27 Nov 2026)
 
 | Decision | By | Reason | Status |
@@ -104,6 +144,15 @@ Design decisions made while working on the open issues, with the reason for each
 | `centred=False` stays the default; `centred=True` draws each group's value from `Normal(mu, tau)` directly. | maintainer (#671 default) | Non-centred samples well with little data a group, the usual pooling case. | done |
 | `shrinkage(trace, pooling)` returns a DataFrame: each group's own maximum-likelihood estimate (all its parameters free), pooled posterior median, population median and `pulled` on the unconstrained scale. With shared parameters `pulled` can fall a little outside 0 to 1, said in the docs. | maintainer (#671 default) | The table the template's users ask for. | done |
 | The template's calibration study (200 repetitions, seeds and rules fixed before the first run) runs with the calibration studies where PyMC is installed, skipped otherwise. | maintainer (#671 default) | As the other studies. | done |
+### Joint models: the chance of each failure mode for a running item (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `cif_k(x) = ff(x) * share_k(x)`: the chance of failing at all as `sf` computes it (nodes placed at each age), times the mode's share over the item's posterior given its readings and survival to now (nodes placed there): `E[F(b) G_k(b) / sum_j G_j(b)] / E[F(b)]`, `F` exact, `G_k` by the cumulative hazard's 15-point Gauss-Legendre rule. | proposed | The modes' chances then add to `ff` to rounding (2.4e-13 on the test model), whatever the rule's error, which moves only the split (1.3e-5 at 1100 days beyond now against a brute-force integral, 1e-8 or less within 500). The share is taken per node, inside the integrals, so the result is `E[G_k]`. Averaging `G_k` directly misses the identity by the rule's error. | done |
+| Bounds: delta method on `log(-log(1 - cif_k))`, nodes held, pointwise per mode; no likelihood-ratio or bootstrap bound (as `ff`'s on a prediction). `mode=None` is `ff`; a model with no modes refuses a mode, saying to fit with `e=`. An infinite age is `nan`. More varying parameters than the prediction grid takes (Laplace stencils) is refused naming what to use. | proposed | The same route and scale as `DynamicPrediction.cb` on `ff`; bounds that stay in (0, 1). | done |
+| R `JM` (CompRisk) is not installed: the reference script is committed (`scripts/reference/reference_r_jm_cif.R`, not run) and `test_against_r_jm` skips until its JSON exists; the check moves to a follow-up. | proposed | R packages are not installed on the machine these checks ran on without the maintainer's agreement, so the comparison waits for it. | gap |
+| RePyability's `JointNode` follows the overall `sf`; per-mode nodes are not part of this. | proposed | A node in a reliability block diagram has one way of failing: one survival curve per item. Nodes for each mode would need a structure of their own there. | done |
+
 ### Joint models: a spread at 0 held on its lower bound (27 Nov 2026)
 
 | Decision | By | Reason | Status |

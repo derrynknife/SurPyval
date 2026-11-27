@@ -69,3 +69,20 @@ The ``firth`` attribute of a model fitted by ``CoxPH.fit(..., firth=True)``.
 which says why and what to use instead.
 
 .. autoclass:: surpyval.univariate.regression.proportional_hazards.cox_firth.FirthRefusal
+
+Case-cohort and nested case-control samples
+-------------------------------------------
+
+``CoxPH.fit_case_cohort`` and ``CoxPH.fit_nested_case_control`` fit the
+Cox model to a sample of a cohort in which only some units had their
+covariates measured. The guide is :doc:`../Case-Cohort and Nested Case-Control`.
+
+.. autofunction:: surpyval.univariate.regression.proportional_hazards.case_cohort.fit_case_cohort
+
+.. autofunction:: surpyval.univariate.regression.proportional_hazards.case_cohort.fit_nested_case_control
+
+.. autoclass:: surpyval.univariate.regression.proportional_hazards.case_cohort.CaseCohortModel
+   :members: covariance, standard_errors, summary
+
+.. autoclass:: surpyval.univariate.regression.proportional_hazards.case_cohort.NestedCaseControlModel
+   :members: covariance, standard_errors, summary, likelihood_ratio_test

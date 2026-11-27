@@ -44,6 +44,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.bayes.prior import JointPrior, PriorSpec
 from surpyval.bayes.target import Target
 from surpyval.univariate.competing_risks.parametric import (
     _interval_likelihood as joint,
@@ -197,9 +198,12 @@ class JointCompetingRisksTarget(Target):
 
     # -- the likelihood ------------------------------------------------------
 
-    def _row_log_lik(self, theta: npt.NDArray) -> list:
+    def _row_log_lik(self, theta: npt.NDArray) -> tuple[list, Any]:
         """Each group of rows' log-likelihood a row (not yet times its
-        count) at ``(N, k)`` parameter points: ``[(values, counts)]``."""
+        count) at ``(N, k)`` parameter points, ``[(values, counts,
+        rows)]`` with ``rows`` the prepared rows they are, and the entry
+        terms ``(values, counts, rows)`` (``None`` without left
+        truncation), apart: :math:`+H(t_l)` a row seen from its entry."""
         theta = np.atleast_2d(np.asarray(theta, dtype=float))
         data = self.prepared
         dists, los = self.dists, data.los
@@ -219,11 +223,18 @@ class JointCompetingRisksTarget(Target):
             return np.asarray(total) * np.ones((theta.shape[0], 1))
 
         out = []
+        entry = None
         with np.errstate(all="ignore"):
             if data.n_censored.size:
-                out.append((-H_all(data.censored_at), data.n_censored))
+                out.append(
+                    (
+                        -H_all(data.censored_at),
+                        data.n_censored,
+                        data.index_censored,
+                    )
+                )
             if data.n_entry.size:
-                out.append((H_all(data.entry_at), data.n_entry))
+                entry = (H_all(data.entry_at), data.n_entry, data.index_entry)
             for i, rows in enumerate(data.rows):
                 if rows.n_exact.size:
                     pts = rows.exact_at[i]
@@ -239,7 +250,9 @@ class JointCompetingRisksTarget(Target):
                         np.where(pts.mask, pts.safe, -np.inf)[None, :],
                         params[i],
                     )
-                    out.append((log_f - others, rows.n_exact))
+                    out.append(
+                        (log_f - others, rows.n_exact, rows.index_exact)
+                    )
                 if rows.n_window.size:
                     out.append(
                         (
@@ -247,9 +260,26 @@ class JointCompetingRisksTarget(Target):
                                 i, rows.a, rows.b, dists, los, params
                             ),
                             rows.n_window,
+                            rows.index_window,
                         )
                     )
-        return out
+            if data.n_unknown.size:
+                # a failure of some cause in (a, b]: S(a) - S(b)
+                H_a = H_all(data.unknown_a)
+                H_b = H_all(data.unknown_b)
+                gap = -np.expm1(H_a - H_b)
+                out.append(
+                    (
+                        np.where(
+                            gap > 0,
+                            -H_a + np.log(np.where(gap > 0, gap, 1.0)),
+                            -np.inf,
+                        ),
+                        data.n_unknown,
+                        data.index_unknown,
+                    )
+                )
+        return out, entry
 
     def log_lik(self, theta: npt.NDArray) -> npt.NDArray:
         theta = np.atleast_2d(np.asarray(theta, dtype=float))
@@ -257,8 +287,11 @@ class JointCompetingRisksTarget(Target):
         for s in range(0, theta.shape[0], _BLOCK):
             block = theta[s : s + _BLOCK]
             ll = np.zeros(block.shape[0])
+            groups, entry = self._row_log_lik(block)
+            if entry is not None:
+                groups = groups + [entry]
             with np.errstate(all="ignore"):
-                for values, counts in self._row_log_lik(block):
+                for values, counts, _ in groups:
                     terms = np.where(counts[None, :] > 0, values, 0.0)
                     ll = ll + terms @ counts
             total[s : s + _BLOCK] = ll
@@ -267,24 +300,22 @@ class JointCompetingRisksTarget(Target):
     def neg_ll(self, theta: npt.NDArray) -> float:
         return -float(self.log_lik(np.asarray(theta, dtype=float))[0])
 
-    def _units_check(self) -> None:
-        if self.prepared.n_entry.size:
-            raise ValueError(
-                "WAIC and leave-one-out need each unit's log-likelihood; "
-                "with left truncation (tl) a joint competing-risks fit "
-                "does not split its entry terms by unit. Compare fits "
-                "without tl, or by their evidence."
-            )
-
     def unit_log_lik(self, theta: npt.NDArray) -> npt.NDArray:
         """Each group of identical rows' log-likelihood a row (right
-        censored, then each cause's exact and window rows)."""
-        self._units_check()
+        censored, each cause's exact and window rows, then the failures
+        in a window from an unknown cause), a row seen from its entry
+        with its own entry term."""
         theta = np.atleast_2d(np.asarray(theta, dtype=float))
-        return np.concatenate([v for v, _ in self._row_log_lik(theta)], axis=1)
+        groups, entry = self._row_log_lik(theta)
+        if entry is not None:
+            at_entry = np.zeros((theta.shape[0], self.prepared.n_rows))
+            at_entry[:, entry[2]] = entry[0]
+            groups = [
+                (v + at_entry[:, rows], c, rows) for v, c, rows in groups
+            ]
+        return np.concatenate([v for v, _, _ in groups], axis=1)
 
     def unit_counts(self) -> npt.NDArray:
-        self._units_check()
         data = self.prepared
         parts = [data.n_censored] if data.n_censored.size else []
         for rows in data.rows:
@@ -292,6 +323,8 @@ class JointCompetingRisksTarget(Target):
                 parts.append(rows.n_exact)
             if rows.n_window.size:
                 parts.append(rows.n_window)
+        if data.n_unknown.size:
+            parts.append(data.n_unknown)
         return np.concatenate(parts)
 
     # -- the maximum-likelihood fit -----------------------------------------
@@ -348,14 +381,14 @@ class JointCompetingRisksTarget(Target):
 
     def check(self, bound: Any) -> None:
         for j in bound.spec.joint:
-            raise ValueError(
-                "With failures found in a window (c = -1 or 2) the causes "
-                "are fitted together, and their priors are taken a "
-                "parameter at a time ({cause: {'beta': ...}} or one set "
-                "for every cause); a joint prior "
-                f"({type(j).__name__}) is not taken there. State it a "
-                "parameter at a time."
-            )
+            if not isinstance(j, CauseJointPrior):
+                raise ValueError(
+                    "With failures found in a window (c = -1 or 2) the "
+                    "causes are fitted together, and a joint prior is taken "
+                    "a cause at a time ({cause: prior} or one for every "
+                    f"cause); a joint prior ({type(j).__name__}) over the "
+                    "causes' parameters together is not taken."
+                )
 
     def describe_data(self) -> str:
         n = float(np.sum(np.asarray(self.data[2], dtype=float)))
@@ -368,39 +401,117 @@ class JointCompetingRisksTarget(Target):
         )
 
 
+class CauseJointPrior(JointPrior):
+    """One cause's joint prior (``prior.on_quantities``,
+    ``prior.from_model``, ``prior.MultivariateNormal``, an earlier fit's
+    data) in the joint target: its parameters renamed onto the cause's
+    (``beta`` to ``a.beta``) and the prior bound to that cause's
+    distribution, exactly as the cause's own ``fit_bayes`` binds it, on
+    the cause's columns of the joint parameters.
+
+    Parameters
+    ----------
+    inner : JointPrior
+        The prior, as the cause's own fit takes it.
+    label : str
+        The cause's label in the target's names.
+    dist : ParametricFitter
+        The cause's distribution.
+    held : list of str
+        The cause's parameters held by ``prior.fixed`` (not covered by a
+        prior on every free parameter).
+    """
+
+    def __init__(
+        self, inner: JointPrior, label: str, dist: Any, held: list
+    ) -> None:
+        self.inner = inner
+        self.label = label
+        self.dist = dist
+        self.is_likelihood = bool(inner.is_likelihood)
+        self.proper = bool(inner.proper)
+        own = (
+            inner.names
+            if inner.names is not None
+            else [p for p in dist.parameter_names if p not in held]
+        )
+        self.names = (
+            None if self.is_likelihood else [f"{label}.{p}" for p in own]
+        )
+
+    def bind(self, fit: Any) -> Any:
+        from surpyval.bayes.prior import BoundPriors
+
+        prefix = f"{self.label}."
+        names = list(self.dist.parameter_names)
+        fixed = {
+            k[len(prefix) :]: float(v)
+            for k, v in fit.fixed.items()
+            if k.startswith(prefix) and k[len(prefix) :] in names
+        }
+        try:
+            sub = BoundPriors(
+                PriorSpec(joint=[self.inner]),
+                self.dist,
+                names,
+                list(self.dist.bounds),
+                False,
+                False,
+                False,
+                fixed,
+            )
+        except ValueError as e:
+            raise ValueError(f"Cause {self.label}: {e}") from None
+        cols = [fit.free_names.index(prefix + n) for n in sub.free_names]
+        density = sub._factors[-1]
+
+        def log_density(phi: npt.NDArray) -> Any:
+            return density(np.atleast_2d(phi)[:, cols])
+
+        return log_density
+
+    def describe(self) -> str:
+        return f"cause {self.label}: {self.inner.describe()}"
+
+    def to_dict(self) -> dict:
+        return self.inner.to_dict()
+
+
 def to_target_priors(
     priors_by_cause: dict, target: JointCompetingRisksTarget
-) -> dict:
-    """Each cause's per-parameter priors under the target's names."""
-    from collections.abc import Mapping
+) -> PriorSpec:
+    """Each cause's priors under the target's names: a prior on a
+    parameter renamed (``beta`` to ``a.beta``), and a joint prior bound
+    to the cause (:class:`CauseJointPrior`)."""
+    from surpyval.bayes.prior import Fixed
 
-    from surpyval.bayes.prior import JointPrior
-
-    out: dict = {}
+    single: dict = {}
+    joint: list = []
     for k in target.causes:
         p = priors_by_cause.get(k)
         if p is None:
             continue
-        if isinstance(p, JointPrior) or not isinstance(p, Mapping):
-            raise ValueError(
-                f"Cause {k!r}: with failures found in a window (c = -1 or "
-                "2) the causes are fitted together, and their priors are "
-                "taken a parameter at a time ({'beta': ...}); a joint "
-                f"prior ({type(p).__name__}) is not taken there. State "
-                "it a parameter at a time."
-            )
-        names = list(target.dists[target.causes.index(k)].parameter_names)
-        for name, value in p.items():
+        dist = target.dists[target.causes.index(k)]
+        try:
+            spec = PriorSpec.parse(p)
+        except ValueError as e:
+            raise ValueError(f"Cause {k!r}: {e}") from None
+        names = list(dist.parameter_names)
+        for name, value in spec.single.items():
             if name not in names:
                 raise ValueError(
                     f"Cause {k!r} has no parameter {name!r}; its "
                     f"parameters are {', '.join(names)}."
                 )
-            out[target.name_of(k, name)] = value
-    return out
+            single[target.name_of(k, name)] = value
+        held = [n for n, v in spec.single.items() if isinstance(v, Fixed)]
+        label = target.labels[target.causes.index(k)]
+        joint += [CauseJointPrior(j, label, dist, held) for j in spec.joint]
+    return PriorSpec(single, joint)
 
 
 __all__ = [
+    "CauseJointPrior",
     "JointCompetingRisksTarget",
     "to_target_priors",
     "window_log_probability",
