@@ -555,7 +555,8 @@ their clock must run on. Mark them with ``carry_on`` (a True or False
 per row, ``carry_on_col`` for a DataFrame): a marked row is fitted on
 the time since the stay began, left truncated at the time already spent
 in the state. A marked row must be the same unit's next row, in the same
-state, starting exactly where the row before ended censored; anything
+state, starting exactly (as stored) where the row before ended
+censored, so times rounded on the way through a file are refused; anything
 else is refused, saying which rows. On the forward clock the marks
 change nothing, as each row's ``tl`` already says when it starts. (See
 also :doc:`Conventions`.)
