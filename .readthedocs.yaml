@@ -20,6 +20,13 @@ build:
     # whole build.
     post_install:
       - python -c "import matplotlib.pyplot"
+    # Read the Docs stops a free project's build at 15 minutes, and the
+    # pages execute their code as they build (about 12 minutes in series).
+    # Build them in parallel (every extension here is parallel-read safe).
+    # Same command Read the Docs runs by default, plus -j auto.
+    build:
+      html:
+        - python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en docs $READTHEDOCS_OUTPUT/html
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:
