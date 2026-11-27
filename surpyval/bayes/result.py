@@ -318,12 +318,8 @@ def fit_target(
             starts = [rp.forward(s[None, :])[0] for s in starts]
         starts = [s for s in starts if np.all(np.isfinite(s))]
         where = _WorkingNames(bound, rp)
-    # (the scales are of phi's coordinates: not used in other working
-    # coordinates, which are the target's own choice of scale)
-    scales = (
-        _search_scales(target, bound, log_post, starts[0])
-        if rp is None
-        else None
+    scales, phi_scales = _search_setup(
+        target, bound, log_post, work, starts[0], rp, method
     )
     try:
         mode, cov, _ = find_mode(work, starts, scales)
@@ -355,32 +351,27 @@ def fit_target(
         post = Posterior(
             bound.names,
             bound.free_names,
-            bound.full_theta(to_phi(approx.phi)),
+            _finite_draws(bound.full_theta(to_phi(approx.phi)), approx.log_w),
             np.exp(approx.log_w),
             "laplace",
             transforms=free_t,
             # (in working coordinates the normal is not one on phi: the
             # parameters' quantiles are then the draws')
-            normal=(
-                {
-                    "mean": [float(v) for v in approx.mode],
-                    "cov": [[float(v) for v in row] for row in approx.cov],
-                    "reweighted": bool(approx.importance),
-                }
-                if rp is None
-                else None
-            ),
+            normal=_phi_normal(approx, rp),
         )
         diag = dict(laplace_diagnostics(approx, where, importance))
         diag["free_parameters"] = list(bound.free_names)
-        diag["mode"] = _phi_mode(bound, log_post, to_phi(approx.mode), rp)
+        diag.update(_working_normal(approx, rp))
+        diag["mode"] = _phi_mode(
+            bound, log_post, to_phi(approx.mode), rp, phi_scales
+        )
         if target.laplace_only:
             diag["regression"] = True
     else:
         post = Posterior(
             bound.names,
             bound.free_names,
-            bound.full_theta(to_phi(grid.phi)),
+            _finite_draws(bound.full_theta(to_phi(grid.phi)), grid.log_w),
             np.exp(grid.log_w),
             "grid",
             transforms=free_t,
@@ -398,7 +389,9 @@ def fit_target(
             "integration_error": grid.error,
             "half_width_sd": float(np.max(grid.half_widths)),
             "widened": grid.checks.get("widened", 0),
-            "mode": _phi_mode(bound, log_post, to_phi(grid.mode), rp),
+            "mode": _phi_mode(
+                bound, log_post, to_phi(grid.mode), rp, phi_scales
+            ),
             "log_evidence": (
                 float(grid.log_z) if bound.proper else float("nan")
             ),
@@ -431,8 +424,160 @@ def _search_scales(
     return out
 
 
+#: The smallest eigenvalue of the correlation matrix of the
+#: maximum-likelihood estimates (unconstrained scale) below which a fit
+#: with no centring is refused: the parameters are then collinear to
+#: about one part in 1e5, which a covariate about 200 of its standard
+#: deviations from 0 makes (1e-4 at 50, 3e-7 at 1000, in six seeded
+#: Weibull PH designs), and the normal approximation is not to be had.
+_COLLINEAR = 1e-5
+
+
+def _refuse_collinear(target: Any, bound: BoundPriors) -> None:
+    """Refuse a fit the engines would get wrong without a centring
+    (:meth:`~surpyval.bayes.target.Target.reparam`): where the
+    maximum-likelihood correlation matrix's smallest eigenvalue is below
+    ``_COLLINEAR``."""
+    worst = target.collinearity(bound)
+    if worst is None or worst >= _COLLINEAR:
+        return
+    raise ValueError(
+        "The parameters are nearly collinear (the smallest eigenvalue of "
+        f"their correlation matrix at the maximum-likelihood fit is "
+        f"{worst:.1e}, below {_COLLINEAR:g}), so no approximation of the "
+        "posterior can be relied on. In a regression this is a covariate "
+        "far from 0 (the baseline and its coefficient then move "
+        "together): centre it (subtract its mean, or a value near it) "
+        "and refit; the coefficient's posterior is the same, and the "
+        "baseline is then the one at that value."
+    )
+
+
+def _finite_draws(theta: npt.NDArray, log_w: npt.NDArray) -> npt.NDArray:
+    """The posterior's points on the parameters' own scale, refused where
+    some with weight are not finite: a baseline at a covariate's origin
+    far from the data (``e^{beta' zbar}`` past the largest float, at a
+    covariate near 1000) cannot be held on the user's scale, however
+    well the engines found it at the covariates' means."""
+    bad = ~np.all(np.isfinite(theta), axis=1) & np.isfinite(log_w)
+    if bad.any():
+        raise ValueError(
+            f"{int(bad.sum())} of the posterior's {len(theta)} points have "
+            "parameters too large or small for double precision on the "
+            "scale they are reported on: the baseline is at covariates of "
+            "0, far from the data's. Centre the covariates (subtract their "
+            "means, or values near them) and refit; the coefficients' "
+            "posterior is the same, and the baseline is then the one at "
+            "those values."
+        )
+    return theta
+
+
+def _search_setup(
+    target: Any,
+    bound: BoundPriors,
+    log_post: Any,
+    work: Any,
+    start: npt.NDArray,
+    rp: Any,
+    method: str,
+) -> tuple[npt.NDArray | None, npt.NDArray | None]:
+    """The peak search's scales in the engines' coordinates
+    (:func:`_engine_scales`) and, where the engines work in a
+    reparameterisation that keeps some of phi's coordinates, phi's (for
+    the peak on phi, :func:`_phi_mode`); and, with no
+    reparameterisation, the Laplace engine's refusal of a fit too
+    collinear for it (:func:`_refuse_collinear`)."""
+    if rp is None and method == "laplace":
+        _refuse_collinear(target, bound)
+    scales = _engine_scales(target, bound, log_post, work, start, rp)
+    phi_scales = (
+        _search_scales(target, bound, log_post, rp.inverse(start[None])[0])
+        if getattr(rp, "same", None) is not None
+        else None
+    )
+    return scales, phi_scales
+
+
+def _engine_scales(
+    target: Any,
+    bound: BoundPriors,
+    log_post: Any,
+    work: Any,
+    start: npt.NDArray,
+    rp: Any,
+) -> npt.NDArray | None:
+    """The peak search's scales in the engines' coordinates: phi's
+    (:func:`_search_scales`) where there is no reparameterisation;
+    where there is one that names the coordinates it keeps (``same``),
+    the target's scale for those and the curvature of the posterior at
+    the start for the rest; otherwise none (the target's own choice of
+    scale)."""
+    from surpyval.bayes.engines.grid import start_scales
+
+    if rp is None:
+        return _search_scales(target, bound, log_post, start)
+    same = getattr(rp, "same", None)
+    if same is None:
+        return None
+    given = target.coordinate_scales(bound)
+    out = np.full(len(start), np.nan)
+    if given is not None:
+        given = np.asarray(given, dtype=float)
+        for j in same:
+            if np.isfinite(given[j]) and given[j] > 0:
+                out[j] = given[j]
+    if np.isnan(out).any():
+        out = np.where(np.isnan(out), start_scales(work, start), out)
+    return out
+
+
+def _working_normal(approx: Any, rp: Any) -> dict:
+    """Where the engines worked in a target's working coordinates, the
+    normal they laid there (``working_normal``: its coordinates' names,
+    mean and covariance), for checks of its curvature; nothing
+    otherwise."""
+    if rp is None:
+        return {}
+    return {
+        "working_normal": {
+            "names": list(rp.names),
+            "mean": [float(v) for v in approx.mode],
+            "cov": [[float(v) for v in row] for row in approx.cov],
+        }
+    }
+
+
+def _phi_normal(approx: Any, rp: Any) -> dict | None:
+    """The Laplace normal on phi, for the posterior's closed-form
+    summaries: the engine's own where it worked in phi, carried through
+    an affine change of coordinates (``rp.affine``: ``phi = A u + b``,
+    under which a normal stays one; a centred accelerated failure time
+    scale family's), and none otherwise (the summaries are then the
+    draws')."""
+    mean, cov = np.asarray(approx.mode), np.asarray(approx.cov)
+    if rp is not None:
+        if not getattr(rp, "affine", False):
+            return None
+        d = mean.size
+        b = rp.inverse(np.zeros((1, d)))[0]
+        A = np.column_stack(
+            [rp.inverse(np.eye(d)[j][None, :])[0] - b for j in range(d)]
+        )
+        mean, cov = A @ mean + b, A @ cov @ A.T
+    return {
+        "mean": [float(v) for v in mean],
+        "cov": [[float(v) for v in row] for row in cov],
+        "reweighted": bool(approx.importance),
+    }
+
+
 def _phi_mode(
-    bound: BoundPriors, log_post: Any, at: npt.NDArray, rp: Any
+    bound: BoundPriors,
+    log_post: Any,
+    at: npt.NDArray,
+    rp: Any,
+    scale: npt.NDArray | None = None,
 ) -> list[float]:
     """The posterior's peak on the parameters' unconstrained scale, as
     every parameter's value: where the engine worked in other
@@ -443,7 +588,7 @@ def _phi_mode(
     at = np.atleast_2d(at)[0]
     if rp is not None:
         try:
-            at, _, _ = find_mode(log_post, [at])
+            at, _, _ = find_mode(log_post, [at], scale)
         except GridError:
             pass
     return [float(v) for v in bound.full_theta(at)[0]]

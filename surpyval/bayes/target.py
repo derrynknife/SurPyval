@@ -99,6 +99,10 @@ class Reparameterisation:
         ``u = forward(phi)`` and ``phi = inverse(u)``, on rows.
     log_det : callable
         ``log |det d phi / d u|`` at rows of ``u``.
+    same : list of int, optional
+        The working coordinates that are ``phi``'s own.
+    affine : bool, optional
+        Whether ``phi`` is affine in ``u``.
 
     Examples
     --------
@@ -112,12 +116,26 @@ class Reparameterisation:
     """
 
     def __init__(
-        self, names: list[str], forward: Any, inverse: Any, log_det: Any
+        self,
+        names: list[str],
+        forward: Any,
+        inverse: Any,
+        log_det: Any,
+        *,
+        same: list[int] | None = None,
+        affine: bool = False,
     ) -> None:
         self.names = list(names)
         self.forward = forward
         self.inverse = inverse
         self.log_det = log_det
+        #: The working coordinates that are phi's own (the peak search
+        #: then takes the target's scales for them), or None: the
+        #: target's own choice of scale for every one.
+        self.same = same
+        #: Whether ``phi`` is an affine function of ``u``, so that a
+        #: normal in ``u`` is one in ``phi``.
+        self.affine = affine
 
 
 class Target:
@@ -322,6 +340,44 @@ class Target:
         except Exception:  # a fit that cannot give its covariance
             return None
         return axis_scales(theta, cov, bound)
+
+    def collinearity(self, bound: Any) -> float | None:
+        """The smallest eigenvalue of the correlation matrix of the
+        maximum-likelihood estimates of the free parameters, on their
+        unconstrained scale (1 for independent ones, 0 for collinear
+        ones), or ``None`` where the fit gives no covariance."""
+        if self.mle is None or bound.d < 2:
+            return None
+        try:
+            with ignoring_warnings(), np.errstate(all="ignore"):
+                theta = np.asarray(self.estimates(), dtype=float).ravel()
+                cov = np.asarray(self.covariance(), dtype=float)
+        except Exception:  # a fit that cannot give its covariance
+            return None
+        k = len(bound.names)
+        if theta.size != k or cov.shape != (k, k):
+            return None
+        with np.errstate(all="ignore"):
+            dphi = np.array(
+                [
+                    np.exp(
+                        -bound.transforms[i].log_jacobian(
+                            bound.transforms[i].to_phi(theta[i])
+                        )
+                    )
+                    for i in bound.free_idx
+                ]
+            )
+            idx = np.asarray(bound.free_idx, dtype=int)
+            C = cov[np.ix_(idx, idx)] * dphi[:, None] * dphi[None, :]
+            sd = np.sqrt(np.diag(C))
+            R = C / np.outer(sd, sd)
+        if not np.all(np.isfinite(R)):
+            return None
+        try:
+            return float(np.linalg.eigvalsh(0.5 * (R + R.T)).min())
+        except np.linalg.LinAlgError:
+            return None
 
     def quantities(self) -> dict[str, Any]:
         """The family's named quantities for ``prior.on_quantities``:

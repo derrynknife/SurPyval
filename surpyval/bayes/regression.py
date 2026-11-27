@@ -52,7 +52,12 @@ from surpyval.bayes.result import (
     fit_target,
     interval_levels,
 )
-from surpyval.bayes.target import Target, register_adapter, register_target
+from surpyval.bayes.target import (
+    Reparameterisation,
+    Target,
+    register_adapter,
+    register_target,
+)
 from surpyval.serialisation import require_model_tag, stamp_schema
 from surpyval.utils.shapes import covariate_rows, keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -143,6 +148,142 @@ def _covariate_sds(data: Any) -> npt.NDArray:
         np.sum(n[:, None] * (Z - mean) ** 2, axis=0) / n.sum()
     )
     return out
+
+
+#: The centrings that are shifts of unconstrained coordinates by
+#: ``+-beta' zbar`` (affine in phi).
+_AFFINE = {
+    ("Proportional Hazard", "Exponential"),
+    ("Accelerated Failure Time", "Weibull"),
+    ("Accelerated Failure Time", "LogLogistic"),
+    ("Accelerated Failure Time", "Exponential"),
+    ("Accelerated Failure Time", "Gamma"),
+    ("Accelerated Failure Time", "LogNormal"),
+}
+
+#: The covariates' means below which (each relative to its spread) the
+#: data count as centred already, and no centring is done.
+_CENTRED = 1e-8
+
+
+def _covariate_means(data: Any) -> npt.NDArray:
+    """Each covariate's mean in the data, the rows weighted by their
+    counts."""
+    Z = np.asarray(data.Z, dtype=float)
+    n = np.asarray(data.n, dtype=float)
+    out: npt.NDArray = np.sum(n[:, None] * Z, axis=0) / n.sum()
+    return out
+
+
+def _known_means(data: Any, bound: Any) -> npt.NDArray:
+    """The covariates' means over every row the posterior knows: the
+    data's, and an earlier fit's held as a power prior
+    (``prior.from_fit``), at its weight. A power prior at weight 1 is
+    then centred where the pooled fit is, and its posterior is the
+    pooled one's, term for term."""
+    Zs = [np.asarray(data.Z, dtype=float)]
+    ns = [np.asarray(data.n, dtype=float)]
+    for j in getattr(bound.spec, "joint", []):
+        old = getattr(getattr(j, "target", None), "data", None)
+        if not getattr(j, "is_likelihood", False) or old is None:
+            continue
+        Z_old = getattr(old, "Z", None)
+        if Z_old is None or np.shape(Z_old)[1:] != Zs[0].shape[1:]:
+            continue
+        Zs.append(np.asarray(Z_old, dtype=float))
+        ns.append(float(j.weight) * np.asarray(old.n, dtype=float))
+    Z, n = np.concatenate(Zs), np.concatenate(ns)
+    out: npt.NDArray = np.sum(n[:, None] * Z, axis=0) / n.sum()
+    return out
+
+
+def _centring_map(kind: str, dist_name: str) -> Any | None:
+    """The baseline of a model at the covariates' means, as a function
+    ``(theta, s) -> theta_c`` of the baseline's parameters (columns of
+    ``theta``) and ``s = beta' zbar`` per row, with its inverse and the
+    log of ``|d phi / d u|`` (``u`` the centred baseline's unconstrained
+    parameters), or ``None`` where the family has no closed form.
+
+    A proportional hazards model's cumulative hazard is ``e^{beta'z}
+    H0(t)``: at ``z = zbar + z_c`` its baseline is ``e^s H0``, which is
+    a member of the family for the Weibull (``alpha e^{-s / shape}``),
+    the Exponential (``rate e^s``) and the Gumbel (``mu - sigma s``). An
+    accelerated failure time model's is ``H0(e^{beta'z} t)``: its
+    baseline ``H0(e^s t)`` is a member of any scale family (the scale
+    over ``e^s``, a rate times it, a log-location less ``s``) and of
+    the location-scale families on the whole line (``mu`` and
+    ``sigma`` both over ``e^s``)."""
+    if kind == "Proportional Hazard":
+        if dist_name == "Weibull":
+            return (
+                lambda th, s: np.column_stack(
+                    [th[:, 0] * np.exp(-s / th[:, 1]), th[:, 1]]
+                ),
+                lambda th, s: np.column_stack(
+                    [th[:, 0] * np.exp(s / th[:, 1]), th[:, 1]]
+                ),
+                lambda s: np.zeros_like(s),
+                (0,),
+            )
+        if dist_name == "Exponential":
+            return (
+                lambda th, s: th * np.exp(s)[:, None],
+                lambda th, s: th * np.exp(-s)[:, None],
+                lambda s: np.zeros_like(s),
+                (0,),
+            )
+        if dist_name == "Gumbel":
+            return (
+                lambda th, s: np.column_stack(
+                    [th[:, 0] - th[:, 1] * s, th[:, 1]]
+                ),
+                lambda th, s: np.column_stack(
+                    [th[:, 0] + th[:, 1] * s, th[:, 1]]
+                ),
+                lambda s: np.zeros_like(s),
+                (0,),
+            )
+        return None
+    if kind != "Accelerated Failure Time":
+        return None
+    if dist_name in ("Weibull", "LogLogistic"):
+        return (
+            lambda th, s: np.column_stack([th[:, 0] * np.exp(-s), th[:, 1:]]),
+            lambda th, s: np.column_stack([th[:, 0] * np.exp(s), th[:, 1:]]),
+            lambda s: np.zeros_like(s),
+            (0,),
+        )
+    if dist_name == "Exponential":
+        return (
+            lambda th, s: th * np.exp(s)[:, None],
+            lambda th, s: th * np.exp(-s)[:, None],
+            lambda s: np.zeros_like(s),
+            (0,),
+        )
+    if dist_name == "Gamma":  # (shape, rate)
+        return (
+            lambda th, s: np.column_stack([th[:, 0], th[:, 1] * np.exp(s)]),
+            lambda th, s: np.column_stack([th[:, 0], th[:, 1] * np.exp(-s)]),
+            lambda s: np.zeros_like(s),
+            (1,),
+        )
+    if dist_name == "LogNormal":  # mu is log time's location
+        return (
+            lambda th, s: np.column_stack([th[:, 0] - s, th[:, 1]]),
+            lambda th, s: np.column_stack([th[:, 0] + s, th[:, 1]]),
+            lambda s: np.zeros_like(s),
+            (0,),
+        )
+    if dist_name in ("Normal", "Gumbel", "Logistic"):
+        # mu and sigma both over e^s: d mu / d mu_c = e^s (sigma, on the
+        # log scale, only shifts)
+        return (
+            lambda th, s: th * np.exp(-s)[:, None],
+            lambda th, s: th * np.exp(s)[:, None],
+            lambda s: s,
+            (0, 1),
+        )
+    return None
 
 
 def _default_priors(mle: Any, spec: PriorSpec, fixed: dict) -> dict:
@@ -331,6 +472,102 @@ class RegressionTarget(Target):
                 if np.isfinite(sd) and sd > 0:
                     out[j] = 1.0 / sd
         return out
+
+    def reparam(self, bound: Any) -> Any | None:
+        """The engines work with the baseline at the covariates' means
+        (count-weighted), where a family has it in closed form
+        (:func:`_centring_map`): a covariate far from 0 makes the
+        baseline and its coefficient nearly collinear, and the
+        posterior a curved ridge in the parameters' own coordinates
+        (at a covariate mean of 50 a Weibull PH's Laplace survival at
+        that mean was 0.08 off the centred fit's), where at the means
+        they are nearly independent. The priors, the results and every
+        summary stay on the user's parameters; the change of variables is
+        exact. ``None`` (no change) where the covariates are centred
+        already, a coefficient is not one of ``exp(beta'Z)``, the family
+        has no closed form, or a baseline parameter the map changes is
+        held fixed."""
+        names = _coefficient_names(self.mle)
+        if not names:
+            return None
+        mapping = _centring_map(self.kind, getattr(self.dist, "name", ""))
+        if mapping is None:
+            return None
+        to_c, from_c, log_det_s, changed = mapping
+        k = int(self.mle.k_dist)
+        if any(self.names[j] in bound.fixed for j in changed):
+            return None
+        zbar = _known_means(self.data, bound)
+        sds = _covariate_sds(self.data)
+        if np.all(np.abs(zbar) <= _CENTRED * np.where(sds > 0, sds, 1.0)):
+            return None
+        coef_idx = [self.names.index(nm) for nm in names]
+        transforms = [bound.transforms[i] for i in range(k)]
+
+        def s_of(theta: npt.NDArray) -> npt.NDArray:
+            out: npt.NDArray = theta[:, coef_idx] @ zbar
+            return out
+
+        def to_free(theta: npt.NDArray) -> npt.NDArray:
+            return np.stack(
+                [
+                    bound.transforms[i].to_phi(theta[:, i])
+                    for i in bound.free_idx
+                ],
+                axis=1,
+            )
+
+        def full(free: npt.NDArray) -> npt.NDArray:
+            out: npt.NDArray = bound.full_theta(np.atleast_2d(free))
+            return out
+
+        def forward(phi: npt.NDArray) -> npt.NDArray:
+            theta = full(phi)
+            s = s_of(theta)
+            with np.errstate(all="ignore"):
+                theta[:, :k] = to_c(theta[:, :k], s)
+            return to_free(theta)
+
+        def inverse(u: npt.NDArray) -> npt.NDArray:
+            theta = full(u)
+            s = s_of(theta)
+            with np.errstate(all="ignore"):
+                theta[:, :k] = from_c(theta[:, :k], s)
+            return to_free(theta)
+
+        def log_det(u: npt.NDArray) -> npt.NDArray:
+            theta = full(u)
+            s = s_of(theta)
+            # only a free location on the whole line scales (its
+            # transform is the identity); every other change is a shift
+            # of an unconstrained coordinate, a Jacobian of 1
+            free_loc = 0 in bound.free_idx and transforms[0].kind == "identity"
+            out: npt.NDArray = (
+                np.asarray(log_det_s(s), dtype=float)
+                if free_loc
+                else np.zeros(len(s))
+            )
+            return np.broadcast_to(out, (len(s),)).copy()
+
+        working = [
+            (
+                f"{nm} at the covariates' means"
+                if bound.names.index(nm) < k
+                else nm
+            )
+            for nm in bound.free_names
+        ]
+        # the coefficients' coordinates are the parameters' own; a shift
+        # of the baseline's unconstrained parameters by +-beta'zbar is
+        # affine in phi, so the Laplace normal is one on phi too
+        return Reparameterisation(
+            working,
+            forward,
+            inverse,
+            log_det,
+            same=[j for j, i in enumerate(bound.free_idx) if i >= k],
+            affine=(self.kind, getattr(self.dist, "name", "")) in _AFFINE,
+        )
 
     def with_params(self, theta: npt.NDArray) -> Any:
         return self.mle.with_params(theta)
