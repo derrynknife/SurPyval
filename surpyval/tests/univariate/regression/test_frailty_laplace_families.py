@@ -23,7 +23,6 @@ import warnings
 
 import autograd
 import autograd.numpy as anp
-import mpmath
 import numpy as np
 import pytest
 from scipy.integrate import quad
@@ -42,6 +41,10 @@ from surpyval.univariate.regression.frailty.families import (
     positive_stable_log_integral,
     posterior_mean,
 )
+
+# mpmath is a test dependency (the tests extra); a bare install of the
+# wheel skips these.
+mpmath = pytest.importorskip("mpmath")
 
 FAMILIES = ("inverse_gaussian", "positive_stable")
 

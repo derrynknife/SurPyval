@@ -716,9 +716,6 @@ class _DesignRefusals:
             "such as the subcohort.",
         )
 
-    def concordance_estimate(self, *args: Any, **kwargs: Any) -> Any:
-        self.concordance()
-
     def to_dict(self) -> dict:
         self._design_refusal(
             "to_dict",

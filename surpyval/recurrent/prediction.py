@@ -32,7 +32,7 @@ from numpy.typing import ArrayLike
 from scipy.stats import kstwo
 
 from surpyval import plotting
-from surpyval.utils.deprecation import REMOVED_IN_NEXT, renamed_arguments
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import ignoring_warnings
 
@@ -503,7 +503,7 @@ class PredictionComparison:
         return ax
 
 
-@renamed_arguments(REMOVED_IN_NEXT, FutureWarning, alpha="alpha_ci")
+@renamed_arguments(REMOVED_IN, FutureWarning, alpha="alpha_ci")
 def compare_predictions(
     x: ArrayLike,
     models: Any,

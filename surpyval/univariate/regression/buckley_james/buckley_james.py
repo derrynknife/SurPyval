@@ -436,12 +436,12 @@ class BuckleyJamesModel(ResidualAFTModel):
         """Deprecated in v0.30, removed in v0.31: call
         ``param_cb(alpha_ci=..., n_boot=..., random_state=...)``, which
         gives the same bounds."""
-        from surpyval.utils.deprecation import REMOVED_IN_NEXT
+        from surpyval.utils.deprecation import REMOVED_IN
         from surpyval.utils.warnings import caller_stacklevel
 
         warnings.warn(
             "BuckleyJamesModel.bootstrap_ci is deprecated and will be "
-            f"removed in v{REMOVED_IN_NEXT}; call param_cb(alpha_ci=..., "
+            f"removed in v{REMOVED_IN}; call param_cb(alpha_ci=..., "
             "n_boot=..., random_state=...), which gives the same bounds.",
             FutureWarning,
             stacklevel=caller_stacklevel(),

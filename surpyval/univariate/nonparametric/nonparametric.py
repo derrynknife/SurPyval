@@ -1068,12 +1068,12 @@ class NonParametric(
         value, the bounds at the last value from there to ``upper``, and
         NaN outside.
         """
-        from surpyval.utils.deprecation import REMOVED_IN_NEXT
+        from surpyval.utils.deprecation import REMOVED_IN
         from surpyval.utils.warnings import caller_stacklevel
 
         warnings.warn(
             f"{self._display_name()}.R_cb is deprecated and will be removed "
-            f"in v{REMOVED_IN_NEXT}; call cb(x, on='sf'), which takes the "
+            f"in v{REMOVED_IN}; call cb(x, on='sf'), which takes the "
             "same arguments. Its two-sided columns are [lower, upper]; "
             "R_cb's are [upper, lower].",
             FutureWarning,

@@ -1525,19 +1525,6 @@ incidences, so they carry the coefficients', the baseline's and the
 censoring weights' uncertainty together. Here the 95% bounds at
 :math:`Z = (1, 0)` contain the true incidence at each time.
 
-``method="wald"`` gives the delta-method bound, with no refits. In words:
-each unit moves the estimate a little, through its own event and its place in
-the risk sets, through the coefficients, and through the estimated censoring
-distribution that weights the competing failures. The variance is the sum of
-those moves squared (each unit's *influence*), taken on
-:math:`\log \Lambda(t \mid Z)`, the log of the cumulative subdistribution
-hazard, so the bound stays inside (0, 1). Each unit's influence equals the
-derivative of the estimate in that unit's case weight (exactly without
-censoring, to 1e-4 with it), and in a simulation study (n = 150, 400 data
-sets) the 95% bound covered the true incidence 94.5% to 95.5% of the time.
-It is built for a model without strata or clusters; there it refuses and
-names the bootstrap. There is no likelihood-ratio bound: ``method="lr"``
-refuses and says to use the bootstrap.
 .. jupyter-execute::
 
     times = np.array([0.5, 1.0, 2.0])
@@ -1553,6 +1540,20 @@ refuses and says to use the bootstrap.
     :hide-output:
 
     assert np.all((bounds[:, 0] < truth) & (truth < bounds[:, 1])), bounds
+
+``method="wald"`` gives the delta-method bound, with no refits. In words:
+each unit moves the estimate a little, through its own event and its place in
+the risk sets, through the coefficients, and through the estimated censoring
+distribution that weights the competing failures. The variance is the sum of
+those moves squared (each unit's *influence*), taken on
+:math:`\log \Lambda(t \mid Z)`, the log of the cumulative subdistribution
+hazard, so the bound stays inside (0, 1). Each unit's influence equals the
+derivative of the estimate in that unit's case weight (exactly without
+censoring, to 1e-4 with it), and in a simulation study (n = 150, 400 data
+sets) the 95% bound covered the true incidence 94.5% to 95.5% of the time.
+It is built for a model without strata or clusters; there it refuses and
+names the bootstrap. There is no likelihood-ratio bound: ``method="lr"``
+refuses and says to use the bootstrap.
 
 The Wald bounds at the same times:
 

@@ -19,8 +19,8 @@ from typing import Any
 import numpy as np
 from scipy.optimize import minimize_scalar
 
-from surpyval.utils.deprecation import fit_entry
 from surpyval.utils.event_history_data import EventHistoryData
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.warnings import ignoring_warnings
 
 from .nhpp_fitter import NHPPFitter, nhpp_log_likelihood
@@ -167,7 +167,8 @@ class GrowthNHPPFitter(NHPPFitter):
     def _limit_powers(self) -> tuple[int, ...]:
         return () if self._limit_power is None else (self._limit_power,)
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     def _fit_from_recurrent_data(
         self,

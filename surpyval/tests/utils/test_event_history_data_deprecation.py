@@ -13,7 +13,7 @@ import pytest
 import surpyval as sp
 from surpyval import EventHistoryData, ItemHistory, SurpyvalData
 from surpyval.recurrent import GeneralizedRenewal
-from surpyval.utils.deprecation import REMOVED_IN_NEXT
+from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.notation import Items
 
 X = [2.0, 5.0, 8.0, 3.0, 9.0]
@@ -80,7 +80,7 @@ def test_each_way_of_building_one_warns_once_naming_the_replacement(what):
     assert len(future) == 1, [str(w.message) for w in future]
     message = str(future[0].message)
     assert message.startswith(f"{what} is deprecated")
-    assert f"removed in v{REMOVED_IN_NEXT}" in message
+    assert f"removed in v{REMOVED_IN}" in message
     assert instead in message
     # Attributed to the caller's line, here, not to the package's code.
     assert future[0].filename == __file__
@@ -156,7 +156,7 @@ def test_reading_an_attribute_that_changes_meaning_warns(name, says):
     with pytest.warns(FutureWarning, match=f"EventHistoryData.{name}") as rec:
         value = getattr(model.data, name)
     assert says in str(rec[0].message)
-    assert f"v{REMOVED_IN_NEXT}" in str(rec[0].message)
+    assert f"v{REMOVED_IN}" in str(rec[0].message)
     assert rec[0].filename == __file__  # at the reader's line
     expected = [1, 2] if name == "ids" else [0.5, 0.5, 0.5, 1, 1, 1]
     np.testing.assert_array_equal(value, expected)

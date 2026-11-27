@@ -67,12 +67,12 @@ def warn_built_by_user(what: str, instead: str, depth: int = 2) -> None:
     point that calls this)."""
     import sys
 
-    from surpyval.utils.deprecation import REMOVED_IN_NEXT
+    from surpyval.utils.deprecation import REMOVED_IN
 
     if not _outside_package(sys._getframe(depth)):
         return
     warnings.warn(
-        f"{what} is deprecated and will be removed in v{REMOVED_IN_NEXT}: "
+        f"{what} is deprecated and will be removed in v{REMOVED_IN}: "
         "SurpyvalData with each row's unit i is the one container for "
         f"several rows per unit. Use {instead}.",
         FutureWarning,
@@ -107,7 +107,7 @@ def _warn_changing(name: str) -> None:
     ``SurpyvalData``. The package's own reads are silent."""
     import sys
 
-    from surpyval.utils.deprecation import REMOVED_IN_NEXT
+    from surpyval.utils.deprecation import REMOVED_IN
 
     frame = sys._getframe(2)
     if frame.f_code.co_filename.startswith(_PACKAGE_DIR) and not (
@@ -117,7 +117,7 @@ def _warn_changing(name: str) -> None:
     if not _outside_package(frame):
         return
     warnings.warn(
-        f"EventHistoryData.{name} changes meaning in v{REMOVED_IN_NEXT}, "
+        f"EventHistoryData.{name} changes meaning in v{REMOVED_IN}, "
         "when a fitted recurrent model's data, and what the simulations "
         f"return, become a SurpyvalData: its {name} {_CHANGING[name]}.",
         FutureWarning,

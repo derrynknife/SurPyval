@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "surpyval"
-version = "0.29"
+version = "0.30"
 description = "A python package for survival analysis"
 readme = "README.md"
 license = {text = "MIT"}

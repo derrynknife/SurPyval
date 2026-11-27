@@ -78,7 +78,7 @@ from surpyval.utils.dataframe import (
     refuse_recurrent_column_names,
     regression_fit_from_df,
 )
-from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -94,6 +94,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     refuse_right_truncation,
 )
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
@@ -355,7 +356,8 @@ class CauseSpecificProportionalIntensity(SerialisableMixin):
         out.feature_names = models[event_types[0]].feature_names
         return out
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     @classmethod
     @refuses_unmodelled_data

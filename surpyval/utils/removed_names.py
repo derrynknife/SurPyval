@@ -31,9 +31,11 @@ from collections.abc import Callable
 from typing import Any, TypeVar
 
 __all__ = [
+    "CONCORDANCE_ESTIMATE_REMOVED",
     "REMOVED_TOP_LEVEL",
     "RemovedName",
     "from_import",
+    "raise_removed",
     "removed_arguments",
     "removed_message",
 ]
@@ -48,7 +50,16 @@ REMOVED_TOP_LEVEL: dict[str, tuple[str, str]] = {
         "use surpyval.SurpyvalData with each row's unit i",
         "0.26",
     ),
+    "concordance_estimate": (
+        "use surpyval.metrics.concordance_index(x, c, risk, weighting=..., "
+        "tau=..., alpha_ci=...), which gives the standard error and interval",
+        "0.30",
+    ),
 }
+
+#: The advice for ``concordance_estimate``, removed in v0.30 from
+#: ``surpyval``, ``surpyval.metrics`` and the regression models.
+CONCORDANCE_ESTIMATE_REMOVED = REMOVED_TOP_LEVEL["concordance_estimate"]
 
 
 def removed_message(prefix: str, entry: tuple[str, str]) -> str:
@@ -170,3 +181,31 @@ def from_import(depth: int = 1) -> bool:
         return frame.f_code.co_code[frame.f_lasti] == _IMPORT_FROM
     except (AttributeError, IndexError, ValueError):  # pragma: no cover
         return False
+
+
+def raise_removed(module: str, name: str, entry: tuple[str, str]) -> None:
+    """
+    Raise the error for ``module.name``, a removed name of a subpackage,
+    from that subpackage's ``__getattr__``: an ``AttributeError`` naming
+    what to do instead and the release of ``entry`` (``(what to do
+    instead, release)``), or an ``ImportError`` with the same message for
+    ``from module import name``.
+
+    Examples
+    --------
+    >>> from surpyval.utils.removed_names import raise_removed
+    >>> raise_removed("surpyval.utils", "group_xcnt",
+    ...               ("use SurpyvalData", "0.30"))
+    Traceback (most recent call last):
+    ...
+    AttributeError: module 'surpyval.utils' has no attribute 'group_xcnt': it was removed in v0.30; use SurpyvalData
+    """  # noqa: E501
+    message = removed_message(
+        f"module {module!r} has no attribute {name!r}", entry
+    )
+    if from_import(2):
+        raise ImportError(
+            removed_message(f"cannot import name {name!r}", entry),
+            name=module,
+        )
+    raise AttributeError(message)

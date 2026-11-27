@@ -21,7 +21,6 @@ below 1e-6, where ``qgamma`` stops early (``pgengamma`` of its answer is
 8e-8 off the probability asked for).
 """
 
-import mpmath as mp
 import numpy as np
 import pytest
 from numpy.testing import assert_allclose
@@ -32,6 +31,10 @@ from surpyval import GeneralizedGamma as GG
 from surpyval.univariate.parametric.distributions import _temme
 
 from ._data import fixture, reference
+
+# mpmath is a test dependency (the tests extra); a bare install of the
+# wheel skips these.
+mp = pytest.importorskip("mpmath")
 
 LOGLIK = dict(abs=1e-6)
 EST_IN_SE = 0.01

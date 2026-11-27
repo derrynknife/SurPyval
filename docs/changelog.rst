@@ -1,9 +1,72 @@
 Changelog
 ==
-v0.30 (unreleased)
-------------------
+v0.30 (27 November 2026)
+------------------------
 
-**Changed numbers.**
+**Upgrading from 0.29.** The names 0.29 deprecated are removed (see
+**Removed**): run your code or tests on 0.29 with
+``-W error::FutureWarning -W error::DeprecationWarning`` first, and each
+old name fails with the line to change. On 0.30 a removed name raises
+an error that names its replacement. Some results change on purpose:
+read **Changed numbers**, whose summary comes first.
+
+**Changed numbers.** This release changes some results on purpose, each
+because the old number was wrong, less accurate than it should be, or
+depended on something it should not (the unit of time, a covariate's
+unit). In short, with the details in the entries below:
+
+- *Bayesian fits* (the largest change): a fit no longer depends on the
+  unit of time or of a covariate, and a regression is worked out at the
+  covariates' means. A regression whose covariates are far from 0 can
+  move a lot (by a few per cent, or from intervals far too wide, or from
+  a refusal); with centred covariates, or none, the posteriors move by
+  2e-8 relative or less. The default prior on ``mu`` of a Normal, Gumbel
+  or Logistic AFT regression is now flat at the covariates' means;
+  ``prior_data_conflict`` follows the unit of time; ``method="laplace"``
+  intervals on functions move by Monte Carlo error (under 0.5% of their
+  width); a grid fit of a very wide posterior starts from a better
+  covariance. Bayesian recurrent-event fits give numbers where a grid
+  reaching a scale of 0 made their means NaN, and NaN at a missing time
+  or covariate. Fits the engines cannot get right are refused, saying
+  to centre the covariates.
+- *Mixtures*: interval-censored and truncated rows keep their digits
+  deep in a component's tail; some left-truncated fits stop at another
+  maximum and swap their labels; rows no component explains are
+  counted in a warning.
+- *Regression and recurrent fits that were wrong*: ``AalenAdditive``
+  no longer predicts past where its fit stopped (it held the curves
+  flat: ``sf(9)`` 0.591 against a truth of 0.198 in the example); a
+  recurrent fit with observation windows counts a failure-free unit's
+  windows as exposure (its rate was too high: 2/7 per hour is now 2/11
+  in the example); ``SurpyvalData.n_items`` counts a unit with several
+  rows once.
+- *Likelihood-ratio bounds*: on an offset, and at the edges of the
+  GeneralizedF family, the bounds now follow the profile (their
+  coverage was short: 90-93% for 95% bounds on the GeneralizedF).
+- *Distribution functions*: the gamma, Poisson, binomial, negative
+  binomial, Beta-Geometric and discrete Weibull functions at large
+  shapes (by the error that was there, a few parts in 1e9 at most), and
+  the GeneralizedGamma,
+  GeneralizedF, Gompertz and InverseGaussian in the far tails;
+  GeneralizedF quantiles no longer depend on the other values asked
+  for; a Wiener process whose drift is not positive has an infinite
+  mean life (it was negative or an error).
+- *Copulas*: three censored series of a Gaussian or Student-t copula
+  with a nearly singular correlation (a wrong-number fix), and four or
+  more series (up to about 1e-4).
+- *Joint and multi-state models*: joint fits on the edge of a
+  correlation (+-1) or a spread (0), and ``likelihood_ratio_test`` of
+  nested joint models; interval-censored multi-state moves search more
+  closely; ``GammaProcess.fit(..., gauge=)`` agrees to about nine
+  significant figures.
+- *Choices and resampling*: ``fit_best`` also tries the new
+  distributions (``BirnbaumSaunders``, ``GeneralizedGamma``,
+  ``GeneralizedF``, ``Gompertz``, ``InverseGaussian``), so its answer
+  changes where one of them wins; the ``GeneralizedF`` fit warns where
+  its limit fits better; the case bootstrap of grouped weighted data
+  draws differently (from the same distribution).
+
+The entries, in full:
 
 - **A Bayesian fit no longer depends on the unit of time.** The
   Bayesian peak search worked in each parameter's own units, except a
@@ -566,8 +629,8 @@ v0.30 (unreleased)
   with one unit per row, and every unweighted (parametric) bootstrap,
   draw exactly as before.
 
-- ``fit_best`` also tries the new ``GeneralizedGamma``, ``GeneralizedF``,
-  ``Gompertz`` and ``InverseGaussian``. On
+- **``fit_best`` also tries the new ``GeneralizedGamma``, ``GeneralizedF``,
+  ``Gompertz`` and ``InverseGaussian``.** On
   50 Weibull draws with shape 2 the Gompertz (AIC 508.1) now wins over the
   Rayleigh (512.8). Where it has the
   best value of the metric the answer changes: on data a Weibull or
@@ -601,7 +664,7 @@ v0.30 (unreleased)
   0.01) move their correlations by under 6e-8. Rows with three censored
   series take about twice as long.
 
-- ``method="laplace"`` results move slightly: the approximation was laid
+- **``method="laplace"`` results move slightly.** The approximation was laid
   on a lattice of up to three dimensions and is now drawn by quasi-Monte
   Carlo (parameter intervals are the normal's exact quantiles, as
   before; intervals on ``sf``, ``qf`` and the other functions move by
@@ -650,6 +713,27 @@ v0.30 (unreleased)
   items. Without states, a unit with several rows is now one item; rows
   with one row per unit, and data with states, count as before. No fit
   changes.
+- **A unit watched with no failure counts as exposure when the data has
+  gaps: a wrong-number fix.** A recurrent fit given observation windows
+  (``windows=``, or a ``SurpyvalData`` whose units have gaps in their
+  rows) left out a unit
+  that had windows and no failure in them, so the time it was watched
+  without failing was lost and the rate of failures came out too high.
+  Its windows are now part of the fit, as a failure-free unit's end of
+  observation is without gaps. Two failures on a unit watched for 7
+  hours beside a unit watched for 4 hours with none: ``HPP`` gave 2/7 =
+  0.286 per hour and gives 2/11 = 0.182; the mean cumulative function's
+  steps there are 1/2, not 1. Fits where every unit with windows has at
+  least one failure are unchanged.
+- **Joint probabilities of four or more series of an elliptical copula
+  are more accurate.** ``sf``, ``cdf`` and ``cb`` of a Gaussian or
+  Student-t copula of four or more series use the lattice rule of the
+  likelihood (see **Added**), accurate to about 3e-6 where the old rule (4,093
+  points, the last two series in closed form, a fixed order) was
+  accurate to about 1e-4. Those numbers move by up to about 1e-4:
+  an intentional change. They now go up to 15 series (14 for the
+  Student-t), where the old rule stopped at eight (seven). Three or fewer
+  series do not change.
 
 **Added.**
 
@@ -2096,18 +2180,6 @@ v0.30 (unreleased)
   The survival there is now 0 (its hazard ``nan``); every finite answer
   is unchanged.
 
-- **A unit watched with no failure counts as exposure when the data has
-  gaps.** A recurrent fit given observation windows (``windows=``, or a
-  ``SurpyvalData`` whose units have gaps in their rows) left out a unit
-  that had windows and no failure in them, so the time it was watched
-  without failing was lost and the rate of failures came out too high.
-  Its windows are now part of the fit, as a failure-free unit's end of
-  observation is without gaps. Two failures on a unit watched for 7
-  hours beside a unit watched for 4 hours with none: ``HPP`` gave 2/7 =
-  0.286 per hour and gives 2/11 = 0.182; the mean cumulative function's
-  steps there are 1/2, not 1. Fits where every unit with windows has at
-  least one failure are unchanged.
-
 **Deprecated.**
 
 - The recurrent diagnostics that take data,
@@ -2199,6 +2271,48 @@ v0.30 (unreleased)
 
 **Removed.**
 
+What 0.29 deprecated is gone. Each old name now raises the error Python
+would (``AttributeError``, ``ImportError`` or ``TypeError``), with the
+release that removed it and what to use instead in the message.
+
+- 39 result, model, base-fitter and plot classes at the top level of
+  ``surpyval`` (``surpyval.AFTFitter``, ``surpyval.LogRankResult``,
+  ``surpyval.JointModel`` and the rest): import each from its
+  subpackage, ``surpyval.univariate.regression``,
+  ``surpyval.univariate.nonparametric``, ``surpyval.univariate.parametric``
+  or ``surpyval.univariate.joint``; the error names it.
+- ``fit_from_surpyval_data`` (the parametric distributions) and
+  ``fit_from_recurrent_data`` (every recurrent fitter): call
+  ``fit(data)``.
+- ``fit_from_parameters`` of ``GeneralizedRenewal``,
+  ``GeneralizedOneRenewal``, ``ARA`` and ``ARI``: call ``from_params``.
+- ``concordance_estimate``, from ``surpyval``, ``surpyval.metrics`` and
+  the regression models: call ``surpyval.metrics.concordance_index`` (or
+  a model's ``concordance()``), which gives the standard error and
+  interval, with ``alpha_ci=`` for ``alpha``.
+- The internal steps public in ``surpyval.univariate.nonparametric``
+  (``kaplan_meier``, ``nelson_aalen``, ``fleming_harrington``,
+  ``turnbull``, ``greenwood_variance``, ``nelson_aalen_variance``,
+  ``fleming_harrington_variance``, ``rank_adjust``,
+  ``canonical_heuristic``, ``FIT_FUNCS``, ``VAR_FUNCS`` and
+  ``PLOTTING_METHODS``) and in ``surpyval.utils`` (``coerce_xcnt_x``,
+  ``format_truncation``, ``group_xcnt``, ``xcnt_sort`` and
+  ``resolve_cr_censoring``): use the fitters, their ``cb()``,
+  ``plotting_positions`` or ``SurpyvalData``, as each error says.
+- The 21 test-planning functions of one design and one unknown
+  (``logrank_events``, ``cox_power``, ``rmst_sample_size``,
+  ``rate_ratio_exposure`` and the rest): call the design's function
+  with the unknown left out (``logrank_events(0.5)`` is
+  ``logrank_design(0.5, power=0.8).events``); the error gives the call.
+- ``EquivalenceFitter.fit``'s ``x1`` (use ``x``) and ``tl`` as a pair per
+  unit of both clocks' entry ages (give ``tl`` the main clock's and
+  ``SecondaryClock(x2, tl=...)`` the second's; a pair is now refused),
+  and ``fit_from_df``'s ``x_cols`` and ``tl_cols`` (use ``x_col`` and
+  ``x2_col``, ``tl_col`` and ``tl2_col``; a list in ``x_col`` or
+  ``tl_col`` is refused).
+- Development: ``surpyval.utils.deprecation.fit_entry``. ``REMOVED_IN``
+  is now ``"0.31"`` (for the names deprecated in 0.30, which now pass
+  it) and ``REMOVED_IN_NEXT`` ``"0.32"``.
 - ``surpyval.utils.recurrent_event_data``, kept since v0.26 only to raise
   an ``ImportError`` naming its replacement: its import now fails with
   Python's own error. Use ``surpyval.EventHistoryData``.
@@ -2266,16 +2380,6 @@ v0.30 (unreleased)
   order, checked on 100 random knot sets). Both forms span exactly the
   curves of SciPy's ``CubicSpline(bc_type="natural")`` (to 1e-11, with
   derivatives and integral) and R's ``splines::ns`` (to 1e-12).
-- **Joint probabilities of four or more series of an elliptical copula
-  are more accurate.** ``sf``, ``cdf`` and ``cb`` of a Gaussian or
-  Student-t copula of four or more series use the lattice rule of the
-  likelihood (above), accurate to about 3e-6 where the old rule (4,093
-  points, the last two series in closed form, a fixed order) was
-  accurate to about 1e-4. Those numbers move by up to about 1e-4:
-  an intentional change. They now go up to 15 series (14 for the
-  Student-t), where the old rule stopped at eight (seven). Three or fewer
-  series do not change.
-
 - **A joint model's printout leads with alpha at the covariates' means.**
   Where the hazard's covariates are far from 0 (a load near 90%), ``alpha``
   at ``Z = 0`` is far outside the data (2.8e5 with a standard error of
@@ -2288,9 +2392,9 @@ v0.30 (unreleased)
 
 - **EventHistoryData is no longer needed to prepare recurrent data.**
   Everything it was built for has a ``SurpyvalData`` form (see *Added*),
-  and the documentation now uses that. Nothing is removed and nothing
-  warns: ``EventHistoryData``, ``handle_xicn`` and ``model.data`` behave
-  as before. Moving over is one call each: ``EventHistoryData.from_items``
+  and the documentation now uses that. Nothing is removed, and fits
+  and simulations behave as before; building an ``EventHistoryData``
+  yourself now warns (see **Deprecated**). Moving over is one call each: ``EventHistoryData.from_items``
   / ``from_histories`` / ``from_dataframe`` become the ``SurpyvalData``
   methods of the same names, and ``data.to_surpyval_data()`` converts
   what you already hold. One difference to know: ``SurpyvalData`` keeps

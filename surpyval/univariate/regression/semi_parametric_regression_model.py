@@ -28,7 +28,7 @@ from surpyval.utils.shapes import (
 )
 from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
-from ._concordance import ConcordanceMixin, ConcordanceResult
+from ._concordance import ConcordanceMixin
 from ._fit_skeleton import draws_by_row
 from ._partial_effects import PartialEffectsMixin
 from ._penalised import PenalisedModelMixin
@@ -486,37 +486,6 @@ class SemiParametricRegressionModel(
         "score each stratum's rows with "
         "surpyval.metrics.concordance_index."
     )
-
-    def concordance_estimate(
-        self,
-        x: npt.ArrayLike | None = None,
-        c: npt.ArrayLike | None = None,
-        Z: Any = None,
-        *,
-        weighting: str = "harrell",
-        tau: float | None = None,
-        alpha: float = 0.05,
-        tie_tol: float = 1e-8,
-        ties: str = "therneau",
-        ci_method: str = "normal",
-    ) -> ConcordanceResult:
-        """Deprecated, removed in v0.30: :meth:`concordance` gives the
-        standard error and interval. The concordance index with its
-        standard error and confidence interval; see
-        :meth:`ConcordanceMixin.concordance_estimate
-        <surpyval.univariate.regression._concordance.ConcordanceMixin.concordance_estimate>`.
-        Not available for a stratified model (it raises ``ValueError``).
-        """
-        from surpyval.univariate.regression._concordance import (
-            _warn_estimate,
-        )
-
-        _warn_estimate(type(self).__name__)
-        if self.is_stratified:
-            raise ValueError(self._STRATIFIED_ESTIMATE)
-        return self._estimate_with_se(
-            x, c, Z, weighting, tau, alpha, tie_tol, ties, ci_method
-        )
 
     def _stratified_concordance(
         self,

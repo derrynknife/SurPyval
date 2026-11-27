@@ -9,25 +9,16 @@ its risk score is -- a higher score predicting an earlier event -- through
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 
 from surpyval.metrics.concordance import ConcordanceResult, concordance_index
-from surpyval.utils.deprecation import REMOVED_IN
-
-
-def _warn_estimate(owner: str) -> None:
-    """The deprecation of a model's ``concordance_estimate``."""
-    warnings.warn(
-        f"{owner}.concordance_estimate is deprecated and will be removed in "
-        f"v{REMOVED_IN}; use 'concordance', which gives the standard "
-        "error and interval (alpha_ci= for alpha).",
-        FutureWarning,
-        stacklevel=3,
-    )
+from surpyval.utils.removed_names import (
+    CONCORDANCE_ESTIMATE_REMOVED,
+    RemovedName,
+)
 
 
 class ConcordanceMixin:
@@ -171,112 +162,13 @@ class ConcordanceMixin:
             ci_method=ci_method,
         )
 
-    def concordance_estimate(
-        self,
-        x: npt.ArrayLike | None = None,
-        c: npt.ArrayLike | None = None,
-        Z: Any = None,
-        *,
-        weighting: str = "harrell",
-        tau: float | None = None,
-        alpha: float = 0.05,
-        tie_tol: float = 1e-8,
-        ties: str = "therneau",
-        ci_method: str = "normal",
-    ) -> ConcordanceResult:
-        """Deprecated: :meth:`concordance` gives the standard error and
-        interval (``alpha_ci=`` for ``alpha``); this name is removed in
-        v0.30.
-
-        The model's concordance index with its standard error and
-        confidence interval (R's ``concordance(fit)``).
-
-        The index and the scores are :meth:`concordance`'s; the standard
-        error is the infinitesimal jackknife of
-        :func:`surpyval.metrics.concordance_index`. With no data it
-        scores the data the model was fitted to, each row repeated ``n``
-        times as its own subject, and so as R does with the rows
-        repeated, not with ``n`` as case weights. The standard error
-        treats the scores as fixed: it does not include the uncertainty of
-        the fitted coefficients, as R's does not.
-
-        Parameters
-        ----------
-        x : array_like, optional
-            Observed times.
-        c : array_like, optional
-            Censoring flags, 0 an event and 1 right censored.
-        Z : array_like or DataFrame, optional
-            Covariates, one row per time.
-        weighting : {"harrell", "uno"}, optional
-            Harrell's C (default) or Uno's IPCW C.
-        tau : float, optional
-            Count only the pairs whose earlier time is at most ``tau``.
-        alpha : float, optional
-            Significance level of the interval. Default ``0.05``.
-        tie_tol : float, optional
-            Scores within this of each other are tied. Default ``1e-8``.
-        ties : {"therneau", "harrell"}, optional
-            How two events at the same time count. Default
-            ``"therneau"``.
-        ci_method : {"normal", "logit"}, optional
-            The scale of the interval. Default ``"normal"``.
-
-        Returns
-        -------
-        ConcordanceResult
-            The estimate, ``se``, ``ci`` and the weighted pair counts.
-
-        Raises
-        ------
-        ValueError
-            As :meth:`concordance`; or if a covariate is missing, which
-            leaves a subject's score undefined.
-
-        Examples
-        --------
-        >>> import surpyval as sp
-        >>> from surpyval.datasets import load_lung
-        >>> lung = load_lung().dropna(subset=["ph.ecog"])
-        >>> lung["censored"] = 1 - lung["status"]  # status 1 is a death
-        >>> model = sp.CoxPH.fit_from_df(
-        ...     lung, x_col="time", c_col="censored",
-        ...     Z_cols=["age", "sex", "ph.ecog"],
-        ... )
-        >>> res = model.concordance()
-        >>> round(res.estimate, 4), round(res.se, 4)
-        (0.6371, 0.0251)
-        """
-        _warn_estimate(type(self).__name__)
-        return self._estimate_with_se(
-            x, c, Z, weighting, tau, alpha, tie_tol, ties, ci_method
-        )
-
-    def _estimate_with_se(
-        self,
-        x: npt.ArrayLike | None,
-        c: npt.ArrayLike | None,
-        Z: Any,
-        weighting: str,
-        tau: float | None,
-        alpha: float,
-        tie_tol: float,
-        ties: str,
-        ci_method: str,
-    ) -> ConcordanceResult:
-        """The body of the deprecated :meth:`concordance_estimate`."""
-        x_arr, c_arr, risk = self._concordance_inputs(x, c, Z)
-        if np.isnan(risk).any():
-            raise ValueError(
-                "A covariate is missing for {} of {} subjects, so their "
-                "risk scores are undefined: drop those rows from x, c and "
-                "Z".format(int(np.isnan(risk).sum()), risk.size)
-            )
-        from surpyval.metrics.concordance import concordance_with_se
-
-        return concordance_with_se(
-            x_arr, c_arr, risk, weighting, tau, alpha, tie_tol, ties, ci_method
-        )
+    #: Removed in v0.30: :meth:`concordance` gives the standard error and
+    #: interval.
+    concordance_estimate = RemovedName(
+        "use 'concordance', which gives the standard error and interval "
+        "(alpha_ci= for alpha)",
+        CONCORDANCE_ESTIMATE_REMOVED[1],
+    )
 
     def _concordance_inputs(
         self,

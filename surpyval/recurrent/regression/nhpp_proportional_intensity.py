@@ -20,7 +20,7 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
-from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -31,7 +31,7 @@ from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_data import accepts_recurrent_surpyval_data
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
-from surpyval.utils.removed_names import removed_arguments
+from surpyval.utils.removed_names import RemovedName, removed_arguments
 from surpyval.utils.units import takes_unit
 
 from .proportional_intensity import (
@@ -200,7 +200,8 @@ class ProportionalIntensityNHPP(
                 return fallback
         return start
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     @removed_arguments("0.25", dist="'baseline'")
     @refuses_unmodelled_data
