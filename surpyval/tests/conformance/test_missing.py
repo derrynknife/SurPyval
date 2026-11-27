@@ -213,6 +213,7 @@ def _semi_parametric_fits():
         FineGray,
         ProportionalOdds,
         QuantileRegression,
+        RankAFT,
     )
 
     # Each takes (x, Z, c, e) and returns the fitted coefficients; ``e``
@@ -228,6 +229,7 @@ def _semi_parametric_fits():
             lambda x, Z, c, e: AdditiveHazards.fit(x, Z, c=c).params,
         ),
         ("BuckleyJames", lambda x, Z, c, e: BuckleyJames.fit(x, Z, c=c).beta),
+        ("RankAFT", lambda x, Z, c, e: RankAFT.fit(x, Z, c=c).beta),
         (
             "CoxAalen",
             lambda x, Z, c, e: CoxAalen.fit(x, Z, c=c, additive=[0]).A[-1],

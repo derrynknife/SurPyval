@@ -5,6 +5,58 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **A mixture's interval and truncation probabilities keep their digits
+  deep in a component's upper tail.** ``MixtureModel`` took an
+  interval-censored row's probability under each component as ``F(r) -
+  F(l)``, and a truncation window's as ``F(tr) - F(tl)``. Where the
+  interval is far out in a component's upper tail both CDFs are close to
+  1, so the difference loses digits: a window of probability 8e-11
+  under a dominant BirnbaumSaunders made the negative log-likelihood
+  121.77324154 where it is 121.77324100 (4.4e-9 relative), and once both
+  CDFs round to 1 the window was 0 and its log was floored at -1e4
+  (a Weibull(10, 2)'s window [64, 67], whose log is -40.98). The mixture
+  now takes each window as the univariate fit does: from the CDFs below
+  the component's median and, above it, from the survival function in
+  log space, ``log S(l) + log(1 - S(r) / S(l))``; the truncation
+  correction is summed over the components in log space too. Each
+  component's window, in both tails and across the median, now agrees
+  with 50-digit arithmetic to 1e-12 relative for the Weibull, LogNormal,
+  Gamma, Gumbel and BirnbaumSaunders (``test_mixture_tail_windows.py``),
+  where the old form was off by up to 1e-6 relative in log space, and
+  the mixture likelihoods by 1e-9 to 1e-7 relative. Untruncated fits on
+  interval data move at rounding level (log-likelihoods by at most 1e-12
+  relative, parameters by 4e-6 relative at most, on two-component
+  Weibull, LogNormal, Gamma and Gumbel fits to 200 inspection
+  intervals). For a very narrow window (a width about 1e-9 of its ends)
+  the log is still good only to 1e-10 to 1e-8, on either side of the
+  median.
+
+- **Some left-truncated mixture fits stop elsewhere, and their labels
+  change.** A left-truncated fit is maximised by a finite-difference
+  search, which is sensitive to the last digits of its objective, so on
+  a likelihood that is flat in some direction it can stop at a
+  different point. A narrow component (narrower than an inspection
+  interval) has a likelihood that is flat in its scale to 1e-13, so
+  that scale is not identified and neither the old nor the new value
+  is an estimate: a truncated Gumbel mixture's narrow scale moved from
+  0.070 to 0.102 for 1.7e-7 in log-likelihood, and both fits are
+  reported "verified", which they should not be (a follow-up). A
+  component heading for a degenerate limit can now reach a different
+  point and label: a truncated Gamma mixture that had stopped
+  "verified" at a degenerate component (shape 7.5e-7, weight 1 -
+  1.3e-6) now reaches a log-likelihood 0.63 higher at an interior
+  point, which it reports "unverified" (``test_mixture_tail_windows.py``
+  pins it); other such fits have gone from "verified" at a degenerate
+  point to a verified interior maximum, or from "verified" to "no finite
+  maximum" at a higher likelihood. A truncated Weibull mixture's
+  parameters moved by 3e-4 relative (log-likelihood 1.5e-8 higher).
+- **A mixture fit warns, with the count, about rows no component
+  explains.** A row (or window) that every component gives probability
+  0 at the fitted parameters, even in log space, adds the floor -1e4 to
+  the log-likelihood under each and nothing to its gradient, so the
+  fit ignores it; ``MixtureModel.fit`` now says how many there are and
+  what to check.
+
 - **A Bayesian regression's posterior no longer depends on a covariate's
   unit.** The regressions' ``fit_bayes`` (proportional hazards,
   accelerated failure time, and each cause's or transition's fit in
@@ -432,6 +484,19 @@ v0.30 (unreleased)
   the additive covariates before the last event, the fit stops there,
   warns with the time and the events left out (``stopped_at``), and
   every prediction after it is ``nan``.
+- **Rank-based semi-parametric AFT regression: ``RankAFT``.** A second
+  accelerated-failure-time estimator with no assumed error distribution,
+  beside ``BuckleyJames``: it solves the Gehan (default) or log-rank
+  estimating equations of the residuals' ranks (``rank_weights=``), with
+  induced smoothing (Brown and Wang) for sandwich standard errors, so
+  ``summary()``, ``covariance()``, ``standard_errors()`` and
+  ``param_cb()`` (Wald, or ``method="bootstrap"``) need no resampling.
+  The log-rank root is the fixed point of weighted Gehan refits from the
+  Gehan estimate. Predictions (``sf``, ``ff``, ``Hf``, ``qf``, ``cs``)
+  read the residual Kaplan-Meier, as ``BuckleyJames``'s do, and the two
+  now share that code (``BuckleyJames``'s numbers are unchanged).
+  Checked against exact linear-programme solutions, least squares,
+  ``BuckleyJames`` and a seeded simulation (see the docs page).
 - **Promotion-time (bounded cumulative hazard) cure regression:
   ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
   ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,

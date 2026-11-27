@@ -444,6 +444,13 @@ where :math:`e_i = y_i - \gamma' Z_i` are the residuals, :math:`\hat S` is their
 
 surpyval reports the coefficients as :math:`\beta = -\gamma`, in the same sign convention as ``WeibullAFT`` (positive shortens life), and predicts with the residual distribution directly, :math:`S(t \mid Z) = \hat S_\varepsilon(\log t + \beta' Z)` — a step function, like a Kaplan-Meier. The fitter accepts observed and right-censored data with positive times.
 
+Semi-Parametric — rank-based AFT (Gehan and log-rank)
+------------------------------------------------------
+
+``RankAFT`` fits the same model as Buckley-James by a different route. Once the coefficients are right, the residual log times of all the units come from one distribution, so no covariate should help to predict which unit fails first. The rank estimator compares each failure with the units still at risk at its residual, as a log-rank test compares groups, and solves for the coefficients at which the failures' covariates look like those of the units at risk [Tsiatis1990reg]_ [Jin2003reg]_. It uses only the order of the residuals, and censoring enters as it does in the log-rank test.
+
+In symbols, with residuals :math:`e_i = y_i - \gamma' Z_i` it solves :math:`\sum_i \delta_i \phi(e_i)\{Z_i - \bar Z(e_i)\} = 0`, where :math:`\bar Z(e)` is the mean covariate of the units whose residual is at least :math:`e`. Gehan's weight :math:`\phi` is the number at risk, which makes this the gradient of the convex loss :math:`\sum_{i,j}\delta_i\{e_j - e_i\}^+` (a linear programme, so any solution is a global one); the log-rank weight is 1, more efficient for Weibull-like errors but with an estimating function that is not monotone, solved by refitting weighted Gehan fits from the Gehan estimate. Standard errors come from induced smoothing [BrownWang2007reg]_: each indicator :math:`1(e_j \ge e_i)` is replaced by a normal probability with the estimate's own spread, which gives the smooth derivative a sandwich variance needs. Predictions read the Kaplan-Meier estimate of the residuals, as Buckley-James's do. See :doc:`regression/rank_aft` for the details and how the implementation was checked.
+
 Checking a proportional hazards fit
 -----------------------------------
 
@@ -763,6 +770,9 @@ Whatever the choice, check it: residuals and the PH test for the assumption, inf
 .. [ScheikeZhang2002reg] Scheike, T.H. and Zhang, M.-J., 2002. An additive-multiplicative Cox-Aalen regression model. *Scandinavian Journal of Statistics*, 29(1), pp.75-88.
 
 .. [BuckleyJames1979reg] Buckley, J. and James, I., 1979. Linear regression with censored data. *Biometrika*, 66(3), pp.429-436.
+.. [Tsiatis1990reg] Tsiatis, A. A., 1990. Estimating regression parameters using linear rank tests for censored data. *Annals of Statistics*, 18(1), pp.354-372.
+.. [Jin2003reg] Jin, Z., Lin, D. Y., Wei, L. J. and Ying, Z., 2003. Rank-based inference for the accelerated failure time model. *Biometrika*, 90(2), pp.341-353.
+.. [BrownWang2007reg] Brown, B. M. and Wang, Y.-G., 2007. Induced smoothing for rank regression with censored survival times. *Statistics in Medicine*, 26(4), pp.828-836.
 
 .. [GrambschTherneau1994reg] Grambsch, P.M. and Therneau, T.M., 1994. Proportional hazards tests and diagnostics based on weighted residuals. *Biometrika*, 81(3), pp.515-526.
 

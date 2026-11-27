@@ -94,6 +94,7 @@ from .proportional_odds import (
     WeibullPO,
 )
 from .quantile import QuantileRegression, QuantileRegressionModel
+from .rank_aft import RankAFT, RankAFTModel
 from .royston_parmar_regression import (
     RoystonParmarPH,
     RoystonParmarPO,
@@ -183,6 +184,9 @@ __all__ = [
     # The Cox-Aalen model (multiplicative terms on an additive baseline)
     "CoxAalen",
     "CoxAalenModel",
+    # Rank-based (Gehan and log-rank) semi-parametric AFT
+    "RankAFT",
+    "RankAFTModel",
     # Censored quantile regression (Peng-Huang, Portnoy)
     "QuantileRegression",
     "QuantileRegressionModel",

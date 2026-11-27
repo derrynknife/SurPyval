@@ -46,6 +46,7 @@ from surpyval import (
     Parametric,
     ProportionalOdds,
     QuantileRegression,
+    RankAFT,
     RoystonParmar,
     SurpyvalData,
     Turnbull,
@@ -470,6 +471,7 @@ def _build(name):
         ),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
         "cox_aalen": lambda: CoxAalen.fit(*_semipar_data(3)[:2], additive=[0]),
+        "rank_aft": lambda: RankAFT.fit(*_semipar_data(3)[:2]),
         "quantile_regression": lambda: QuantileRegression.fit(
             *_semipar_data(3)
         ),
@@ -744,6 +746,7 @@ CASES = [
     "aalen_additive",
     "buckley_james",
     "cox_aalen",
+    "rank_aft",
     "quantile_regression",
     "proportional_odds",
     "interval_cox",

@@ -4911,6 +4911,18 @@ def _bounds(case):
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        # The sandwich (Wald) bound and the case bootstrap, on the
+        # coefficients.
+        "RankAFTModel": (
+            Bound("param_cb", kind="coef"),
+            Bound(
+                "param_cb",
+                kind="coef",
+                kwargs={**_BOOT, "method": "bootstrap"},
+                label="param_cb[bootstrap]",
+                wald=False,
+            ),
+        ),
         # The influence-function (Wald) bound and the case bootstrap, on
         # the joint survival and the joint distribution function.
         # (one sweep each for the joint sf and CDF, which are not
@@ -5435,6 +5447,7 @@ def _bounds(case):
                 wald=False,
             ),
         )
+
     if cls == "ParametricRecurrenceModel":
         return (
             Bound("cif_cb", point="cif"),
@@ -5823,7 +5836,13 @@ def _starve(case):
     """How ``case``'s fit is starved (see ``Case.starve``), or ``None``."""
     name, fit = case.name, case.fit
     cls = case.model_class.rsplit(".", 1)[-1]
-    if name in ("Turnbull", "BuckleyJames", "CompetingRisks[interval]"):
+    if name in (
+        "Turnbull",
+        "BuckleyJames",
+        "RankAFT",
+        "RankAFT[logrank]",
+        "CompetingRisks[interval]",
+    ):
         # (CompetingRisks[interval]: the self-consistency EM of the NPMLE)
         return lambda d: fit({**d, "max_iter": 1})
     if name.startswith("WeibullAL"):
