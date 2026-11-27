@@ -57,6 +57,7 @@ def _load_families() -> None:
     import surpyval.bayes.regression  # noqa: F401
     import surpyval.degradation.bayes  # noqa: F401
     import surpyval.recurrent.bayes  # noqa: F401
+    import surpyval.recurrent.renewal.bayes  # noqa: F401
 
 
 def target_for_model(model: Any) -> Any | None:

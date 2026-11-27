@@ -507,6 +507,83 @@ coefficient is the Bayesian penalty), time-varying covariates, the
 semi-parametric Cox model and the other regression families.
 
 
+Cured fractions and mixtures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**A cured fraction with covariates.** In a mixture-cure regression some
+units never fail (patients cured, parts without the defect), and the
+covariates move both how many fail at all (the *incidence*, ``lfp_p``
+at the reference row, with its coefficients on the logit scale) and when
+the rest fail (the *latency*). ``MixtureCure(dist).fit_bayes`` puts
+priors on all of them; a coefficient given none gets ``Normal(0, 2.5 /
+sd)``, ``sd`` its covariate's standard deviation, as the other
+regressions' do (on the logit scale, a change of 2.5 in the log odds of
+ever failing for one standard deviation of the covariate). ``lfp_p``
+given none is uniform on (0, 1), a proper prior; a prior flat on its
+logit is refused on any data, because the cure model holds the model
+with no cure (``lfp_p`` at 1), where its likelihood levels off at a
+positive value, so that posterior has no finite mass. The posterior is
+the Laplace approximation, with its checks.
+
+.. code-block:: python
+
+    import surpyval as sp
+
+    # 150 units followed to 40 hours; z = 1 for the new supplier
+    model = sp.MixtureCure(sp.Weibull).fit_bayes(
+        x, Z, c,
+        priors={"lfp_p_coef_0": sp.Normal.from_params([-0.5, 0.5])})
+    model.cure_probability([[1.0]])   # 0.33: never fail, new supplier
+    model.cure_cri([[1.0]])           # 0.24 to 0.43
+    model.cri(20.0, [[1.0]])          # survival to 20 hours: 0.26 to 0.45
+
+A cured fraction is only known from a *plateau*: units still under
+observation, and not failing, long after the failures have thinned out.
+With too short a follow-up the data cannot tell a cured unit from one
+that has not failed yet. The fit then warns, saying how it knows
+(Maller and Zhou's check, ``model.mle.follow_up()``), and the cure
+fraction's posterior rests on its prior. Where the data show no cured
+fraction at all (the maximum-likelihood ``lfp_p`` runs to 1) it warns as
+the maximum-likelihood fit does. Give ``lfp_p`` a prior from what is
+known (``sp.prior.between(0.6, 0.95)``: "60% to 95% of units at the
+reference row fail eventually"), or follow the units for longer.
+
+**When the normal cannot be trusted, the fit refuses.** With short
+follow-up the posterior of the cure fraction is far from normal: on 150
+simulated units followed to 0.9 of the latency's scale (the
+coefficients held at 0, so that the exact posterior is on the grid), the
+normal's 95% interval of ``lfp_p`` is 0.25 to 0.92 where the exact one is
+0.44 to 0.99. Its check (the Pareto k, 0.71) says so, and above 0.7 the
+fit refuses, saying to give ``lfp_p`` an informative prior or to sample
+the exact posterior with PyMC; reweighting cannot repair it there. With
+a k between 0.5 and 0.7 it returns the approximation flagged "poor", and
+``importance=True`` corrects it: followed to twice the scale (k 0.68),
+the plain normal's interval of ``lfp_p`` is 0.614 to 0.766, the
+reweighted one 0.622 to 0.776, the exact 0.621 to 0.783.
+
+**Mixtures of lives.** ``MixtureModel.fit_bayes`` refuses. A mixture's
+likelihood is the same whichever component is called the first, so its
+posterior has a peak for every numbering of the components (*label
+switching*), and neither a single normal nor the grid describes it.
+Sample it with PyMC through ``surpyval.pymc.mixture_likelihood``, which
+numbers the components in order of their scale or location, the first
+the shortest-lived, so that the labels cannot switch (see "Mixtures" in
+:doc:`PyMC with SurPyval`).
+
+Checked against: the maximum-likelihood fit (with ``lfp_p`` uniform and
+the other priors flat, the posterior density on the parameters' own
+scales peaks at it), the exact posterior on the grid (above), and
+simulation-based calibration of the coverage of the intervals
+(a reduced run of 60 repetitions, 200 units: the 90% intervals held
+the truth in 0.87 to 0.92 of them for the five parameters, no fit
+refused; the latency coefficient's 50% coverage, 0.383, was below the
+band, by chance: an independent review's 400 further repetitions gave
+0.520; the full study of 300 runs with the calibration studies). Over 400 such repetitions an independent review
+found the shape ``beta`` mildly biased: the truth's posterior
+probability averaged 0.459 rather than 0.5 (a uniformity test's p-value
+0.005), so the posterior sits a little high on ``beta``, though its 50%
+and 90% intervals held the truth as often as they should.
+
 An activation energy from the literature
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -774,6 +851,123 @@ fixed seed:
     model.cri(400.0, "seal", on="mtbf")       # counting seal failures
     model.cri(400.0, on="mtbf")               # counting every failure
     model.mtbf_probability(30.0)              # the system requirement
+
+Repairable systems: how good is a repair?
+-----------------------------------------
+
+When a repairable system is fixed after each failure, the question is
+often how good the repair is: as good as new (a renewal), as bad as old
+(only the failed part is made good, so the system carries on ageing),
+or somewhere between. The imperfect-repair models put a number on it:
+Kijima's ``q`` (``GeneralizedRenewal``: 0 as good as new, 1 as bad as
+old), and the repair efficiency ``rho`` of the arithmetic reduction of
+age (``ARA``: 1 as good as new, 0 as bad as old) or of intensity
+(``ARI``: 0 as bad as old, 1 the largest reduction).
+
+Only the order and spacing of each system's failures say anything about
+the repair, so with a few failures a system it is poorly determined, and
+the data are often consistent with one end of its range. The
+maximum-likelihood estimate then sits on that end, with no standard
+error. The Bayesian fit answers the question a maintainer asks: how much
+belief lies near each end?
+
+.. code-block:: python
+
+    import surpyval as sp
+    from surpyval.recurrent import ARA
+
+    # three pumps, observed to 60 weeks, 13 failures
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60, 5, 18, 30, 50, 60]
+    i = [1] * 6 + [2] * 5 + [3] * 5
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+
+    # the life from bench tests of new pumps (a non-repairable fit)
+    life = sp.Weibull.fit([12.0, 9.5, 15.2, 7.8, 11.4, 18.9, 10.3, 13.7])
+
+    model = ARA.fit_bayes(x, i, c=c, m=2,
+                          priors=sp.prior.from_model(life))
+    model.repair_mass(within=0.05)    # 0.71 near perfect repair
+    model.param_cri("rho")            # 0.86 to 0.999
+    model.next_failure_sf(10.0)       # each pump: no failure in 10 weeks
+    model.count(20.0)                 # failures in the next 20 weeks
+
+The repair efficiency's maximum-likelihood estimate is 1, on the end of
+its range; the posterior's median is 0.97, its 95% credible interval
+0.86 to 0.999, and the probability that it is within 0.05 of perfect
+repair is 0.71 (within 0.1, 0.92); of minimal repair, 2e-5. The prior on
+the repair efficiency was left out, so it is uniform on (0, 1) (stated
+in ``default_priors``; a Kijima ``q``'s default is uniform from 0 to 2,
+from as good as new to twice as bad as old). ``next_failure_sf`` gives,
+for each pump from its own history, the chance of no failure in the next
+10 weeks (0.32, 0.03 and 0.10: the second has run 16 weeks since its last
+failure), with the uncertainty in the parameters averaged in;
+``next_failure_cri`` its credible interval and ``next_failure_qf`` its
+quantiles. ``count`` is the predictive distribution of the number of
+failures over the three pumps in the next 20 weeks (mean 5.6, 90%
+between 4 and 8), simulated from 400 posterior draws with a fixed seed;
+its ``mean_se`` is the Monte Carlo error of the mean, from the spread of
+the draws' own means (the futures simulated under one draw share its
+parameters, so they are not independent).
+
+**Why the life's prior matters.** With an Exponential life (a Weibull
+``beta`` of 1) the age a repair leaves makes no difference, so every
+repair efficiency fits equally well. With no prior on the life the
+posterior spreads towards ``beta = 1``, where the repair is not
+determined: on these data, the repair efficiency's interval is then
+0.04 to 0.997, and the fit warns that the data say little about the
+repair (it does wherever the repair parameter's posterior 95% interval
+is at least 75% as wide as its prior's). A prior on the life from
+comparable lives
+(``prior.from_model(life_fit)``, or ``weight=`` to count it for less)
+keeps the life where the evidence puts it, and the data then speak about
+the repair. The prior on the repair efficiency itself is a judgement:
+``sp.Beta.from_params([a, b])`` or ``sp.prior.uniform(low, high)``.
+
+**How the grid holds mass against an end.** The posterior of the repair
+parameter and a two-parameter life is exact, computed on a grid, not by
+the Laplace approximation (a normal cannot be piled against an end of a
+range). The grid is laid out slice by slice along the repair parameter,
+on its unconstrained scale (the logit of ``rho``, the log of ``q``),
+where the end of the range is at infinity and mass near it is a long
+tail. Walking out from the peak in growing steps, the grid follows the
+tail until the density is ``1e-8`` of the peak's (for the example, 21
+standard deviations of the peak's curvature towards ``rho = 1``, to
+within ``2e-11`` of it), or to a uniform prior's end, where the density
+stops and the grid ends exactly (only the prior's end: where the
+likelihood itself is zero depends on the life's parameters, as for an
+ARI intensity that a large reduction turns negative, the walk looks for
+the life's support again in each slice). Across each slice, the life's
+parameters are laid on their conditional peak and spread, which change
+along the repair parameter. A second grid offset by half a cell checks
+the first, and both are refined until they agree, both in each
+parameter's quantiles and in the mass near each end of the repair
+parameter's range. The mass within a
+distance of an end is then the posterior probability of an interval the
+grid holds: on the example, refining the grid from 121 to 241 slices
+(and from 37 to 61 points across each) moves the mass within 0.05 of
+perfect repair from 0.70735 to 0.70736. With more parameters (a three-parameter life)
+the fit is the Laplace approximation, with its checks; fix one
+(``prior.fixed``) to keep the grid.
+
+``model.loo()`` and ``model.waic()`` take one system as the unit, and
+``model.diagnose()`` checks the number of failures, the most on one
+system and the shortest gap between failures against replicates.
+
+Checked against: an independent brute-force integration (a midpoint
+rule on 10 million points) of the evidence (to 2e-5 in its log) and of
+the repair efficiency's distribution function (to 2e-3, and the mass
+within 0.05 of each end to 1e-3); the maximum-likelihood fit (with flat
+priors the posterior's peak); the identity of Kijima I with ARA of
+memory 1 (``rho = 1 - q``: the two posteriors agree to the grid's
+accuracy); PyMC (a frozen reference, NUTS with the likelihood written
+from the model's definition: every posterior point within 0.7% of the
+95% interval's width, and the mass within 0.05 of perfect repair 0.270
+against the sampler's 0.269); and simulation-based calibration with truths piled against
+perfect repair (in a reduced run of 40 repetitions a scenario, the
+repair parameter's 90% intervals held the truth in 0.95 and 0.90 of them
+with truths piled against perfect repair for Kijima I and ARA, 0.875 for
+Kijima II and 0.95 for ARI, every parameter inside the rule; the full
+study, 300 a scenario, runs with the calibration studies).
 
 Degradation processes: Wiener and gamma
 ---------------------------------------

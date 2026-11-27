@@ -199,6 +199,7 @@ _LAZY = {
             "ProportionalHazardsFitter",
             "ProportionalOdds",
             "QuantileRegression",
+            "RankAFT",
             "RandomEffect",
             "RoystonParmarPH",
             "RoystonParmarPO",

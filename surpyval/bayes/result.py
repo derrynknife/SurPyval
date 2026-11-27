@@ -675,12 +675,51 @@ def prior_conflicts(model: Any, bound: BoundPriors) -> list[str]:
         if not iv[0] <= estimates[i] <= iv[1]:
             iv90 = _prior_interval(bound, name, t, 0.1)
             assert iv90 is not None
+            limits = list(getattr(target, "bounds", None) or [])
+            if i < len(limits) and _at_an_end_the_prior_reaches(
+                p, t, limits[i], float(estimates[i]), iv90
+            ):
+                continue
             out.append(
                 f"{name} (prior 90% interval {_fmt(iv90[0])}-"
                 f"{_fmt(iv90[1])}; the maximum-likelihood estimate is "
                 f"{_fmt(float(estimates[i]))})"
             )
     return out
+
+
+def _at_an_end_the_prior_reaches(
+    prior: Any, t: Any, limits: Any, estimate: float, iv90: tuple
+) -> bool:
+    """Whether ``estimate`` is on a finite end of its parameter's range
+    (a repair efficiency of 1, a proportion of 0) where the prior's
+    density is not small: at least 1% of its density at the middle of
+    its 90% interval. A central prior interval never holds an end of the
+    range, so an estimate there is no conflict with a prior that gives
+    the end as much weight as its middle (a uniform)."""
+    low, high = (None, None) if limits is None else tuple(limits)
+    ends = [v for v in (low, high) if v is not None]
+    if not ends:
+        return False
+    end = min(ends, key=lambda v: abs(float(v) - estimate))
+    scale = max(abs(float(end)), 1.0)
+    if abs(estimate - float(end)) > 1e-6 * scale:
+        return False
+    inside = float(end) + (
+        1e-6 * scale if float(end) == low else -1e-6 * scale
+    )
+
+    def natural(theta: float) -> float:
+        phi = np.atleast_1d(t.to_phi(theta))
+        with np.errstate(all="ignore"):
+            value = prior.log_density_phi(phi, t) - t.log_jacobian(phi)
+        return float(np.asarray(value).reshape(-1)[0])
+
+    at_end = natural(inside)
+    middle = natural(
+        float(t.to_theta(0.5 * (t.to_phi(iv90[0]) + t.to_phi(iv90[1]))))
+    )
+    return bool(np.isfinite(at_end) and at_end >= middle + np.log(0.01))
 
 
 class PredictiveCheck:
