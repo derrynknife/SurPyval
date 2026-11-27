@@ -175,10 +175,11 @@ v0.30 (unreleased)
 - **Joint models hold a correlation of +-1 on its edge, and place their
   nodes right near a nearly singular spread.** Three changes, each
   leaving a verified fit with its spread clear of both edges bit for bit
-  as it was (checked on eight fixtures: straight lines with one or two
-  parameters varying, quadratic, two failure modes, accelerated, slope
-  link, Laplace's approximation and uncorrelated spreads; estimates,
-  standard errors, ``neg_ll()`` and predictions).
+  as it was (checked on nine fixtures: straight lines with one or two
+  parameters varying, quadratic, a cubic with four varying, two failure
+  modes, accelerated, slope link, Laplace's approximation and
+  uncorrelated spreads; estimates, standard errors, ``neg_ll()`` and
+  predictions).
 
   - Where two varying parameters are perfectly correlated (one's spread
     between items an exact multiple of the other's), the search stalled
@@ -194,22 +195,32 @@ v0.30 (unreleased)
     negative log-likelihood no higher than before (up to 0.010 lower:
     2428.7427 to 2428.7326; 2432.286370 to 2432.286303 on the fleet a
     test pins); the other 8 are unchanged.
-  - Near either edge the integrand's curvature is too ill-conditioned to
-    invert as it was, and the eigenvalue floor that kept the nodes'
-    scale widened them in the narrow direction, so the grid overstated
-    the likelihood. Such items' nodes are now placed from the curvature
-    in the prior's own coordinates. On ``joint_data`` with a quadratic
-    path and its level, rate and curvature varying, the fit had reached
-    406.38 (unverified, a correlation of 0.997): an artefact, since at
-    that point the likelihood by 7, 15 and 31 nodes a dimension was
-    406.9, 422.5 and 437.8, and is now 494.19 by each, in line with a
-    Monte Carlo integral.
-  - A search round whose step (with the nodes held) cannot be taken
-    even in part, once the nodes are placed again, now tries the Newton
-    step before taking the rounds as settled. The quadratic fit above
-    then reaches a verified maximum inside, 479.3549 (correlations 0.62,
-    -0.24, 0.61), no worse than the fit with the curvature common
-    (479.6325); before, it stalled at 479.465.
+  - Within about 1e-10 of a singular spread the integrand's curvature is
+    too ill-conditioned to invert as it was, and the eigenvalue floor
+    that kept the nodes' scale widened them in the narrow direction, so
+    the grid overstated the likelihood there. Such items' nodes are now
+    placed from the curvature in the prior's own coordinates. Only a fit
+    that landed exactly on a singular spread was affected, and those
+    ended unverified; the likelihood was right everywhere else. On
+    ``joint_data`` with a quadratic path and its level, rate and
+    curvature varying, the search had landed on such a point (three
+    correlations making the matrix singular, ``corr_a_b`` 0.997) and
+    reported 406.38, unverified: there the likelihood read 406.94 by
+    the 7-point nodes (422.5 by 15, 437.8 by 31), but 494.19 at
+    ``corr_a_b`` 1e-10 lower and anywhere below, and 1e-10 above it the
+    matrix is no longer positive definite. It now reads 494.19 there by
+    every grid size, in line with a Monte Carlo integral.
+  - In the searches made in handling an edge (the fit on the edge and
+    the search off it), a round whose step (with the nodes held) cannot
+    be taken even in part once the nodes are placed again now takes the
+    step of minus the whitened gradient (the held nodes' Newton step,
+    ``-H^-1 g``) where the gradient is not yet zero by the verification
+    rule (above 1e-4 standard errors). The first search is as it was, so
+    a fit that needs no edge handling is unchanged. The quadratic fit
+    above then reaches 479.3549 (correlations 0.62, -0.24, 0.61), no worse
+    than the fit with the curvature common (479.6325), but ends
+    unverified, with the warning: its gradient is still above the rule
+    there (before, it stalled at 479.465).
   - The rule that keeps a search off an edge (a spread at 0, or a
     correlation of +-1) now asks for a rise of 1e-4 in log-likelihood,
     an absolute amount; it was one part in a million of the
