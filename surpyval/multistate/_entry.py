@@ -137,19 +137,11 @@ def _checked(
     left = data.c == -1
     if left.any() and not intervals:
         raise ValueError(
-            f"Rows {_rows(left)} are left censored (c = -1): the move "
-            "happened at some time before x, with no last time the unit "
-            "was seen in its state, so it has no stay it ended (a "
-            "multi-state model needs each stay from its entry). Give the "
-            "last time the unit was seen in its state as the lower end "
-            "of an interval (c = 2, x = [xl, xr])"
-            + (
-                ", which this model takes"
-                if intervals
-                else ", which ParametricMultiState and "
-                "ParametricMultiStateRegression take"
-            )
-            + ", or leave those rows out "
+            f"Rows {_rows(left)} are left censored (c = -1, a move into e "
+            "at some time before x), which this model does not take. "
+            "ParametricMultiState.fit and ParametricMultiStateRegression.fit "
+            "take them (as a move between the start of the spell and x); "
+            "here, leave those rows out "
             "(data[(data.c == 0) | (data.c == 1)])."
         )
     interval = (data.c == 2) | left

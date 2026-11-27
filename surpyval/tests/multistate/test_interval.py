@@ -370,7 +370,7 @@ def test_surpyval_data_interval_refusals():
     data = sp.SurpyvalData(
         x=[2.0, 5, 3], c=[-1, 0, 1], e=["ill", "dead", None], s=s
     )
-    with pytest.raises(ValueError, match="no stay it ended"):
+    with pytest.raises(ValueError, match="ParametricMultiState.fit and"):
         ParametricMultiState.fit_bayes(data, transitions=TM)
     # the Bayesian fit takes no intervals
     data = sp.SurpyvalData(

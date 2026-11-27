@@ -202,3 +202,95 @@ def test_refusals():
         ParametricMultiStateRegression.fit(
             df["x"], Z, df["e"], df["state"], tr=df["tr"], **kw
         )
+
+
+def test_a_hazard_run_to_zero_under_truncation_is_flagged():
+    """Every unit that died truncated (a register closing at 15): the
+    death hazards run to 0, a maximum of the truncated likelihood only in
+    the limit. The fit warns that it has no finite maximum, says so in
+    ``maximum`` and gives nan standard errors for those transitions."""
+    from surpyval.tests.conformance.registry_fixtures import _MS_UNITS, ms_data
+
+    d = ms_data()
+    i, tr = [], []
+    for u, (spells, _, _) in enumerate(_MS_UNITS):
+        dead = spells[-1][3] == "dead"
+        i += [u] * len(spells)
+        tr += [15.0 if dead else np.inf] * len(spells)
+    with pytest.warns(UserWarning, match="No finite maximum: under the right"):
+        model = ParametricMultiState.fit(
+            **d, i=np.array(i), tr=np.array(tr), dist=sp.Exponential
+        )
+    assert model.maximum == "no finite maximum"
+    se = model.standard_errors().reshape(4, 1)
+    into_dead = [
+        k for k, (a, b) in enumerate(model.transitions.transitions)
+        if b == "dead"
+    ]  # fmt: skip
+    assert np.all(np.isnan(se[into_dead]))
+    assert np.all(np.isfinite(np.delete(se, into_dead, axis=0)))
+
+
+def test_patients_found_through_a_diagnosis():
+    """The guide's example: patients seen only because they fell ill by
+    a cut-off show no deaths before illness, by design. The fit refuses,
+    saying why (leaving the transition out would set its hazard to 0 in
+    each patient's chance of being found); with patients followed
+    untruncated as well it fits."""
+    df = _register(400, 7102)
+    found = df[
+        df.groupby("i")["state"].transform(lambda s: (s == "ill").any())
+    ]
+    ill_at = found[found["state"] == "ill"].groupby("i")["tl"].first()
+    tr = found["i"].map(ill_at + 1.0).to_numpy()
+    kw = dict(tl=found["tl"], i=found["i"], transitions=list(PARS))
+    rows = found.copy()
+    # only the healthy spell and the illness (the register closes at it)
+    with pytest.raises(ValueError, match="by design"):
+        ParametricMultiState.fit(
+            rows["x"], rows["e"], rows["state"], tr=tr, reached="ill", **kw
+        )
+    others = _register(200, 7103)
+    others["i"] += 10_000
+    both = pd.concat([found, others], ignore_index=True)
+    tr_both = np.r_[tr, np.full(others.shape[0], np.inf)]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = ParametricMultiState.fit(
+            both["x"], both["e"], both["state"], tl=both["tl"], i=both["i"],
+            transitions=list(PARS), tr=tr_both, reached="ill",
+        )  # fmt: skip
+    assert np.all(np.isfinite(model.params))
+
+
+def test_left_censored_from_minus_infinity_on_a_real_line_baseline():
+    with pytest.raises(ValueError, match="defined below 0"):
+        ParametricMultiState.fit(
+            [[-np.inf, 2.0], [3.0, 3.0]], ["dead", "dead"], ["alive"] * 2,
+            transitions=TWO, dist=sp.Normal,
+        )  # fmt: skip
+    # with the spell's start given it is read from there
+    model = ParametricMultiState.fit(
+        [[-np.inf, 2.0], [3.0, 3.0], [4.0, 4.0]], ["dead"] * 3,
+        ["alive"] * 3, tl=[0.0, 0.0, 0.0], transitions=TWO, dist=sp.Normal,
+    )  # fmt: skip
+    assert np.isfinite(model.log_likelihood)
+
+
+def test_truncated_regression_round_trip():
+    x, tau, tl = _truncated(seed=4, n=400)
+    Z = pd.DataFrame({"z": (np.arange(x.size) % 2).astype(float)})
+    model = ParametricMultiStateRegression.fit(
+        x, Z, np.array(["dead"] * x.size, dtype=object),
+        np.array(["alive"] * x.size, dtype=object),
+        tl=np.where(tl > 0, tl, -np.inf), i=np.arange(x.size),
+        transitions=TWO, tr=tau,
+    )  # fmt: skip
+    back = sp.from_dict(model.to_dict())
+    assert isinstance(back, ParametricMultiStateRegression)
+    assert_allclose(back.params, model.params)
+    assert_allclose(back.covariance(), model.covariance())
+    assert_allclose(back._interval_likelihood().neg_ll(back._models()),
+                    model.neg_ll(), rtol=1e-12)  # fmt: skip
+    assert_allclose(back.occupancy(5.0, [1.0], "dead"),
+                    model.occupancy(5.0, [1.0], "dead"))  # fmt: skip

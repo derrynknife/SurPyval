@@ -818,10 +818,11 @@ def ms_truncated_data():
     and 5, which died, came from a register of deaths closing at 15, so
     were seen only because they were dead by then (``tr``, the state
     ``reached`` the absorbing "dead"); the others not truncated (``tr =
-    inf``). (With every unit that died truncated, the deaths carry no
-    information on the level of their hazards, which the units seen
-    alive push to 0: the truncated likelihood keeps a finite limit there,
-    and the fixture would test nothing.)"""
+    inf``). (With every unit that died truncated, the deaths carry little
+    information on the level of their hazards, only through their
+    timing, and the units seen alive push those hazards to 0, where the
+    truncated likelihood keeps a finite limit: the fit then warns that it
+    has no finite maximum, tested in test_parametric_truncation.py.)"""
     d = ms_data()
     i, tr = [], []
     for u, (spells, _, _) in enumerate(_MS_UNITS):

@@ -215,3 +215,94 @@ class TruncatedLikelihood:
         if not np.isfinite(value):
             return np.inf
         return float(value + self.passage.term(models))
+
+
+#: A transition whose hazard, at the estimate, expects fewer than this
+#: share of the moves seen in it has run to its lower boundary (0): the
+#: truncated units carry little information on its level.
+BOUNDARY_SHARE = 1e-3
+
+
+def check_events(data: SpellData) -> None:
+    """Refuse a transition with no moves in right-truncated data, with
+    the reason: where every unit is seen only because it reached the
+    state, a move that leads away from it before then cannot be seen at
+    all, so its hazard is not in the data; and leaving the transition
+    out would set it to 0 in each unit's chance of reaching the state."""
+    tm = data.tm
+    frm, to = tm.from_index(), tm.to_index()
+    name = tm.states[int(data.reached)]  # type: ignore[arg-type]
+    none = [
+        tm.transitions[h]
+        for h in range(tm.n_transitions)
+        if not np.any((data.g == frm[h]) & (data.h == to[h]))
+    ]
+    if none:
+        raise ValueError(
+            f"The transitions {none!r} have no moves in the data. The units "
+            f"are seen only because they reached {name!r} by their "
+            "cut-offs, so a move that would have kept a unit from getting "
+            "there in time may not show in the data at all, by design; its "
+            "hazard still lowers each unit's chance of being seen, so it "
+            "cannot be left out (that would take it as 0). Add units that "
+            "were not truncated (tr = inf) and were followed in its 'from' "
+            "state, which show such moves."
+        )
+
+
+def flag_boundary(joint: Any, data: SpellData, hazard: Any, lows: list) -> Any:
+    """The joint fit, with each transition whose hazard has run to 0
+    under the truncation flagged: a warning that there is no finite
+    maximum, ``maximum = "no finite maximum"`` and ``nan`` for its
+    parameters' variances and covariances. Such a hazard expects (at the
+    estimate) under ``BOUNDARY_SHARE`` of the moves seen in it, which no
+    fit without truncation can do; with truncation the units seen carry
+    little information on its level (only through the timing of their
+    moves), as dividing by the chance of being seen cancels it."""
+    from dataclasses import replace
+
+    from surpyval.utils.no_maximum import warn_no_maximum
+
+    tm = data.tm
+    frm, to = tm.from_index(), tm.to_index()
+    flagged = []
+    for h, m in enumerate(joint.models):
+        rows = np.flatnonzero(data.g == frm[h])
+        seen = float(np.sum(data.n[rows][data.h[rows] == to[h]]))
+        if seen == 0:
+            continue
+        low = lows[h]
+        a = np.where(np.isfinite(data.tl[rows]), data.tl[rows], 0.0)
+        a = np.maximum(a, low) if np.isfinite(low) else a
+        with np.errstate(all="ignore"):
+            Hb = np.ravel(hazard(m, data.x[rows], rows, False))
+            Ha = np.ravel(hazard(m, a, rows, False))
+        expected = float(np.sum(data.n[rows] * (Hb - Ha)))
+        if expected < BOUNDARY_SHARE * seen:
+            flagged.append((h, expected, seen))
+    if not flagged:
+        return joint
+    cov = np.array(joint.cov, dtype=float, copy=True)
+    sizes = [len(m.covariance_names) for m in joint.models]
+    edges = np.r_[0, np.cumsum(sizes)]
+    for h, _, _ in flagged:
+        cov[edges[h] : edges[h + 1], :] = np.nan
+        cov[:, edges[h] : edges[h + 1]] = np.nan
+    names = ", ".join(
+        f"{tm.transition_names()[h]} (expects {e:.2g} moves where {s:g} "
+        "were seen)"
+        for h, e, s in flagged
+    )
+    warn_no_maximum(
+        f"under the right truncation the hazard of {names} runs to 0: "
+        "every unit seen there was seen because it reached "
+        f"{tm.states[int(data.reached or 0)]!r} in time, and dividing by "
+        "that "
+        "chance leaves the units little information on the hazard's "
+        "level (only the timing of their moves)",
+        "That transition's estimates, standard errors (nan) and bounds "
+        "mean nothing",
+        "add units that were not truncated (tr = inf), which show how "
+        "often the move happens, or fix that hazard from other data",
+    )
+    return replace(joint, cov=cov, maximum="no finite maximum")

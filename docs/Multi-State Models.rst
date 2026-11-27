@@ -784,7 +784,19 @@ dead by their cut-off kept) the fit with ``tr`` recovered all six
 parameters within one standard error of the truth; the fit that ignores
 the truncation put the scales of healthy to ill, healthy to dead and ill
 to dead at 4.6, 9.8 and 6.0 (truth 6, 25 and 8), 9 to 18 standard
-errors off.
+errors off (seed 710; ``scripts/studies/multistate_truncation_register.py``).
+
+Two things follow from the sampling. Where every unit is truncated, a
+move that would have kept a unit from reaching the state in time may not
+show in the data at all: patients found through a diagnosis of illness
+show no deaths before illness, yet the hazard of that death lowers each
+patient's chance of being found. A transition with no moves is then
+refused, saying so; units that were not truncated (``tr = inf``) and
+were followed in its 'from' state are what show such moves. And the
+truncated units carry little information on the level of a hazard (only
+through the timing of their moves), so a hazard can run to 0 where
+nothing else pins it: the fit then warns that it has no finite maximum,
+and that transition's standard errors are ``nan``.
 
 Right truncation is taken on the forward clock only (the reset clock's
 chance of reaching the state would need the renewal equations solved

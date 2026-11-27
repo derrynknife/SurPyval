@@ -243,6 +243,35 @@ def _lows(fitters: list) -> list:
     ]
 
 
+def _check_left_start(x: Any, tl: Any, fitters: list) -> None:
+    """Refuse a left-censored move (``xl = -inf``) in a spell observed from
+    the start of the clock (no ``tl``) where a transition's distribution
+    is defined below 0: the move is read as lying between the spell's
+    start and ``xr``, and there the clock has no start."""
+    arr = np.asarray(x, dtype=float)
+    if arr.ndim != 2 or not np.any(np.isneginf(arr[:, 0])):
+        return
+    if min(_lows(fitters)) >= 0:
+        return
+    left = np.isneginf(arr[:, 0])
+    start = (
+        np.full(arr.shape[0], -np.inf)
+        if tl is None
+        else np.broadcast_to(np.asarray(tl, dtype=float), arr.shape[:1])
+    )
+    bad = left & ~np.isfinite(start)
+    if np.any(bad):
+        k = int(np.flatnonzero(bad)[0])
+        raise ValueError(
+            f"{int(bad.sum())} left-censored move(s) (xl = -inf; the first "
+            f"is row {k}) are in spells observed from the start of the "
+            "clock (no tl), and a transition's distribution is defined "
+            "below 0 (Normal, Gumbel, Logistic), so the spell has no "
+            "start to read the move from. Give the spell's start in tl, "
+            "or the last time the unit was seen in its state as xl."
+        )
+
+
 def _with_truncation(data: SpellData, tr: Any, reached: Any) -> SpellData:
     """``data`` with its right truncation (each row's cut-off ``tr``, the
     state ``reached`` that had to be entered by then), checked."""
@@ -350,6 +379,8 @@ class _ParametricMultiStateBase(SerialisableMixin):
                         "two are not fitted together. Give each stay as "
                         "one row."
                     )
+            if truncated:
+                _truncation.check_events(data)
             lik = _interval.IntervalLikelihood(
                 data, clock, cls._row_hazard(Z), _lows(fitters)
             )
@@ -393,6 +424,10 @@ class _ParametricMultiStateBase(SerialisableMixin):
                 central=True,
                 units=units,
             )
+            if truncated:
+                joint = _truncation.flag_boundary(
+                    joint, data, cls._row_hazard(Z), _lows(fitters)
+                )
             models = dict(zip(data.tm.transitions, joint.models))
         else:
             models = cls._fit_transitions(data, Z, fitters, clock)
@@ -1285,6 +1320,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         data = _with_truncation(data, tr, reached)
         data = _with_carry_on(data, carry_on)
         fitters = _fitters(Weibull if dist is None else dist, data.tm, False)
+        _check_left_start(x, tl, fitters)
         Z = np.zeros((data.x.size, 0))
         return cls._fit(data, Z, fitters, clock)
 
@@ -2022,6 +2058,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         fitters = _fitters(
             WeibullPH if model is None else model, data.tm, True
         )
+        _check_left_start(x, tl, fitters)
         if time_varying_covariates is not None:
             return cls._fit_varying(
                 data, Z_arr, names, fitters, clock, time_varying_covariates, i
@@ -2276,6 +2313,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         fitters = _fitters(
             WeibullPH if model is None else model, data.tm, True
         )
+        _check_left_start(_x_column(df, x_col), col(tl_col, "tl_col"), fitters)
         return cls._fit_named(
             data, Z_arr, [str(c) for c in cols], fitters, clock
         )
