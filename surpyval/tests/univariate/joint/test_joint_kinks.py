@@ -138,3 +138,43 @@ def test_a_fleet_on_a_kinked_path_fits():
     k = names.index("marker_effect")
     z = (model.params[k] - EFFECT) / model.standard_errors()[k]
     assert abs(z) < 3
+
+
+def test_an_unnamed_kink_is_warned_of_at_the_fit():
+    data = simulate_path(
+        NamedHinge(),
+        [3.0, 0.5 / 365, 2.0 / 365],
+        [0.5, 0.3 / 365, 0.0],
+        0.4,
+        n=150,
+        seed=4,
+    )
+    with pytest.warns(UserWarning, match="seems to have a kink.*breaks"):
+        JointPH(Weibull, Hinge(), varying=("a", "b")).fit(
+            data, marker_reference=CENTRE
+        )
+    # a smooth path of one's own, and one naming its kink, are not
+    for path in (NamedHinge(), Smooth()):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            JointPH(Weibull, path, varying=("a", "b")).fit(
+                data, marker_reference=CENTRE
+            )
+        assert not [w for w in caught if "kink" in str(w.message)]
+
+
+class Smooth(PathModel):
+    """``a + b t + c t^2``, a smooth path of one's own."""
+
+    name = "Smooth"
+    parameter_names = ["a", "b", "c"]
+
+    def path(self, x, a, b, c):
+        x = np.asarray(x, dtype=float)
+        return a + b * x + c * x**2
+
+    def inv_path(self, y, a, b, c):
+        raise NotImplementedError
+
+    def _initial_guess(self, x, y):
+        return [float(np.asarray(y)[0]), 0.0, 0.0]

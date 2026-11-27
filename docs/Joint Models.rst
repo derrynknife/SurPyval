@@ -1070,11 +1070,18 @@ that turns at a known age, ``a + b t + c max(t - 365, 0)``), should say
 where: give the class a ``breaks`` attribute with those ages, as a
 spline's knots are given. The integrals of the hazard over age are then
 split there (and with a ``lag``, that much later). Without it a single
-Gauss-Legendre rule runs over the corner and loses its accuracy: on that
-line with a rise of 3 a year after day 365, the cumulative hazard to 400
-days was off by 4e-4 of itself, against 3e-15 with ``breaks = (365.0,)``.
-A corner whose age varies between items or is estimated cannot be named
-this way, and is not supported.
+Gauss-Legendre rule runs over the corner and loses its accuracy: about
+1e-4 to 1e-3 of the cumulative hazard for a modest turn, more for a
+sharper one or with a lag. On that line with a rise of 3 a year after
+day 365 the cumulative hazard to 400 days was off by 4e-4 of itself
+(1.9e-3 to two years with a 90-day lag; 9% with a rise of 30 a year),
+against 3e-15 with ``breaks = (365.0,)``. The fit checks a path of your
+own that names no ``breaks``: on the five items observed longest, it
+compares the integral by the one rule with the same rule on each half
+of the ages, and where they differ by more than 1e-5 of the integral (a
+smooth path stays well below that) it warns that the path seems to
+have a kink and names ``breaks``. A corner whose age varies between
+items or is estimated cannot be named this way, and is not supported.
 
 Each parameter is on its own scale by default: the rate ``b`` above is
 normal between items, so a fleet whose rates are near 0 would give some
