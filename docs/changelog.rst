@@ -5,6 +5,39 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **A mixture's interval and truncation probabilities keep their digits
+  deep in a component's upper tail.** ``MixtureModel`` took an
+  interval-censored row's probability under each component as ``F(r) -
+  F(l)``, and a truncation window's as ``F(tr) - F(tl)``. Where the
+  interval is far out in a component's upper tail both CDFs are close to
+  1, so the difference loses digits: a window of probability 8e-11
+  under a dominant BirnbaumSaunders made the negative log-likelihood
+  121.77324154 where it is 121.77324100 (4.4e-9 relative), and once both
+  CDFs round to 1 the window was 0 and its log was floored at -1e4
+  (a Weibull(10, 2)'s window [64, 67], whose log is -40.98). The mixture
+  now takes each window as the univariate fit does: from the CDFs below
+  the component's median and, above it, from the survival function in
+  log space, ``log S(l) + log(1 - S(r) / S(l))``; the truncation
+  correction is summed over the components in log space too. Each
+  component's window, in both tails and across the median, now agrees
+  with 50-digit arithmetic to 1e-12 relative for the Weibull, LogNormal,
+  Gamma, Gumbel and BirnbaumSaunders (``test_mixture_tail_windows.py``),
+  where the old form was off by up to 1e-6 relative in log space, and
+  the mixture likelihoods by 1e-9 to 1e-7 relative. Untruncated fits on
+  interval data move at rounding level (log-likelihoods by at most 1e-12
+  relative, parameters by 4e-6 relative at most, on two-component
+  Weibull, LogNormal, Gamma and Gumbel fits to 200 inspection
+  intervals). A left-truncated fit is maximised by a finite-difference
+  search, which is sensitive to the last digits of its objective; on a
+  flat or ridge-like likelihood it can now stop at a different point: in
+  the same check a truncated Weibull mixture's parameters moved by 3e-4
+  relative (log-likelihood 1.5e-8 higher) and a truncated Gumbel's
+  narrow component's scale from 0.070 to 0.102 (log-likelihood 1.7e-7
+  lower, the same maximum to its tolerance), and a truncated Gamma
+  mixture that had stopped at a degenerate component (shape 7e-7, weight
+  1) now reaches a log-likelihood 0.63 higher, which it reports as
+  unverified.
+
 - **A Bayesian regression's posterior no longer depends on a covariate's
   unit.** The regressions' ``fit_bayes`` (proportional hazards,
   accelerated failure time, and each cause's or transition's fit in

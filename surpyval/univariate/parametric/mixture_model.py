@@ -10,6 +10,7 @@ import numpy as onp
 import numpy.typing as npt
 from autograd import grad, hessian, jacobian, value_and_grad
 from autograd.scipy.special import logsumexp as ag_logsumexp
+from autograd.tracer import getval
 from scipy.optimize import minimize
 from scipy.special import logsumexp
 from scipy.special import ndtri as z
@@ -766,9 +767,7 @@ class MixtureModel(
         like_o = self.dist.df(data.x_o, *params)
         like_r = self.dist.sf(data.x_r, *params)
         like_l = self.dist.ff(data.x_l, *params)
-        like_i = self.dist.ff(data.x_ir, *params) - self.dist.ff(
-            data.x_il, *params
-        )
+        like_i = np.exp(self._log_windows(params, data.x_il, data.x_ir))
         like = np.zeros(len(self.data.x))
         # The observation masks, not the raw codes: a censored row with a
         # finite truncation bound on its censored side is an interval
@@ -811,41 +810,56 @@ class MixtureModel(
             if data.mask_l.any():
                 pieces.append(dist.log_ff(data.x_l, *params))
             if data.mask_i.any():
-                window = dist.ff(data.x_ir, *params) - self._ff_lower(params)
-                positive = window > 0
-                pieces.append(
-                    np.where(
-                        positive,
-                        np.log(np.where(positive, window, 1.0)),
-                        LOG_FLOOR,
-                    )
-                )
+                pieces.append(self._log_windows(params, data.x_il, data.x_ir))
             out = np.concatenate(pieces)[self._row_order()]
             out = np.where(np.isnan(out), LOG_FLOOR, out)
         return np.maximum(out, LOG_FLOOR)
 
-    def _ff_lower(self, params: Any) -> Any:
-        """One component's CDF at the interval rows' lower ends, exactly 0
-        at or below the support's lower edge without evaluating it there.
+    def _log_windows(
+        self, params: Any, lo: npt.NDArray, hi: npt.NDArray
+    ) -> Any:
+        """The log of one component's probability of each window ``(lo,
+        hi]``, floored at ``LOG_FLOOR`` where it has none.
 
-        The value is the same, but the derivative is not: a Weibull's
-        ``(0 / alpha) ** beta`` has a NaN gradient in ``alpha`` for
-        ``beta < 1`` (``inf * 0``), so with one ``[0, 1]`` interval row the
-        M-step fell back to finite differences and the polish stopped
-        after one evaluation, unable to verify (or reach) the maximum
-        (#582). Those rows are evaluated at their upper end instead (a
-        point inside the support, whose value is discarded), as
-        ``ParametricFitter.ll_interval_or_truncated`` does.
+        Taken as the univariate fit takes it
+        (``ParametricFitter._window_log_probs``): from the CDFs below the
+        component's median, and in log space from the survival function
+        above it, ``log S(lo) + log(1 - S(hi) / S(lo))``, where the CDFs
+        are both near 1 and their difference had lost its digits (a
+        window of probability 8e-11 deep in a BirnbaumSaunders'
+        upper tail was 4.4e-9 too large). A bound at or below the
+        support's lower edge, or infinite, is taken as its limit without
+        being evaluated (its derivative could be NaN: a Weibull's ``(0 /
+        alpha) ** beta`` for ``beta < 1``, #582).
+
+        A window the component gives no probability at all (its log is
+        ``-inf``) is evaluated again as the whole line, a log of 0 whose
+        gradient is 0, and floored: its ``-inf`` would put a NaN into
+        the gradient of the search.
         """
-        data = self.data
-        lower = float(self.dist.support[0])
-        if np.isnan(lower):
-            return self.dist.ff(data.x_il, *params)
-        inside = data.x_il > lower
-        if inside.all():
-            return self.dist.ff(data.x_il, *params)
-        safe = np.where(inside, data.x_il, data.x_ir)
-        return np.where(inside, self.dist.ff(safe, *params), 0.0)
+        dist = self.dist
+        dist_params = [params[j] for j in range(dist.k)]
+        extra = (0.0, 0.0, 1.0)
+        fns = (dist.ff, dist.log_sf, dist.log_ff)
+        with np.errstate(all="ignore"):
+            out = dist._window_log_probs(
+                dist._window_inputs(lo, hi, 0.0, dist_params),
+                dist_params,
+                extra,
+                fns,
+            )
+            empty = ~onp.isfinite(getval(out))
+            if not empty.any():
+                return out
+            lo = onp.where(empty, -onp.inf, lo)
+            hi = onp.where(empty, onp.inf, hi)
+            out = dist._window_log_probs(
+                dist._window_inputs(lo, hi, 0.0, dist_params),
+                dist_params,
+                extra,
+                fns,
+            )
+        return np.where(empty, LOG_FLOOR, out)
 
     def _row_order(self) -> npt.NDArray:
         """The index that puts the rows grouped by kind (exact, right,
@@ -869,24 +883,13 @@ class MixtureModel(
             ]
         )
 
-    def _window_prob(self, params_i: npt.NDArray) -> Any:
-        """One component's probability of landing in each observation's
-        truncation window ``(tl, tr]`` -- the per-component piece of the
-        truncation correction."""
-        tl, tr = self.data.tl, self.data.tr
-        lo = 0.0
-        fin = np.isfinite(tl)
-        if fin.any():
-            lo = np.where(
-                fin, self.dist.ff(np.where(fin, tl, 0.0), *params_i), 0.0
-            )
-        hi = 1.0
-        fin = np.isfinite(tr)
-        if fin.any():
-            hi = np.where(
-                fin, self.dist.ff(np.where(fin, tr, 0.0), *params_i), 1.0
-            )
-        return hi - lo
+    def _log_window_prob(self, params_i: npt.NDArray) -> Any:
+        """The log of one component's probability of landing in each
+        observation's truncation window ``(tl, tr]`` -- the per-component
+        piece of the truncation correction, in log space as
+        :meth:`_log_windows` takes it (a ``tl`` deep in the upper tail
+        had been ``1 - F(tl)``)."""
+        return self._log_windows(params_i, self.data.tl, self.data.tr)
 
     def neg_ll_of(self, w: npt.NDArray, params: Any) -> Any:
         """Observed negative log-likelihood of the mixture: counts multiply
@@ -903,10 +906,15 @@ class MixtureModel(
         with np.errstate(all="ignore"):
             ll = np.sum(self.data.n * ag_logsumexp(log_r, axis=0))
             if self._truncated:
-                win = 0.0
-                for i in range(self.m):
-                    win = win + w[i] * self._window_prob(params[i])
-                ll = ll - np.sum(self.data.n * np.log(win))
+                # log sum_i w_i P_i(window), the mixture's probability of
+                # each row's window, by log-sum-exp as the rows are
+                log_win = np.array(
+                    [
+                        np.log(w[i]) + self._log_window_prob(params[i])
+                        for i in range(self.m)
+                    ]
+                )
+                ll = ll - np.sum(self.data.n * ag_logsumexp(log_win, axis=0))
         return -ll
 
     def _Q(self, params: Any) -> Any:
