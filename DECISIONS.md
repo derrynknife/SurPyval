@@ -15,6 +15,13 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### AalenAdditive: stop where the risk set cannot separate the covariates (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Past the first event time at which `X'YX` is singular, `AalenAdditive` predicts `nan` (every prediction, the cumulative coefficients and their bounds; `random` draws `nan`), warns with the last time estimated, the units at risk at the next event time and the events left out, and records the time in `stopped_at`. `timereg` holds the cumulative coefficients flat to the end of the data instead, as SurPyval did; the two agree up to the stop. | maintainer | Holding the curve flat silently understated the risk (`sf(9)` 0.591 against a truth of 0.198 in a simulated case); a number that is unknown is `nan`, not a guess. | done |
+| A fit that cannot estimate even the first event time warns and has `stopped_at = 0` (every prediction after 0 is `nan`) rather than refusing. | proposed | Keeps fits that ran before running; the warning names the fix (fewer covariates, `penalizer=`). | done |
+
 ### Multi-state: left censoring and right truncation in the parametric spell models (27 Nov 2026)
 
 | Decision | By | Reason | Status |
