@@ -377,8 +377,8 @@ where the first answer already beats the fit on the edge, from that
 answer). If that search rises off the edge (by more than 1e-4 in
 log-likelihood, an absolute amount: round-off of the adaptive nodes is
 below it), its answer is kept. Otherwise the fit is held on the edge.
-Either way the fit reported is never worse than any answer the searches
-reached by more than that 1e-4. A verified fit with every spread clear of
+Either way the fit reported is never worse than any candidate the
+searches reached by more than 1e-4 in log-likelihood. A verified fit with every spread clear of
 0 is not searched again, so ordinary fits cost nothing more. Ask whether
 the parameter varies by comparing it with the fit where it is common, by
 ``aic()`` or ``likelihood_ratio_test`` (below).
@@ -443,19 +443,27 @@ A fit held on this edge says so:
 - Everything else (estimates, standard errors, ``neg_ll()``,
   predictions, ``maximum``) is the fit on the edge's, and ``aic()``
   counts the correlation as a parameter.
+- ``likelihood_ratio_test`` refuses to test a correlation of +-1 against
+  a free one. The two fits have the same parameters, and the null value
+  is on the edge of the valid matrices, where the statistic's reference
+  is a mixture of chi-squared distributions whose weights depend on the
+  information matrix; that is not built. The held fit is the maximum of
+  the free model, so its likelihood is the free model's.
 
 Only a pair is held: one parameter a multiple of one other. A spread of
 three or more parameters can also sit on the edge without any pair at
 +-1 (its correlation matrix singular in a direction mixing them all);
 such a fit is not held, and can end unverified with the warning.
 
-Near either edge the spread is nearly singular, and the grid's nodes are
-placed by the inverse of the integrand's curvature there, a matrix too
-ill-conditioned to invert as it is (its smallest eigenvalue below a
-millionth of a millionth of its largest, in each parameter's own scale).
-There the curvature is taken in the prior's own coordinates instead,
-where it is well conditioned; before, the nodes were placed too wide in
-the narrow direction and the grid overstated the likelihood.
+Within about 1e-10 of a singular spread the grid's nodes, placed by the
+inverse of the integrand's curvature, need a matrix too ill-conditioned
+to invert as it is (its smallest eigenvalue below a millionth of a
+millionth of its largest, in each parameter's own scale). There the
+curvature is taken in the prior's own coordinates instead, where it is
+well conditioned. Before, the nodes were placed too wide in the narrow
+direction and the grid overstated the likelihood at such points; only a
+fit that landed exactly on a singular spread was affected, and it ended
+unverified.
 
 The data: readings on the item records
 --------------------------------------

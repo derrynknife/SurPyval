@@ -83,6 +83,9 @@ _TAGGED_MODELS: dict[str, str] = {
     "MixtureCureModel": (
         "surpyval.univariate.regression.distributional.mixture_cure"
     ),
+    "PromotionTimeCureModel": (
+        "surpyval.univariate.regression.distributional.promotion_time"
+    ),
     "ZeroInflatedModel": (
         "surpyval.univariate.regression.distributional.zero_inflated"
     ),

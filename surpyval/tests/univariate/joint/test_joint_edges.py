@@ -221,9 +221,10 @@ def _model_of(params):
 
 #: Where the search on ``joint_data``'s quadratic path with a, b and c
 #: varying stopped before the nodes near the edge were placed in the
-#: prior's coordinates (corr_a_b 0.997, the spread near singular): the
-#: likelihood by the 7-point nodes was 406.94 there, but 422.5 by 15
-#: and 437.8 by 31, and by Monte Carlo from the prior about 494.
+#: prior's coordinates (corr_a_b 0.997, within 1e-10 of a singular
+#: spread): the likelihood by the 7-point nodes was 406.94 there, 422.5
+#: by 15 and 437.8 by 31, against 494.19 at corr_a_b 1e-10 lower and by
+#: Monte Carlo from the prior.
 NEAR_EDGE = [
     2.964896051540007, -0.15025677977686658, 0.0037809177343823136,
     -0.00040104922095996273, -6.467728028585037e-07,
@@ -331,3 +332,29 @@ def test_the_search_off_an_edge_starts_from_a_first_answer_above_it(
     # from it reaches less
     chosen, _, _, _ = _rule(monkeypatch, 99.0, 100.0, 99.5)
     assert chosen is None
+
+
+def test_a_correlation_on_its_edge_is_not_tested_against_a_free_one(
+    rate_in_level,
+):
+    _, model, _ = rate_in_level
+    free = JointModel.from_dict(dict(model.to_dict()))
+    free._proportional = None
+    with pytest.raises(ValueError, match=r"corr_a_b\) against a free one"):
+        model.likelihood_ratio_test(free)
+    with pytest.raises(ValueError, match="held at"):
+        free.likelihood_ratio_test(model)
+
+
+def test_a_spread_beyond_the_valid_ones_is_refused_clearly():
+    # a dict edited by hand: a correlation just past 1
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = JointPH(Weibull, LinearPath).fit(**joint_data())
+    names = list(model.parameter_names)
+    d = model.to_dict()
+    d.pop("covariance")
+    d["params"][names.index("corr_a_b")] = 1.0 + 1e-9
+    edited = JointModel.from_dict(d)
+    with pytest.raises(ValueError, match="not a valid covariance matrix"):
+        edited.sf([400.0], [0.0], markers={0: 3.1, 300: 3.9}, given=300)

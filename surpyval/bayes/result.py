@@ -271,6 +271,13 @@ def fit_target(
         with np.errstate(all="ignore"):
             starts.append(bound.to_phi(np.asarray(theta, float)[None, :])[0])
     starts.append(bound.centre())
+    if theta is not None:
+        # the maximum-likelihood start with every parameter that has a
+        # prior moved to its prior's centre: a start where a strong
+        # prior far from the estimate still gives a density
+        centres = bound.centres()
+        if np.isfinite(centres).any():
+            starts.append(np.where(np.isnan(centres), starts[0], centres))
     starts = [s for s in starts if s is not None]
     starts = [
         s

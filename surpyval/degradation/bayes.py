@@ -155,6 +155,189 @@ def _gamma_passage_integral(c: npt.NDArray) -> npt.NDArray:
     return out.reshape(c.shape)
 
 
+def _wiener_partial_life(
+    u: npt.NDArray, mu: npt.NDArray, sigma: npt.NDArray, D: float
+) -> npt.NDArray:
+    """
+    ``I(u) = int_0^u S(tau) dtau``: the integral of the Wiener process's
+    survival (no passage over ``D`` by clock time ``tau``) up to ``u``,
+    broadcasting ``u`` against the parameters; its limit at
+    ``u = inf`` is the mean passage time ``D / mu`` (``mu > 0``).
+
+    In words: the expected time, of the first ``u`` units of clock, spent
+    before the passage. It is what the mean life under a stress profile
+    is made of, a piece for each step of the profile.
+
+    The derivation, for checking. The passage time over ``D`` of a
+    Wiener process with drift ``mu`` and diffusion ``sigma`` has the
+    density
+    ``f(tau) = D / (sigma sqrt(2 pi tau^3)) exp(-(D - mu tau)^2 /
+    (2 sigma^2 tau))``
+    (the Inverse Gaussian with mean ``m = D / mu`` and shape
+    ``D^2 / sigma^2`` where ``mu > 0``). Integrating by parts, since
+    ``d(tau S(tau)) / dtau = S(tau) - tau f(tau)``,
+
+    ``I(u) = u S(u) + int_0^u tau f(tau) dtau``.
+
+    The partial mean is
+    ``int_0^u tau f(tau) dtau = m [Phi(a(u)) - e^{2 mu D / sigma^2}
+    Phi(-b(u))]``, with ``a(u) = (mu u - D) / (sigma sqrt(u))`` and
+    ``b(u) = (mu u + D) / (sigma sqrt(u))``. To check it, differentiate
+    the bracket: ``a'(tau) = (mu tau + D) / (2 sigma tau^{3/2})``,
+    ``b'(tau) = (mu tau - D) / (2 sigma tau^{3/2})``, and
+    ``b^2 - a^2 = 4 mu D / sigma^2``, so
+    ``e^{2 mu D / sigma^2} phi(b) = phi(a)``; then
+    ``d/dtau [Phi(a) - e^{2 mu D / sigma^2} Phi(-b)]
+    = phi(a) (a' + b') = phi(a) mu / (sigma sqrt(tau))``,
+    and ``m`` times it is
+    ``D / (sigma sqrt(2 pi tau)) exp(-a^2 / 2) = tau f(tau)``. At
+    ``tau -> 0`` both terms vanish (``a -> -inf``, ``b -> inf``), and as
+    ``u -> inf`` the bracket tends to 1 and ``u S(u)`` to 0 (``mu > 0``),
+    so ``I(inf) = m``. The identity holds for any ``mu != 0``; the
+    second term is computed as ``exp(2 mu D / sigma^2 + log Phi(-b))``,
+    which does not overflow. At ``mu = 0`` the limit is Levy's partial
+    mean (:func:`_levy_partial_mean`); close to it the two are joined
+    (see the code).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from scipy.integrate import quad
+    >>> from surpyval.degradation.bayes import (
+    ...     _wiener_partial_life, _wiener_sf)
+    >>> mu, sigma, D = np.array([0.5]), np.array([1.2]), 10.0
+    >>> ref, _ = quad(lambda t: float(_wiener_sf(t, mu, sigma, D)[0]),
+    ...               0, 15, epsabs=0, epsrel=1e-12)
+    >>> got = _wiener_partial_life(np.array([15.0]), mu, sigma, D)
+    >>> bool(abs(got[0] / ref - 1) < 1e-10)
+    True
+    """
+    u, mu, sigma = np.broadcast_arrays(np.asarray(u, dtype=float), mu, sigma)
+    out = np.zeros(u.shape)
+    pos = (u > 0) & np.isfinite(u)
+    t, m, s = u[pos], mu[pos], sigma[pos]
+    # Near mu = 0 the bracket is a difference of nearly equal terms and m
+    # is large: where |2 mu D / sigma^2| < _KAPPA_SMALL the partial mean
+    # is interpolated, linearly in mu, between its limit at mu = 0 (the
+    # Levy passage's) and its value at the edge of that band.
+    edge = _KAPPA_SMALL * s**2 / (2 * D)
+    small = np.abs(m) < edge
+    partial = np.empty(t.shape)
+    big = ~small
+    partial[big] = _wiener_partial_mean(t[big], m[big], s[big], D)
+    if small.any():
+        ts, ms, ss = t[small], m[small], s[small]
+        at = np.where(ms < 0, -edge[small], edge[small])
+        zero = _levy_partial_mean(ts, ss, D)
+        partial[small] = zero + (ms / at) * (
+            _wiener_partial_mean(ts, at, ss, D) - zero
+        )
+    out[pos] = t * _wiener_sf(t, m, s, D) + partial
+    inf = np.isposinf(u)
+    out[inf] = np.where(mu[inf] > 0, D / mu[inf], np.inf)
+    return out
+
+
+#: The band of ``2 mu D / sigma^2`` about 0 in which the Wiener partial
+#: mean is interpolated from its limit at ``mu = 0``.
+_KAPPA_SMALL = 1e-5
+
+
+def _wiener_partial_mean(
+    t: npt.NDArray, m: npt.NDArray, s: npt.NDArray, D: float
+) -> npt.NDArray:
+    """``int_0^t tau f(tau) dtau`` for a drift ``m != 0`` (see
+    :func:`_wiener_partial_life`)."""
+    root = s * np.sqrt(t)
+    a = (m * t - D) / root
+    b = (m * t + D) / root
+    out: npt.NDArray = (D / m) * (
+        ndtr(a) - np.exp(2 * m * D / s**2 + log_ndtr(-b))
+    )
+    return out
+
+
+def _levy_partial_mean(
+    t: npt.NDArray, s: npt.NDArray, D: float
+) -> npt.NDArray:
+    """``int_0^t tau f(tau) dtau`` at ``mu = 0``, where the passage time
+    is Levy's: ``tau f(tau) = c (2 pi tau)^{-1/2} exp(-c^2 / (2 tau))``
+    with ``c = D / sigma``, and its integral is
+    ``c [sqrt(2 t / pi) exp(-c^2 / (2 t)) - 2 c Phi(-c / sqrt(t))]``
+    (differentiated, the first term gives ``(2 pi t)^{-1/2} e (1 + c^2 /
+    t)`` times ``c`` and the second takes the ``c^2 / t`` part away)."""
+    c = D / s
+    out: npt.NDArray = c * (
+        np.sqrt(2 * t / np.pi) * np.exp(-(c**2) / (2 * t))
+        - 2 * c * ndtr(-c / np.sqrt(t))
+    )
+    return out
+
+
+#: Gauss-Legendre nodes and weights on (0, 1), for the gamma process's
+#: partial life integrals, and the panels between where its survival is
+#: still 1 and where it is 0.
+_GL_U, _GL_W = np.polynomial.legendre.leggauss(12)
+_GL_U = 0.5 * (_GL_U + 1.0)
+_GL_W = 0.5 * _GL_W
+_GAMMA_PANELS = 48
+#: A step of a stress profile whose stretch of clock is below this share
+#: of the clock time is integrated in calendar time, not as a difference
+#: of the clock survival's integral (which loses its digits there).
+_SHORT_STEP = 1e-3
+
+
+def _gamma_partial_integral(c: npt.NDArray, v: npt.NDArray) -> npt.NDArray:
+    """
+    ``G(c, v) = int_0^v P(Gamma(s, 1) < c) ds`` for rows ``c`` (``(n,)``)
+    at the upper ends ``v`` (``(n, m)``): a gamma process's survival
+    integrated over its clock is ``G(beta D, alpha u) / alpha`` (put
+    ``s = alpha tau`` in the integral of ``gammainc(alpha tau, beta
+    D)``), and ``G(c, inf)`` is the ``g(c)`` of
+    :func:`_gamma_passage_integral`.
+
+    The integrand is 1, to double precision, below ``lo = c - 12 sqrt(c)
+    - 30`` and 0 above ``hi = c + 3 (12 sqrt(c) + 30)`` (where
+    :func:`_gamma_passage_integral` integrates it too); between, it is
+    integrated on 48 equal panels of a 12-point Gauss-Legendre rule
+    (each panel a fraction of the integrand's fall, which is smooth), the
+    panels summed to the one holding ``v`` and that panel integrated to
+    ``v`` by the same rule.
+    """
+    c = np.asarray(c, dtype=float)
+    v = np.asarray(v, dtype=float)
+    # (the panels depend on c alone: a grid's points share few values)
+    uniq, inverse = np.unique(c, return_inverse=True)
+    inverse = np.ravel(inverse)
+    spread = 12.0 * np.sqrt(uniq) + 30.0
+    lo_u = np.maximum(uniq - spread, 0.0)
+    width_u = (uniq + 3.0 * spread - lo_u) / _GAMMA_PANELS
+    edges_u = lo_u[:, None] + width_u[:, None] * np.arange(_GAMMA_PANELS + 1)
+    nodes = edges_u[:, :-1, None] + width_u[:, None, None] * _GL_U
+    with np.errstate(all="ignore"):
+        vals = gammainc(nodes, uniq[:, None, None])
+    panels = width_u[:, None] * np.sum(vals * _GL_W, axis=-1)
+    cum = np.concatenate(
+        [np.zeros((len(uniq), 1)), np.cumsum(panels, axis=1)], axis=1
+    )[inverse]
+    lo, width, edges = lo_u[inverse], width_u[inverse], edges_u[inverse]
+    hi = lo + width * _GAMMA_PANELS
+    w = np.clip(v, lo[:, None], hi[:, None])
+    j = np.floor((w - lo[:, None]) / width[:, None]).astype(int)
+    j = np.clip(j, 0, _GAMMA_PANELS - 1)
+    start = np.take_along_axis(edges, j, axis=1)
+    span = w - start
+    with np.errstate(all="ignore"):
+        part = gammainc(
+            start[..., None] + span[..., None] * _GL_U, c[:, None, None]
+        )
+    part = span * np.sum(part * _GL_W, axis=-1)
+    below = np.minimum(np.where(np.isnan(v), 0.0, v), lo[:, None])
+    out: npt.NDArray = below + np.take_along_axis(cum, j, axis=1) + part
+    out = np.where(v <= 0, 0.0, out)
+    return np.where(np.isnan(v), np.nan, out)
+
+
 def _solve_quantile(
     ff: Any, p: float, scale: npt.NDArray, ever: npt.NDArray
 ) -> npt.NDArray:
@@ -892,15 +1075,9 @@ class ProcessLife:
 
     def mean(self) -> npt.NDArray:
         """``(N,)``: the mean time to the passage (infinite where it may
-        never happen), at a constant stress."""
+        never happen), at a constant stress or under a profile."""
         if self.is_profile:
-            raise ValueError(
-                "The mean life under a stress profile is not computed at "
-                "every posterior point at once yet: use "
-                "function_cri(lambda m: m.mean(schedule)) for its interval "
-                "(and its posterior median as function_cri(lambda m: "
-                "m.mean(schedule), alpha_ci=1.0))."
-            )
+            return self._profile_mean()
         D = self.distance
         with np.errstate(all="ignore"):
             if self.kind == "wiener":
@@ -908,6 +1085,187 @@ class ProcessLife:
             else:
                 tau = _gamma_passage_integral(self.b * D) / self.a
         return tau / self.clock.af
+
+    def _partial(self, u: npt.NDArray, rows: npt.NDArray) -> npt.NDArray:
+        """``(n, m)``: the reference-clock survival of the points ``rows``
+        integrated from 0 to each of their clock times ``u``
+        (``(n, m)``)."""
+        D = self.distance
+        a, b = self.a[rows][:, None], self.b[rows][:, None]
+        if self.kind == "wiener":
+            with np.errstate(all="ignore"):
+                return _wiener_partial_life(u, a, b, D)
+        alpha = self.a[rows]
+        with np.errstate(all="ignore"):
+            return (
+                _gamma_partial_integral(self.b[rows] * D, alpha[:, None] * u)
+                / alpha[:, None]
+            )
+
+    def _clock_sf(self, tau: npt.NDArray, rows: npt.NDArray) -> npt.NDArray:
+        """The reference-clock survival of the points ``rows`` at their
+        clock times ``tau`` (a row each)."""
+        f = _wiener_sf if self.kind == "wiener" else _gamma_sf
+        a = self.a[rows][:, None]
+        b = self.b[rows][:, None]
+        with np.errstate(all="ignore"):
+            out: npt.NDArray = f(tau, a, b, self.distance)
+        return out
+
+    def _steps(
+        self,
+        I: npt.NDArray,
+        knots_tau: npt.NDArray,
+        knots_t: npt.NDArray,
+        af: npt.NDArray,
+        rows: npt.NDArray,
+    ) -> npt.NDArray:
+        """``(n, K)``: each step's share of the mean life, the calendar
+        integral of the survival over it, ``(I(tau_{k+1}) - I(tau_k)) /
+        AF_k``. Where the step moves the clock little against where the
+        clock is (``Delta tau`` below ``_SHORT_STEP`` of ``tau_{k+1}``: a
+        step at a low stress, the clock all but stopped) that difference
+        loses its digits, so the step is its calendar length times the
+        survival's mean over it instead, by a 12-point Gauss-Legendre rule
+        on its stretch of clock. For a step that is not short, the
+        difference's error is about machine epsilon times ``I`` over the
+        step's clock stretch, so below ``1e-13 / _SHORT_STEP`` of the
+        step relative to its own share where ``I`` is of the order of
+        the clock time (``I(tau) <= tau``)."""
+        out: npt.NDArray = np.diff(I, axis=1) / af
+        dtau = np.diff(knots_tau, axis=1)
+        short = dtau < _SHORT_STEP * np.abs(knots_tau[:, 1:])
+        if short.any():
+            r, k = np.nonzero(short)
+            nodes = knots_tau[r, k][:, None] + dtau[r, k][:, None] * _GL_U
+            S = self._clock_sf(nodes, rows[r])
+            length = np.diff(knots_t)[k]
+            out[r, k] = length * np.sum(S * _GL_W, axis=1)
+        return out
+
+    def _cyclic_rest(
+        self,
+        rest: npt.NDArray,
+        knots_tau: npt.NDArray,
+        knots_t: npt.NDArray,
+        af: npt.NDArray,
+        rows: npt.NDArray,
+        period: float,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The calendar remainder of the mean life beyond a cyclic
+        profile's horizon ``H``, and a bound on its error.
+
+        Beyond ``H`` the clock advances by ``Delta`` (its advance over
+        the last laid-out period) a period ``P``, so the calendar time
+        the unit survives beyond ``H`` is, a period at a time, between
+        ``P S(tau_H + (n + 1) Delta)`` and ``P S(tau_H + n Delta)``
+        summed over ``n``; the sums are within ``P S(tau_H)`` of
+        ``(P / Delta) int_{tau_H}^inf S``, the clock survival left,
+        ``rest``, at the cycle's time-averaged slope. That is the
+        estimate, and ``P S(tau_H) + (P / Delta) rest`` bounds its
+        error (whatever the slope of the step the horizon ends in: an
+        idle step's tiny slope would make ``rest`` over it large).
+        """
+        t_end = float(knots_t[-1])
+        back = max(t_end - float(period), 0.0)
+        j = int(
+            np.clip(
+                np.searchsorted(knots_t, back, "right") - 1, 0, af.shape[1] - 1
+            )
+        )
+        tau_back = knots_tau[:, j] + af[:, j] * (back - knots_t[j])
+        delta = knots_tau[:, -1] - tau_back
+        span = t_end - back
+        with np.errstate(divide="ignore", invalid="ignore"):
+            after = np.where(delta > 0, rest * span / delta, np.inf)
+            after = np.where(rest > 0, after, 0.0)
+        S_H = self._clock_sf(knots_tau[:, -1:], rows)[:, 0]
+        bound = span * S_H + after
+        return after, bound
+
+    def _profile_mean(self, rtol: float = 1e-12) -> npt.NDArray:
+        """
+        ``(N,)``: the mean calendar life under the stress profile, at
+        every point at once.
+
+        The calendar survival is the reference-clock survival at the
+        clock, ``S(tau(t))``, and the clock runs at the slope ``AF_k``
+        through the profile's ``k``-th step, from calendar ``t_k`` to
+        ``t_{k+1}`` (clock ``tau_k`` to ``tau_{k+1}``). So the mean life,
+        the integral of the survival over calendar time, is a sum over
+        the steps of ``(I(tau_{k+1}) - I(tau_k)) / AF_k``, ``I(u)`` the
+        clock survival's integral to ``u`` (:func:`_wiener_partial_life`;
+        for the gamma process :func:`_gamma_partial_integral`). After the
+        last step the stress holds, and the rest is ``(I(inf) -
+        I(tau_K)) / AF_K``, exactly. A cyclic profile has no last step:
+        it is laid out to a horizon, doubled until the calendar
+        remainder beyond it is bounded below ``rtol`` of the mean so far
+        (:meth:`_cyclic_rest`), and the remainder is taken at the
+        cycle's time-averaged slope. Infinite where the passage may never
+        happen.
+        """
+        n = len(self.a)
+        out = np.full(n, np.inf)
+        whole = self._partial(np.full((n, 1), np.inf), np.arange(n))[:, 0]
+        live = np.flatnonzero(np.isfinite(whole) & (whole > 0))
+        clock = self.clock
+        period_or_none = getattr(clock.schedule, "period", None)
+        cyclic = period_or_none is not None
+        period = 0.0 if period_or_none is None else float(period_or_none)
+        # what is summed so far, to the calendar time ``done_to``, and the
+        # clock survival's integral there: a longer horizon adds only its
+        # new steps
+        acc = np.zeros(n)
+        I_to = np.zeros(n)
+        done_to = 0.0
+        horizon = 1.0
+        for _ in range(64):
+            knots_t, dz = clock._knots(horizon)
+            j0 = int(np.searchsorted(knots_t, done_to))
+            if knots_t[j0] != done_to:
+                # (the last horizon cut a step: split it there)
+                knots_t = np.insert(knots_t, j0, done_to)
+                dz = np.insert(dz, j0 - 1, dz[j0 - 1], axis=0)
+            step = clock._block(len(dz))
+            left = []
+            for s in range(0, live.size, step):
+                rows = live[s : s + step]
+                af, knots_tau = clock._slopes(rows, knots_t, dz)
+                I = np.concatenate(
+                    [
+                        I_to[rows][:, None],
+                        self._partial(knots_tau[:, j0 + 1 :], rows),
+                    ],
+                    axis=1,
+                )
+                steps = self._steps(
+                    I, knots_tau[:, j0:], knots_t[j0:], af[:, j0:], rows
+                )
+                total = acc[rows] + np.sum(steps, axis=1)
+                rest = np.maximum(whole[rows] - I[:, -1], 0.0)
+                if not cyclic:
+                    # the last stress holds for ever: exact
+                    done = np.ones(len(rows), dtype=bool)
+                    after = rest / af[:, -1]
+                else:
+                    after, bound = self._cyclic_rest(
+                        rest, knots_tau, knots_t, af, rows, period
+                    )
+                    done = bound <= rtol * total
+                out[rows[done]] = (total + after)[done]
+                acc[rows], I_to[rows] = total, I[:, -1]
+                left.append(rows[~done])
+            live = np.concatenate(left) if left else live[:0]
+            if not live.size:
+                return out
+            done_to = float(knots_t[-1])
+            horizon = 2.0 * done_to
+        raise ValueError(
+            "The mean life under this cyclic profile was not reached: its "
+            "horizon was doubled 64 times and some posterior points still "
+            "have survival left beyond it. Use function_cri(lambda m: "
+            "m.mean(schedule)) for those points' fitted models instead."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1009,8 +1367,9 @@ class BayesianProcessModel(BayesianResult):
     each posterior point's clock runs through the profile at that point's
     stress coefficients, so ``sf``, ``ff``, ``qf``, ``cri``,
     ``quantile_cri`` and ``predict_rul`` take one as the fitted model's
-    methods do. The mean life under a profile is reached by
-    :meth:`function_cri`, ``lambda m: m.mean(schedule)``.
+    methods do, and so do ``mean`` and ``mean_cri`` (the mean life
+    through the profile, a sum over its steps; see
+    ``ProcessLife._profile_mean``).
 
     Attributes
     ----------

@@ -896,9 +896,31 @@ every point at once:
     model.cri([90.0, 150.0], profile)   # the population's band
     model.predict_rul(60.0, Z=profile)  # time zero of the profile is now
 
-For ``predict_rul`` the profile starts now. The mean life under a
-profile is not computed at every point at once yet; its interval is
-``function_cri(lambda m: m.mean(profile))``.
+For ``predict_rul`` the profile starts now. ``model.mean(profile)`` and
+``model.mean_cri(profile)`` give the mean life under the profile and its
+credible interval, at every posterior point at once. In words: through
+each step of the profile the unit's clock runs at that step's pace, so
+the time it spends alive in the step is the time its clock spends
+alive over the step's stretch of clock, divided by the pace. For the
+Wiener process that stretch has a closed form (the Inverse Gaussian's
+partial mean); for the gamma process it is one integral, taken on a
+fixed rule. With :math:`I(u) = \int_0^u S_0(\tau)\,d\tau` the
+reference-clock survival's integral and :math:`AF_k` the pace of step
+:math:`k`, which takes the clock from :math:`\tau_k` to
+:math:`\tau_{k+1}`,
+
+.. math::
+
+    E[T] = \sum_k \frac{I(\tau_{k+1}) - I(\tau_k)}{AF_k},
+
+the last step running on for ever (a cyclic profile is laid out until
+what is left is below 1e-12 of the whole). A step at a stress so low
+that the clock all but stops (storage, or an idle spell) is integrated
+in calendar time instead, since its stretch of clock is too short for
+the difference of :math:`I`: its calendar length then counts in full.
+It agrees with the fitted model's mean under the profile, point by
+point, to about 1e-9, and with a direct integration of the calendar
+survival through an idle step to 1e-9.
 
 With no priors the Wiener posterior is the textbook one: flat on ``mu``
 and on ``log sigma`` is :math:`p(\mu, \sigma^2) \propto 1/\sigma^2`, so

@@ -1206,9 +1206,30 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         )
 
     def _theta(self, params: Any = None) -> dict:
-        if params is None:
+        own = params is None
+        if own:
             params = np.asarray(self.params, dtype=float)[self._estimated]
-        return internal_theta(params, self._layout, self._refs)
+        with np.errstate(all="ignore"):
+            theta = internal_theta(params, self._layout, self._refs)
+        if own and not np.all(np.isfinite(np.asarray(theta["L"], float))):
+            # (a fit always gives a valid spread; a dict edited by hand,
+            # or written elsewhere, may not)
+            names = [
+                n
+                for n in self.parameter_names
+                if n.startswith(("sd_", "corr_"))
+            ]
+            raise ValueError(
+                "The model's spread between items ("
+                + ", ".join(names)
+                + ") is not a valid covariance matrix: its correlations "
+                "are not positive definite (or an sd is not above 0). Each "
+                "correlation must be between -1 and 1 and together they "
+                "must be consistent; check the values in 'params' (a "
+                "correlation of exactly +-1 is a fit held on its edge, "
+                "saved with 'proportional')."
+            )
+        return theta
 
     def covariance(self) -> npt.NDArray:
         """The parameters' covariance, in the order of
@@ -1368,6 +1389,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             if name not in self.parameter_names
             or not name.startswith(("sd_", "corr_"))
         ]
+        held = self.perfect_correlations or nested.perfect_correlations
+        if held and list(self.varying) == list(nested.varying):
+            raise ValueError(
+                "A likelihood-ratio test of a correlation held at +-1 "
+                f"({held[0]}) against a free one is not taken: the two fits "
+                "have the same parameters, and the null is on the edge of "
+                "the valid correlations, where the statistic's reference is "
+                "a mixture whose weights depend on the information matrix. "
+                "The held fit is the free model's maximum, so its neg_ll() "
+                "is the free model's."
+            )
         if fewer and others:
             raise ValueError(
                 "A likelihood-ratio test of fewer varying parameters "

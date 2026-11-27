@@ -5,6 +5,58 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **A mixture's interval and truncation probabilities keep their digits
+  deep in a component's upper tail.** ``MixtureModel`` took an
+  interval-censored row's probability under each component as ``F(r) -
+  F(l)``, and a truncation window's as ``F(tr) - F(tl)``. Where the
+  interval is far out in a component's upper tail both CDFs are close to
+  1, so the difference loses digits: a window of probability 8e-11
+  under a dominant BirnbaumSaunders made the negative log-likelihood
+  121.77324154 where it is 121.77324100 (4.4e-9 relative), and once both
+  CDFs round to 1 the window was 0 and its log was floored at -1e4
+  (a Weibull(10, 2)'s window [64, 67], whose log is -40.98). The mixture
+  now takes each window as the univariate fit does: from the CDFs below
+  the component's median and, above it, from the survival function in
+  log space, ``log S(l) + log(1 - S(r) / S(l))``; the truncation
+  correction is summed over the components in log space too. Each
+  component's window, in both tails and across the median, now agrees
+  with 50-digit arithmetic to 1e-12 relative for the Weibull, LogNormal,
+  Gamma, Gumbel and BirnbaumSaunders (``test_mixture_tail_windows.py``),
+  where the old form was off by up to 1e-6 relative in log space, and
+  the mixture likelihoods by 1e-9 to 1e-7 relative. Untruncated fits on
+  interval data move at rounding level (log-likelihoods by at most 1e-12
+  relative, parameters by 4e-6 relative at most, on two-component
+  Weibull, LogNormal, Gamma and Gumbel fits to 200 inspection
+  intervals). For a very narrow window (a width about 1e-9 of its ends)
+  the log is still good only to 1e-10 to 1e-8, on either side of the
+  median.
+
+- **Some left-truncated mixture fits stop elsewhere, and their labels
+  change.** A left-truncated fit is maximised by a finite-difference
+  search, which is sensitive to the last digits of its objective, so on
+  a likelihood that is flat in some direction it can stop at a
+  different point. A narrow component (narrower than an inspection
+  interval) has a likelihood that is flat in its scale to 1e-13, so
+  that scale is not identified and neither the old nor the new value
+  is an estimate: a truncated Gumbel mixture's narrow scale moved from
+  0.070 to 0.102 for 1.7e-7 in log-likelihood, and both fits are
+  reported "verified", which they should not be (a follow-up). A
+  component heading for a degenerate limit can now reach a different
+  point and label: a truncated Gamma mixture that had stopped
+  "verified" at a degenerate component (shape 7.5e-7, weight 1 -
+  1.3e-6) now reaches a log-likelihood 0.63 higher at an interior
+  point, which it reports "unverified" (``test_mixture_tail_windows.py``
+  pins it); other such fits have gone from "verified" at a degenerate
+  point to a verified interior maximum, or from "verified" to "no finite
+  maximum" at a higher likelihood. A truncated Weibull mixture's
+  parameters moved by 3e-4 relative (log-likelihood 1.5e-8 higher).
+- **A mixture fit warns, with the count, about rows no component
+  explains.** A row (or window) that every component gives probability
+  0 at the fitted parameters, even in log space, adds the floor -1e4 to
+  the log-likelihood under each and nothing to its gradient, so the
+  fit ignores it; ``MixtureModel.fit`` now says how many there are and
+  what to check.
+
 - **A Bayesian regression's posterior no longer depends on a covariate's
   unit.** The regressions' ``fit_bayes`` (proportional hazards,
   accelerated failure time, and each cause's or transition's fit in
@@ -175,10 +227,11 @@ v0.30 (unreleased)
 - **Joint models hold a correlation of +-1 on its edge, and place their
   nodes right near a nearly singular spread.** Three changes, each
   leaving a verified fit with its spread clear of both edges bit for bit
-  as it was (checked on eight fixtures: straight lines with one or two
-  parameters varying, quadratic, two failure modes, accelerated, slope
-  link, Laplace's approximation and uncorrelated spreads; estimates,
-  standard errors, ``neg_ll()`` and predictions).
+  as it was (checked on nine fixtures: straight lines with one or two
+  parameters varying, quadratic, a cubic with four varying, two failure
+  modes, accelerated, slope link, Laplace's approximation and
+  uncorrelated spreads; estimates, standard errors, ``neg_ll()`` and
+  predictions).
 
   - Where two varying parameters are perfectly correlated (one's spread
     between items an exact multiple of the other's), the search stalled
@@ -194,22 +247,32 @@ v0.30 (unreleased)
     negative log-likelihood no higher than before (up to 0.010 lower:
     2428.7427 to 2428.7326; 2432.286370 to 2432.286303 on the fleet a
     test pins); the other 8 are unchanged.
-  - Near either edge the integrand's curvature is too ill-conditioned to
-    invert as it was, and the eigenvalue floor that kept the nodes'
-    scale widened them in the narrow direction, so the grid overstated
-    the likelihood. Such items' nodes are now placed from the curvature
-    in the prior's own coordinates. On ``joint_data`` with a quadratic
-    path and its level, rate and curvature varying, the fit had reached
-    406.38 (unverified, a correlation of 0.997): an artefact, since at
-    that point the likelihood by 7, 15 and 31 nodes a dimension was
-    406.9, 422.5 and 437.8, and is now 494.19 by each, in line with a
-    Monte Carlo integral.
-  - A search round whose step (with the nodes held) cannot be taken
-    even in part, once the nodes are placed again, now tries the Newton
-    step before taking the rounds as settled. The quadratic fit above
-    then reaches a verified maximum inside, 479.3549 (correlations 0.62,
-    -0.24, 0.61), no worse than the fit with the curvature common
-    (479.6325); before, it stalled at 479.465.
+  - Within about 1e-10 of a singular spread the integrand's curvature is
+    too ill-conditioned to invert as it was, and the eigenvalue floor
+    that kept the nodes' scale widened them in the narrow direction, so
+    the grid overstated the likelihood there. Such items' nodes are now
+    placed from the curvature in the prior's own coordinates. Only a fit
+    that landed exactly on a singular spread was affected, and those
+    ended unverified; the likelihood was right everywhere else. On
+    ``joint_data`` with a quadratic path and its level, rate and
+    curvature varying, the search had landed on such a point (three
+    correlations making the matrix singular, ``corr_a_b`` 0.997) and
+    reported 406.38, unverified: there the likelihood read 406.94 by
+    the 7-point nodes (422.5 by 15, 437.8 by 31), but 494.19 at
+    ``corr_a_b`` 1e-10 lower and anywhere below, and 1e-10 above it the
+    matrix is no longer positive definite. It now reads 494.19 there by
+    every grid size, in line with a Monte Carlo integral.
+  - In the searches made in handling an edge (the fit on the edge and
+    the search off it), a round whose step (with the nodes held) cannot
+    be taken even in part once the nodes are placed again now takes the
+    step of minus the whitened gradient (the held nodes' Newton step,
+    ``-H^-1 g``) where the gradient is not yet zero by the verification
+    rule (above 1e-4 standard errors). The first search is as it was, so
+    a fit that needs no edge handling is unchanged. The quadratic fit
+    above then reaches 479.3549 (correlations 0.62, -0.24, 0.61), no worse
+    than the fit with the curvature common (479.6325), but ends
+    unverified, with the warning: its gradient is still above the rule
+    there (before, it stalled at 479.465).
   - The rule that keeps a search off an edge (a spread at 0, or a
     correlation of +-1) now asks for a rise of 1e-4 in log-likelihood,
     an absolute amount; it was one part in a million of the
@@ -466,6 +529,47 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Promotion-time (bounded cumulative hazard) cure regression:
+  ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
+  ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,
+  ``GammaPromotionTimeCure`` and ``ExponentialPromotionTimeCure``
+  built. The survival is ``exp(-theta(z) F0(t))`` for a lifetime
+  distribution ``F0``, so a fraction ``exp(-theta(z))`` never fails; by
+  default the covariates act on ``theta`` through a log link, which
+  makes it a proportional hazards model with a bounded baseline
+  cumulative hazard (``exp(coef)`` a hazard ratio). It sits beside
+  ``MixtureCure`` and shares its interface: ``cure_probability``,
+  ``susceptible_probability``, ``cure_given_survival``,
+  ``susceptible=True``, ``follow_up()``, every bound type, the saved
+  form, and a warning when follow-up shows no plateau. Checked against
+  an independently written likelihood, its limit with no cure
+  (``WeibullPH``) and simulation; see :doc:`Mixture-Cure Regression`.
+- **Cox fits to case-cohort and nested case-control samples:
+  ``CoxPH.fit_case_cohort`` and ``CoxPH.fit_nested_case_control``.** A
+  case-cohort sample (a random subcohort plus every case) is fitted by
+  Prentice's, Self and Prentice's, Lin and Ying's or Barlow's estimator,
+  or, for a subcohort drawn within strata, Borgan's I or II, each with
+  its design-based variance, with delayed entry; the coefficients and
+  standard errors match R's ``survival::cch`` (and ``coxph`` with
+  Barlow's weights) on the Wilms tumour example to about 1e-9. Its
+  baseline is weighted to stand for the cohort, so the curves are given
+  (their bounds refuse). A nested case-control sample (each case with
+  controls drawn from its risk set) is fitted by the conditional logistic
+  likelihood, as ``clogit``; it has no baseline, so its curves refuse.
+  See :doc:`Case-Cohort and Nested Case-Control`.
+- ``WeightedCox`` (internal) takes a multiplier ``rho`` of a row's
+  place in the risk sums only (an offset of ``log rho``), which the
+  case-cohort fits use; its default 1 changes nothing.
+- **``fit_bayes_from_df`` for the competing-risks and multi-state
+  fitters.** ``ParametricCompetingRisks``,
+  ``ParametricCompetingRisksRegression``, ``ParametricMultiState`` and
+  ``ParametricMultiStateRegression`` read the columns of a DataFrame
+  (pandas, or polars and Arrow as their ``fit_from_df`` take) named as
+  their ``fit_from_df`` names them, and pass the Bayesian options to
+  ``fit_bayes`` unchanged. A coefficient of a regression is named in
+  ``priors`` by its column, as ``fit_from_df`` names it. The same fits as
+  ``fit_bayes`` on the arrays (the conformance suite's data-frame path).
+
 - **The chance of each failure mode for a running item in a joint
   model.** ``JointModel.predict(...).cif(x, mode)`` is the chance that
   the item fails by ``mode`` by age ``x``, given its readings and that
@@ -507,6 +611,20 @@ v0.30 (unreleased)
   third coefficient vector), and ``discrete_time_nll`` equals the negative
   log-likelihood of ``DiscreteWeibull`` and ``Geometric`` at their
   hazards; gradients agree with finite differences.
+- **The mean life under a stress profile in ``BayesianProcessModel``.**
+  ``mean(profile)`` and ``mean_cri(profile)`` (a ``StepSchedule`` as
+  ``Z``) are computed at every posterior point at once, where they
+  refused and pointed to ``function_cri(lambda m: m.mean(profile))``:
+  the sum over the profile's steps of the step's stretch of the
+  reference-clock survival's integral over its pace. The Wiener
+  process's stretch is in closed form (the Inverse Gaussian's partial
+  mean, derived in ``_wiener_partial_life``), the gamma process's one
+  integral on a fixed Gauss-Legendre rule. Checked against adaptive
+  quadrature (1e-9), against the fitted model's own mean through the
+  profile at each posterior point (1e-7, fixed and cyclic profiles), a
+  step with the clock all but stopped against a direct integration of
+  the calendar survival (1e-9), and a constant profile against the
+  constant stress (1e-8).
 
 - **``surpyval.utils.dates_to_durations``: dates to durations and
   censoring flags.** Start dates, end dates (a blank meaning still
@@ -1561,6 +1679,19 @@ v0.30 (unreleased)
   fitted both ways.
 
 **Fixed.**
+
+- **A strong prior far from the estimate no longer refuses a Bayesian
+  fit.** A prior given as a distribution (``sp.Normal.from_params([0,
+  0.02])`` on a coefficient the data put at 1.36, 68 of its standard
+  deviations away) had its log density taken as ``log(df)``, which
+  underflows to ``-inf`` past about 38 standard deviations, and only the
+  maximum-likelihood fit and the priors' centre were tried as starts, so
+  the fit was refused ("No starting point"). The log density is now the
+  distribution's own ``log_df``, and the maximum-likelihood start with
+  each prior-bearing parameter moved to its prior's centre is tried too.
+  The case above now fits, its posterior within the Laplace engine's
+  stated accuracy of a brute-force lattice posterior (0.27 standard
+  deviations at most, against 0.1 of the 95% interval's width).
 
 - **``fit_best`` no longer warns that a default candidate was set aside
   when a regular fit was chosen.** With the GeneralizedF among the
