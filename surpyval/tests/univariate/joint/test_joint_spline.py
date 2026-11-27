@@ -630,7 +630,7 @@ def test_a_spread_too_small_to_resolve_is_refused(straight, bend_varying):
         d["params"][names.index("sd_s1")] = sd
         return JointModel.from_dict(d)
 
-    with pytest.raises(ValueError, match="too small a spread"):
+    with pytest.raises(ValueError, match="too small for the integration"):
         search_space(with_sd(1e-20), **straight)
     f, u, _ = search_space(with_sd(1e-7), **straight)
     assert float(f(u)) == pytest.approx(model.neg_ll(), abs=1e-4)

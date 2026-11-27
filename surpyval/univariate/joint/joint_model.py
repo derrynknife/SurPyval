@@ -1208,10 +1208,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     def _theta(self, params: Any = None) -> dict:
         own = params is None
         if own:
-            self._check_resolved()
+            self._check_edges()
             params = np.asarray(self.params, dtype=float)[self._estimated]
         with np.errstate(all="ignore"):
             theta = internal_theta(params, self._layout, self._refs)
+        if own:
+            self._check_resolved(theta)
         if own and not np.all(np.isfinite(np.asarray(theta["L"], float))):
             # (a fit always gives a valid spread; a dict edited by hand,
             # or written elsewhere, may not)
@@ -1232,25 +1234,54 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             )
         return theta
 
-    def _check_resolved(self) -> None:
-        """Refuse a spread above 0 but too small for the integration to
-        resolve: below 1e-9 of its parameter's value, the nodes' offsets
-        are lost to rounding and the likelihood is wrong (a fit never
-        reports one: its search does not step there, and a spread at 0 is
-        saved as exactly 0)."""
+    def _check_edges(self) -> None:
+        """Refuse a correlation of exactly +-1 that the model does not
+        hold (``perfect_correlations``): a fit on that edge saves which
+        parameter is the multiple of which; without it the spread is
+        singular and the likelihood not defined."""
+        held = set(self.perfect_correlations)
         names = list(self.parameter_names)
         params = np.asarray(self.params, dtype=float)
-        for v in self._varying_fitted:
-            sd = params[names.index(f"sd_{v}")]
-            value = params[names.index(v)] if v in names else 0.0
-            if 0.0 < sd < 1e-9 * abs(value):
+        for name in names:
+            if name.startswith("corr_") and name not in held:
+                value = params[names.index(name)]
+                if np.isfinite(value) and abs(value) == 1.0:
+                    raise ValueError(
+                        f"{name} is exactly {value:+g}, a singular spread, "
+                        "and the model does not hold it there (no "
+                        "'proportional' in its dict): its likelihood is not "
+                        "defined. A fit on that edge is saved with "
+                        "'proportional' naming the "
+                        "parameter held as a multiple of the other; otherwise "
+                        "give a correlation strictly between -1 and 1."
+                    )
+
+    def _check_resolved(self, theta: dict) -> None:
+        """Refuse a spread above 0 but too small for the integration to
+        resolve, by the same rule as a fit's search
+        (``joint_ph._resolved_spreads``, its first part): a varying
+        parameter's own spread (its Cholesky diagonal) below 1e-9 of its
+        mean value (``mu``, at the covariates' means). There the nodes'
+        offsets are lost to rounding and the likelihood is wrong; a fit
+        never reports one (its search does not step there, and a spread
+        at 0 is saved as exactly 0)."""
+        layout = self._layout
+        L = np.asarray(theta["L"], dtype=float)
+        if not L.size:
+            return
+        mu = np.asarray(theta["mu"], dtype=float)
+        names = list(self.path_model.parameter_names)
+        for k, j in enumerate(layout.varying):
+            own, value = L[k, k], mu[j]
+            if np.isfinite(own) and 0.0 < own < 1e-9 * abs(value):
+                v = names[j]
                 raise ValueError(
-                    f"sd_{v} is {sd:.3g}, above 0 but below 1e-9 of {v} "
-                    f"({value:.6g}): too small a spread for the integration "
-                    "over the items to resolve (its nodes would sit within "
-                    "rounding of each other). A spread that small is 0: set "
-                    f"sd_{v} to 0 (and its correlations to 0) for the model "
-                    f"with {v} common to all items."
+                    f"The spread of {v} of its own is {own:.3g}, above 0 but "
+                    f"below 1e-9 of {v}'s mean ({value:.6g}): too small for "
+                    "the integration over the items to resolve (its nodes "
+                    "would sit within rounding of each other). A spread that "
+                    f"small is 0: set sd_{v} (and its correlations) to 0 for "
+                    f"the model with {v} common to all items."
                 )
 
     def covariance(self) -> npt.NDArray:

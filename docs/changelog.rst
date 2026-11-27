@@ -1741,10 +1741,12 @@ v0.30 (unreleased)
 **Fixed.**
 
 - **A joint fit can no longer report a likelihood from a spread too small
-  to integrate.** Below about 1e-16 of a varying parameter's value, the
-  adaptive nodes' offsets fall within rounding of it, the prior's term
-  at them is lost and the change of variables no longer cancels it, so
-  the likelihood reads too high: on the two-mode spline fixture with
+  to integrate.** At an sd below about 1e-11 to 1e-13 of a varying
+  parameter's value the error becomes material: the adaptive nodes'
+  offsets come within a few units of the last place of the value, the
+  prior's term at them is lost to rounding and the change of variables
+  no longer cancels it, so the likelihood reads too high (on the
+  fixture below the onset is lower, its bend's value being large): on the two-mode spline fixture with
   the bend varying (held at a spread of 0, 985.8987), a bend sd of 1e-14
   moved it by 0.003, 1e-16 by 2.3, and 1e-18 or below by 107 (878.50). A
   search could step there and keep it. Now a search does not step a
