@@ -55,6 +55,11 @@ ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
             "_handled_xcnt_to_xrd",
         ),
         (
+            "surpyval.univariate.nonparametric.plotting_positions",
+            "surpyval.utils.data_formats",
+            "_handled_xcnt_to_xrd",
+        ),
+        (
             "surpyval.univariate.parametric.distributions.custom_distribution",
             "surpyval.univariate.parametric._fit_inputs",
             "_offset_start",
