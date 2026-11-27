@@ -469,6 +469,29 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Inverse Gaussian and positive stable shared frailties:
+  ``family="inverse_gaussian"`` and ``family="positive_stable"``** for
+  ``Frailty(dist, family=...)``, ``CoxFrailty.fit(..., family=...)`` and
+  ``frailty=`` on ``CrowAMSAA``, ``Duane``, ``CoxLewis`` and
+  ``ProportionalIntensityNHPP``. The inverse Gaussian frailty has mean 1
+  and variance ``theta``; the positive stable one has Laplace transform
+  ``exp(-s^(1 - theta))``, no finite mean, ``theta`` equal to Kendall's
+  tau, and a population curve that is still one of proportional hazards,
+  with the coefficients multiplied by ``1 - theta``. Each group's integral
+  is a closed form of the Laplace transform's derivatives (whole counts
+  only; at most 1000 events in a group for the positive stable, whose
+  recursion costs the square of the count), checked against direct integration over the frailty's density
+  and, for the positive stable, arbitrary-precision derivatives. The Cox
+  fit of these families is EM on the full likelihood (Breslow's ties),
+  with standard errors from its observed information; where ``theta`` is
+  estimated at its boundary 0 the fit is the one without frailty, with a
+  warning, and ``theta`` has no Wald standard error. Not yet for these
+  families: penalised fits, ``diagnose()``, ``JointFrailty``, and, for
+  the positive stable frailty of repairable units, the population's mean
+  count (infinite) and intervals on each cluster's frailty. No number of
+  the gamma or log-normal fits changes (compared to the last digit on 30
+  fits).
+
 - **Bayesian fits of the renewal and imperfect-repair processes:
   ``GeneralizedRenewal.fit_bayes``, ``ARA.fit_bayes`` and
   ``ARI.fit_bayes``.** Priors on the repair parameter (Kijima's ``q``,
