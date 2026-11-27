@@ -432,6 +432,22 @@ v0.30 (unreleased)
   form, and a warning when follow-up shows no plateau. Checked against
   an independently written likelihood, its limit with no cure
   (``WeibullPH``) and simulation; see :doc:`Mixture-Cure Regression`.
+- **Cox fits to case-cohort and nested case-control samples:
+  ``CoxPH.fit_case_cohort`` and ``CoxPH.fit_nested_case_control``.** A
+  case-cohort sample (a random subcohort plus every case) is fitted by
+  Prentice's, Self and Prentice's, Lin and Ying's or Barlow's estimator,
+  or, for a subcohort drawn within strata, Borgan's I or II, each with
+  its design-based variance, with delayed entry; the coefficients and
+  standard errors match R's ``survival::cch`` (and ``coxph`` with
+  Barlow's weights) on the Wilms tumour example to about 1e-9. Its
+  baseline is weighted to stand for the cohort, so the curves are given
+  (their bounds refuse). A nested case-control sample (each case with
+  controls drawn from its risk set) is fitted by the conditional logistic
+  likelihood, as ``clogit``; it has no baseline, so its curves refuse.
+  See :doc:`Case-Cohort and Nested Case-Control`.
+- ``WeightedCox`` (internal) takes a multiplier ``rho`` of a row's
+  place in the risk sums only (an offset of ``log rho``), which the
+  case-cohort fits use; its default 1 changes nothing.
 - **``fit_bayes_from_df`` for the competing-risks and multi-state
   fitters.** ``ParametricCompetingRisks``,
   ``ParametricCompetingRisksRegression``, ``ParametricMultiState`` and
@@ -1520,6 +1536,19 @@ v0.30 (unreleased)
   fitted both ways.
 
 **Fixed.**
+
+- **A strong prior far from the estimate no longer refuses a Bayesian
+  fit.** A prior given as a distribution (``sp.Normal.from_params([0,
+  0.02])`` on a coefficient the data put at 1.36, 68 of its standard
+  deviations away) had its log density taken as ``log(df)``, which
+  underflows to ``-inf`` past about 38 standard deviations, and only the
+  maximum-likelihood fit and the priors' centre were tried as starts, so
+  the fit was refused ("No starting point"). The log density is now the
+  distribution's own ``log_df``, and the maximum-likelihood start with
+  each prior-bearing parameter moved to its prior's centre is tried too.
+  The case above now fits, its posterior within the Laplace engine's
+  stated accuracy of a brute-force lattice posterior (0.27 standard
+  deviations at most, against 0.1 of the 95% interval's width).
 
 - **``fit_best`` no longer warns that a default candidate was set aside
   when a regular fit was chosen.** With the GeneralizedF among the

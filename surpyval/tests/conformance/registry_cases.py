@@ -3323,10 +3323,19 @@ _BAYES_CR_BOUNDS = (
 #: A Bayesian competing-risks regression's: the same at the first
 #: covariate row, and each cause's coefficient.
 _BAYES_CRR_BOUNDS = _BAYES_CR_BOUNDS[:3] + (
+    # (a coefficient may be negative: no range to stay in)
     Bound(
         "param_cri",
         kind="summary",
-        query=(("a", "coef_0"), ("b", "coef_0"), ("a", "beta")),
+        query=(("a", "coef_0"), ("b", "coef_0")),
+        wald=False,
+        in_range=False,
+        label="param_cri[coef]",
+    ),
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=(("a", "beta"),),
         wald=False,
     ),
 )
@@ -3356,11 +3365,13 @@ _BAYES_MS_BOUNDS = (
     ),
 )
 _BAYES_MSR_BOUNDS = _BAYES_MS_BOUNDS[:2] + (
+    # (a coefficient may be negative: no range to stay in)
     Bound(
         "param_cri",
         kind="summary",
         query=((("healthy", "ill"), "z0"),),
         wald=False,
+        in_range=False,
     ),
 )
 _BAYES_COMPOSITION_EXCLUDE = {
