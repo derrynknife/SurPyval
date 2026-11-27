@@ -5,21 +5,6 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
-- **The clock-reset multi-state fits read a stay given as several rows
-  as one stay: a correctness change.** ``ParametricMultiState`` and
-  ``ParametricMultiStateRegression`` (and their ``fit_bayes``) with
-  ``clock="reset"`` fitted each row on ``x - tl``, so a stay split into
-  rows (the same unit ``i`` and state, a row starting where the one
-  before was censored, as when splitting at a change of covariates)
-  restarted the time in the state at each split. Such rows are now one
-  stay: the later rows are fitted on the time since the unit entered the
-  state, left truncated at the time already spent. A unit cannot be
-  censored in a state and enter it afresh at the same time, so only data
-  that held such split stays move; on a 150-unit test set split at one
-  change of covariates per unit, the log-likelihood moves by more than 1
-  and now equals the likelihood written out by hand. Data with
-  interval-censored moves and split stays on the reset clock is refused
-  (give each stay as one row). The forward clock is unchanged.
 - **The parametric multi-state fits to interval-censored moves search
   more closely.** ``ParametricMultiState`` and
   ``ParametricMultiStateRegression`` with ``x`` as ``[xl, xr]`` (new in
@@ -350,9 +335,21 @@ v0.30 (unreleased)
   clock take a covariate path in place of a row of covariates
   (``occupancy``, ``transition_probabilities``, ``length_of_stay``,
   ``cb``, ``cumulative_hazard``), checked against an ODE solution of the
-  forward equations. Accelerated failure time regressions, predictions
-  along a path on the reset clock and interval-censored moves with
-  time-varying covariates are refused, saying what to do.
+  forward equations. Refused, saying what to do: accelerated failure
+  time regressions with time-varying covariates; predictions along a
+  path on the reset clock; and data with interval-censored moves
+  (``x`` as ``[xl, xr]``) together with time-varying covariates.
+- **``carry_on=`` for stays split into rows by hand (reset clock).**
+  ``ParametricMultiState`` and ``ParametricMultiStateRegression`` (``fit``,
+  ``fit_from_df`` as ``carry_on_col``, and ``fit_bayes``) take a True or
+  False per row: a marked row carries on its unit's stay from the row
+  before, so on the reset clock its time in the state runs on (left
+  truncated at the time already spent) instead of restarting. Unmarked
+  rows are stays of their own, as before, which is right for a unit
+  renewed in its state (a repair as good as new) at the time its row
+  before was censored. A marked row that is not its unit's next row in
+  the same state, starting where the row before was censored, is
+  refused. No existing fit's numbers change.
 - **Extremely randomised survival trees and forests:
   ``splitrule="random"``.** ``SurvivalTree.fit`` and
   ``RandomSurvivalForest.fit`` draw one cut for each feature considered

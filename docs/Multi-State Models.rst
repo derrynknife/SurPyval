@@ -545,14 +545,20 @@ only on the time in the state, they depend only on ``x - s``. A
 prediction from a later ``s`` needs ``from_state``: units under
 observation at ``s`` have been in their states for different times.
 
-A unit's stay can be given as several rows: the same unit (``i``) and
-state, each row after the first starting where the one before was
-censored (a stay split where its covariates changed, say). On the reset
-clock such rows are one stay, and its clock carries on across them: the
-later rows are fitted on the time since the unit entered the state, left
-truncated at the time already spent in it. (A unit cannot be censored in
-a state and enter it afresh at the same moment.) Without ``i`` every row
-is its own unit and starts its own clock.
+On the reset clock each row is, by default, a stay of its own: its
+clock starts at its ``tl``. That is right when a unit is renewed in its
+state: a machine censored at a preventive replacement and back in
+service as good as new at the same moment, under the same ``i``, starts
+a new stay. A stay you have split into rows yourself (at a change of
+covariates, say) is different: the later rows carry on the stay, and
+their clock must run on. Mark them with ``carry_on`` (a True or False
+per row, ``carry_on_col`` for a DataFrame): a marked row is fitted on
+the time since the stay began, left truncated at the time already spent
+in the state. A marked row must be the same unit's next row, in the same
+state, starting exactly where the row before ended censored; anything
+else is refused, saying which rows. On the forward clock the marks
+change nothing, as each row's ``tl`` already says when it starts. (See
+also :doc:`Conventions`.)
 
 .. _multistate-time-varying:
 
@@ -569,7 +575,8 @@ time since the start. The fit splits every spell at its unit's changes
 into rows with the covariates fixed, each ending censored but the last,
 each entering where the one before ended; the path's columns follow those
 of ``Z`` as ``time_varying_0``, ``time_varying_1``, ... The fit is
-exactly the fit to the stays split by hand.
+exactly the fit to the stays split by hand (and marked with
+``carry_on``).
 
 In words, the hazard of each move at a time is the one for the
 covariates at that time, so the chance of staying in a state is the
@@ -622,7 +629,9 @@ do instead:
 - Predictions along a path on the reset clock. The semi-Markov solution
   needs each state's hazards as functions of the time in it alone; along
   a path they depend on when the state was entered too.
-- Interval-censored moves together with time-varying covariates.
+- Data with interval-censored moves (``x`` as ``[xl, xr]``) together
+  with time-varying covariates: the move's unknown time would fall among
+  the covariate changes.
 
 The path is taken to be *external*: known in advance and not driven by
 the unit's own moves (a planned dose, a duty schedule). A covariate that

@@ -57,30 +57,87 @@ def _check_reset(fitters: list, tm: TransitionMatrix, arg: str) -> None:
             )
 
 
-def _stays(data: SpellData) -> npt.NDArray:
-    """On the reset clock, the time each row's stay in its state began.
-
-    A row that carries on its unit's previous row (the same unit and
-    state, the previous row censored at the time this one starts: a stay
-    split into rows, at a change of covariates say) continues that row's
-    stay, so its clock does not restart; any other row's stay begins at
-    its ``tl`` (0 where it was observed from the start of the clock). A
-    unit cannot be censored in a state and enter it again at that same
-    time, so such rows are always one stay. Without ``i`` every row is
-    its own unit."""
-    stay = np.where(np.isfinite(data.tl), data.tl, 0.0)
-    if not data.ids_given or data.x.size < 2:
-        return stay
+def _previous_rows(data: SpellData) -> npt.NDArray:
+    """Each row's unit's row before it (by entry time), ``-1`` for a
+    unit's first row (every row, without ``i``)."""
+    prev = np.full(data.x.size, -1, dtype=np.intp)
+    if not data.ids_given:
+        return prev
     order = np.lexsort((data.tl, data.cluster))
-    for prev, row in zip(order[:-1].tolist(), order[1:].tolist()):
-        if (
-            data.cluster[prev] == data.cluster[row]
-            and data.g[prev] == data.g[row]
-            and data.h[prev] < 0
-            and np.isfinite(data.tl[row])
-            and data.tl[row] == data.x[prev]
-        ):
-            stay[row] = stay[prev]
+    same = data.cluster[order[1:]] == data.cluster[order[:-1]]
+    prev[order[1:][same]] = order[:-1][same]
+    return prev
+
+
+def _with_carry_on(data: SpellData, carry_on: Any) -> SpellData:
+    """``data`` with the rows marked in ``carry_on`` taken, on the reset
+    clock, as carrying on the stay of their unit's row before; each
+    marked row checked to be that: the same unit and state, starting
+    where the row before was censored."""
+    from dataclasses import replace
+
+    if carry_on is None:
+        return data
+    carry = np.asarray(carry_on)
+    if carry.shape != data.x.shape:
+        raise ValueError(
+            f"'carry_on' must be one True or False per row ({data.x.size}); "
+            f"got shape {np.shape(carry_on)}."
+        )
+    if carry.dtype != bool:
+        if not np.all(np.isin(carry, (0, 1))):
+            raise ValueError(
+                "'carry_on' must be True (the row carries on its unit's "
+                "stay from the row before) or False for each row."
+            )
+        carry = carry.astype(bool)
+    if not np.any(carry):
+        return data
+    if not data.ids_given:
+        raise ValueError(
+            "'carry_on' marks rows that carry on their unit's stay from "
+            "the row before, so 'i' (the unit of each row) is needed."
+        )
+    prev = _previous_rows(data)
+    marked = np.flatnonzero(carry)
+    p = prev[marked]
+    ok = p >= 0
+    ok[ok] = (
+        (data.g[p[ok]] == data.g[marked[ok]])
+        & (data.h[p[ok]] < 0)
+        & np.isfinite(data.tl[marked[ok]])
+        & (data.tl[marked[ok]] == data.x[p[ok]])
+    )
+    if not np.all(ok):
+        bad = marked[~ok]
+        k = int(bad[0])
+        raise ValueError(
+            f"{bad.size} row(s) marked in 'carry_on' do not carry on the "
+            f"row before them (the first is row {k}): a row that carries "
+            "on a stay is the same unit's next row, in the same state, "
+            "starting (tl) exactly where the row before ended censored "
+            "(x, with no 'e'). Correct the rows' tl, state or e, or unmark "
+            "the row if it starts a new stay."
+        )
+    return replace(data, carry=carry)
+
+
+def _stays(data: SpellData) -> npt.NDArray:
+    """On the reset clock, the time each row's stay in its state began:
+    its ``tl`` (0 where it was observed from the start of the clock), or,
+    for a row marked as carrying on its unit's stay from the row before
+    (``data.carry``: a stay split into rows), that row's, so the time in
+    the state runs on and does not restart. Rows are never taken to
+    carry on unless marked: a unit censored in a state and renewed in it
+    at the same time (a repair as good as new) starts a new stay."""
+    stay = np.where(np.isfinite(data.tl), data.tl, 0.0)
+    if data.carry is None:
+        return stay
+    prev = _previous_rows(data)
+    order = np.lexsort((data.tl, data.cluster))
+    for row in order.tolist():
+        if data.carry[row]:
+            stay[row] = stay[prev[row]]
     return stay
 
 
@@ -230,12 +287,11 @@ class _ParametricMultiStateBase(SerialisableMixin):
                 if np.any(carried):
                     k = int(np.flatnonzero(carried)[0])
                     raise ValueError(
-                        f"Row {k} carries on its unit's stay in its state "
-                        "from the row before (same unit and state, "
-                        "starting where that row was censored), and the "
-                        "data have interval-censored moves: with "
-                        "clock='reset' the two are not fitted together. "
-                        "Give each stay as one row."
+                        f"Row {k} is marked as carrying on its unit's stay "
+                        "from the row before (carry_on), and the data have "
+                        "interval-censored moves: with clock='reset' the "
+                        "two are not fitted together. Give each stay as "
+                        "one row."
                     )
             lik = _interval.IntervalLikelihood(
                 data, clock, cls._row_hazard(Z), _lows(fitters)
@@ -838,6 +894,8 @@ class _ParametricMultiStateBase(SerialisableMixin):
         }
         if self._joint is not None:
             out["joint"] = self._joint.to_dict()
+        if d.carry is not None:
+            out["carry_on"] = [bool(v) for v in d.carry]
         return out
 
     @classmethod
@@ -858,6 +916,8 @@ class _ParametricMultiStateBase(SerialisableMixin):
             tm,
             intervals=True,
         )
+        if model_dict.get("carry_on") is not None:
+            data = _with_carry_on(data, model_dict["carry_on"])
         out = cls()
         out.transitions = tm
         out.models = {
@@ -968,6 +1028,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         transitions: Any = None,
         dist: Any = None,
         clock: str = "forward",
+        carry_on: npt.ArrayLike | None = None,
     ) -> ParametricMultiState:
         """
         Fit a parametric distribution to each transition of spells in
@@ -1001,6 +1062,17 @@ class ParametricMultiState(_ParametricMultiStateBase):
             on the durations ``x - tl`` (``tl`` the time the unit entered
             the state; ``x`` where it is missing), with a distribution on
             (0, inf).
+        carry_on : array_like of bool, optional
+            On the reset clock, the rows that carry on their unit's stay
+            from its row before (a stay split into rows by hand): each
+            such row is fitted on the time since the stay began, left
+            truncated at the time already spent, so the time in the state
+            does not restart. A marked row must be the same unit's next
+            row, in the same state, starting where the row before was
+            censored. By default (``None``) every row is a stay of its
+            own, as for a unit renewed in its state (a repair as good as
+            new) at the time its row before was censored. Ignored on the
+            forward clock, where a row's ``tl`` already says it all.
 
         Returns
         -------
@@ -1037,6 +1109,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
 
         _check_clock(clock)
         data = check_spells(x, e, state, tl, i, n, transitions, intervals=True)
+        data = _with_carry_on(data, carry_on)
         fitters = _fitters(Weibull if dist is None else dist, data.tm, False)
         Z = np.zeros((data.x.size, 0))
         return cls._fit(data, Z, fitters, clock)
@@ -1056,11 +1129,12 @@ class ParametricMultiState(_ParametricMultiStateBase):
         transitions: Any = None,
         dist: Any = None,
         clock: str = "forward",
+        carry_on_col: str | None = None,
     ) -> ParametricMultiState:
         """
         Fit the model to a DataFrame of spells, one row each; the columns
         are the arguments of :meth:`fit` (``s_col`` is another name for
-        ``state_col``).
+        ``state_col``, ``carry_on_col`` holds ``carry_on``).
 
         Examples
         --------
@@ -1092,6 +1166,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
             transitions=transitions,
             dist=dist,
             clock=clock,
+            carry_on=col(carry_on_col, "carry_on_col"),
         )
 
     @classmethod
@@ -1115,6 +1190,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
         method: str = "auto",
         points: int | None = None,
         importance: bool = False,
+        carry_on: npt.ArrayLike | None = None,
     ) -> Any:
         """
         Fit each transition's distribution by Bayes' rule: priors on its
@@ -1180,6 +1256,7 @@ class ParametricMultiState(_ParametricMultiStateBase):
             method=method,
             points=points,
             importance=importance,
+            carry_on=carry_on,
         )
 
     @staticmethod
@@ -1609,6 +1686,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         model: Any = None,
         clock: str = "forward",
         time_varying_covariates: dict | None = None,
+        carry_on: npt.ArrayLike | None = None,
     ) -> ParametricMultiStateRegression:
         """
         Fit a parametric regression to each transition of spells in
@@ -1616,7 +1694,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
 
         Parameters
         ----------
-        x, e, state, tl, i, n, transitions, clock
+        x, e, state, tl, i, n, transitions, clock, carry_on
             As for :meth:`ParametricMultiState.fit`: ``x`` may be a
             :class:`~surpyval.SurpyvalData` holding the spells and their
             covariates ``Z`` (named by its ``covariate_names``), and
@@ -1675,6 +1753,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
 
         _check_clock(clock)
         data = check_spells(x, e, state, tl, i, n, transitions, intervals=True)
+        data = _with_carry_on(data, carry_on)
         if Z is None and time_varying_covariates is not None:
             Z_arr, names = np.zeros((data.x.size, 0)), []
         else:
@@ -1752,6 +1831,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         priors: Any = None,
         method: str = "auto",
         importance: bool = False,
+        carry_on: npt.ArrayLike | None = None,
     ) -> Any:
         """
         Fit each transition's regression by Bayes' rule: priors on its
@@ -1820,6 +1900,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
             priors=priors,
             method=method,
             importance=importance,
+            carry_on=carry_on,
         )
 
     @classmethod
@@ -1856,6 +1937,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
         model: Any = None,
         clock: str = "forward",
         time_varying_covariates: dict | None = None,
+        carry_on_col: str | None = None,
     ) -> ParametricMultiStateRegression:
         """
         Fit the model to a DataFrame of spells, one row each; ``Z_cols``
@@ -1909,6 +1991,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
                 model=model,
                 clock=clock,
                 time_varying_covariates=time_varying_covariates,
+                carry_on=col(carry_on_col, "carry_on_col"),
             )
         Z = np.column_stack([frame_column(df, c, "Z_cols") for c in cols])
         data = check_spells(
@@ -1921,6 +2004,7 @@ class ParametricMultiStateRegression(_ParametricMultiStateBase):
             transitions,
             intervals=True,
         )
+        data = _with_carry_on(data, col(carry_on_col, "carry_on_col"))
         Z_arr, _ = _covariates(Z, data.x.size)
         from surpyval import WeibullPH
 
