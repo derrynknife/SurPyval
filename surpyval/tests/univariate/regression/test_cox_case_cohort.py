@@ -7,6 +7,10 @@ Barlow's weights, ``clogit``) on the Wilms tumour cohort ``nwtco`` and
 ``tests/reference/data/case_cohort_r.json``; and against the ordinary Cox
 fit, to which every case-cohort estimator reduces when the subcohort is
 the whole cohort.
+
+The JSON embeds R's ``survival::nwtco`` (the National Wilms Tumor Study;
+Breslow and Chatterjee 1999; ``survival`` is LGPL), whole, because the
+whole-cohort test needs every child, and ``datasets::infert``.
 """
 
 import json
@@ -373,3 +377,58 @@ def test_nested_case_control_warns_on_sets_without_a_control():
     ref = CoxPH.fit_nested_case_control(Zs[:9], case[:9], sets[:9])
     np.testing.assert_allclose(model.params, ref.params)
     assert model.sets == 3
+
+
+def test_lin_ying_needs_non_cases_in_the_subcohort():
+    x = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    z = np.array([0.1, 0.5, -0.2, 0.3, 0.9, -0.4])
+    # Every subcohort member a case
+    for method in ("lin-ying", "borgan-ii"):
+        kw = (
+            {"sampling_strata": np.ones(6), "cohort_size": {1.0: 20}}
+            if method == "borgan-ii"
+            else {"cohort_size": 20}
+        )
+        with pytest.raises(ValueError, match="not cases"):
+            CoxPH.fit_case_cohort(
+                x,
+                z,
+                subcohort=[1, 1, 1, 0, 0, 0],
+                c=np.zeros(6),
+                method=method,
+                **kw,
+            )
+
+
+def test_self_prentice_needs_a_subcohort_member_at_risk():
+    # The last case (outside the subcohort) outlives every subcohort member
+    x = np.array([1.0, 2.0, 3.0, 4.0, 9.0])
+    z = np.array([0.1, 0.5, -0.2, 0.3, 0.9])
+    for method in ("prentice", "self-prentice"):
+        with pytest.raises(ValueError, match="no subcohort member is at risk"):
+            CoxPH.fit_case_cohort(
+                x,
+                z,
+                subcohort=[1, 1, 1, 1, 0],
+                c=[0, 1, 0, 1, 0],
+                cohort_size=20,
+                method=method,
+            )
+    # Barlow's and Lin-Ying's risk sets hold the case itself
+    model = CoxPH.fit_case_cohort(
+        x,
+        z,
+        subcohort=[1, 1, 1, 1, 0],
+        c=[0, 1, 0, 1, 0],
+        cohort_size=20,
+        method="barlow",
+    )
+    assert np.isfinite(model.params).all()
+
+
+def test_nested_case_control_refuses_missing_covariates():
+    Zs = np.array([1.2, np.nan, -0.4, 0.8, 0.3, -1.0])
+    with pytest.raises(ValueError, match="missing or infinite"):
+        CoxPH.fit_nested_case_control(
+            Zs, [1, 0, 0, 1, 0, 0], [1, 1, 1, 2, 2, 2]
+        )

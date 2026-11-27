@@ -192,6 +192,48 @@ class _Sample:
         )
 
 
+def _refuse_degenerate(s: _Sample, method: str) -> None:
+    """Refuse a sample the estimator cannot use: Lin-Ying's and Borgan
+    II's weights need non-cases in the subcohort (in every sampling
+    stratum) to stand for the cohort's; Self-Prentice's risk sets (also
+    the source of Prentice's variance, and Borgan I's) need a subcohort
+    member at risk at every case's time."""
+    if method in ("lin-ying", "borgan-ii"):
+        non_cases = s.n_sub - s.n_sub_cases
+        if np.any(non_cases < 2):
+            where = (
+                ""
+                if method == "lin-ying"
+                else " in each sampling stratum (the counts are "
+                f"{dict(zip(s.levels.tolist(), non_cases.tolist()))})"
+            )
+            raise ValueError(
+                f"method={method!r} needs at least two subcohort members "
+                f"who are not cases{where}: they stand for the cohort's "
+                "non-cases, and their spread gives the sampling variance. "
+                "Use method='prentice' or 'self-prentice' (or 'borgan-i' "
+                "for a stratified subcohort), which weight the subcohort "
+                "as a whole."
+            )
+    if method in ("prentice", "self-prentice", "borgan-i"):
+        times = s.x[s.case]
+        exits = np.sort(s.x[s.sub])
+        entries = np.sort(s.tl[s.sub])
+        # Subcohort members with tl < t <= x at each case's time t
+        at_risk = (exits.size - np.searchsorted(exits, times, "left")) - (
+            entries.size - np.searchsorted(entries, times, "left")
+        )
+        empty = int(np.sum(at_risk < 1))
+        if empty:
+            raise ValueError(
+                f"At {empty} case time(s) no subcohort member is at risk, "
+                f"so method={method!r} (whose risk sets, and variance, are "
+                "the subcohort's at risk) has nothing to compare the case "
+                "with. Use method='barlow' or 'lin-ying', whose risk sets "
+                "hold the cases too, or check subcohort and tl."
+            )
+
+
 def _rows(sample: _Sample, kind: str) -> dict:
     """The rows each estimator fits, as a Cox model with weights ``w``
     (in the deaths and the risk sets) and risk-only multipliers ``rho``.
@@ -431,7 +473,10 @@ def fit_case_cohort(
     Lin-Ying's and Barlow's coefficients are ``CoxPH.fit``'s with
     ``tie_method``, Self-Prentice's are its Breslow fit (its risk sets
     leave a tied case out, so ties are Breslow's), and the standard
-    errors are the model-based ones (Barlow's the robust ones).
+    errors are the model-based ones, with two exceptions: Barlow's are
+    the robust ones, and Prentice's are those of the Self-Prentice
+    (Breslow) fit at its own estimate (``cch``'s convention above), not
+    those of ``CoxPH.fit`` with Efron ties where there are ties.
 
     Parameters
     ----------
@@ -506,6 +551,7 @@ def fit_case_cohort(
         sampling_strata,
         method in _STRATIFIED,
     )
+    _refuse_degenerate(s, method)
     p = s.Z.shape[1]
     mean = s.Z.mean(axis=0)
     what = f"The case-cohort fit (method={method!r})"
@@ -911,6 +957,14 @@ def fit_nested_case_control(
         raise ValueError(
             f"Z has {Z_arr.shape[0]} rows for {case.shape[0]} values of "
             "case: give one row of covariates per sampled unit."
+        )
+    if not np.all(np.isfinite(Z_arr)):
+        bad = int(np.sum(~np.all(np.isfinite(Z_arr), axis=1)))
+        raise ValueError(
+            f"Z has missing or infinite values in {bad} row(s): dropping a "
+            "row could leave its matched set without its case or its only "
+            "control, so a nested case-control fit needs complete rows. "
+            "Drop those sets, or impute the values, before fitting."
         )
     rows = int(keep.sum())
     model = fitter.fit(

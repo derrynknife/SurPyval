@@ -83,14 +83,17 @@ interval its smaller size implies.
 
 ``"prentice"`` (the default)
     The risk set at a case's time is the subcohort at risk, plus the case
-    if it is from outside the subcohort (Prentice 1986).
+    if it is from outside the subcohort (Prentice 1986). Its variance is
+    Self-Prentice's, evaluated at the Self-Prentice estimate, by
+    ``cch``'s convention (the two share their large-sample variance).
 ``"self-prentice"``
     The subcohort at risk alone (Self and Prentice 1988). It has the
     same large-sample variance as Prentice's.
 ``"lin-ying"``
     Every case while at risk, and each non-case of the subcohort
     weighted up to stand for the cohort's non-cases (Lin and Ying 1993).
-    ``robust=True`` gives its design-based variance.
+    ``robust=True`` replaces the first (model-based) term of its
+    variance by a robust one, as ``cch(..., robust = TRUE)``.
 ``"barlow"``
     A weighted Cox fit: a subcohort member counts as the inverse of the
     sampling fraction, a case counts once at its event, with the robust

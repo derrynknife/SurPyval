@@ -12,6 +12,14 @@
 # by hand, so jsonlite is not needed). Re-running reproduces the file
 # byte for byte.
 #
+# Data and licence: the file embeds two data sets shipped with R, as
+# SurPyval already ships survival's data sets: survival::nwtco (the
+# National Wilms Tumor Study; Breslow and Chatterjee 1999, Applied
+# Statistics 48, 457-468; the survival package is LGPL), stored whole
+# because the test that the whole cohort taken as the subcohort gives the
+# ordinary Cox fit needs every child, and datasets::infert (R's base
+# datasets package, GPL).
+#
 # The data: the National Wilms Tumor Study cohort, survival::nwtco (4028
 # children; rel = 1 a relapse at edrel days; in.subcohort the random
 # subcohort of 668 drawn by Breslow and Chatterjee), stored whole in the
@@ -37,7 +45,7 @@
 # * ncc_*: a nested case-control sample from the cohort, drawn here
 #   (seed 20261127): at each relapse day the children relapsing then (the
 #   cases, so a set can have several) and two controls drawn from those
-#   still under follow-up after that day; fitted by clogit() with the
+#   still at risk that day (censored then included); fitted by clogit() with the
 #   exact conditional likelihood and with Breslow's approximation.
 # * infert: clogit()'s own example, the matched infertility study
 #   (datasets::infert), case ~ spontaneous + induced + strata(stratum).
@@ -189,7 +197,9 @@ ncc <- list()
 for (k in seq_along(times)) {
     t <- times[k]
     cases <- which(cohort$edrel == t & cohort$rel == 1)
-    pool <- which(cohort$edrel > t)
+    # At risk at t: still under follow-up at t (those censored at t
+    # included), less the cases at t
+    pool <- setdiff(which(cohort$edrel >= t), cases)
     controls <- pool[sample.int(length(pool), 2)]
     ncc[[k]] <- data.frame(set = k, case = c(rep(1, length(cases)), 0, 0),
                            row = c(cases, controls))
