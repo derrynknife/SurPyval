@@ -338,7 +338,7 @@ with its own ``schema``.
      - --
    * - ``AalenAdditiveModel``
      - ``"model": "AalenAdditiveModel"``
-     - ``x``, ``B``, ``B_var``, ``B_cov``, ``n_terms``, ``penalizer``, ``aliased``
+     - ``x``, ``B``, ``B_var``, ``B_cov``, ``n_terms``, ``penalizer``, ``aliased``, ``stopped_at``
      - --
    * - ``BuckleyJamesModel``
      - ``"model": "BuckleyJamesModel"``

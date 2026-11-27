@@ -15,6 +15,13 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### AalenAdditive: stop where the risk set cannot separate the covariates (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Past the first event time at which `X'YX` is singular, `AalenAdditive` predicts `nan` (every prediction, the cumulative coefficients and their bounds; `random` draws `nan`), warns with the last time estimated, the units at risk at the next event time and the events left out, and records the time in `stopped_at`. `timereg` holds the cumulative coefficients flat to the end of the data instead, as SurPyval did; the two agree up to the stop. | maintainer | Holding the curve flat silently understated the risk (`sf(9)` 0.591 against a truth of 0.198 in a simulated case); a number that is unknown is `nan`, not a guess. | done |
+| A fit that cannot estimate even the first event time warns and has `stopped_at = 0` (every prediction after 0 is `nan`) rather than refusing. | proposed | Keeps fits that ran before running; the warning names the fix (fewer covariates, `penalizer=`). | done |
+
 ### Multi-state: left censoring and right truncation in the parametric spell models (27 Nov 2026)
 
 | Decision | By | Reason | Status |
@@ -3172,7 +3179,7 @@ The rows of 2026-10-29 and 2026-10-30 that were still proposed were reviewed by 
 | A column is aliased if constant or a linear combination of the other columns and the intercept, in either part. | proposed | Conservative: a multiplicative column collinear with an additive one is identifiable in principle for a continuous covariate, but not for a binary one. | done |
 | No refit-registry plan: the fixture's fit has an additive part that falls, so the curve drawn from is not a Cox-Aalen model; a calibration study simulates from a true one instead. | proposed | As for `AalenAdditive`. | done |
 | A fit that stops before the last event time (`X'WX` singular) warns with the time and the number of events left out, records it in `stopped_at`, and predicts `nan` after it (curves, quantiles, bounds, cumulative coefficients; `random` draws past it are `nan`, not `inf`). | proposed | Holding the curve flat after the stop gave a wrong number silently: in a review case `sf(9)` was 0.556 (band 0.484 to 0.622) against a truth near 0.17. | done |
-| The `CoxAalen.fit` docstring example uses seed 5, changed from seed 4 after its output was seen. | proposed | With seed 4 the additive effect at t = 6 was 0.333 (band 0.242 to 0.424) against a truth of 0.2, 2.85 standard errors off; over 1,000 fresh seeds the pointwise coverage there is 0.946 to 0.951, so seed 4 was an unlucky draw, but changing a seed after seeing it is the owner's call. | done |
+| The `CoxAalen.fit` docstring example uses seed 5, changed from seed 4 after its output was seen. | maintainer | With seed 4 the additive effect at t = 6 was 0.333 (band 0.242 to 0.424) against a truth of 0.2, 2.85 standard errors off; over 1,000 fresh seeds the pointwise coverage there is 0.946 to 0.951, so seed 4 was an unlucky draw. The maintainer kept seed 5 (27 Nov 2026): the example shows a typical fit, and the coverage study is the check. | done |
 ### Rank-based AFT (27 Nov 2026)
 
 | Decision | By | Reason | Status |

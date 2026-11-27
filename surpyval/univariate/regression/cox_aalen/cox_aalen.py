@@ -124,6 +124,7 @@ from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from .._aliasing import aliased_columns, constant_columns, warn_aliased
 from .._concordance import ConcordanceMixin
+from .._early_stop import beyond, warn_if_stopped
 from .._fit_skeleton import draws_by_row
 from .._prediction import (
     ConditionalSurvivalMixin,
@@ -410,32 +411,6 @@ def _robust_middle(
     return (n[:, None] * eps).T @ eps
 
 
-def _warn_if_stopped(
-    x: npt.NDArray,
-    c: npt.NDArray,
-    n: npt.NDArray,
-    times: npt.NDArray,
-    who: str,
-) -> float:
-    """Warn, naming the time and the events left out, when the estimate
-    stops before the last event time; return that time (``nan`` when it
-    does not stop)."""
-    events = (c == 0) & (n > 0)
-    last = float(x[events].max())
-    stop = float(times[-1])
-    if stop >= last:
-        return float("nan")
-    left = float(n[events & (x > stop)].sum())
-    warnings.warn(
-        f"{who} stopped at t = {stop:.6g}, before the last event time "
-        f"({last:.6g}): beyond it too few units are at risk to separate the "
-        f"additive covariates, so {left:g} later events are left out and "
-        "every prediction after it is nan. Make fewer covariates additive, "
-        "or end the analysis at that time."
-    )
-    return stop
-
-
 def _aliased(Z: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
     """The columns of ``Z`` the fit cannot separate: constant (the
     baseline absorbs it, in either part) or a linear combination of the
@@ -696,8 +671,7 @@ class CoxAalenModel(
     def _beyond(self, t: npt.NDArray) -> npt.NDArray:
         """Whether each time is after the fit stopped short of the data
         (see :attr:`stopped_at`)."""
-        with np.errstate(invalid="ignore"):
-            return np.asarray(t, dtype=float) > self.stopped_at
+        return beyond(t, self.stopped_at)
 
     def _index(self, t: npt.NDArray) -> npt.NDArray:
         return np.searchsorted(self.x, t, side="right") - 1
@@ -1182,7 +1156,16 @@ class CoxAalen_(FitterRepr):
                 "time: too few units are at risk to separate the additive "
                 "covariates. Make fewer of them additive."
             )
-        stopped_at = _warn_if_stopped(x_a, c_a, n_a, times, "CoxAalen")
+        stopped_at = warn_if_stopped(
+            "CoxAalen",
+            x_a,
+            c_a,
+            n_a,
+            tl_a,
+            times,
+            "Make fewer covariates additive, or end the analysis at that "
+            "time.",
+        )
         beta_k, pieces, n_iter, converged = _solve(
             x_a, c_a, n_a, tl_a, X, Zm, times, tol, max_iter
         )
