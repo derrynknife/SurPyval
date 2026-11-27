@@ -469,6 +469,41 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Bayesian fits of the renewal and imperfect-repair processes:
+  ``GeneralizedRenewal.fit_bayes``, ``ARA.fit_bayes`` and
+  ``ARI.fit_bayes``.** Priors on the repair parameter (Kijima's ``q``,
+  ARA's and ARI's ``rho``), from judgement, and on the life (or the
+  baseline intensity), for example from a non-repairable fit by
+  ``prior.from_model(life_fit)``. The result,
+  ``surpyval.recurrent.renewal.bayes.BayesianRenewal``, states the
+  posterior probability that the repair parameter is near each end of
+  its range (``repair_mass(within)``: perfect and minimal repair), gives
+  each unit's next failure from its own history (``next_failure_sf``,
+  ``next_failure_cri``, ``next_failure_qf``) and the predictive number
+  of failures in the next period (``count``), with the uncertainty in
+  the parameters included (``count``'s Monte Carlo error is in its
+  ``mean_se``). It warns where the data say little about the repair
+  (its posterior 95% interval at least 75% as wide as its prior's). The
+  repair parameter with no prior is
+  uniform over its range (a Kijima ``q`` from 0 to 2). With a
+  two-parameter life the posterior is exact, on a new grid laid out
+  slice by slice along the repair parameter
+  (``surpyval.recurrent.renewal.bayes.sliced_grid``), which follows the
+  long tail of mass piled against an end of the range; beyond three
+  free parameters, the Laplace approximation. Checked against a
+  brute-force integration, the maximum-likelihood fit, the identity of
+  Kijima I with ARA of memory 1, a frozen PyMC reference and
+  simulation-based calibration; see
+  "Repairable systems: how good is a repair?" in
+  :doc:`Bayesian Fitting with SurPyval`.
+- **A Bayesian fit no longer reports a prior conflict for an estimate
+  on an end of its parameter's range** (a repair efficiency or a
+  proportion of exactly 0 or 1) where the prior gives that end at least
+  1% of the density it gives the middle of its 90% interval (a uniform
+  prior): a central prior interval never holds an end of the range, so
+  every such fit warned that "the data disagree with the prior". A
+  prior whose density vanishes at the end still reports the conflict.
+
 - **Rank-based semi-parametric AFT regression: ``RankAFT``.** A second
   accelerated-failure-time estimator with no assumed error distribution,
   beside ``BuckleyJames``: it solves the Gehan (default) or log-rank
