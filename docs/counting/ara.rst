@@ -11,5 +11,6 @@ The ``ARA`` imperfect-repair model reduces a *virtual age* by a fraction
    :no-value:
 
    .. automethod:: surpyval.recurrent.renewal.ara.ARA.fit
+   .. automethod:: surpyval.recurrent.renewal.ara.ARA.fit_bayes
    .. automethod:: surpyval.recurrent.renewal.ara.ARA.fit_from_df
    .. automethod:: surpyval.recurrent.renewal.ara.ARA.from_params
