@@ -99,9 +99,6 @@ Usage::
     model = RankAFT.fit(x, Z=Z, c=c, rank_weights="logrank")
     model.summary()
 
-.. automodule:: surpyval.univariate.regression.rank_aft.rank_aft
-    :no-members:
-
 .. autoclass:: surpyval.univariate.regression.rank_aft.rank_aft.RankAFT_
     :members:
 

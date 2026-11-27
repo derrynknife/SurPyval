@@ -65,7 +65,8 @@ named, ``.lower`` and ``.upper``, and printed with their names and level.
 Anything computed from it is a plain array.
 
 .. autoclass:: surpyval.utils.bounds.ConfidenceBounds
-   :members: wrap, lower, upper
+   :members: wrap
+   :inherited-members: ndarray
 
 Data Wrangling Utilities
 ------------------------

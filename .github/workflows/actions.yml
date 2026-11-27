@@ -97,9 +97,9 @@ jobs:
     # process it passed 20 minutes at 94% on the 0.29 release run, and in
     # a process per core it took 29 minutes there. On the 0.30 release
     # runs (17,605 cases, about twice 0.29's) it was 38% done at its
-    # 60-minute limit: the likelihood-ratio bounds on a regression's mean,
-    # new in 0.30, take minutes a case.
-    timeout-minutes: 180
+    # 60-minute limit, and 75% at 180: the likelihood-ratio bounds on a
+    # regression's mean, new in 0.30, take minutes a case.
+    timeout-minutes: 330
     steps:
       - uses: actions/checkout@v4
 
@@ -412,8 +412,12 @@ jobs:
           # those are two groups of their own, and the rest (about 1410,
           # less than half of what the group held on the 0.26 run) stays
           # here: three groups of about equal time.
+          # (On the 0.30 release run its delayed-entry size study ran past
+          # 45 minutes; it took 13 on the 0.29 run.)
           - group: diagnostics-size
             workers: auto
+            test-timeout: 5400
+            job-timeout: 150
             args: >-
               surpyval/tests/calibration/test_size_parametric_competing_risks_diagnostics.py
               surpyval/tests/calibration/test_size_distributional_diagnostics.py
@@ -508,19 +512,10 @@ jobs:
             job-timeout: 120
             args: >-
               surpyval/tests/calibration/test_coverage_joint_causes.py
-          # Several markers with failure modes: 200 fits of one to two
-          # minutes each on an M-series Mac (the full model, 250 items) on
-          # every core of one worker, so a group of its own. On the 0.30
-          # release runs it reached its per-test limit at 150 minutes and
-          # again at 300 (the limit ends the worker, reported as a crash):
-          # the runner's cores are slower. It now has the most a job can
-          # have (GitHub's six hours). No seed, size or tolerance changes.
-          - group: joint-marker-causes
-            workers: '1'
-            test-timeout: 20700
-            job-timeout: 355
-            args: >-
-              surpyval/tests/calibration/test_coverage_joint_marker_causes.py
+          # (The joint model of several markers with failure modes, a
+          # study of over five hours on a runner, runs weekly instead:
+          # calibration-weekly.yml. The maintainer's decision, 28 November
+          # 2026: it does not gate a release.)
           - group: joint-lag
             workers: auto
             job-timeout: 120
@@ -595,7 +590,6 @@ jobs:
             job-timeout: 150
             args: >-
               surpyval/tests/calibration/test_coverage_multistate_interval.py
-              surpyval/tests/calibration/test_coverage_multistate_panel_cycles.py
               surpyval/tests/calibration/test_coverage_multistate_panel_parametric.py
               surpyval/tests/calibration/test_coverage_multistate_panel_regression.py
           - group: new-bayes

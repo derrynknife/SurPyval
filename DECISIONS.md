@@ -13,6 +13,18 @@ Design decisions made while working on the open issues, with the reason for each
 
 ---
 
+## 2026-11-28
+
+### The release run: the longest calibration study runs weekly (28 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `test_coverage_joint_marker_causes.py` (200 fits of a joint model of several markers with failure modes) leaves the release run for `calibration-weekly.yml` (weekly on `dev`, and by hand), and does not gate a release; its earlier pass is accepted for 0.30. `publish.yml` reads only `actions.yml`'s runs, unchanged. | maintainer | Over five hours on a runner: it reached the per-test limit at 150 and at 300 minutes on the 0.30 release runs, and GitHub's limit for a job is six. | done |
+| `test_coverage_multistate_panel_cycles.py` (the panel multi-state model with a way back, bound 3) goes to the same weekly workflow, two fits at a time. | proposed | Each fit takes minutes and over 5 GB; four at once stopped the 16 GB runner within minutes on the 0.30 release run, so it cannot run in the release run as it is. | done |
+| A calibration study of a niche model new in a release that misses its rule on the release run does not hold the release: it is a strict xfail giving its numbers, with a follow-up issue, and the changelog lists it under known limitations. A miss on a core, widely used model is still reported before releasing. No seed, size or tolerance changes. | maintainer | Each such study is a new model's first check at scale; the release need not wait for its fix, and the xfail keeps the miss in view. | done |
+
+---
+
 ## 2026-11-27
 
 ### AalenAdditive: stop where the risk set cannot separate the covariates (27 Nov 2026)
