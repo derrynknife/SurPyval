@@ -1,3 +1,8 @@
+# NOTE: the published site does not use this file. Read the Docs builds
+# the docs-html branch, which .github/workflows/docs-publish.yml fills with
+# HTML built on GitHub from main (Read the Docs' free machines can't build
+# these docs inside their 15-minute limit). This file is kept so a full
+# Read the Docs build can still be run, e.g. for a pull-request preview.
 # Read the Docs configuration file for Sphinx projects
 # See https://docs.readthedocs.io/en/stable/config-file/v2.html for details
 
