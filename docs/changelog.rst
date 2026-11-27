@@ -1842,6 +1842,12 @@ v0.30 (unreleased)
 
 **Documentation.**
 
+- :doc:`Joint Models` says how a path of one's own with a kink (a
+  corner where its slope jumps, at a known age) names it in ``breaks``,
+  as a spline's knots are, so the integrals of the hazard are split
+  there: without it the one rule over the corner is off by 4e-4 of the
+  cumulative hazard on a line turning at day 365, with it by 3e-15. Tests
+  pin both, an interval, a lag and a fit on such a path.
 - :doc:`Speed` now says where a random survival forest's time goes
   (the split search, 86% to 89% of a tree; with Weibull leaves, solving
   each candidate child's shape about 60%), what the jackknife of a

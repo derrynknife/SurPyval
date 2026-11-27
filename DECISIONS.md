@@ -115,6 +115,14 @@ Design decisions made while working on the open issues, with the reason for each
 | R `JM` (CompRisk) is not installed: the reference script is committed (`scripts/reference/reference_r_jm_cif.R`, not run) and `test_against_r_jm` skips until its JSON exists; the check moves to a follow-up. | proposed | R packages are not installed on the machine these checks ran on without the maintainer's agreement, so the comparison waits for it. | gap |
 | RePyability's `JointNode` follows the overall `sf`; per-mode nodes are not part of this. | proposed | A node in a reliability block diagram has one way of failing: one survival curve per item. Nodes for each mode would need a structure of their own there. | done |
 
+### Joint models, Laplace's approximation: what was left (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Kinked paths: a path's `breaks` (its corners' ages) were already cuts in the cumulative hazard's integral (spline knots, the lag later), for every integration. A path of one's own with a corner and no `breaks` is off by up to 4e-4 of the cumulative hazard past it (a line turning at day 365, rising 3 a year after); with `breaks = (365.0,)` 3e-15. Documented for paths of one's own; no code change. A corner whose age varies or is estimated is not supported. | proposed | The fix the leftover asked for exists; what was missing was saying how to use it. | done |
+| A sharper few-readings rule from the third derivatives: not built. Per item, Laplace's log-integral error (against the 21-point grid, at the grid fit's estimates) and `0.5 c' A^-1 c` (the third-derivative term the fit already computes) rank together (Spearman 0.97 to 0.997 on 12 fleets: straight lines, 200 items, noise 0.1 or 0.7, read every 120 or 240 days, seeds 7100-7102, design fixed first), and the precise fleets' errors are 100 to 1000 times smaller at the same share of items with three readings or fewer (0.0010 against 0.21 to 0.32 in total log-likelihood at 67-71%), where today's rule warns on both. Building it needs the measure's threshold tied to the estimates' error in standard errors (the warning's 0.1), by a confirming run of Laplace against grid fits with its design fixed first. | proposed | Validated as a measure of the likelihood's error; not yet of the estimates'. | gap |
+| Truncated items under Laplace stay refused. | proposed | The chance of being in the data has no readings to make the integrand near normal; a correct alternative (a grid or quasi-Monte Carlo for the entry term alone, beyond five dimensions) is its own piece of work. | gap |
+
 ### Joint models: failures of unknown mode (27 Nov 2026)
 
 | Decision | By | Reason | Status |

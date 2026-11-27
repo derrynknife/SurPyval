@@ -1065,6 +1065,17 @@ each item's own:
     z = (exponential.params[-1] - 0.9) / exponential.standard_errors()[-1]
     assert abs(z) < 3
 
+A path of your own with a kink, a corner where its slope jumps (a line
+that turns at a known age, ``a + b t + c max(t - 365, 0)``), should say
+where: give the class a ``breaks`` attribute with those ages, as a
+spline's knots are given. The integrals of the hazard over age are then
+split there (and with a ``lag``, that much later). Without it a single
+Gauss-Legendre rule runs over the corner and loses its accuracy: on that
+line with a rise of 3 a year after day 365, the cumulative hazard to 400
+days was off by 4e-4 of itself, against 3e-15 with ``breaks = (365.0,)``.
+A corner whose age varies between items or is estimated cannot be named
+this way, and is not supported.
+
 Each parameter is on its own scale by default: the rate ``b`` above is
 normal between items, so a fleet whose rates are near 0 would give some
 items a falling path. A rate that must stay positive can go on a log
