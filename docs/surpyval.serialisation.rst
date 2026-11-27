@@ -414,7 +414,7 @@ with its own ``schema``.
      - --
    * - ``ParametricPanelMultiStateRegression``
      - ``"model": "ParametricPanelMultiStateRegression"``
-     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``censored``, ``censored_codes``, ``exact_entry``, ``Z``, ``covariate_names``, ``clock``, ``models``, ``joint``, ``max_moves``, ``truncation_tol``, ``truncation_error``, ``omitted``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``censored``, ``censored_codes``, ``exact_entry``, ``Z``, ``covariate_names``, ``clock``, ``models``, ``joint``, ``max_moves``, ``truncation_tol``, ``truncation_error``, ``omitted``, ``coarsened``
      - --
    * - ``CompetingRisks``
      - ``"model": "CompetingRisks"``
