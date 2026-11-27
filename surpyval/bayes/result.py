@@ -311,8 +311,11 @@ def fit_target(
             starts = [rp.forward(s[None, :])[0] for s in starts]
         starts = [s for s in starts if np.all(np.isfinite(s))]
         where = _WorkingNames(bound, rp)
+    # (the scales are of phi's coordinates: not used in other working
+    # coordinates, which are the target's own choice of scale)
+    scales = target.coordinate_scales(bound) if rp is None else None
     try:
-        mode, cov, _ = find_mode(work, starts)
+        mode, cov, _ = find_mode(work, starts, scales)
         if method == "laplace":
             approx = run_laplace(
                 work,

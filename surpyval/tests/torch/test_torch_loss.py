@@ -37,6 +37,7 @@ PARAMS = {
     "Rayleigh": [9.0],
     "Gompertz": [0.1, 0.02],
     "InverseGaussian": [12.0, 20.0],
+    "BirnbaumSaunders": [0.6, 12.0],
     "GeneralizedGamma": [2.2, 0.6, 0.5],
 }
 
@@ -300,6 +301,7 @@ TAILS = {
     "Rayleigh": dict(x=[300.0, 1e-200, 1e-200, 300.0], c=[0, 0, 1, -1]),
     "Gompertz": dict(x=[400.0, 1e-300, 1e-300, 400.0], c=[0, 0, 1, -1]),
     "InverseGaussian": dict(x=[5e3, 1e-2, 1e-2, 5e3], c=[0, 0, 1, -1]),
+    "BirnbaumSaunders": dict(x=[5e3, 1e-2, 1e-2, 5e3], c=[0, 0, 1, -1]),
     "GeneralizedGamma": dict(x=[3e3, 1e-30, 1e-30, 3e3], c=[0, 0, 1, -1]),
 }
 

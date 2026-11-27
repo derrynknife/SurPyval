@@ -185,6 +185,7 @@ def _univariate():
         "GeneralizedGamma",
         "Gompertz",
         "InverseGaussian",
+        "BirnbaumSaunders",
         "Rayleigh",
         "Normal",
         "Gumbel",
@@ -3281,10 +3282,19 @@ _BAYES_CR_BOUNDS = (
 #: A Bayesian competing-risks regression's: the same at the first
 #: covariate row, and each cause's coefficient.
 _BAYES_CRR_BOUNDS = _BAYES_CR_BOUNDS[:3] + (
+    # (a coefficient may be negative: no range to stay in)
     Bound(
         "param_cri",
         kind="summary",
-        query=(("a", "coef_0"), ("b", "coef_0"), ("a", "beta")),
+        query=(("a", "coef_0"), ("b", "coef_0")),
+        wald=False,
+        in_range=False,
+        label="param_cri[coef]",
+    ),
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=(("a", "beta"),),
         wald=False,
     ),
 )
@@ -3314,11 +3324,13 @@ _BAYES_MS_BOUNDS = (
     ),
 )
 _BAYES_MSR_BOUNDS = _BAYES_MS_BOUNDS[:2] + (
+    # (a coefficient may be negative: no range to stay in)
     Bound(
         "param_cri",
         kind="summary",
         query=((("healthy", "ill"), "z0"),),
         wald=False,
+        in_range=False,
     ),
 )
 _BAYES_COMPOSITION_EXCLUDE = {
@@ -3414,13 +3426,6 @@ def _bayes_competing_risks():
             rtol=1e-6,
             exclude={
                 **_BAYES_COMPOSITION_EXCLUDE,
-                "covariate_scale": "each cause's (transition's) "
-                "BayesianRegression is not equivariant to 1e-4 under a "
-                "covariate scaled by 1e-6: the Laplace engine's peak "
-                "search and Hessian steps are not scaled with the "
-                "coefficient (the plain WeibullPH.fit_bayes on these data "
-                "moves sf by up to 5e-4 too); a known gap of the shared "
-                "regression engine, not of the composition",
                 **{
                     key: "a column the data do not determine is refused "
                     "by each cause's regression fit_bayes, naming its "
@@ -3498,13 +3503,6 @@ def _bayes_multistate():
                 **common,
                 "exclude": {
                     **_BAYES_COMPOSITION_EXCLUDE,
-                    "covariate_scale": "each cause's (transition's) "
-                    "BayesianRegression is not equivariant to 1e-4 under a "
-                    "covariate scaled by 1e-6: the Laplace engine's peak "
-                    "search and Hessian steps are not scaled with the "
-                    "coefficient (the plain WeibullPH.fit_bayes on these data "
-                    "moves sf by up to 5e-4 too); a known gap of the shared "
-                    "regression engine, not of the composition",
                     **{
                         key: "a column the data do not determine is "
                         "refused by each transition's regression "
@@ -4035,6 +4033,7 @@ def _df_paths():
             estimator=e,
             common_censoring=e == "lin-ying",
         )
+    paths.update(_bayes_cr_ms_df_paths())
     # (its fixture has no counts: the rows alone)
     paths["ClaytonCopula[margins=KaplanMeier]"] = lambda d: (
         mv.Clayton.fit_from_df(
@@ -4044,6 +4043,93 @@ def _df_paths():
         )
     )
     return paths
+
+
+def _bayes_cr_ms_df_paths():
+    """fit_bayes_from_df of the competing-risks and multi-state fitters,
+    with the options each case's fit passes."""
+
+    def pcr(d):
+        df = pd.DataFrame({"x": d["x"], "e": d["e"], "n": d["n"]})
+        return cr.ParametricCompetingRisks.fit_bayes_from_df(
+            df, "x", "e", n_col="n", dist=sp.Exponential
+        )
+
+    def pcr_interval(d):
+        df = pd.DataFrame(
+            {
+                "lo": d["x"][:, 0],
+                "hi": d["x"][:, 1],
+                "c": d["c"],
+                "e": d["e"],
+                "n": d["n"],
+            }
+        )
+        return cr.ParametricCompetingRisks.fit_bayes_from_df(
+            df,
+            None,
+            "e",
+            c_col="c",
+            n_col="n",
+            xl_col="lo",
+            xr_col="hi",
+            dist=sp.Exponential,
+        )
+
+    def pcrr(d):
+        df = pd.DataFrame(
+            {"x": d["x"], "e": d["e"], "n": d["n"], "z0": d["Z"][:, 0]}
+        )
+        return cr.ParametricCompetingRisksRegression.fit_bayes_from_df(
+            df, "x", "e", Z_cols=["z0"], n_col="n"
+        )
+
+    def spells(d):
+        df = pd.DataFrame(
+            {
+                "x": d["x"],
+                "e": d["e"],
+                "state": d["state"],
+                "tl": d["tl"],
+                "n": d["n"],
+            }
+        )
+        if "Z" in d:
+            df["z0"] = d["Z"][:, 0]
+        return df
+
+    def pms(d):
+        return ms.ParametricMultiState.fit_bayes_from_df(
+            spells(d),
+            "x",
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+            dist=sp.Exponential,
+        )
+
+    def pmsr(d):
+        return ms.ParametricMultiStateRegression.fit_bayes_from_df(
+            spells(d),
+            "x",
+            ["z0"],
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+            model=sp.ExponentialPH,
+        )
+
+    return {
+        "ParametricCompetingRisks[bayes]": pcr,
+        "ParametricCompetingRisks[interval, bayes]": pcr_interval,
+        "ParametricCompetingRisksRegression[bayes]": pcrr,
+        "ParametricMultiState[bayes]": pms,
+        "ParametricMultiStateRegression[bayes]": pmsr,
+    }
 
 
 def _add_df_path(case, paths=_df_paths()):
@@ -4060,17 +4146,6 @@ NO_DF_PATH: dict[str, str] = {
     "NeverOccurs": "a fixed model, not fitted",
     "InstantlyOccurs": "a fixed model, not fitted",
     "InducedFailureDistribution": "derived from a fitted degradation model",
-    **{
-        name: "fit_bayes takes arrays; the competing-risks and multi-state "
-        "fitters have no fit_bayes_from_df yet"
-        for name in (
-            "ParametricCompetingRisks[bayes]",
-            "ParametricCompetingRisks[interval, bayes]",
-            "ParametricCompetingRisksRegression[bayes]",
-            "ParametricMultiState[bayes]",
-            "ParametricMultiStateRegression[bayes]",
-        )
-    },
 }
 
 
@@ -5474,6 +5549,7 @@ _PLAIN_CONTINUOUS: tuple[str, ...] = (
 )
 _PLAIN_CONTINUOUS += ("LogLogistic", "ExpoWeibull", "Rayleigh", "Normal")
 _PLAIN_CONTINUOUS += ("GeneralizedGamma", "Gompertz", "InverseGaussian")
+_PLAIN_CONTINUOUS += ("BirnbaumSaunders",)
 _PLAIN_CONTINUOUS += ("Gumbel", "GumbelLEV", "Logistic", "Uniform")
 _PLAIN_DISCRETE: tuple[str, ...] = ("Poisson", "Geometric", "NegativeBinomial")
 _PLAIN_DISCRETE += ("DiscreteWeibull",)

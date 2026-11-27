@@ -392,9 +392,13 @@ def test_another_distribution_is_advised_fit_best():
     assert not d.ok
     best = _rows(d, "alternatives", "warn")
     best = best[best["test"].str.contains("fit_best")]
-    assert best["alternative"].item() == "LogNormal"
+    # The BirnbaumSaunders (AIC 673.37), close to the lognormal for a
+    # shape below 1, edges out the LogNormal (673.58) on these draws since
+    # it was added to fit_best; the Weibull fitted has 685.84.
+    assert best["alternative"].item() == "BirnbaumSaunders"
     advice = [a for a in d.advice if "fit_best(return_table=)" in a.features]
-    assert len(advice) == 1 and advice[0].startswith("LogNormal fits")
+    assert len(advice) == 1
+    assert advice[0].startswith("BirnbaumSaunders fits")
 
 
 def test_an_unexplained_failure_is_advised_the_plot(monkeypatch):

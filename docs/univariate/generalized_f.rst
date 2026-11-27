@@ -112,6 +112,16 @@ an asymmetric Laplace distribution about ``mu`` (the time a power law
 either side of :math:`e^\mu`), which no member reaches. At n = 200
 about 3 fits in 10 were at one edge or the other.
 
+On some samples that limit fits better than any member, and the fit
+cannot reach it: the search stops at a local maximum (on one sample of
+200, at ``P = 1.8``, 0.29 below the limit in log-likelihood) or out on
+the ridge towards it with ``P`` in the thousands. The fit then warns "No
+finite maximum", naming the limit's ``mu`` and the rates ``a`` below and
+``b`` above it at which the log time falls away; the reported ``sigma``
+and ``P`` and the Wald bounds mean nothing there, and the
+likelihood-ratio bounds allow for the limit. Where both edges are at
+least as likely as the fit, the warning names this one, the better.
+
 The likelihood-ratio bounds allow for both. Where a fit is at the
 generalised gamma edge, the profiles are also searched from ``P = 1``,
 since the likelihood is flat in ``log P`` there. Where the asymmetric

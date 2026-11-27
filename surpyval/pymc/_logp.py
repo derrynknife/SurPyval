@@ -163,6 +163,31 @@ INVERSE_GAUSSIAN = Family(
     centre=lambda pt, mu, lam: mu,
 )
 
+
+# BirnbaumSaunders: alpha (shape), beta (scale, the median); F = Phi(xi),
+# xi = (x - beta) / (alpha sqrt(x) sqrt(beta)), as surpyval's own; at
+# x = inf, where that is inf / inf, from a stand-in
+def _bs_xi(pt: Any, x: Any, a: Any, b: Any) -> Any:
+    top = pt.isinf(x)
+    x_in = pt.switch(top, 1.0, x)
+    xi = (x_in - b) / (a * pt.sqrt(x_in) * pt.sqrt(b))
+    return pt.switch(top, math.inf, xi)
+
+
+BIRNBAUM_SAUNDERS = Family(
+    log_df=lambda pt, x, a, b: (
+        -(_bs_xi(pt, x, a, b) ** 2) / 2.0
+        - _HALF_LOG_2PI
+        + pt.log(x + b)
+        - pt.log(2.0 * a)
+        - 0.5 * pt.log(b)
+        - 1.5 * pt.log(x)
+    ),
+    log_sf=lambda pt, x, a, b: _log_ndtr(pt, -_bs_xi(pt, x, a, b)),
+    log_ff=lambda pt, x, a, b: _log_ndtr(pt, _bs_xi(pt, x, a, b)),
+    centre=lambda pt, a, b: b,
+)
+
 # Rayleigh: sigma; H = x ** 2 / (2 sigma ** 2)
 RAYLEIGH = Family(
     log_df=lambda pt, x, sigma: (
@@ -409,4 +434,5 @@ FAMILIES: dict[str, Family] = {
     "Gompertz": GOMPERTZ,
     "InverseGaussian": INVERSE_GAUSSIAN,
     "GeneralizedGamma": GENERALIZED_GAMMA,
+    "BirnbaumSaunders": BIRNBAUM_SAUNDERS,
 }

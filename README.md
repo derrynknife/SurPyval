@@ -36,6 +36,7 @@ SurPyval also offers many different distributions for users, and because of the 
 | **Generalised F** (Prentice, as flexsurv) | Yes |
 | **Gompertz** (a negative shape allowed: a plateau) | Yes |
 | **Inverse Gaussian** | Yes |
+| **Birnbaum-Saunders** (fatigue-life) | Yes |
 | **Beta**      | No |
 | **Beta (4 parameter)** | No |
 | **Uniform**   | No |
