@@ -17,8 +17,11 @@ unit ``j`` in it,
     \\lambda_j(t \\mid u_g) = u_g \\, \\lambda_0(t) \\, e^{\\beta' Z_j},
 
 with ``u`` drawn from a gamma distribution of mean 1 and variance
-``theta``, or a log-normal one (``log u ~ N(0, theta)``). ``theta = 0`` is
-the model without frailty.
+``theta``, a log-normal one (``log u ~ N(0, theta)``), an inverse Gaussian
+one of mean 1 and variance ``theta`` (``"inverse_gaussian"``), or a
+positive stable one of index ``1 - theta`` (``"positive_stable"``: Laplace
+transform ``exp(-s^(1 - theta))``, no finite mean, ``theta`` Kendall's
+tau). ``theta = 0`` is the model without frailty.
 
 A cluster with ``n`` events at times ``t_1 .. t_n`` and cumulative
 intensity ``L`` over its observation (at ``u = 1``; delayed entry,
@@ -33,7 +36,14 @@ the gamma frailty the expectation has a closed form,
 the negative binomial likelihood of the count, written so that it keeps
 its digits as ``theta -> 0``. For the log-normal frailty it is the
 integral the joint frailty model takes
-(:func:`~surpyval.recurrent.joint_frailty.log_frailty_integral`).
+(:func:`~surpyval.recurrent.joint_frailty.log_frailty_integral`), and for
+the inverse Gaussian and positive stable frailties the closed forms of
+:mod:`surpyval.univariate.regression.frailty.families`.
+
+Under the positive stable frailty the clusters' mean count is infinite
+(the frailty has no mean), so the population's ``cif``, ``iif`` and
+``mcf`` are refused; a cluster's given its frailty (``frailty=``), and
+the fitted clusters' forecasts given their histories, are finite.
 
 The fits are reached through ``frailty=`` on the fitters:
 ``CrowAMSAA.fit(x, i, c, frailty="gamma")``; :class:`SharedFrailtyModel`
@@ -75,6 +85,11 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.univariate.regression._aliasing import fit_columns
+from surpyval.univariate.regression.frailty.families import (
+    LAPLACE_FAMILIES,
+    laplace_log_integral,
+    whole_counts,
+)
 from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -93,7 +108,7 @@ __all__ = [
     "mixed_poisson_log_moment",
 ]
 
-FAMILIES = ("gamma", "lognormal")
+FAMILIES = ("gamma", "lognormal", "inverse_gaussian", "positive_stable")
 BOUNDS = ("two-sided", "lower", "upper")
 #: Below this the frailty variance is taken as 0 (the model without
 #: frailty): the two differ by less than ``theta`` times the score there.
@@ -116,6 +131,10 @@ def mixed_poisson_log_moment(
     ``sum_{k<D} log(1 + k theta) - (D + 1/theta) log(1 + theta A)``.
     Log-normal (``log u ~ N(0, theta)``): the quadrature of
     :func:`~surpyval.recurrent.joint_frailty.log_frailty_integral`.
+    Inverse Gaussian and positive stable: the closed forms of
+    :func:`~surpyval.univariate.regression.frailty.families.inverse_gaussian_log_integral`
+    and
+    :func:`~surpyval.univariate.regression.frailty.families.positive_stable_log_integral`.
     ``theta = 0`` is no frailty: ``-A``.
 
     Parameters
@@ -126,7 +145,7 @@ def mixed_poisson_log_moment(
         Cumulative intensities, at least 0; broadcast with ``D``.
     theta : float
         The frailty variance (of ``log u`` for the log-normal).
-    family : {'gamma', 'lognormal'}, optional
+    family : {'gamma', 'lognormal', 'inverse_gaussian', 'positive_stable'}
         The frailty distribution. Default ``'gamma'``.
 
     Returns
@@ -158,6 +177,11 @@ def mixed_poisson_log_moment(
     if not theta >= _THETA_ZERO:
         # (a nan theta gives nan)
         return -1.0 * Av + 0.0 * Dv + 0.0 * theta
+    if family in LAPLACE_FAMILIES:
+        with np.errstate(divide="ignore", over="ignore"):
+            return np.asarray(
+                laplace_log_integral(family, Dv, Av, theta), dtype=float
+            )
     if family == "lognormal":
         # In blocks: the rule holds every entry's nodes at once.
         flat_d, flat_a = Dv.reshape(-1), Av.reshape(-1)
@@ -231,6 +255,22 @@ def _frailty_quantiles(
         for k, q in enumerate(probs):
             out[:, k] = gamma.ppf(q, shape, scale=1.0 / rate)
         return out
+    if family == "inverse_gaussian":
+        # The posterior is generalised inverse Gaussian: density
+        # proportional to u^(n - 3/2) exp(-(a u + b / u) / 2), a = 1/theta
+        # + 2A, b = 1/theta; scipy's geninvgauss(p, sqrt(ab)) scaled by
+        # sqrt(b / a).
+        from scipy.stats import geninvgauss
+
+        a, b = 1.0 / theta + 2.0 * A, 1.0 / theta
+        for k, q in enumerate(probs):
+            out[:, k] = geninvgauss.ppf(
+                q, n - 0.5, np.sqrt(a * b), scale=np.sqrt(b / a)
+            )
+        return out
+    if family == "positive_stable":
+        # The positive stable density has no closed form: no interval.
+        return np.full((n.size, len(probs)), np.nan)
     # Log-normal: the density of w = log u given the history is
     # proportional to exp(n w - A e^w - w^2 / (2 theta)), log-concave;
     # its distribution function on a grid about its mode.
@@ -474,6 +514,10 @@ class _Likelihood:
         tv = float(getval(theta))
         if not tv >= _THETA_ZERO:
             ll = const - anp.sum(A) + 0.0 * theta
+        elif self.family in LAPLACE_FAMILIES:
+            ll = const + anp.sum(
+                laplace_log_integral(self.family, d.n_events, A, theta)
+            )
         elif self.family == "gamma":
             tail = anp.log1p(theta * A)
             ll = (
@@ -534,7 +578,11 @@ class _Search:
             out.append(0.0 * u[0])
             rest = u[k:]
         else:
-            out.append(anp.exp(u[k]))
+            if self.lik.family == "positive_stable":
+                # theta = 1 - alpha in (0, 1): logit
+                out.append(1.0 / (1.0 + anp.exp(-u[k])))
+            else:
+                out.append(anp.exp(u[k]))
             rest = u[k + 1 :]
         out += [rest[j] for j in range(self.lik.Z.shape[1])]
         return anp.array(out)
@@ -543,7 +591,12 @@ class _Search:
         nat = np.asarray(natural, dtype=float)
         k = self.k
         base = self.to_search(nat[:k]) / self.units
-        theta = [] if self.no_frailty else [np.log(nat[k])]
+        if self.no_frailty:
+            theta = []
+        elif self.lik.family == "positive_stable":
+            theta = [np.log(nat[k] / (1.0 - nat[k]))]
+        else:
+            theta = [np.log(nat[k])]
         return np.r_[base, theta, nat[k + 1 :]]
 
     def __call__(self, u: Any) -> Any:
@@ -628,6 +681,8 @@ def fit_shared_frailty(
         "mapping.",
     )
     layout = _Layout(data, of_item, family)
+    if family in LAPLACE_FAMILIES:
+        whole_counts(layout.n_events, family)
     k = len(dist.parameter_names)
     p = layout.Z.shape[1]
     names = fit_columns() if regression else None
@@ -674,6 +729,9 @@ def fit_shared_frailty(
     A0 = lik_s.exposure(null_nat)
     spread = float(np.sum((layout.n_events - A0) ** 2 - layout.n_events))
     moment = float(np.clip(spread / max(np.sum(A0**2), 1e-300), 0.02, 5.0))
+    if family == "positive_stable":
+        # (1 - alpha, below 1: a start of Kendall's tau)
+        moment = min(moment, 0.5)
     starts = []
     for theta0 in (moment, 0.5):
         s = null_nat.copy()
@@ -693,6 +751,11 @@ def fit_shared_frailty(
             raise ValueError(
                 "'init' must be finite, with theta (after the baseline's "
                 "parameters) positive."
+            )
+        if family == "positive_stable" and not given[k] < 1:
+            raise ValueError(
+                "'init' gives theta = {:g}; the positive stable frailty's "
+                "theta is 1 - alpha, below 1.".format(given[k])
             )
         s = np.r_[given[: k + 1], given[k + 1 :][kept] * sd]
         starts.insert(0, s)
@@ -880,7 +943,7 @@ class SharedFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
     def _parameter_bounds(self) -> list:
         return [
             *self.dist.bounds,
-            (0, None),
+            (0, 1) if self.family == "positive_stable" else (0, None),
             *[(None, None)] * self.n_covariates,
         ]
 
@@ -915,8 +978,9 @@ class SharedFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
 
     @property
     def mean_frailty(self) -> float:
-        """The mean of the frailty distribution: 1 for the gamma,
-        ``exp(theta / 2)`` for the log-normal."""
+        """The mean of the frailty distribution: 1 for the gamma and the
+        inverse Gaussian, ``exp(theta / 2)`` for the log-normal, ``inf``
+        for the positive stable (``theta > 0``)."""
         return self._mean_frailty(self._p())
 
     def _p(self) -> npt.NDArray:
@@ -926,6 +990,8 @@ class SharedFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
 
     def _mean_frailty(self, params: npt.NDArray) -> float:
         theta = float(params[self._k])
+        if self.family == "positive_stable" and theta > 0:
+            return float(np.inf)
         return float(np.exp(theta / 2)) if self.family == "lognormal" else 1.0
 
     # -- covariates and frailty --------------------------------------------
@@ -1005,6 +1071,20 @@ class SharedFrailtyModel(SerialisableMixin, LikelihoodInferenceMixin):
                 getattr(self.dist, name)(at, *base), dtype=float
             )
             phi = np.exp(Zr @ params[k + 1 :]) if Zr.shape[1] else 1.0
+            if (
+                u is None
+                and self.family == "positive_stable"
+                and float(params[k]) > 0
+            ):
+                raise ValueError(
+                    "The positive stable frailty has no finite mean, so "
+                    "the population's expected count (cif, iif or mcf "
+                    "with frailty=None) is infinite. Give a cluster's "
+                    "frailty with frailty= (frailties() has each fitted "
+                    "cluster's), forecast the fitted clusters with "
+                    "forecast(), or fit family='inverse_gaussian' or "
+                    "'gamma' for a population mean."
+                )
             scale = self._mean_frailty(params) if u is None else u
             return value * phi * scale
 

@@ -1949,6 +1949,7 @@ def _recurrent():
         ("CrowAMSAA", "gamma"),
         ("CoxLewis", "gamma"),
         ("Duane", "lognormal"),
+        ("CrowAMSAA", "inverse_gaussian"),
     ):
         fitter = getattr(rc, name)
         out.append(
@@ -2843,6 +2844,47 @@ def _mixture_cure():
     return out
 
 
+FAST_PROMOTION = ("WeibullPromotionTimeCure",)
+
+
+def _promotion_time_cure():
+    """The promotion-time cure regressions on the mixture-cure fixture
+    (its plateau identifies theta as it identifies lfp_p), with the
+    default covariates: every column on theta."""
+    out = []
+    for base in CURE_LATENCIES:
+        name = base + "PromotionTimeCure"
+        out.append(
+            regression(
+                name,
+                getattr(sp, name),
+                data=cure_data,
+                model_class=(
+                    "surpyval.univariate.regression."
+                    "DistributionalRegressionModel"
+                ),
+                fitters=(f"surpyval.{name}",)
+                + (
+                    (
+                        "surpyval.PromotionTimeCure",
+                        "surpyval.univariate.regression."
+                        "PromotionTimeCureFitter",
+                        "surpyval.univariate.regression."
+                        "PromotionTimeCureModel",
+                    )
+                    if base == "Weibull"
+                    else ()
+                ),
+                slow=(
+                    frozenset() if name in FAST_PROMOTION else REFIT_PROPERTIES
+                ),
+                coefficients=_cure_coefficients,
+                intercept=True,
+            )
+        )
+    return out
+
+
 FAST_ZI = ("WeibullZeroInflated",)
 
 
@@ -3260,6 +3302,62 @@ def _bayes_recurrent():
 
 
 # ---------------------------------------------------------------------------
+# Bayesian fits of the renewal and imperfect-repair processes
+# (surpyval.recurrent.renewal.bayes): the grid sliced along the repair
+# parameter
+# ---------------------------------------------------------------------------
+#: A renewal process's credible intervals: each parameter's (each unit's
+#: next-failure interval, a units-by-times matrix, is not swept; see
+#: test_options.NOT_SWEPT).
+_BAYES_RENEWAL_BOUNDS = (Bound("param_cri", kind="param", wald=False),)
+
+
+def _bayes_renewals():
+    out = []
+    for name, kw in (
+        ("GeneralizedRenewal", {}),
+        ("ARA", {"m": 2}),
+        ("ARI", {"m": 1}),
+    ):
+        fitter = getattr(rc, name)
+        out.append(
+            Case(
+                name=f"{name}[bayes]",
+                fitters=("surpyval.recurrent.renewal.bayes.BayesianRenewal",),
+                model_class="surpyval.recurrent.renewal.bayes.BayesianRenewal",
+                interface=COUNTING,
+                data=recurrent_data,
+                fit=functools.partial(_bayes_renewal_fit, fitter, kw),
+                # The new system's MCF is simulated over posterior draws;
+                # a fixed seed makes it a function.
+                functions=("mcf",),
+                call_kwargs={"draws": 20, "items": 10, "random_state": 1},
+                x=X_REC,
+                rows=("x", "i", "c", "n"),
+                paths={
+                    "fit(data)": functools.partial(
+                        _bayes_renewal_data_path, fitter, kw
+                    ),
+                },
+                explicit_seed=True,
+                draw=lambda m, s: m.draw_models(3, random_state=s)[0].params,
+                rtol=1e-6,
+                exclude=dict(_BAYES_RECURRENCE_EXCLUDE),
+            )
+        )
+    return out
+
+
+def _bayes_renewal_fit(fitter, kw, d):
+    return fitter.fit_bayes(d["x"], d.get("i"), d.get("c"), d.get("n"), **kw)
+
+
+def _bayes_renewal_data_path(fitter, kw, d):
+    data = sp.handle_xicn(d["x"], d["i"], d["c"], d["n"])
+    return fitter.fit_bayes(data, **kw)
+
+
+# ---------------------------------------------------------------------------
 # Bayesian competing risks and multi-state models (compositions of the
 # causes' or transitions' own Bayesian fits; the causes fitted together
 # where failures are found in a window)
@@ -3282,10 +3380,19 @@ _BAYES_CR_BOUNDS = (
 #: A Bayesian competing-risks regression's: the same at the first
 #: covariate row, and each cause's coefficient.
 _BAYES_CRR_BOUNDS = _BAYES_CR_BOUNDS[:3] + (
+    # (a coefficient may be negative: no range to stay in)
     Bound(
         "param_cri",
         kind="summary",
-        query=(("a", "coef_0"), ("b", "coef_0"), ("a", "beta")),
+        query=(("a", "coef_0"), ("b", "coef_0")),
+        wald=False,
+        in_range=False,
+        label="param_cri[coef]",
+    ),
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=(("a", "beta"),),
         wald=False,
     ),
 )
@@ -3315,11 +3422,13 @@ _BAYES_MS_BOUNDS = (
     ),
 )
 _BAYES_MSR_BOUNDS = _BAYES_MS_BOUNDS[:2] + (
+    # (a coefficient may be negative: no range to stay in)
     Bound(
         "param_cri",
         kind="summary",
         query=((("healthy", "ill"), "z0"),),
         wald=False,
+        in_range=False,
     ),
 )
 _BAYES_COMPOSITION_EXCLUDE = {
@@ -3540,8 +3649,51 @@ _BAYES_REGRESSION_BOUNDS = (
 )
 
 
+def _bayes_cure_fit(d):
+    """A Bayesian Weibull mixture-cure regression (the Laplace engine):
+    the default priors on the coefficients."""
+    return sp.WeibullMixtureCure.fit_bayes(
+        d["x"], d["Z"], d.get("c"), d.get("n")
+    )
+
+
+def _bayes_cure_df(d):
+    cols = [f"z{k}" for k in range(d["Z"].shape[1])]
+    df = pd.DataFrame(d["Z"], columns=cols)
+    df["x"], df["c"], df["n"] = d["x"], d["c"], d["n"]
+    return sp.WeibullMixtureCure.fit_bayes_from_df(
+        df, x_col="x", Z_cols=cols, c_col="c", n_col="n"
+    )
+
+
 def _bayes_regression():
     return [
+        regression(
+            "WeibullMixtureCure[bayes]",
+            sp.WeibullMixtureCure,
+            data=cure_data,
+            fitters=("surpyval.bayes.regression.BayesianMixtureCure",),
+            model_class="surpyval.bayes.regression.BayesianMixtureCure",
+            fit=_bayes_cure_fit,
+            paths={"fit_from_df": _bayes_cure_df},
+            rtol=1e-6,
+            slow=REFIT_PROPERTIES,
+            coefficients=_cure_coefficients,
+            intercept=True,
+            exclude={
+                "convergence": "not an optimiser: the Laplace engine "
+                "refuses where the posterior has no peak, and checks its "
+                "normal against the exact posterior "
+                "(tests/bayes/test_laplace.py)",
+                **{
+                    key: "a column the data do not determine is refused, "
+                    "naming its coefficient and saying to leave the column "
+                    "out (a posterior along it would be its prior's), "
+                    "not aliased"
+                    for key in ("aliasing", "aliasing_constant")
+                },
+            },
+        ),
         regression(
             "WeibullPH[bayes]",
             sp.WeibullPH,
@@ -3564,7 +3716,7 @@ def _bayes_regression():
                     for key in ("aliasing", "aliasing_constant")
                 },
             },
-        )
+        ),
     ]
 
 
@@ -3792,6 +3944,7 @@ CASES: list[Case] = (
     + _spline_regression()
     + _distributional()
     + _mixture_cure()
+    + _promotion_time_cure()
     + _equivalence()
     + _zero_inflated()
     + _landmark()
@@ -3799,6 +3952,7 @@ CASES: list[Case] = (
     + _bayes()
     + _bayes_regression()
     + _bayes_recurrent()
+    + _bayes_renewals()
     + _bayes_competing_risks()
     + _bayes_multistate()
     + _panel_count()
@@ -3963,6 +4117,11 @@ def _df_paths():
     paths["CrowAMSAA[bayes]"] = _bayes_col_df(
         rc.CrowAMSAA, ("x", "i", "c", "n")
     )
+    paths["GeneralizedRenewal[bayes]"] = _bayes_col_df(
+        rc.GeneralizedRenewal, ("x", "i", "c", "n")
+    )
+    paths["ARA[bayes]"] = _bayes_col_df(rc.ARA, ("x", "i", "c", "n"), m=2)
+    paths["ARI[bayes]"] = _bayes_col_df(rc.ARI, ("x", "i", "c", "n"), m=1)
     paths["HPP[bayes]"] = _bayes_col_df(
         rc.HPP, ("x", "i", "c", "n"), _bayes_hpp_priors
     )
@@ -4200,6 +4359,7 @@ _REGRESSION_LR_X = {
     "WeibullDistributional": (2.0, 8.0),
     "LogNormalDistributional": (2.0, 8.0),
     "WeibullMixtureCure": (2.0, 8.0),
+    "WeibullPromotionTimeCure": (2.0, 8.0),
     "WeibullZeroInflated": (2.0, 8.0),
 }
 
@@ -4674,6 +4834,16 @@ _DISTRIBUTIONAL_PARAMETERS.update(
 )
 _DISTRIBUTIONAL_PARAMETERS.update(
     {
+        base
+        + "PromotionTimeCure": [
+            *getattr(sp, base).parameter_names,
+            "theta",
+        ]
+        for base in CURE_LATENCIES
+    }
+)
+_DISTRIBUTIONAL_PARAMETERS.update(
+    {
         base + "ZeroInflated": [*getattr(sp, base).parameter_names, "f0"]
         for base in CURE_LATENCIES
     }
@@ -4847,6 +5017,18 @@ def _bounds(case):
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        # The sandwich (Wald) bound and the case bootstrap, on the
+        # coefficients.
+        "RankAFTModel": (
+            Bound("param_cb", kind="coef"),
+            Bound(
+                "param_cb",
+                kind="coef",
+                kwargs={**_BOOT, "method": "bootstrap"},
+                label="param_cb[bootstrap]",
+                wald=False,
+            ),
+        ),
         # The influence-function (Wald) bound and the case bootstrap, on
         # the joint survival and the joint distribution function.
         # (one sweep each for the joint sf and CDF, which are not
@@ -4861,7 +5043,9 @@ def _bounds(case):
         "Dabrowska[prentice-cai]": _BIVARIATE_NP_BOOT,
         "Dabrowska[lin-ying]": _BIVARIATE_NP_BOOT,
         "BayesianRegression": _BAYES_REGRESSION_BOUNDS,
+        "BayesianMixtureCure": _BAYES_REGRESSION_BOUNDS,
         "BayesianRecurrence": _BAYES_RECURRENCE_BOUNDS,
+        "BayesianRenewal": _BAYES_RENEWAL_BOUNDS,
         "BayesianProportionalIntensity": _BAYES_PI_BOUNDS,
         "BayesianCauseSpecific": _BAYES_CAUSES_BOUNDS,
         "BayesianCompetingRisks": _BAYES_CR_BOUNDS,
@@ -5359,6 +5543,7 @@ def _bounds(case):
                 wald=False,
             ),
         )
+
     if cls == "ParametricRecurrenceModel":
         return (
             Bound("cif_cb", point="cif"),
@@ -5747,7 +5932,13 @@ def _starve(case):
     """How ``case``'s fit is starved (see ``Case.starve``), or ``None``."""
     name, fit = case.name, case.fit
     cls = case.model_class.rsplit(".", 1)[-1]
-    if name in ("Turnbull", "BuckleyJames", "CompetingRisks[interval]"):
+    if name in (
+        "Turnbull",
+        "BuckleyJames",
+        "RankAFT",
+        "RankAFT[logrank]",
+        "CompetingRisks[interval]",
+    ):
         # (CompetingRisks[interval]: the self-consistency EM of the NPMLE)
         return lambda d: fit({**d, "max_iter": 1})
     if name.startswith("WeibullAL"):

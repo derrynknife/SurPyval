@@ -10,6 +10,7 @@ from autograd.tracer import isbox
 from numpy.typing import ArrayLike
 
 from surpyval import Weibull
+from surpyval.recurrent.renewal._bayes_fit import RenewalBayesMixin
 from surpyval.recurrent.renewal._derivatives import (
     lifetime_derivatives,
     negated,
@@ -185,7 +186,7 @@ defvjp(
 
 
 @singleton_fitter
-class ARA(RenewalFitMixin):
+class ARA(RenewalBayesMixin, RenewalFitMixin):
     """
     Arithmetic Reduction of Age (ARA) imperfect-repair model of Doyen and
     Gaudoin (2004).

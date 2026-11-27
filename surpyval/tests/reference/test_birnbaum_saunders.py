@@ -133,6 +133,51 @@ def test_far_tails_match_mpmath(alpha, beta):
     assert BS.hf(np.inf, alpha, beta) == 1 / (2 * alpha**2 * beta)
 
 
+def _mp_hf(x, alpha, beta):
+    """The hazard ``J(x) phi(xi) / Q(xi)`` in mpmath, the inverse Mills
+    ratio from its asymptotic series where ``xi`` is above 1e6 (its next
+    term, 706 / xi**9, is below 1e-50 relative there) and from the
+    functions themselves below."""
+    x, a, b = mp.mpf(x), mp.mpf(alpha), mp.mpf(beta)
+    xi = _mp_xi(x, a, b)
+    J = (x + b) / (2 * a * mp.sqrt(b) * x ** mp.mpf(1.5))
+    if xi > 1e6:
+        mills = xi + 1 / xi - 2 / xi**3 + 10 / xi**5 - 74 / xi**7
+    else:
+        mills = mp.npdf(xi) / mp.ncdf(-xi)
+    return J * mills
+
+
+@pytest.mark.parametrize(
+    "x, alpha, beta",
+    [
+        # far out at extreme parameters, where the logs of the density
+        # and survival function are both -inf (the hazard was NaN)
+        (1e300, 4.6e-9, 0.5),
+        (1.7e308, 4.6e-9, 0.5),
+        (1e300, 0.3, 1e-7),
+        (1e10, 1e-12, 3.0),
+        # above the median, where the difference of their logs lost
+        # xi**2 of the precision (6e-10 at x = 1e6)
+        (1e3, 0.3, 4.0),
+        (1e6, 0.3, 4.0),
+        # either side of xi = 1e8, where the series takes over
+        (3.52836e15, 0.3, 4.0),
+        (3.67236e15, 0.3, 4.0),
+        # near and below the median
+        (1.0, 0.5, 10.0),
+        (5.0, 0.5, 10.0),
+        (12.0, 0.5, 10.0),
+    ],
+)
+def test_the_hazard_is_right_however_far_out(x, alpha, beta):
+    # rule fixed before the run: 1e-13 relative
+    mp.mp.dps = 60
+    assert float(BS.hf(np.array([x]), alpha, beta)[0]) == pytest.approx(
+        float(_mp_hf(x, alpha, beta)), rel=1e-13
+    )
+
+
 def test_edges_of_the_support():
     assert BS.sf(0.0, 0.5, 10) == 1.0 and BS.ff(0.0, 0.5, 10) == 0.0
     assert BS.df(0.0, 0.5, 10) == 0.0

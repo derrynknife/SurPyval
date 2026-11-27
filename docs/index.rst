@@ -384,6 +384,7 @@ Contents:
    Equivalent Time Scales
    Zero-Inflated Regression
    Interval-Censored Cox Regression
+   Case-Cohort and Nested Case-Control
    Pseudo-Observations
    Adjusted Survival Curves
    Relative Survival

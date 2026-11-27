@@ -18,9 +18,15 @@ from surpyval.utils import normal as norm
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._quantile import broadcast_values
-from ._stable import on_support, positive_or_one
+from ._stable import normal_hazard, on_support, positive_or_one
 
 _HALF_LOG_2PI = float(0.5 * onp.log(2.0 * onp.pi))
+
+
+#: Above this standardised distance from the median the hazard is taken
+#: from the inverse Mills ratio's series (its next term, 15 / xi**6, is
+#: below 1e-48 there), without forming xi itself, which can overflow.
+_FAR_XI = 1e8
 
 
 def _standard_quantile(alpha: Any, z: Any) -> Any:
@@ -357,11 +363,40 @@ class BirnbaumSaunders_(OptimisedFitMixin, ParametricFitter):
         x_pos = positive_or_one(x)
         top = onp.isposinf(onp.asarray(getval(x_pos), dtype=float))
         x_in = np.where(top, 1.0, x_pos) if onp.any(top) else x_pos
-        # in logs: far above the median the density and the survival
-        # function both underflow, their ratio does not
+        # h = J(x) phi(xi) / Q(xi), J(x) = (x + beta) / (2 alpha sqrt(beta)
+        # x^{3/2}) the density's factor. At and below xi = 1, from the
+        # logs of the density and survival function (no cancellation
+        # there, and 0 where the density underflows near x = 0). Above
+        # it, the difference of the logs loses xi**2 of the precision (6e-10
+        # at x = 1e6 for alpha = 0.3, beta = 4), and from xi of about
+        # 1e154 both are -inf (NaN at x = 1e300 for alpha = 4.6e-9): so
+        # J(x) times the normal hazard of xi, exact for every xi, with J
+        # formed as (1 + beta/x) / (2 alpha sqrt(beta x)); and from xi =
+        # 1e8, where xi may overflow, J(x) xi = (1 + beta/x)(1 - beta/x) /
+        # (2 alpha**2 beta) times the inverse Mills ratio's series in
+        # 1 / xi**2, which tends to the limit 1 / (2 alpha**2 beta).
+        with onp.errstate(over="ignore", invalid="ignore"):
+            xi = self._xi(x_in, alpha, beta)
+        xi_raw = onp.asarray(getval(xi), dtype=float)
+        above = xi_raw > 1.0
+        far = xi_raw > _FAR_XI
+        mid = above & ~far
+        x_low = np.where(above, beta, x_in) if onp.any(above) else x_in
         inside = np.exp(
-            self.log_df(x_in, alpha, beta) - self.log_sf(x_in, alpha, beta)
+            self.log_df(x_low, alpha, beta) - self.log_sf(x_low, alpha, beta)
         )
+        if onp.any(mid):
+            x_mid = np.where(mid, x_in, 2.0 * beta)
+            ratio = beta / x_mid
+            J = (1.0 + ratio) / (2.0 * alpha * np.sqrt(beta * x_mid))
+            mills = normal_hazard(np.where(mid, xi, 2.0))
+            inside = np.where(mid, J * mills, inside)
+        if onp.any(far):
+            ratio = np.where(far, beta / x_in, 0.0)
+            w = 1.0 / np.where(far, xi, _FAR_XI) ** 2
+            series = 1.0 - w * (1.0 - 3.0 * w)
+            tail = (1.0 + ratio) * (1.0 - ratio) / (2.0 * alpha**2 * beta)
+            inside = np.where(far, tail / series, inside)
         if onp.any(top):
             inside = np.where(top, 1.0 / (2.0 * alpha**2 * beta), inside)
         return on_support(x, inside, 0.0)

@@ -5,6 +5,58 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **A mixture's interval and truncation probabilities keep their digits
+  deep in a component's upper tail.** ``MixtureModel`` took an
+  interval-censored row's probability under each component as ``F(r) -
+  F(l)``, and a truncation window's as ``F(tr) - F(tl)``. Where the
+  interval is far out in a component's upper tail both CDFs are close to
+  1, so the difference loses digits: a window of probability 8e-11
+  under a dominant BirnbaumSaunders made the negative log-likelihood
+  121.77324154 where it is 121.77324100 (4.4e-9 relative), and once both
+  CDFs round to 1 the window was 0 and its log was floored at -1e4
+  (a Weibull(10, 2)'s window [64, 67], whose log is -40.98). The mixture
+  now takes each window as the univariate fit does: from the CDFs below
+  the component's median and, above it, from the survival function in
+  log space, ``log S(l) + log(1 - S(r) / S(l))``; the truncation
+  correction is summed over the components in log space too. Each
+  component's window, in both tails and across the median, now agrees
+  with 50-digit arithmetic to 1e-12 relative for the Weibull, LogNormal,
+  Gamma, Gumbel and BirnbaumSaunders (``test_mixture_tail_windows.py``),
+  where the old form was off by up to 1e-6 relative in log space, and
+  the mixture likelihoods by 1e-9 to 1e-7 relative. Untruncated fits on
+  interval data move at rounding level (log-likelihoods by at most 1e-12
+  relative, parameters by 4e-6 relative at most, on two-component
+  Weibull, LogNormal, Gamma and Gumbel fits to 200 inspection
+  intervals). For a very narrow window (a width about 1e-9 of its ends)
+  the log is still good only to 1e-10 to 1e-8, on either side of the
+  median.
+
+- **Some left-truncated mixture fits stop elsewhere, and their labels
+  change.** A left-truncated fit is maximised by a finite-difference
+  search, which is sensitive to the last digits of its objective, so on
+  a likelihood that is flat in some direction it can stop at a
+  different point. A narrow component (narrower than an inspection
+  interval) has a likelihood that is flat in its scale to 1e-13, so
+  that scale is not identified and neither the old nor the new value
+  is an estimate: a truncated Gumbel mixture's narrow scale moved from
+  0.070 to 0.102 for 1.7e-7 in log-likelihood, and both fits are
+  reported "verified", which they should not be (a follow-up). A
+  component heading for a degenerate limit can now reach a different
+  point and label: a truncated Gamma mixture that had stopped
+  "verified" at a degenerate component (shape 7.5e-7, weight 1 -
+  1.3e-6) now reaches a log-likelihood 0.63 higher at an interior
+  point, which it reports "unverified" (``test_mixture_tail_windows.py``
+  pins it); other such fits have gone from "verified" at a degenerate
+  point to a verified interior maximum, or from "verified" to "no finite
+  maximum" at a higher likelihood. A truncated Weibull mixture's
+  parameters moved by 3e-4 relative (log-likelihood 1.5e-8 higher).
+- **A mixture fit warns, with the count, about rows no component
+  explains.** A row (or window) that every component gives probability
+  0 at the fitted parameters, even in log space, adds the floor -1e4 to
+  the log-likelihood under each and nothing to its gradient, so the
+  fit ignores it; ``MixtureModel.fit`` now says how many there are and
+  what to check.
+
 - **A Bayesian regression's posterior no longer depends on a covariate's
   unit.** The regressions' ``fit_bayes`` (proportional hazards,
   accelerated failure time, and each cause's or transition's fit in
@@ -431,6 +483,134 @@ v0.30 (unreleased)
   228 s to 25 s and moved that covariate's coefficient by 0.1 of its
   standard error (see "Grouping a covariate measured at every visit" in
   the multi-state guide).
+- **Inverse Gaussian and positive stable shared frailties:
+  ``family="inverse_gaussian"`` and ``family="positive_stable"``** for
+  ``Frailty(dist, family=...)``, ``CoxFrailty.fit(..., family=...)`` and
+  ``frailty=`` on ``CrowAMSAA``, ``Duane``, ``CoxLewis`` and
+  ``ProportionalIntensityNHPP``. The inverse Gaussian frailty has mean 1
+  and variance ``theta``; the positive stable one has Laplace transform
+  ``exp(-s^(1 - theta))``, no finite mean, ``theta`` equal to Kendall's
+  tau, and a population curve that is still one of proportional hazards,
+  with the coefficients multiplied by ``1 - theta``. Each group's integral
+  is a closed form of the Laplace transform's derivatives (whole counts
+  only; at most 1000 events in a group for the positive stable, whose
+  recursion costs the square of the count), checked against direct integration over the frailty's density
+  and, for the positive stable, arbitrary-precision derivatives. The Cox
+  fit of these families is EM on the full likelihood (Breslow's ties),
+  with standard errors from its observed information; where ``theta`` is
+  estimated at its boundary 0 the fit is the one without frailty, with a
+  warning, and ``theta`` has no Wald standard error. Not yet for these
+  families: penalised fits, ``diagnose()``, ``JointFrailty``, and, for
+  the positive stable frailty of repairable units, the population's mean
+  count (infinite) and intervals on each cluster's frailty. No number of
+  the gamma or log-normal fits changes (compared to the last digit on 30
+  fits).
+
+- **Bayesian fits of the renewal and imperfect-repair processes:
+  ``GeneralizedRenewal.fit_bayes``, ``ARA.fit_bayes`` and
+  ``ARI.fit_bayes``.** Priors on the repair parameter (Kijima's ``q``,
+  ARA's and ARI's ``rho``), from judgement, and on the life (or the
+  baseline intensity), for example from a non-repairable fit by
+  ``prior.from_model(life_fit)``. The result,
+  ``surpyval.recurrent.renewal.bayes.BayesianRenewal``, states the
+  posterior probability that the repair parameter is near each end of
+  its range (``repair_mass(within)``: perfect and minimal repair), gives
+  each unit's next failure from its own history (``next_failure_sf``,
+  ``next_failure_cri``, ``next_failure_qf``) and the predictive number
+  of failures in the next period (``count``), with the uncertainty in
+  the parameters included (``count``'s Monte Carlo error is in its
+  ``mean_se``). It warns where the data say little about the repair
+  (its posterior 95% interval at least 75% as wide as its prior's). The
+  repair parameter with no prior is
+  uniform over its range (a Kijima ``q`` from 0 to 2). With a
+  two-parameter life the posterior is exact, on a new grid laid out
+  slice by slice along the repair parameter
+  (``surpyval.recurrent.renewal.bayes.sliced_grid``), which follows the
+  long tail of mass piled against an end of the range; beyond three
+  free parameters, the Laplace approximation. Checked against a
+  brute-force integration, the maximum-likelihood fit, the identity of
+  Kijima I with ARA of memory 1, a frozen PyMC reference and
+  simulation-based calibration; see
+  "Repairable systems: how good is a repair?" in
+  :doc:`Bayesian Fitting with SurPyval`.
+- **A Bayesian fit no longer reports a prior conflict for an estimate
+  on an end of its parameter's range** (a repair efficiency or a
+  proportion of exactly 0 or 1) where the prior gives that end at least
+  1% of the density it gives the middle of its 90% interval (a uniform
+  prior): a central prior interval never holds an end of the range, so
+  every such fit warned that "the data disagree with the prior". A
+  prior whose density vanishes at the end still reports the conflict.
+
+- **Rank-based semi-parametric AFT regression: ``RankAFT``.** A second
+  accelerated-failure-time estimator with no assumed error distribution,
+  beside ``BuckleyJames``: it solves the Gehan (default) or log-rank
+  estimating equations of the residuals' ranks (``rank_weights=``), with
+  induced smoothing (Brown and Wang) for sandwich standard errors, so
+  ``summary()``, ``covariance()``, ``standard_errors()`` and
+  ``param_cb()`` (Wald, or ``method="bootstrap"``) need no resampling.
+  The log-rank root is the fixed point of weighted Gehan refits from the
+  Gehan estimate. Predictions (``sf``, ``ff``, ``Hf``, ``qf``, ``cs``)
+  read the residual Kaplan-Meier, as ``BuckleyJames``'s do, and the two
+  now share that code (``BuckleyJames``'s numbers are unchanged).
+  Checked against exact linear-programme solutions, least squares,
+  ``BuckleyJames`` and a seeded simulation (see the docs page).
+- **``MixtureCure(dist).fit_bayes``** (and ``fit_bayes_from_df``): the
+  mixture-cure regression's Bayesian fit, priors on the latency, on
+  ``lfp_p`` and on the coefficients (a coefficient given none gets
+  ``Normal(0, 2.5 / sd)``; ``lfp_p`` given none is uniform on (0, 1),
+  and a prior flat on its logit is refused, as that posterior has no
+  finite mass on any data), by the Laplace approximation with its
+  checks; where the approximation cannot be trusted (Pareto k above
+  0.7) the fit refuses, saying what to do.
+  The result, ``surpyval.bayes.regression.BayesianMixtureCure``, has the
+  regressions' predictions and ``cure_probability(Z)`` and
+  ``cure_cri(Z)`` for the cured fraction. It warns when follow-up is too
+  short to identify the cure fraction (Maller and Zhou's check) and, as
+  the maximum-likelihood fit does, when the data show no cured fraction.
+  See "Cured fractions and
+  mixtures" in :doc:`Bayesian Fitting with SurPyval`.
+- **``MixtureModel.fit_bayes`` refuses**, saying why (label switching:
+  the posterior has a peak for every numbering of the components) and
+  pointing to the new **``surpyval.pymc.mixture_likelihood``** (and
+  ``mixture_log_likelihood``): a mixture's exact censored and truncated
+  likelihood in PyMC, its components numbered in order of one parameter
+  (by default the family's scale or location, in the direction that
+  puts the shortest life first: a Weibull's ``alpha`` increasing, an
+  Exponential's rate decreasing; ``order=`` is needed for a Gompertz). It
+  equals ``MixtureModel``'s own log-likelihood to 1e-10. See "Mixtures"
+  in :doc:`PyMC with SurPyval`.
+
+- **Promotion-time (bounded cumulative hazard) cure regression:
+  ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
+  ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,
+  ``GammaPromotionTimeCure`` and ``ExponentialPromotionTimeCure``
+  built. The survival is ``exp(-theta(z) F0(t))`` for a lifetime
+  distribution ``F0``, so a fraction ``exp(-theta(z))`` never fails; by
+  default the covariates act on ``theta`` through a log link, which
+  makes it a proportional hazards model with a bounded baseline
+  cumulative hazard (``exp(coef)`` a hazard ratio). It sits beside
+  ``MixtureCure`` and shares its interface: ``cure_probability``,
+  ``susceptible_probability``, ``cure_given_survival``,
+  ``susceptible=True``, ``follow_up()``, every bound type, the saved
+  form, and a warning when follow-up shows no plateau. Checked against
+  an independently written likelihood, its limit with no cure
+  (``WeibullPH``) and simulation; see :doc:`Mixture-Cure Regression`.
+- **Cox fits to case-cohort and nested case-control samples:
+  ``CoxPH.fit_case_cohort`` and ``CoxPH.fit_nested_case_control``.** A
+  case-cohort sample (a random subcohort plus every case) is fitted by
+  Prentice's, Self and Prentice's, Lin and Ying's or Barlow's estimator,
+  or, for a subcohort drawn within strata, Borgan's I or II, each with
+  its design-based variance, with delayed entry; the coefficients and
+  standard errors match R's ``survival::cch`` (and ``coxph`` with
+  Barlow's weights) on the Wilms tumour example to about 1e-9. Its
+  baseline is weighted to stand for the cohort, so the curves are given
+  (their bounds refuse). A nested case-control sample (each case with
+  controls drawn from its risk set) is fitted by the conditional logistic
+  likelihood, as ``clogit``; it has no baseline, so its curves refuse.
+  See :doc:`Case-Cohort and Nested Case-Control`.
+- ``WeightedCox`` (internal) takes a multiplier ``rho`` of a row's
+  place in the risk sums only (an offset of ``log rho``), which the
+  case-cohort fits use; its default 1 changes nothing.
 - **``fit_bayes_from_df`` for the competing-risks and multi-state
   fitters.** ``ParametricCompetingRisks``,
   ``ParametricCompetingRisksRegression``, ``ParametricMultiState`` and
@@ -482,6 +662,20 @@ v0.30 (unreleased)
   third coefficient vector), and ``discrete_time_nll`` equals the negative
   log-likelihood of ``DiscreteWeibull`` and ``Geometric`` at their
   hazards; gradients agree with finite differences.
+- **The mean life under a stress profile in ``BayesianProcessModel``.**
+  ``mean(profile)`` and ``mean_cri(profile)`` (a ``StepSchedule`` as
+  ``Z``) are computed at every posterior point at once, where they
+  refused and pointed to ``function_cri(lambda m: m.mean(profile))``:
+  the sum over the profile's steps of the step's stretch of the
+  reference-clock survival's integral over its pace. The Wiener
+  process's stretch is in closed form (the Inverse Gaussian's partial
+  mean, derived in ``_wiener_partial_life``), the gamma process's one
+  integral on a fixed Gauss-Legendre rule. Checked against adaptive
+  quadrature (1e-9), against the fitted model's own mean through the
+  profile at each posterior point (1e-7, fixed and cyclic profiles), a
+  step with the clock all but stopped against a direct integration of
+  the calendar survival (1e-9), and a constant profile against the
+  constant stress (1e-8).
 
 - **``surpyval.utils.dates_to_durations``: dates to durations and
   censoring flags.** Start dates, end dates (a blank meaning still
@@ -1520,6 +1714,38 @@ v0.30 (unreleased)
 
 **Fixed.**
 
+- **The Bayesian renewal and mixture-cure fits follow the DataFrame and
+  serialisation conventions.** ``MixtureCure.fit_bayes_from_df`` names
+  its columns (``x_col``, ``Z_cols``, ``c_col``, ``n_col``, ``tl_col``,
+  ...) as the regression fitters' does; ``fit_bayes`` of ``ARA``, ``ARI``
+  and ``GeneralizedRenewal`` takes ``unit=``; ``BayesianRenewal`` and
+  ``BayesianMixtureCure`` are on the serialisation page with round-trip
+  tests.
+
+- **``BirnbaumSaunders.hf`` is right however far out.** Far above the
+  median the hazard was taken as the difference of the logs of the
+  density and the survival function. That lost about ``xi**2`` of the
+  precision (6e-10 relative at x = 1e6 for ``alpha = 0.3``, ``beta =
+  4``), and at extreme parameters both logs are ``-inf``: at x = 1e300
+  with ``alpha = 4.6e-9``, or with ``beta = 1e-7``, it was NaN where the
+  hazard is its limit ``1 / (2 alpha^2 beta)``. Above ``xi = 1`` it is
+  now the density's factor times the normal hazard of ``xi`` (exact for
+  every ``xi``), and above ``xi = 1e8`` the inverse Mills ratio's series
+  in a form that never forms ``xi``; it agrees with 60-digit arithmetic
+  to 1e-13 at every point checked, from below the median to x = 1.7e308.
+- **A strong prior far from the estimate no longer refuses a Bayesian
+  fit.** A prior given as a distribution (``sp.Normal.from_params([0,
+  0.02])`` on a coefficient the data put at 1.36, 68 of its standard
+  deviations away) had its log density taken as ``log(df)``, which
+  underflows to ``-inf`` past about 38 standard deviations, and only the
+  maximum-likelihood fit and the priors' centre were tried as starts, so
+  the fit was refused ("No starting point"). The log density is now the
+  distribution's own ``log_df``, and the maximum-likelihood start with
+  each prior-bearing parameter moved to its prior's centre is tried too.
+  The case above now fits, its posterior within the Laplace engine's
+  stated accuracy of a brute-force lattice posterior (0.27 standard
+  deviations at most, against 0.1 of the 95% interval's width).
+
 - **``fit_best`` no longer warns that a default candidate was set aside
   when a regular fit was chosen.** With the GeneralizedF among the
   default candidates, ordinary Weibull samples of 40 to 50 observations
@@ -1682,6 +1908,19 @@ v0.30 (unreleased)
   Python's own error. Use ``surpyval.EventHistoryData``.
 
 **Changed.**
+
+- **``surpyval.torch.cox_nll`` stays finite and keeps exact gradients at
+  wide risk-score spreads and with delayed entry.** Efron's tied-failure
+  sum now shifts each failure time by its own maximum rather than the
+  batch's ``eta.max()`` (avoiding underflow to Breslow and ``nan``/``inf``
+  gradients when an unrelated row has a much larger risk score), and
+  delayed-entry risk sets are summed directly rather than by subtracting
+  the not-yet-entered suffix sum (avoiding cancellation when a
+  late-entering row has a large risk score). The delayed-entry risk sets
+  keep the fast suffix-sum path and are summed directly only at the
+  failure times where the subtraction would cancel, so a batch with
+  delayed entry stays O((N + T) log N): 0.07 s instead of 16 s for 50,000
+  rows.
 
 - **No warning on a spline bend whose spread is estimated at 0.**
   Joint models on a ``SplinePath`` with bends in ``varying`` warned

@@ -987,6 +987,8 @@ def _search_cox_frailty(model, data):
     fit = {k: data[k] for k in ("x", "Z", "c", "n", "groups")}
     n_obs = float(np.sum(data["n"]))
     tie_method = model.tie_method
+    # (refitted in the model's own family, whose likelihood it reports)
+    fit["family"] = model.family
     if model.theta == 0:
         cox = sp.CoxPH.fit(
             data["x"], data["Z"], data["c"], data["n"], tie_method=tie_method
@@ -1549,6 +1551,7 @@ SEARCHES: dict[str, Callable] = {
     "ParametricRegressionModel": _search_regression,
     "DistributionalRegressionModel": _search_regression,
     "MixtureCureModel": _search_regression,
+    "PromotionTimeCureModel": _search_regression,
     "ZeroInflatedModel": _search_regression,
     "FrailtyModel": _search_frailty,
     "CoxFrailtyModel": _search_cox_frailty,

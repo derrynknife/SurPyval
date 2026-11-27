@@ -75,14 +75,18 @@ from ..kinds import PROPORTIONAL_HAZARD
 from ..proportional_hazards.cox_likelihood import strata_labels
 from ..regression_data import FrameDesign
 from .families import (
+    LAPLACE_FAMILIES,
     check_family,
+    laplace_log_integral,
     lognormal_log_integral,
     lognormal_posterior_mean,
+    posterior_mean,
+    whole_counts,
 )
 from .frailty_model import FrailtyModel
 
 
-def _make_transforms(dist: Any, k_dist: int) -> tuple[
+def _make_transforms(dist: Any, k_dist: int, family: str = "gamma") -> tuple[
     Callable[[npt.NDArray, int], npt.NDArray],
     Callable[..., npt.NDArray],
 ]:
@@ -90,8 +94,11 @@ def _make_transforms(dist: Any, k_dist: int) -> tuple[
 
     Baseline parameters follow the distribution's bounds (log for a positive
     parameter, logit for a ``(0, 1)`` parameter, identity otherwise); the
-    coefficients are unconstrained; ``theta`` is positive, so log.
+    coefficients are unconstrained; ``theta`` is positive, so log, except
+    the positive stable frailty's, ``1 - alpha`` in (0, 1), so logit (which
+    is ``log theta`` to within ``theta`` as ``theta -> 0``).
     """
+    stable = family == "positive_stable"
     forms = []
     for low, high in dist.bounds[:k_dist]:
         if low == 0 and high is None:
@@ -112,7 +119,10 @@ def _make_transforms(dist: Any, k_dist: int) -> tuple[
             else:
                 out.append(v)
         out.extend(nat[k_dist : k_dist + n_beta])  # beta: identity
-        out.append(np.log(nat[-1]))  # theta: log
+        if stable:
+            out.append(np.log(nat[-1] / (1 - nat[-1])))  # theta: logit
+        else:
+            out.append(np.log(nat[-1]))  # theta: log
         return np.array(out, dtype=float)
 
     def to_nat(unc: npt.NDArray, n_beta: int, ops: Any = None) -> npt.NDArray:
@@ -128,7 +138,10 @@ def _make_transforms(dist: Any, k_dist: int) -> tuple[
             else:
                 out.append(v)
         out.extend(unc[k_dist + i] for i in range(n_beta))
-        out.append(xp.exp(unc[-1]))
+        if stable:
+            out.append(1.0 / (1.0 + xp.exp(-unc[-1])))
+        else:
+            out.append(xp.exp(unc[-1]))
         return xp.array(out)
 
     return to_unc, to_nat
@@ -205,6 +218,9 @@ def _group_frailty_ll(
     xp = (ops or _NUMPY).np
     if family == "lognormal":
         return lognormal_log_integral(D, H, theta, ops)
+    if family in LAPLACE_FAMILIES:
+        # closed forms (``families.py``), which tend to -H as theta -> 0
+        return laplace_log_integral(family, D, H, theta)
     if theta * max(xp.max(H), np.max(D), 1.0) ** 2 < _EPS:
         # theta is too small to change any group's term by more than
         # rounding (each correction to the no-frailty value -H is of order
@@ -218,6 +234,58 @@ def _group_frailty_ll(
 
 
 _EPS = float(np.finfo(float).eps)
+
+
+def _held_covariance(
+    nll_nat: Callable, nat: npt.NDArray
+) -> "npt.NDArray | None":
+    """The covariance of every parameter but ``theta``, with ``theta`` held
+    at its boundary 0 (where the model is the one without frailty), and
+    ``nan`` in ``theta``'s row and column: ``theta`` on its boundary has
+    no Wald standard error (its estimate's distribution there is half a
+    point mass at 0), so none is reported. The others' is the inverse of
+    the information of the model without frailty, by the numerical
+    Hessian of the fit's own fallback (steps from the likelihood's
+    curvature)."""
+    k = nat.size - 1
+    base = np.array(nat, dtype=float)
+    base[-1] = 0.0
+
+    def reduced(v: npt.NDArray) -> float:
+        return nll_nat(np.r_[v, 0.0])
+
+    out = np.full((k + 1, k + 1), np.nan)
+    with np.errstate(all="ignore"):
+        try:
+            steps = 1e-5 * np.maximum(np.abs(base[:k]), 1.0)
+            scales = curvature_scales(reduced, base[:k])
+            usable = np.isfinite(scales) & (scales > 0)
+            steps = np.where(usable, 1e-3 * scales, steps)
+            cov = np.linalg.inv(
+                numerical_hessian(reduced, base[:k], step=steps)
+            )
+        except np.linalg.LinAlgError:
+            return out
+    if np.all(np.isfinite(cov)):
+        out[:k, :k] = cov
+    return out
+
+
+def _warn_boundary(family: str, n_groups: int) -> None:
+    """Say that ``theta`` is on its boundary 0 (no detectable frailty) and
+    what that means for its inference."""
+    warnings.warn(
+        "The {} frailty's theta is estimated at its boundary 0: the {} "
+        "groups differ no more than the model without frailty allows, so "
+        "the fit is that model (every frailty 1). theta has no Wald "
+        "standard error or interval there (nan); test theta = 0 by the "
+        "likelihood ratio against the fit without frailty, whose null "
+        "distribution on the boundary is a 50:50 mixture of 0 and "
+        "chi-square(1) (Self and Liang 1987): halve chi-square(1)'s "
+        "p-value.".format(family.replace("_", " "), n_groups),
+        UserWarning,
+        stacklevel=caller_stacklevel(),
+    )
 
 
 def _settle_on_zero_variance(fun: Callable, res: Any) -> Any:
@@ -250,7 +318,9 @@ def _settle_on_zero_variance(fun: Callable, res: Any) -> Any:
     return res
 
 
-def _at_zero_variance(fun: Callable, res: Any, n_obs: float) -> bool:
+def _at_zero_variance(
+    fun: Callable, res: Any, n_obs: float, away_at: float = np.log(1e-6)
+) -> bool:
     """Whether the fit is a maximum on the boundary ``theta = 0``, where
     the model is the one without frailty, so that ``theta`` is left out of
     the check of its gradient and Hessian (``judge_search``'s ``held``).
@@ -261,12 +331,13 @@ def _at_zero_variance(fun: Callable, res: Any, n_obs: float) -> bool:
     ``theta`` moves further towards 0 (a factor ``e^10``, as
     ``_settle_on_zero_variance`` steps), and a maximum there when moving
     ``theta`` off it, to ``1e-6`` (its natural unit being 1), does not
-    raise the likelihood.
+    raise the likelihood. ``away_at`` is ``theta = 1e-6`` on the search
+    scale (its log, or its logit for the positive stable frailty).
     """
     u = np.array(res.x, dtype=float)
     toward, away = u.copy(), u.copy()
     toward[-1] -= 10.0
-    away[-1] = np.log(1e-6)
+    away[-1] = away_at
     return at_boundary_maximum(fun, u, toward, away, 1e-6, n_obs)
 
 
@@ -526,6 +597,9 @@ class FrailtyFitter(FitterRepr):
         (array([0.399]), 0.432)
         """
         x, Zm, c, w, labels, inv = grouped_data(x, Z, c, n, groups)
+        if self.family in LAPLACE_FAMILIES:
+            # (refused here, before the search, rather than inside it)
+            whole_counts(np.bincount(inv, weights=w * (c == 0)), self.family)
         # The times inside the baseline's support, as for the other
         # parametric regressions (#565)
         check_baseline_support(
@@ -565,7 +639,7 @@ class FrailtyFitter(FitterRepr):
             Zc = Zc[:, kept]
             n_beta = kept.size
 
-        to_unc, to_nat = _make_transforms(self.dist, self.k_dist)
+        to_unc, to_nat = _make_transforms(self.dist, self.k_dist, self.family)
 
         if init is None:
             base = self.dist.fit(x=x, c=c, n=w).params
@@ -648,7 +722,16 @@ class FrailtyFitter(FitterRepr):
         n_weighted = float(np.sum(w))
         held = (
             (res.x.size - 1,)
-            if _at_zero_variance(obj_unc, res, n_weighted)
+            if _at_zero_variance(
+                obj_unc,
+                res,
+                n_weighted,
+                (
+                    np.log(1e-6 / (1 - 1e-6))
+                    if self.family == "positive_stable"
+                    else np.log(1e-6)
+                ),
+            )
             else ()
         )
         verdict = finish_search(
@@ -678,6 +761,8 @@ class FrailtyFitter(FitterRepr):
         H = np.bincount(inv, weights=w * eta * H0, minlength=n_groups)
         if self.family == "lognormal":
             post = lognormal_posterior_mean(D, H, theta)
+        elif self.family in LAPLACE_FAMILIES:
+            post = posterior_mean(self.family, D, H, theta)
         else:
             # (D + 1/theta) / (H + 1/theta), written to stay finite (and
             # tend to 1) as theta -> 0
@@ -726,6 +811,11 @@ class FrailtyFitter(FitterRepr):
                     covariance = cov
             except np.linalg.LinAlgError:
                 covariance = None
+        if held and self.family in LAPLACE_FAMILIES:
+            theta = 0.0
+            post = np.ones(n_groups)
+            covariance = _held_covariance(nll_nat, nat)
+            _warn_boundary(self.family, n_groups)
 
         if len(aliased):
             # Back to one entry per column of Z, nan where aliased.
@@ -871,6 +961,12 @@ class FrailtyFitter(FitterRepr):
         from ._penalised_frailty import fit_frailty_penalised
 
         refuse_weights(w)
+        if self.family in LAPLACE_FAMILIES:
+            raise ValueError(
+                "The penalised frailty fit takes family='gamma' or "
+                "'lognormal'; family={!r} is fitted without a penalty "
+                "(leave out 'penalizer').".format(self.family)
+            )
         if Z is None:
             raise ValueError(
                 "fit_penalised penalises the coefficients of Z, and no Z was "

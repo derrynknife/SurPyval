@@ -38,9 +38,14 @@ def Frailty(distribution: Any, family: str = "gamma") -> FrailtyFitter:
         The frailty distribution: ``"gamma"`` (the default), mean 1 and
         variance ``theta``; or ``"lognormal"``, ``u = exp(w)`` with ``w``
         normal of mean 0 and variance ``theta``, the parameterisation of
-        R's ``frailtypack`` (``RandDist = "LogN"``) and ``coxme``.
-        ``frailty_variance`` (``Var(u) / E(u)^2``) and ``kendall_tau``
-        compare the two; so does ``aic()``.
+        R's ``frailtypack`` (``RandDist = "LogN"``) and ``coxme``; or
+        ``"inverse_gaussian"``, mean 1 and variance ``theta``; or
+        ``"positive_stable"``, Laplace transform ``exp(-s^(1 - theta))``,
+        with no finite mean, ``theta`` Kendall's tau and the population
+        curve one of proportional hazards with the coefficients times
+        ``1 - theta``. ``kendall_tau`` compares the families (and
+        ``frailty_variance``, ``Var(u) / E(u)^2``, all but the positive
+        stable); so does ``aic()``.
 
     Returns
     -------

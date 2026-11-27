@@ -304,6 +304,15 @@ PENDING: tuple[Pending, ...] = (
         "distribution that Buckley-James does not.",
     ),
     Pending(
+        "rank-based AFT regressions",
+        _instance_of(_REG + "rank_aft.rank_aft.RankAFTModel"),
+        "Check the covariates' effects with diagnose() on an AFT fit of "
+        "the same data (WeibullAFT, LogNormalAFT, ...), which assumes a "
+        "distribution that the rank estimator does not, and compare the "
+        "coefficients with BuckleyJames.fit on the same data, which "
+        "estimates the same ones.",
+    ),
+    Pending(
         "parametric competing-risks regressions as a whole",
         _instance_of(
             "surpyval.univariate.competing_risks.regression."

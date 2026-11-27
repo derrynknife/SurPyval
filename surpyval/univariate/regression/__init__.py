@@ -93,6 +93,7 @@ from .proportional_odds import (
     WeibullPO,
 )
 from .quantile import QuantileRegression, QuantileRegressionModel
+from .rank_aft import RankAFT, RankAFTModel
 from .royston_parmar_regression import (
     RoystonParmarPH,
     RoystonParmarPO,
@@ -115,6 +116,8 @@ _ON_FIRST_USE = {
             "DistributionalRegressionModel",
             "MixtureCureFitter",
             "MixtureCureModel",
+            "PromotionTimeCureFitter",
+            "PromotionTimeCureModel",
             "ZeroInflatedFitter",
             "ZeroInflatedModel",
         ),
@@ -177,6 +180,9 @@ __all__ = [
     # Buckley-James semi-parametric AFT
     "BuckleyJames",
     "BuckleyJamesModel",
+    # Rank-based (Gehan and log-rank) semi-parametric AFT
+    "RankAFT",
+    "RankAFTModel",
     # Censored quantile regression (Peng-Huang, Portnoy)
     "QuantileRegression",
     "QuantileRegressionModel",
