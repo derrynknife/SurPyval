@@ -1174,6 +1174,30 @@ def _frailty_family():
             },
         )
     )
+    # The inverse Gaussian and positive stable frailties, whose group
+    # integrals are closed forms of the Laplace transform's derivatives.
+    for family in ("inverse_gaussian", "positive_stable"):
+        fitter = sp.Frailty(sp.Weibull, family=family)
+        out.append(
+            replace(
+                out[0],
+                name=f"WeibullFrailty[{family}]",
+                fitters=(),
+                fit=_fit(fitter),
+                paths={
+                    "fit_from_df": lambda d, f=fitter: f.fit_from_df(
+                        pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                            x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                        ),
+                        x_col="x",
+                        group_col="g",
+                        Z_cols=["z0", "z1"],
+                        c_col="c",
+                        n_col="n",
+                    )
+                },
+            )
+        )
     return out
 
 
@@ -1499,10 +1523,36 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+    # The inverse Gaussian and positive stable frailties (EM on the full
+    # likelihood with Breslow's ties).
+    laplace_cox = [
+        replace(
+            cox_frailty,
+            name=f"CoxFrailty[{family}]",
+            fitters=(),
+            fit=_fit(sp.CoxFrailty, family=family, tie_method="breslow"),
+            paths={
+                "fit_from_df": lambda d, fam=family: sp.CoxFrailty.fit_from_df(
+                    pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                        x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                    ),
+                    x_col="x",
+                    group_col="g",
+                    Z_cols=["z0", "z1"],
+                    c_col="c",
+                    n_col="n",
+                    family=fam,
+                    tie_method="breslow",
+                )
+            },
+        )
+        for family in ("inverse_gaussian", "positive_stable")
+    ]
     return [
         cox,
         strat,
         cox_frailty,
+        *laplace_cox,
         cox_me,
         ah,
         bj,

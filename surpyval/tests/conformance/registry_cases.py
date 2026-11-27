@@ -1949,6 +1949,7 @@ def _recurrent():
         ("CrowAMSAA", "gamma"),
         ("CoxLewis", "gamma"),
         ("Duane", "lognormal"),
+        ("CrowAMSAA", "inverse_gaussian"),
     ):
         fitter = getattr(rc, name)
         out.append(
