@@ -13,6 +13,20 @@ build:
     # nodejs: "20"
     # rust: "1.70"
     # golang: "1.20"
+  jobs:
+    # Build matplotlib's font cache before sphinx runs. On a fresh build
+    # machine the first import prints "Matplotlib is building the font
+    # cache" to stderr, and with fail_on_warning that one line fails the
+    # whole build.
+    post_install:
+      - python -c "import matplotlib.pyplot"
+    # Read the Docs stops a free project's build at 15 minutes, and the
+    # pages execute their code as they build (about 12 minutes in series).
+    # Build them in parallel (every extension here is parallel-read safe).
+    # Same command Read the Docs runs by default, plus -j auto.
+    build:
+      html:
+        - python -m sphinx -T -W --keep-going -j auto -b html -d _build/doctrees -D language=en docs $READTHEDOCS_OUTPUT/html
 
 # Build documentation in the "docs/" directory with Sphinx
 sphinx:

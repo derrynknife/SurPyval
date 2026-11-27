@@ -15,6 +15,16 @@ which holds every cause's parameters at once, so the causes are fitted
 together here: one maximum-likelihood search over all of their parameters,
 with the joint inverse Hessian as the covariance.
 
+A row found failed in :math:`(a, b]` whose cause is not known (``e``
+missing) contributes the probability that the first failure of any cause
+fell in the window, the sum of those over the causes,
+
+.. math::
+    \\sum_k \\left(\\mathrm{CIF}_k(b) - \\mathrm{CIF}_k(a)\\right)
+    = S(a) - S(b),
+
+the all-cause survival over the window, which needs no quadrature.
+
 The integral is taken as :meth:`ParametricCompetingRisks.cif` takes it, on
 the cause's own probability scale :math:`p = F_k(u)`, where the integrand
 is the other causes' survival, bounded by 1. The quadrature is
@@ -134,6 +144,13 @@ class _CauseRows:
     # nodes, and the weights, one row per window, zero-padded
     U_at: list = field(default_factory=list)
     W: npt.NDArray = field(default_factory=lambda: np.zeros((0, 0)))
+    # which of the prepared (merged) rows each exact and window row is
+    index_exact: npt.NDArray = field(
+        default_factory=lambda: np.zeros(0, dtype=int)
+    )
+    index_window: npt.NDArray = field(
+        default_factory=lambda: np.zeros(0, dtype=int)
+    )
 
 
 @dataclass
@@ -153,6 +170,24 @@ class JointData:
     n_obs: float
     n_ic: float
     bounds: list = field(default_factory=list)
+    # failures found in a window whose cause is not known: count and
+    # every cause's view of each window's ends (a, b]
+    n_unknown: npt.NDArray = field(default_factory=lambda: np.zeros(0))
+    unknown_a: list = field(default_factory=list)
+    unknown_b: list = field(default_factory=list)
+    # which of the prepared (merged) rows each censored, entry and
+    # unknown-cause row is, so a row's entry term can be carried into its
+    # own log-likelihood (WAIC and leave-one-out a row)
+    index_censored: npt.NDArray = field(
+        default_factory=lambda: np.zeros(0, dtype=int)
+    )
+    index_entry: npt.NDArray = field(
+        default_factory=lambda: np.zeros(0, dtype=int)
+    )
+    index_unknown: npt.NDArray = field(
+        default_factory=lambda: np.zeros(0, dtype=int)
+    )
+    n_rows: int = 0
 
     def adapt(self, theta: npt.NDArray) -> None:
         """Set every window's quadrature for the parameters ``theta``."""
@@ -264,11 +299,11 @@ def prepare(
     index = {k: i for i, k in enumerate(causes)}
     ci = np.array([-1 if v is None else index[v] for v in e], dtype=float)
     window = (c == -1) | (c == 2)
-    if (window & (ci == -1)).any():
+    if ((c == 0) & (ci == -1)).any():
         raise ValueError(
-            "A left- or interval-censored row (c = -1 or 2) needs its "
-            "cause in 'e': a failure in a window from an unknown cause is "
-            "not supported. Give each such row its cause, or drop it."
+            "An exact failure (c = 0) needs its cause in 'e'; a missing "
+            "event is a censored row (c = 1) or a failure in a window from "
+            "an unknown cause (c = -1 or 2)."
         )
 
     # Rows with the same values are one row with their counts summed.
@@ -300,10 +335,14 @@ def prepare(
                 n_window=n[win],
                 a=np.where(c[win] == -1, tl[win], xl[win]),
                 b=xr[win],
+                index_exact=np.flatnonzero(ex),
+                index_window=np.flatnonzero(win),
             )
         )
     cens = c == 1
     entry = np.isfinite(tl)
+    unknown = window & (ci == -1)
+    a_unknown = np.where(c[unknown] == -1, tl[unknown], xl[unknown])
     bounds: list = []
     for d in dists:
         bounds += list(d.bounds)
@@ -320,6 +359,13 @@ def prepare(
         n_obs=float(n.sum()),
         n_ic=float(ic_sample_size(c, n)),
         bounds=bounds,
+        n_unknown=n[unknown],
+        unknown_a=views(a_unknown),
+        unknown_b=views(xr[unknown]),
+        index_censored=np.flatnonzero(cens),
+        index_entry=np.flatnonzero(entry),
+        index_unknown=np.flatnonzero(unknown),
+        n_rows=int(n.size),
     )
 
 
@@ -367,6 +413,17 @@ def neg_ll(theta: Any, data: JointData) -> Any:
                 rows.n_window
                 * anp.log(window_probability(i, rows, data, params))
             )
+    if data.n_unknown.size:
+        # A failure of some cause in (a, b]: S(a) - S(b), the all-cause
+        # survival over the window, as log S(a) + log(1 - S(b) / S(a)).
+        H_a = 0.0
+        H_b = 0.0
+        for j in range(K):
+            H_a = H_a + _H(dists[j], data.unknown_a[j], params[j])
+            H_b = H_b + _H(dists[j], data.unknown_b[j], params[j])
+        ll = ll + anp.sum(
+            data.n_unknown * (-H_a + anp.log(-anp.expm1(H_a - H_b)))
+        )
     return -ll
 
 

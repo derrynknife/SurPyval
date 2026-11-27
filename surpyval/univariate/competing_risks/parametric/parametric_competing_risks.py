@@ -138,16 +138,84 @@ def _validate(
     e = np.asarray(e, dtype=object)
     check_e_and_x(e, x[:, 0] if x.ndim == 2 else x)
     if any(ev is not None for ev in e[c == 1]) or any(
-        ev is None for ev in e[c != 1]
+        ev is None for ev in e[c == 0]
     ):
         raise ValueError(
             "A missing event type (None / NaN) is allowed only for a "
-            "censored observation (c = 1), and every censored observation "
-            "must have one: a failure, exact (c = 0) or in a window (c = -1 "
-            "or 2), needs its cause in 'e'. (A window with no upper end, "
-            "[xl, inf], is a unit right censored at xl.)"
+            "censored observation (c = 1) or a failure found in a window "
+            "from an unknown cause (c = -1 or 2), and every censored "
+            "observation must have one: an exact failure (c = 0) needs "
+            "its cause in 'e'. (A window with no upper end, [xl, inf], is "
+            "a unit right censored at xl.)"
         )
     return x, c, n, e, t
+
+
+def _frame_arrays(
+    df: Any,
+    x_col: str | None,
+    e_col: str,
+    c_col: str | None,
+    n_col: str | None,
+    tl_col: str | float | None,
+    xl_col: str | None,
+    xr_col: str | None,
+) -> tuple:
+    """The ``x, e, c, n, tl`` of ``fit`` read from the columns of ``df``
+    as ``fit_from_df`` names them."""
+    from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+    df = _as_pandas(df)
+    df, x_col, xl_col, xr_col = exact_or_range_frame(
+        df, x_col, xl_col, xr_col, c_col, blank_is_infinite=True
+    )
+    if xl_col is not None or xr_col is not None:
+        if x_col is not None or xl_col is None or xr_col is None:
+            raise ValueError(
+                "Give the times as x_col, or as xl_col and xr_col "
+                "(with x_col=None), not both."
+            )
+        lower = frame_column(df, xl_col, "xl_col", time=True)
+        upper = frame_column(df, xr_col, "xr_col", time=True)
+        lower = np.asarray(lower, dtype=float)
+        upper = np.asarray(upper, dtype=float)
+        x = np.column_stack(
+            [
+                np.where(np.isnan(lower), -np.inf, lower),
+                np.where(np.isnan(upper), np.inf, upper),
+            ]
+        )
+    elif x_col is None:
+        raise ValueError(
+            "Give the times: x_col, or xl_col and xr_col for windows."
+        )
+    else:
+        x = df[x_col].to_numpy()
+    e = df[e_col].to_numpy(dtype=object)
+    c = None if c_col is None else df[c_col].to_numpy()
+    n = None if n_col is None else df[n_col].to_numpy()
+    tl = (
+        frame_column(df, tl_col, "tl_col", time=True)
+        if isinstance(tl_col, str)
+        else tl_col
+    )
+    return x, e, c, n, tl
+
+
+def check_some_cause(causes: list, c: npt.NDArray) -> None:
+    """Refuse data whose failures all lack a cause (each found in a
+    window from a cause not recorded): there is no cause to fit."""
+    if causes:
+        return
+    if (np.asarray(c) != 1).any():
+        raise ValueError(
+            "No failure has a recorded cause: every failure is in a window "
+            "(c = -1 or 2) with 'e' missing, so there is no cause to fit a "
+            "distribution to. Give at least one failure its cause, or fit "
+            "one distribution to all the failures (Weibull.fit(x, c=c, ...)"
+            ") if the causes are not wanted."
+        )
+    raise ValueError("No observed events to fit a cause to.")
 
 
 class ParametricCompetingRisks(
@@ -1968,8 +2036,9 @@ class ParametricCompetingRisks(
             omitted it is derived from ``e`` -- a missing event is
             censored, an event present is observed -- so data can be
             passed as ``(x, e)`` alone. A left- or interval-censored row
-            needs its cause; with any such row the causes are fitted
-            jointly (see Notes).
+            may have no cause (a unit found failed, its cause not
+            recorded); with any such row the causes are fitted jointly
+            (see Notes).
         n : array_like, optional
             Counts per observation.
         dist : ParametricFitter or dict, optional
@@ -2002,7 +2071,12 @@ class ParametricCompetingRisks(
         probability of that, :math:`(\\mathrm{CIF}_k(x_r) -
         \\mathrm{CIF}_k(x_l)) / S(t_l)`, an integral of the all-cause
         survival (a left-censored row is the window from its entry
-        ``tl``, or from the start). So with any such row the causes are
+        ``tl``, or from the start). A unit found failed in the window
+        from a cause not recorded contributes the probability of a
+        failure of any cause there, :math:`(S(x_l) - S(x_r)) / S(t_l)`,
+        the all-cause survival over the window (the sum of the causes'
+        terms); this assumes that whether a cause goes unrecorded does
+        not depend on which cause it was. So with any such row the causes are
         fitted together, by maximum likelihood over every cause's
         parameters at once (``how="MLE"`` only, continuous
         distributions); the integral is taken by Gauss-Legendre
@@ -2209,6 +2283,7 @@ class ParametricCompetingRisks(
                 "cause at once; use how='MLE'."
             )
         causes = ordered_labels(e[c != 1])
+        check_some_cause(causes, c)
         if isinstance(dist, dict):
             missing = [k for k in causes if k not in dist]
             if missing:
@@ -2303,44 +2378,70 @@ class ParametricCompetingRisks(
         ParametricCompetingRisks
             The fitted model.
         """
-        from surpyval.utils.dataframe import as_pandas as _as_pandas
-
-        df = _as_pandas(df)
-        df, x_col, xl_col, xr_col = exact_or_range_frame(
-            df, x_col, xl_col, xr_col, c_col, blank_is_infinite=True
-        )
-        if xl_col is not None or xr_col is not None:
-            if x_col is not None or xl_col is None or xr_col is None:
-                raise ValueError(
-                    "Give the times as x_col, or as xl_col and xr_col "
-                    "(with x_col=None), not both."
-                )
-            lower = frame_column(df, xl_col, "xl_col", time=True)
-            upper = frame_column(df, xr_col, "xr_col", time=True)
-            lower = np.asarray(lower, dtype=float)
-            upper = np.asarray(upper, dtype=float)
-            x = np.column_stack(
-                [
-                    np.where(np.isnan(lower), -np.inf, lower),
-                    np.where(np.isnan(upper), np.inf, upper),
-                ]
-            )
-        elif x_col is None:
-            raise ValueError(
-                "Give the times: x_col, or xl_col and xr_col for windows."
-            )
-        else:
-            x = df[x_col].to_numpy()
-        e = df[e_col].to_numpy(dtype=object)
-        c = None if c_col is None else df[c_col].to_numpy()
-        n = None if n_col is None else df[n_col].to_numpy()
-        tl = (
-            frame_column(df, tl_col, "tl_col", time=True)
-            if isinstance(tl_col, str)
-            else tl_col
+        x, e, c, n, tl = _frame_arrays(
+            df, x_col, e_col, c_col, n_col, tl_col, xl_col, xr_col
         )
         model = cls.fit(x, e, c=c, n=n, dist=dist, how=how, tl=tl)
         return model
+
+    @classmethod
+    @takes_unit
+    def fit_bayes_from_df(
+        cls,
+        df: Any,
+        x_col: str | None,
+        e_col: str,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        *,
+        dist: Any = Weibull,
+        tl_col: str | float | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        priors: Any = None,
+        method: str = "auto",
+        points: int | None = None,
+        importance: bool = False,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on the columns of a :class:`pandas.DataFrame`,
+        named as :meth:`fit_from_df` names them (``xl_col`` and
+        ``xr_col`` for windows, ``tl_col`` for entry times). ``dist``,
+        ``priors``, ``method``, ``points`` and ``importance`` are
+        :meth:`fit_bayes`'s, passed to it unchanged.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> df = pd.DataFrame({
+        ...     "hours": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        ...     "cause": ["a", "b", "a", None, "a", "b", "a", None, "b",
+        ...               "a"],
+        ... })
+        >>> model = ParametricCompetingRisks.fit_bayes_from_df(
+        ...     df, "hours", "cause", dist=Exponential)
+        >>> model.causes
+        ['a', 'b']
+        """
+        x, e, c, n, tl = _frame_arrays(
+            df, x_col, e_col, c_col, n_col, tl_col, xl_col, xr_col
+        )
+        return cls.fit_bayes(
+            x,
+            e,
+            c=c,
+            n=n,
+            dist=dist,
+            tl=tl,
+            priors=priors,
+            method=method,
+            points=points,
+            importance=importance,
+        )
 
 
 def _ff_limit(model: Any) -> float:

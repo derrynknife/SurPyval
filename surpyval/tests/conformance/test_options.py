@@ -328,8 +328,10 @@ def _call(case, spec, model, side, alpha, fname, event, k):
         args = [x if k is None else x[k]]
         if case.interface in WITH_COVARIATES:
             if case.z_style != "paired":
-                # one covariate vector a call (a joint model's item)
-                args.append(case.Z[0] if k is None else case.Z[k])
+                # one covariate vector a call (a joint model's item): the
+                # first, for every point and for a single point alike, as
+                # the estimate is taken
+                args.append(case.Z[0])
             else:
                 args.append(case.Z[: x.size] if k is None else case.Z[k])
         if spec.per_cause:
@@ -379,7 +381,15 @@ def _estimate(case, spec, fname, event):
         extra = {k: v for k, v in spec.kwargs.items() if k == "interp"}
         c = replace(case, call_kwargs={**case.call_kwargs, **extra})
         x = _query(case, spec)
-        Z = case.Z[: x.size] if case.interface in WITH_COVARIATES else None
+        Z = None
+        if case.interface in WITH_COVARIATES:
+            # the covariate rows the bounds are taken at: one a point,
+            # or (one covariate vector a call) the first at every point
+            Z = (
+                case.Z[: x.size]
+                if case.z_style == "paired"
+                else np.repeat(np.asarray(case.Z)[:1], x.size, axis=0)
+            )
         return np.asarray(call(c, model, fname, x, Z, event), float)
     if spec.kind == "param":
         return _parameters(model)[1]

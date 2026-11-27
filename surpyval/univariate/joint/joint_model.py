@@ -10,6 +10,7 @@ import autograd.numpy as anp
 import numpy as np
 import numpy.typing as npt
 from autograd import make_jvp
+from autograd.scipy.special import logsumexp
 from scipy.stats import norm
 
 from surpyval.serialisation import (
@@ -35,6 +36,7 @@ from surpyval.utils.validation import (
 from ._likelihood import (
     EFFECTS,
     GH_FIT,
+    GH_PREDICT,
     INTEGRATIONS,
     JointArrays,
     Layout,
@@ -49,6 +51,7 @@ from ._likelihood import (
     check_random_effects,
     check_weight,
     continued_modes,
+    log1mexp,
     log_integrals,
     log_integrand,
     scatter,
@@ -68,7 +71,7 @@ if TYPE_CHECKING:
     from .dynamic import DynamicPrediction
 
 #: The functions ``cb`` bounds ('R' and 'F' are 'sf' and 'ff').
-_CB_ON = ("sf", "R", "ff", "F")
+_CB_ON = ("sf", "R", "ff", "F", "cif")
 
 #: Each link in words, for the printout.
 _LINK_WORDS = {
@@ -930,14 +933,44 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         return shifts, hazard
 
     @property
+    def spreads_at_zero(self) -> list[str]:
+        """The varying parameters whose spread between items the fit
+        holds at its lower bound, 0: their ``sd_<name>`` is exactly 0
+        and they are, in effect, common to all items. The fit is then
+        the one with them common (its likelihood, predictions and the
+        other parameters' standard errors are that fit's); their sds
+        and correlations (0) have no standard errors. Compare this fit
+        with the one where they are common by ``aic()``, or by
+        :meth:`likelihood_ratio_test`."""
+        # Only the fit's holding on the boundary (joint_ph's
+        # _held_on_the_boundary) writes an sd of exactly 0; a search
+        # ends at an sd above 0 (exp of its log), so an exact 0 marks it,
+        # in a fitted model and in one loaded from its dict.
+        names = list(self.parameter_names)
+        params = np.asarray(self.params, dtype=float)
+        return [
+            v
+            for v in self.varying
+            if f"sd_{v}" in names and params[names.index(f"sd_{v}")] == 0.0
+        ]
+
+    @property
+    def _varying_fitted(self) -> list[str]:
+        """The varying parameters with a spread above 0, those the
+        likelihood integrates over."""
+        held = set(self.spreads_at_zero)
+        return [v for v in self.varying if v not in held]
+
+    @property
     def _layout(self) -> Layout:
         names = list(self.path_model.parameter_names)
         kept = [self.feature_names[k] for k in self._kept]
         shifts, hazard = self._covariate_parts()
+        varying = self._varying_fitted
         return Layout(
             len(names),
             len(kept),
-            tuple(names.index(v) for v in self.varying),
+            tuple(names.index(v) for v in varying),
             np.array(
                 [[cov in shifts.get(n, []) for cov in kept] for n in names],
                 dtype=bool,
@@ -945,7 +978,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             np.array([cov in hazard for cov in kept], dtype=bool),
             tuple(self.link),
             self.survival,
-            block_labels(self.random_effects_structure, self.varying),
+            block_labels(self.random_effects_structure, varying),
             **self._cause_layout(kept),
             n_markers=1 if self.markers is None else len(self.markers),
         )
@@ -1017,8 +1050,24 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
     @property
     def _estimated(self) -> npt.NDArray:
-        """The entries of ``params`` that are estimated (not aliased)."""
-        return ~np.isnan(np.asarray(self.params, dtype=float))
+        """The entries of ``params`` that are estimated (not aliased,
+        and not the spread of a parameter held at 0,
+        :attr:`spreads_at_zero`)."""
+        out = ~np.isnan(np.asarray(self.params, dtype=float))
+        held = set(self.spreads_at_zero)
+        if held:
+            varying = list(self.varying)
+            label = block_labels(self.random_effects_structure, varying)
+            dropped = {f"sd_{v}" for v in held} | {
+                f"corr_{a}_{b}"
+                for i, a in enumerate(varying)
+                for j, b in enumerate(varying)
+                if j > i and label[i] == label[j] and {a, b} & held
+            }
+            for k, name in enumerate(self.parameter_names):
+                if name in dropped:
+                    out[k] = False
+        return out
 
     @property
     def _refs(self) -> tuple:
@@ -1107,6 +1156,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         differ in it, such as whether the marker speaks to one way of
         failing more than to another.
 
+        The fit with fewer varying parameters (``varying`` a part of
+        this one's, nothing else different) is nested too: it is this
+        model with their spreads 0, on the lower bound of a variance.
+        Where one parameter is left out, the statistic's reference is
+        then half chi-squared on the correlations left out and half on
+        them and its sd (Self and Liang, 1987; Stram and Lee, 1994): the
+        p-value is the mean of the two. Where several are, chi-squared
+        on the difference in parameters, which is conservative (its
+        p-value too large). This is the test for a spread the fit holds
+        at 0 (:attr:`spreads_at_zero`), which has no standard error.
+
         That ``nested`` is nested in this model is the caller's claim;
         what can be checked is: both are joint fits by maximum
         likelihood of the same numbers of items, failures and readings,
@@ -1170,9 +1230,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "link",
             "lag",
             "weight",
-            "varying",
             "markers",
         )
+        dropped = [v for v in self.varying if v not in nested.varying]
+        fewer = bool(dropped) and [
+            v for v in self.varying if v in nested.varying
+        ] == list(nested.varying)
         differ = [
             name
             for name in same
@@ -1189,6 +1252,23 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             if type(self.path_model) is not type(nested.path_model)
             else []
         )
+        if list(self.varying) != list(nested.varying) and not fewer:
+            differ.append("varying")
+        others = sorted(
+            set(nested.parameter_names) ^ set(self.parameter_names)
+        )
+        others = [
+            name
+            for name in others
+            if name not in self.parameter_names
+            or not name.startswith(("sd_", "corr_"))
+        ]
+        if fewer and others:
+            raise ValueError(
+                "A likelihood-ratio test of fewer varying parameters "
+                "compares two fits that differ only in their spread; "
+                f"these also differ in {others!r}."
+            )
         if differ:
             raise ValueError(
                 "A likelihood-ratio test compares two fits of the same "
@@ -1213,10 +1293,21 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 "(check both models' 'maximum')."
             )
         statistic = max(2.0 * gain, 0.0)
+        p_value = float(chi2.sf(statistic, df))
+        if fewer and len(dropped) == 1:
+            # one spread on its lower bound, 0, under the null: half
+            # chi-squared on its correlations, half on them and its sd
+            # (Self and Liang 1987; Stram and Lee 1994)
+            below = (
+                float(chi2.sf(statistic, df - 1))
+                if df > 1
+                else float(statistic <= 0.0)
+            )
+            p_value = 0.5 * below + 0.5 * p_value
         return {
             "statistic": float(statistic),
             "df": df,
-            "p_value": float(chi2.sf(statistic, df)),
+            "p_value": p_value,
             "log_likelihood": float(ll),
             "log_likelihood_null": float(ll_null),
         }
@@ -1234,7 +1325,13 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         shifts, hazard = self._covariate_parts()
         n_path = len(names) + sum(len(shifts.get(n, [])) for n in names)
         p = len(hazard)
-        n_spread = self._layout.n_spread
+        # every varying parameter's spread (one held at 0 too)
+        label = block_labels(self.random_effects_structure, self.varying)
+        n_spread = len(label) + sum(
+            label[i] == label[j]
+            for i in range(len(label))
+            for j in range(i + 1, len(label))
+        )
         path = list(range(n_path))
         spread = list(range(n_path, n_path + n_spread))
         i = spread[-1] + 1 if spread else n_path
@@ -1704,7 +1801,16 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     def _fit_line(self) -> str:
         """What the printout's ``Fit`` line says."""
         if self.how != "two-stage":
-            return f"maximum {self.maximum}"
+            held = self.spreads_at_zero
+            if not held:
+                return f"maximum {self.maximum}"
+            sds = ", ".join(f"sd_{v}" for v in held)
+            common = ", ".join(held)
+            return (
+                f"maximum {self.maximum}, with {sds} at the lower bound, "
+                f"0 (the fit with {common} common to all items; no "
+                "standard error there: compare by aic())"
+            )
         line = (
             "two-stage (approximate: the paths from the readings alone, "
             "then the lifetimes with each item's predicted path taken as "
@@ -2129,6 +2235,114 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
         return f, after, False
 
+    def _check_mode(self, mode: Any) -> int | None:
+        """The place of the failure mode ``mode`` among the model's
+        ``causes`` (``None`` for every mode together)."""
+        if mode is None:
+            return None
+        if self.causes is None:
+            raise ValueError(
+                "This joint model has one way of failing (it was fitted "
+                "without failure modes, e=): leave 'mode' out, and "
+                "cif(x) is ff(x). Fit with each failure's mode as e= for "
+                "the chance of each."
+            )
+        names = [str(c) for c in self.causes]
+        if str(mode) not in names:
+            raise ValueError(
+                f"'mode' is one of the model's failure modes, "
+                f"{list(self.causes)!r}; got {mode!r}."
+            )
+        return names.index(str(mode))
+
+    def _log_cif_function(
+        self, x: npt.NDArray, Z: Any, markers: Any, given: Any
+    ) -> tuple:
+        """``(f, after, missing)``: ``f(params)``, the log of the item's
+        chance of failing by each mode by each age of ``x`` after
+        ``given`` (``u``), ``(n_modes, n_after)``, as a function of the
+        estimated parameters; the mask of those ages; and whether the
+        item's covariates are missing.
+
+        Each mode's chance is the chance of failing at all by ``x``,
+        ``1 - sf(x)`` (:meth:`_log_sf_function`'s), times the mode's
+        share of it: over the item's path parameters given its readings
+        and its survival to ``u`` (``b``, on the nodes placed there),
+
+            share_k(x) = E[F(x | b) G_k(x | b) / sum_j G_j(x | b)]
+                         / E[F(x | b)],
+
+        with ``F(x | b) = 1 - S(x | b) / S(u | b)``, exact, and ``G_k(x
+        | b) = int_u^x h_k(s | b) S(s | b) / S(u | b) ds`` by the
+        cumulative hazard's Gauss-Legendre rule
+        (:func:`log_cause_fails_between`). The share is taken at each
+        node, inside the integral over age and the average over the
+        path, so the result is ``E[G_k(x | b)]``, the mode's cumulative
+        incidence from ``u``. So the modes' chances add to
+        ``1 - sf(x)`` whatever the rule's error, which moves only the
+        split between them. The nodes are held at the fitted parameters
+        while differentiating."""
+        f_sf, after, missing = self._log_sf_function(x, Z, markers, given)
+        if missing:
+            return None, after, True
+        n_modes = len(self.causes or [])
+        if not after.any():
+            return (lambda params: np.zeros((n_modes, 0))), after, False
+        z, ages, values, u = self._question(Z, markers, given)
+        kept = self._kept
+        zc = (z[kept] - self._zbar).reshape(1, -1)
+        xs = np.asarray(x, dtype=float)[after]
+        n = xs.size
+        model = self._likelihood_model()
+        theta = self._theta()
+        at_u = self._item_arrays(np.array([u]), zc, ages, values)
+        mode, root = continued_modes(
+            theta, model.layout, model.path, at_u, np.array([u]), model.centre
+        )
+        nodes = model.prediction_nodes(mode, root, theta, at_u, np.array([u]))
+        if not isinstance(nodes, tuple):
+            raise NotImplementedError(
+                "The chance of each failure mode is integrated on a grid "
+                f"of the varying parameters, which a model of more than "
+                f"{max(GH_PREDICT)} of them has none of (its predictions "
+                "use Laplace's approximation). Fit with fewer varying "
+                "parameters, or use sf for the chance of failing at all."
+            )
+        b, logw = nodes
+        rows = np.repeat(np.array([u]), n)
+        same = (np.repeat(b, n, axis=0), np.repeat(logw, n, axis=0))
+        base = self._item_arrays(rows, zc, ages, values)
+        by_mode = []
+        for k in range(n_modes):
+            each = self._item_arrays(rows, zc, ages, values)
+            each.e = np.full(n, k)
+            by_mode.append(each)
+        zero = np.zeros(n)
+
+        def f(params: Any) -> Any:
+            th = internal_theta(params, model.layout, self._refs)
+            # log weight, prior, readings and S(u | b) at each node
+            at = log_integrand(th, model, base, same, rows, zero, True)
+            # S(x | b) on the same nodes
+            to_x = log_integrand(th, model, base, same, xs, zero, True)
+            log_F = log1mexp(anp.log(at - to_x))
+            log_G = anp.stack(
+                [
+                    log_integrand(th, model, arr, same, rows, zero, True, xs)
+                    - at
+                    for arr in by_mode
+                ]
+            )
+            log_split = log_G - logsumexp(log_G, axis=0)
+            log_share = (
+                logsumexp((at + log_F)[None] + log_split, axis=-1)
+                - logsumexp(at + log_F, axis=-1)[None]
+            )
+            log_total = log1mexp(anp.log(-f_sf(params)))
+            return log_total[None] + log_share
+
+        return f, after, False
+
     @keeps_query_shape
     def sf(
         self,
@@ -2347,10 +2561,14 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        mode: Any = None,
     ) -> npt.NDArray:
         """
         Confidence bounds on one item's survival (``on="sf"``, the
-        default) or failure probability (``on="ff"``) to each age ``x``,
+        default), failure probability (``on="ff"``) or, with failure
+        modes, chance of failing by the mode ``mode`` (``on="cif"``; the
+        delta method on ``log(-log(1 - cif))``, the same scale) to each
+        age ``x``,
         given its covariates, readings and the age it was last seen
         running (as for :meth:`sf`), from the uncertainty of the
         parameters: the delta method, with the parameters' covariance, on
@@ -2369,13 +2587,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             The item, as for :meth:`sf` (an ``ItemLifetime`` as ``Z``
             stands for all three).
         on : str, optional
-            ``"sf"`` (or ``"R"``) or ``"ff"`` (or ``"F"``).
+            ``"sf"`` (or ``"R"``), ``"ff"`` (or ``"F"``) or ``"cif"``.
         alpha_ci : float, optional
             The total tail probability: 0.05 (the default) gives 95%
             bounds.
         bound : str, optional
             ``"two-sided"`` (``[lower, upper]`` on a last axis),
             ``"lower"`` or ``"upper"``.
+        mode : optional
+            With ``on="cif"``, one of the model's failure modes
+            (``causes``); ``None`` (the default) for any, which is
+            ``on="ff"``.
 
         Examples
         --------
@@ -2401,8 +2623,18 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         check_alpha_ci(alpha_ci)
         check_option("on", on, _CB_ON)
         check_option("bound", bound, BOUNDS)
+        k = self._check_mode(mode)
+        if on == "cif" and k is None:
+            on = "ff"
+        elif on != "cif" and k is not None:
+            raise ValueError(
+                "'mode' is for the chance of failing by a mode, on='cif'; "
+                f"got on={on!r}."
+            )
         cov = self.covariance()
         x = np.asarray(x, dtype=float)
+        if on == "cif" and k is not None:
+            return self._cif_cb(x, Z, markers, given, k, alpha_ci, bound)
         f, after, missing = self._log_sf_function(x, Z, markers, given)
         tail, signs = bound_signs(alpha_ci, bound)
         if on in ("ff", "F"):
@@ -2437,6 +2669,49 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 )
         if on in ("ff", "F"):
             out = 1.0 - out
+        return out if bound == "two-sided" else out[..., 0]
+
+    def _cif_cb(
+        self,
+        x: npt.NDArray,
+        Z: Any,
+        markers: Any,
+        given: Any,
+        k: int,
+        alpha_ci: float,
+        bound: str,
+    ) -> npt.NDArray:
+        """:meth:`cb` on the chance of failing by the mode at place
+        ``k``: the delta method on ``log(-log(1 - cif))``, the nodes held
+        at the fitted parameters (``[0, 0]`` up to ``given``)."""
+        cov = self.covariance()
+        f, after, missing = self._log_cif_function(x, Z, markers, given)
+        tail, signs = bound_signs(alpha_ci, bound)
+        q = norm.ppf(1 - tail)
+        out = np.zeros(x.shape + (signs.size,))
+        out[np.isnan(x)] = np.nan
+        if missing:
+            out[:] = np.nan
+        elif after.any():
+            est = self._estimated
+            params = np.asarray(self.params, dtype=float)[est]
+            sub = cov[np.ix_(est, est)]
+            if self.how == "two-stage":
+                sub = np.where(np.isfinite(sub), sub, 0.0)
+
+            def log_H(v: Any) -> Any:
+                # the cif's own cumulative hazard, log(-log(1 - cif))
+                return anp.log(-anp.log1p(-anp.exp(f(v)[k])))
+
+            with np.errstate(all="ignore"):
+                jvp = make_jvp(log_H)(params)
+                columns = [jvp(e)[1] for e in np.eye(params.size)]
+                centre = log_H(params)
+                J = np.stack(columns, axis=-1)
+                se = np.sqrt(np.einsum("mi,ij,mj->m", J, sub, J))
+                out[after] = -np.expm1(
+                    -np.exp(centre[:, None] + signs[None, :] * q * se[:, None])
+                )
         return out if bound == "two-sided" else out[..., 0]
 
     # -- saving and loading ----------------------------------------------

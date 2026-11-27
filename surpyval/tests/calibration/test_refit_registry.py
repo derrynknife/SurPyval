@@ -1163,6 +1163,7 @@ for _name in (
     "Logistic",
     "Beta",
     "ConformanceGompertz",
+    "BirnbaumSaunders",
     "Poisson",
     "Geometric",
     "NegativeBinomial",

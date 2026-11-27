@@ -19,11 +19,11 @@ over the rows, so a spell's factor of the likelihood,
 
 is exactly the product of its rows' left-truncated factors. On the
 forward clock :math:`a_k, b_k` are times since the start; on the reset
-clock, times since the unit entered the state, so a row that carries on
-its unit's stay continues the stay's clock rather than restarting it
-(see ``parametric._stays``). An accelerated-failure-time regression
-rescales the time already spent, so its cumulative hazard is not
-additive over the rows; it is refused.
+clock, times since the unit entered the state, so the rows after a
+split are marked as carrying on their stay, and continue the stay's
+clock rather than restarting it (see ``parametric._stays``). An
+accelerated-failure-time regression rescales the time already spent, so
+its cumulative hazard is not additive over the rows; it is refused.
 
 Predictions along a path, on the forward clock, take each transition's
 hazard at :math:`t` with the covariates at :math:`t`, and its cumulative
@@ -160,7 +160,7 @@ def split(
     from surpyval.univariate.regression.tvc_path import CovariatePath
 
     start = np.where(np.isfinite(data.tl), data.tl, low)
-    rows: dict = {k: [] for k in ("x", "tl", "g", "h", "n", "c", "Z")}
+    rows: dict = {k: [] for k in ("x", "tl", "g", "h", "n", "c", "Z", "carry")}
     schedules: dict = {}
     for u, (label, path) in enumerate(paths):
         mine = data.cluster == u
@@ -211,6 +211,11 @@ def split(
             rows["n"].append(data.n[r])
             rows["c"].append(data.cluster[r])
             rows["Z"].append(np.r_[Z[r], values[k]])
+            # (a row after a split carries on the stay; the first keeps
+            # whatever the spell had)
+            rows["carry"].append(
+                k > 0 or (data.carry is not None and bool(data.carry[r]))
+            )
     out = replace(
         data,
         x=np.asarray(rows["x"], dtype=float),
@@ -220,6 +225,7 @@ def split(
         n=np.asarray(rows["n"], dtype=float),
         cluster=np.asarray(rows["c"], dtype=np.intp),
         xl=None,
+        carry=np.asarray(rows["carry"], dtype=bool),
     )
     return out, np.asarray(rows["Z"], dtype=float).reshape(out.x.size, -1)
 
