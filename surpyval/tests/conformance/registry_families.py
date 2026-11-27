@@ -38,6 +38,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     reg_data,
     stratified_reg_data,
     stress_data,
+    tail_censored_reg_data,
     uni_data,
 )
 from surpyval.univariate.regression import kinds
@@ -1440,6 +1441,8 @@ def _semi_parametric():
     aalen = regression(
         "AalenAdditive",
         sp.AalenAdditive,
+        # Censored at the end (see tail_censored_reg_data).
+        data=tail_censored_reg_data,
         model_class="surpyval.univariate.regression.AalenAdditiveModel",
         paths={
             "fit_from_df": lambda d: sp.AalenAdditive.fit_from_df(
