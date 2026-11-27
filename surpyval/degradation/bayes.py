@@ -1127,7 +1127,11 @@ class ProcessLife:
         step at a low stress, the clock all but stopped) that difference
         loses its digits, so the step is its calendar length times the
         survival's mean over it instead, by a 12-point Gauss-Legendre rule
-        on its stretch of clock."""
+        on its stretch of clock. For a step that is not short, the
+        difference's error is about machine epsilon times ``I`` over the
+        step's clock stretch, so below ``1e-13 / _SHORT_STEP`` of the
+        step relative to its own share where ``I`` is of the order of
+        the clock time (``I(tau) <= tau``)."""
         out: npt.NDArray = np.diff(I, axis=1) / af
         dtau = np.diff(knots_tau, axis=1)
         short = dtau < _SHORT_STEP * np.abs(knots_tau[:, 1:])
@@ -1138,6 +1142,46 @@ class ProcessLife:
             length = np.diff(knots_t)[k]
             out[r, k] = length * np.sum(S * _GL_W, axis=1)
         return out
+
+    def _cyclic_rest(
+        self,
+        rest: npt.NDArray,
+        knots_tau: npt.NDArray,
+        knots_t: npt.NDArray,
+        af: npt.NDArray,
+        rows: npt.NDArray,
+        period: float,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The calendar remainder of the mean life beyond a cyclic
+        profile's horizon ``H``, and a bound on its error.
+
+        Beyond ``H`` the clock advances by ``Delta`` (its advance over
+        the last laid-out period) a period ``P``, so the calendar time
+        the unit survives beyond ``H`` is, a period at a time, between
+        ``P S(tau_H + (n + 1) Delta)`` and ``P S(tau_H + n Delta)``
+        summed over ``n``; the sums are within ``P S(tau_H)`` of
+        ``(P / Delta) int_{tau_H}^inf S``, the clock survival left,
+        ``rest``, at the cycle's time-averaged slope. That is the
+        estimate, and ``P S(tau_H) + (P / Delta) rest`` bounds its
+        error (whatever the slope of the step the horizon ends in: an
+        idle step's tiny slope would make ``rest`` over it large).
+        """
+        t_end = float(knots_t[-1])
+        back = max(t_end - float(period), 0.0)
+        j = int(
+            np.clip(
+                np.searchsorted(knots_t, back, "right") - 1, 0, af.shape[1] - 1
+            )
+        )
+        tau_back = knots_tau[:, j] + af[:, j] * (back - knots_t[j])
+        delta = knots_tau[:, -1] - tau_back
+        span = t_end - back
+        with np.errstate(divide="ignore", invalid="ignore"):
+            after = np.where(delta > 0, rest * span / delta, np.inf)
+            after = np.where(rest > 0, after, 0.0)
+        S_H = self._clock_sf(knots_tau[:, -1:], rows)[:, 0]
+        bound = span * S_H + after
+        return after, bound
 
     def _profile_mean(self, rtol: float = 1e-12) -> npt.NDArray:
         """
@@ -1154,17 +1198,20 @@ class ProcessLife:
         for the gamma process :func:`_gamma_partial_integral`). After the
         last step the stress holds, and the rest is ``(I(inf) -
         I(tau_K)) / AF_K``, exactly. A cyclic profile has no last step:
-        it is laid out to a horizon, doubled until each point's clock
-        survival left beyond it, ``I(inf) - I(tau_K)``, is below
-        ``rtol`` of its whole, and that rest is taken at the last step's
-        slope. Infinite where the passage may never happen.
+        it is laid out to a horizon, doubled until the calendar
+        remainder beyond it is bounded below ``rtol`` of the mean so far
+        (:meth:`_cyclic_rest`), and the remainder is taken at the
+        cycle's time-averaged slope. Infinite where the passage may never
+        happen.
         """
         n = len(self.a)
         out = np.full(n, np.inf)
         whole = self._partial(np.full((n, 1), np.inf), np.arange(n))[:, 0]
         live = np.flatnonzero(np.isfinite(whole) & (whole > 0))
         clock = self.clock
-        cyclic = getattr(clock.schedule, "period", None) is not None
+        period_or_none = getattr(clock.schedule, "period", None)
+        cyclic = period_or_none is not None
+        period = 0.0 if period_or_none is None else float(period_or_none)
         # what is summed so far, to the calendar time ``done_to``, and the
         # clock survival's integral there: a longer horizon adds only its
         # new steps
@@ -1196,8 +1243,16 @@ class ProcessLife:
                 )
                 total = acc[rows] + np.sum(steps, axis=1)
                 rest = np.maximum(whole[rows] - I[:, -1], 0.0)
-                done = np.logical_or(not cyclic, rest <= rtol * whole[rows])
-                out[rows[done]] = (total + rest / af[:, -1])[done]
+                if not cyclic:
+                    # the last stress holds for ever: exact
+                    done = np.ones(len(rows), dtype=bool)
+                    after = rest / af[:, -1]
+                else:
+                    after, bound = self._cyclic_rest(
+                        rest, knots_tau, knots_t, af, rows, period
+                    )
+                    done = bound <= rtol * total
+                out[rows[done]] = (total + after)[done]
                 acc[rows], I_to[rows] = total, I[:, -1]
                 left.append(rows[~done])
             live = np.concatenate(left) if left else live[:0]

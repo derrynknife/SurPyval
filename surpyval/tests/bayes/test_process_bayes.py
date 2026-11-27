@@ -765,3 +765,32 @@ def test_the_cyclic_summaries_over_the_whole_grid(stressed):
         float(stressed.posterior.wquantile(life, 0.975)), rel=1e-14
     )
     assert lo < stressed.mean(CYCLIC) < hi
+
+
+IDLE_FIRST = sp.StepSchedule.cyclic([0.0, 5.0], [[-30.0], [1.0]], period=10.0)
+
+
+@pytest.mark.parametrize("arrangement", ["idle second", "idle first"])
+def test_a_cyclic_profile_with_idle_spells_at_points_across_the_posterior(
+    stressed, arrangement
+):
+    """Half of each cycle at a stress that all but stops the clock,
+    either half first, at four posterior points from the tail of the
+    stress coefficient to its lower quartile: the mean equals a direct
+    integration of the calendar survival (rule 1e-9). Where the horizon
+    ends in an idle step, the clock survival left beyond it over that
+    step's slope (about 1e-14) is not the calendar remainder: before the
+    remainder was taken at the cycle's own slope, one gamma point was
+    off by 1.5e-4."""
+    prof = IDLE_CYCLIC if arrangement == "idle second" else IDLE_FIRST
+    points = stressed.posterior.points
+    order = np.argsort(points[:, -1])
+    n = len(order)
+    for j in (order[-1], order[3 * n // 4], order[n // 2], order[n // 4]):
+        point = points[j]
+        got = float(
+            ProcessLife(stressed.target, point[None], prof, None).mean()[0]
+        )
+        mean1 = float(stressed.target.with_params(point).mean([1.0]))
+        ref = _calendar_mean(stressed.target, point, prof, 100.0 * mean1)
+        assert got == pytest.approx(ref, rel=1e-9)
