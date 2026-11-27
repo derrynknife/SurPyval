@@ -803,6 +803,35 @@ def test_a_prior_density_far_in_its_tail_does_not_underflow():
     np.testing.assert_allclose(got, ref, rtol=1e-12)
 
 
+@pytest.mark.parametrize(
+    "model, plain",
+    [
+        (sp.Normal.from_params([0.0, 0.5]), True),
+        (sp.Gamma.from_params([2.0, 1.0]), True),
+        (sp.Beta.from_params([2.0, 5.0]), True),
+        (sp.Weibull.from_params([3.0, 1.5]), True),
+        (sp.LogNormal.from_params([0.0, 0.4]), True),
+        (sp.Exponential.from_params([2.0]), True),
+        (sp.Weibull.from_params([3.0, 1.5], gamma=1.0), False),
+        (sp.Weibull.from_params([3.0, 1.5], f0=0.2), False),
+        (sp.Weibull.from_params([3.0, 1.5], lfp_p=0.8), False),
+    ],
+)
+def test_a_priors_log_density_is_its_models(model, plain):
+    """Every kind of prior model: the log density is log(model.df)
+    wherever that is finite (to 1e-12), the distribution's own log_df
+    for a plain model, and model.df itself for one with an offset, a
+    zero inflation or a limited failure population."""
+    p = sp.prior.DistributionPrior(model)
+    assert p._is_plain() is plain
+    x = np.asarray(model.qf(np.linspace(0.02, 0.98, 25)), dtype=float)
+    ref = np.log(np.asarray(model.df(x), dtype=float))
+    got = p._log_df(x)
+    ok = np.isfinite(ref)
+    assert ok.sum() >= 20
+    np.testing.assert_allclose(got[ok], ref[ok], rtol=1e-12, atol=1e-12)
+
+
 def test_a_strong_prior_far_from_the_estimate_is_the_brute_force_posterior():
     """A tight prior (Normal(0, 0.02)) on a coefficient the data put at
     1.36, 68 prior standard deviations away: its density at the estimate
