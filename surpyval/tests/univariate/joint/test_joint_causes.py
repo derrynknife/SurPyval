@@ -299,9 +299,9 @@ def _brute_force_neg_ll(model, data):
         s = np.linspace(0, t, 1001)
         return np.exp(-_simpson(total(s), s[1] - s[0]))
 
-    def fails_between(cause, lo, hi):
+    def fails_between(cause, lo, hi, points=801):
         """``int_lo^hi h_cause(s) S(s) ds``."""
-        s = np.linspace(lo, hi, 801)
+        s = np.linspace(lo, hi, points)
         step = s[1] - s[0]
         h = total(s)
         pairs = (h[:, 0:-2:2] + 4 * h[:, 1:-1:2] + h[:, 2::2]) * step / 3
@@ -325,14 +325,27 @@ def _brute_force_neg_ll(model, data):
         tl, tr = data["t"][k]
         entry = max(tl, 0.0)
         c, cause = data["c"][k], data["e"][k]
+        # a failure of unknown mode (None): the sum of every mode's term,
+        # each by four times the ages (a mode with a shape near 1 has a
+        # hazard with an unbounded slope at 0, where Simpson's rule on
+        # 801 ages from 0 is 1.5e-4 off in log; 3e-5 on 3201)
+        modes = model.causes if cause is None else [cause]
+        points = 3201 if cause is None else 801
         if c == 0:
-            life = np.log(hazard(cause, lo)[:, 0] * survival(lo))
+            life = np.log(
+                sum(hazard(m, lo)[:, 0] for m in modes) * survival(lo)
+            )
         elif c == 1:
             life = np.log(survival(lo))
         elif c == 2:
-            life = np.log(fails_between(cause, lo, hi))
+            life = np.log(sum(fails_between(m, lo, hi, points) for m in modes))
         else:  # failed by hi, having reached its entry
-            life = np.log(fails_between(cause, max(entry, 1e-9), hi))
+            life = np.log(
+                sum(
+                    fails_between(m, max(entry, 1e-9), hi, points)
+                    for m in modes
+                )
+            )
         ll = log_sum(log_y + log_prior + life)
         if np.isfinite(tl) or np.isfinite(tr):
             ll -= log_sum(np.log(survival(entry) - survival(tr)) + log_prior)
@@ -363,6 +376,79 @@ def test_every_kind_of_item_agrees_with_a_dense_grid_integral(moved):
         brute = _brute_force_neg_ll(model, KINDS)
     # 9 rows, 12 items: to within 1e-5 an item
     assert float(f(u)) == pytest.approx(brute, abs=1.2e-4)
+
+
+#: :data:`KINDS` with the mode of a failure of each kind unknown: one
+#: exact, one inspected (interval) and the one failed by an age (left
+#: censored, having entered).
+_HIDDEN = np.array(KINDS["e"])
+_HIDDEN[[0, 3, 7]] = None
+UNKNOWN = dict(KINDS, e=_HIDDEN)
+
+
+@pytest.mark.parametrize("moved", [False, True], ids=["fitted", "moved"])
+def test_failures_of_unknown_mode_agree_with_a_dense_grid_integral(moved):
+    # the likelihood of a failure of unknown mode is the sum over the
+    # modes of each mode's term, in the grid's own arithmetic
+    model = _model()
+    if moved:
+        model = _with_params(
+            model,
+            **{
+                "bearing: alpha": 1200.0,
+                "bearing: marker_effect": 1.4,
+                "seal: beta": 2.6,
+                "seal: marker_effect": -0.5,
+                "corr_a_b": -0.5,
+            },
+        )
+    f, u, _ = search_space(model, **UNKNOWN)
+    with np.errstate(divide="ignore"):
+        brute = _brute_force_neg_ll(model, UNKNOWN)
+    assert float(f(u)) == pytest.approx(brute, abs=1.2e-4)
+    # and it is not the likelihood with the modes known
+    f_known, u_known, _ = search_space(model, **KINDS)
+    assert abs(float(f(u)) - float(f_known(u_known))) > 0.1
+
+
+@pytest.mark.parametrize("row", [0, 3, 7], ids=["exact", "interval", "left"])
+def test_an_unknown_mode_is_the_sum_of_the_known_ones(row):
+    # an item's likelihood with its mode unknown is the sum of its
+    # likelihoods with each mode (the other items' terms, and their
+    # nodes, are the same in all three)
+    model = _model()
+    each = []
+    for label in (None, "bearing", "seal"):
+        data = dict(KINDS, e=np.array(KINDS["e"]))
+        data["e"][row] = label
+        f, u, _ = search_space(model, **data)
+        each.append(float(f(u)))
+    unknown, bearing, seal = each
+    assert np.exp(bearing - unknown) == pytest.approx(
+        1.0 + np.exp(bearing - seal), rel=1e-9
+    )
+
+
+def test_a_fit_with_some_modes_unknown():
+    # a third of the failures' labels hidden: the fit takes them, says
+    # how many there were, and lands near the fit with every label
+    data = _data(150, seed=3)
+    arrays = _arrays(data)
+    failed = np.flatnonzero(arrays["c"] == 0)
+    e = arrays["e"].copy()
+    e[failed[::3]] = None
+    hidden = float(np.sum(arrays["n"][failed[::3]]))
+    model = WeibullJointPH.fit(**dict(arrays, e=e), marker_reference=CENTRE)
+    known = _model()
+    assert model.maximum == "verified"
+    assert model.causes == known.causes
+    assert sum(model.n_events_by_cause.values()) == (
+        sum(known.n_events_by_cause.values()) - hidden
+    )
+    assert model.n_events == known.n_events
+    assert f"; {hidden:g} of unknown mode" in str(model)
+    z = (model.params - known.params) / known.standard_errors()
+    assert np.all(np.abs(z) < 1.0), dict(zip(model.parameter_names, z))
 
 
 def test_an_interval_split_at_a_lag_is_the_interval():
@@ -702,10 +788,6 @@ def test_what_the_fit_of_modes_cannot_take_is_refused():
         WeibullJointPH.fit(**arrays, how="two-stage")
     failed = np.flatnonzero(arrays["c"] == 0)
     running = np.flatnonzero(arrays["c"] == 1)
-    e = arrays["e"].copy()
-    e[failed[:3]] = None
-    with pytest.raises(ValueError, match="3 failure.*no failure mode"):
-        WeibullJointPH.fit(**dict(arrays, e=e))
     e = arrays["e"].copy()
     e[running[:2]] = "seal"
     with pytest.raises(ValueError, match="2 item.*still running"):
