@@ -828,6 +828,91 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             "and accelerated life fitters' fit_bayes."
         )
 
+    @dataframe_covariates
+    def fit_case_cohort(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        subcohort: npt.ArrayLike,
+        cohort_size: Any,
+        c: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        method: str = "prentice",
+        sampling_strata: npt.ArrayLike | None = None,
+        robust: bool = False,
+        tie_method: str = "efron",
+        tol: float = 1e-10,
+    ) -> Any:
+        """Fits the Cox model to a case-cohort sample: a random subcohort
+        of the cohort plus every case from outside it, with the
+        estimators of R's ``survival::cch`` (Prentice, Self-Prentice,
+        Lin-Ying, Borgan I and II) and Barlow's weighting, each with its
+        design-based variance. See
+        :func:`~surpyval.univariate.regression.proportional_hazards.case_cohort.fit_case_cohort`
+        for the estimators, their variances and the arguments.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import CoxPH
+        >>> rng = np.random.default_rng(1)
+        >>> z = rng.normal(size=2000)
+        >>> t = rng.exponential(1 / (0.02 * np.exp(0.7 * z)))
+        >>> x, c = np.minimum(t, 10.0), (t > 10.0).astype(int)
+        >>> sub = rng.random(2000) < 0.15
+        >>> keep = sub | (c == 0)
+        >>> model = CoxPH.fit_case_cohort(
+        ...     x[keep], z[keep], subcohort=sub[keep], cohort_size=2000,
+        ...     c=c[keep],
+        ... )
+        >>> model.params.round(3), model.standard_errors().round(3)
+        (array([0.71]), array([0.089]))
+        """
+        from .case_cohort import fit_case_cohort
+
+        return fit_case_cohort(
+            x,
+            Z,
+            subcohort,
+            cohort_size,
+            c=c,
+            tl=tl,
+            method=method,
+            sampling_strata=sampling_strata,
+            robust=robust,
+            tie_method=tie_method,
+            tol=tol,
+        )
+
+    @dataframe_covariates
+    def fit_nested_case_control(
+        self,
+        Z: npt.ArrayLike,
+        case: npt.ArrayLike,
+        sets: npt.ArrayLike,
+        tie_method: str = "exact",
+        tol: float = 1e-10,
+    ) -> Any:
+        """Fits the Cox model to a nested case-control sample, each case
+        with the controls drawn from its risk set (a matched set), by the
+        conditional logistic likelihood, as R's ``survival::clogit``. See
+        :func:`~surpyval.univariate.regression.proportional_hazards.case_cohort.fit_nested_case_control`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import CoxPH
+        >>> Z = np.array([1.2, 0.1, -0.4, 0.8, 0.3, -1.0, 0.0, 0.5, -0.2])
+        >>> case = np.array([1, 0, 0, 1, 0, 0, 1, 0, 0])
+        >>> sets = np.repeat([1, 2, 3], 3)
+        >>> model = CoxPH.fit_nested_case_control(Z, case, sets)
+        >>> model.params.round(3)
+        array([2.146])
+        """
+        from .case_cohort import fit_nested_case_control
+
+        return fit_nested_case_control(self, Z, case, sets, tie_method, tol)
+
     @penalty_argument("_fit_penalised", firth="_fit_firth")
     @dataframe_covariates
     @takes_unit

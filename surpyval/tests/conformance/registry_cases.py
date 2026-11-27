@@ -2899,6 +2899,47 @@ def _mixture_cure():
     return out
 
 
+FAST_PROMOTION = ("WeibullPromotionTimeCure",)
+
+
+def _promotion_time_cure():
+    """The promotion-time cure regressions on the mixture-cure fixture
+    (its plateau identifies theta as it identifies lfp_p), with the
+    default covariates: every column on theta."""
+    out = []
+    for base in CURE_LATENCIES:
+        name = base + "PromotionTimeCure"
+        out.append(
+            regression(
+                name,
+                getattr(sp, name),
+                data=cure_data,
+                model_class=(
+                    "surpyval.univariate.regression."
+                    "DistributionalRegressionModel"
+                ),
+                fitters=(f"surpyval.{name}",)
+                + (
+                    (
+                        "surpyval.PromotionTimeCure",
+                        "surpyval.univariate.regression."
+                        "PromotionTimeCureFitter",
+                        "surpyval.univariate.regression."
+                        "PromotionTimeCureModel",
+                    )
+                    if base == "Weibull"
+                    else ()
+                ),
+                slow=(
+                    frozenset() if name in FAST_PROMOTION else REFIT_PROPERTIES
+                ),
+                coefficients=_cure_coefficients,
+                intercept=True,
+            )
+        )
+    return out
+
+
 FAST_ZI = ("WeibullZeroInflated",)
 
 
@@ -3859,6 +3900,7 @@ CASES: list[Case] = (
     + _spline_regression()
     + _distributional()
     + _mixture_cure()
+    + _promotion_time_cure()
     + _equivalence()
     + _zero_inflated()
     + _landmark()
@@ -4267,6 +4309,7 @@ _REGRESSION_LR_X = {
     "WeibullDistributional": (2.0, 8.0),
     "LogNormalDistributional": (2.0, 8.0),
     "WeibullMixtureCure": (2.0, 8.0),
+    "WeibullPromotionTimeCure": (2.0, 8.0),
     "WeibullZeroInflated": (2.0, 8.0),
 }
 
@@ -4736,6 +4779,16 @@ _DISTRIBUTIONAL_PARAMETERS = {
 _DISTRIBUTIONAL_PARAMETERS.update(
     {
         base + "MixtureCure": [*getattr(sp, base).parameter_names, "lfp_p"]
+        for base in CURE_LATENCIES
+    }
+)
+_DISTRIBUTIONAL_PARAMETERS.update(
+    {
+        base
+        + "PromotionTimeCure": [
+            *getattr(sp, base).parameter_names,
+            "theta",
+        ]
         for base in CURE_LATENCIES
     }
 )

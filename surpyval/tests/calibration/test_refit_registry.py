@@ -1324,6 +1324,15 @@ for _base in reg.CURE_LATENCIES:
         params=lambda m: np.asarray(m.params, dtype=float),
     )
 for _base in reg.CURE_LATENCIES:
+    # The model's own random: a unit that never fails (no latent cause)
+    # is drawn as inf, and censored at the last finite time
+    PLANS[_base + "PromotionTimeCure"] = Plan(
+        _regression(own_random=True),
+        _REG_N,
+        _REG_REPS,
+        params=lambda m: np.asarray(m.params, dtype=float),
+    )
+for _base in reg.CURE_LATENCIES:
     # The model's own random: a unit dead on arrival is drawn as 0
     PLANS[_base + "ZeroInflated"] = Plan(
         _regression(own_random=True),
