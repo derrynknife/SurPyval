@@ -1250,22 +1250,26 @@ class ParametricMultiState(_ParametricMultiStateBase):
             (default the absorbing state, where the transitions have
             exactly one).
 
+        Notes
+        -----
         A move at some unknown time before ``xr`` (a unit found to have
         moved, with no last time it was seen in its state: left censored)
         is ``x = [-inf, xr]``: the move lies between the start of its
         spell (``tl``, or 0) and ``xr``.
 
         Each kind of row's factor of the likelihood, for a spell in state
-        ``g`` from ``a`` (its ``tl``, or 0), where ``S_g(a, t) = exp(-sum_k
-        [H_gk(t) - H_gk(a)])`` over the transitions ``g -> k`` (on the
+        ``g`` from ``a`` (its ``tl``, or 0), where
+        ``S_g(a, t) = exp(-sum_k [H_gk(t) - H_gk(a)])`` over the
+        transitions ``g -> k`` (on the
         forward clock the times since the start; on the reset clock the
         times since the stay began, ``a`` then 0 for a row that starts
         its stay):
 
         - a move into ``b`` at ``x``: ``S_g(a, x) h_gb(x)``;
         - censored at ``x``: ``S_g(a, x)``;
-        - a move into ``b`` in ``(xl, xr]``: ``integral over u in (xl, xr]
-          of S_g(a, u) h_gb(u) L_b(u) du``, ``L_b(u)`` the likelihood of
+        - a move into ``b`` in ``(xl, xr]``: the integral over ``u`` in
+          ``(xl, xr]`` of ``S_g(a, u) h_gb(u) L_b(u) du``, ``L_b(u)`` the
+          likelihood of
           the unit's next spell given it entered ``b`` at ``u`` (or, with
           no next spell, the chance of staying in ``b`` from ``u`` to
           ``xr``);
@@ -1274,8 +1278,9 @@ class ParametricMultiState(_ParametricMultiStateBase):
           univariate left-censored (and left-truncated) factor
           ``(F(xr) - F(a)) / S(a)``;
         - a right-truncated unit (cut-off ``tau``, state ``reached`` =
-          ``r``): the product of its rows' factors divided by ``P(enter r
-          by tau | in g0 at t0)``, ``g0`` and ``t0`` the state and entry
+          ``r``): the product of its rows' factors divided by
+          ``P(enter r by tau | in g0 at t0)``, ``g0`` and ``t0`` the state
+          and entry
           of its first spell: element ``[g0, r]`` of the transition
           probabilities ``P(t0, tau)`` of the model with every transition
           out of ``r`` removed. With two states, ``1 - S(tau) / S(t0)``,

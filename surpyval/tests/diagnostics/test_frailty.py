@@ -423,7 +423,7 @@ def test_a_binary_effect_that_changes_is_advised_strata(binary_violation):
     row = _row(d, "proportional_hazards", ("z",))
     assert row["verdict"] == "fail" and "falls" in row["detail"]
     assert (
-        "FrailtyFitter.fit",
+        "WeibullFrailty.fit",
         "CoxPH.fit(strata=)",
         "summary(robust=)",
     ) in _features(d)
@@ -478,7 +478,7 @@ def test_a_curved_effect_is_advised_a_transform():
     d = _fit(df).diagnose()
     row = _row(d, "functional_form", ("z",))
     assert row["verdict"] == "fail" and "not linear" in row["detail"]
-    assert _features(d) == [("FrailtyFitter.fit_from_df(formula=)",)]
+    assert _features(d) == [("WeibullFrailty.fit_from_df(formula=)",)]
     assert "WeibullFrailty.fit_from_df" in d.advice[0]
 
 

@@ -3,11 +3,13 @@ import pytest
 
 import surpyval
 from surpyval.tests._helpers import no_warnings
-from surpyval.univariate.nonparametric import (
+
+# The estimators' internal steps (public until v0.29), from their modules
+from surpyval.univariate.nonparametric.fleming_harrington import (
     fleming_harrington,
-    kaplan_meier,
-    nelson_aalen,
 )
+from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
+from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen
 
 # The expected survival/hazard values below were generated once with
 # lifelines (KaplanMeierFitter / NelsonAalenFitter with
