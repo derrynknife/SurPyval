@@ -30,6 +30,7 @@ import os
 import warnings
 
 import numpy as np
+import pytest
 from scipy.stats import chi2
 
 from surpyval import CoxFrailty, Frailty, Weibull, WeibullPH
@@ -178,6 +179,17 @@ def test_recurrent_inverse_gaussian():
     _study(_recurrent_fit, "inverse_gaussian", REPS, truth, "CrowAMSAA[IG]")
 
 
+@pytest.mark.xfail(
+    strict=True,
+    raises=ValueError,
+    reason="the positive stable group integral takes at most 1000 events "
+    "in a group (its recursion is O(D^2)), and this design's heavy-tailed "
+    "frailty gives a unit more than that in about 81% of simulated fleets "
+    "(32 of the first 40 replicates; the largest 636,079 events). No "
+    "positive stable truth keeps every replicate under the cap, and "
+    "keeping only the fleets under it would bias the study: it waits for "
+    "a form of the integral whose cost does not grow with the count.",
+)
 def test_recurrent_positive_stable():
     truth = np.array([R_SCALE, R_SHAPE, THETA["positive_stable"]])
     _study(

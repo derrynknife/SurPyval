@@ -92,10 +92,14 @@ family=...)``) and for repairable units (``frailty=`` on ``CrowAMSAA``,
 ``Duane``, ``CoxLewis`` and ``ProportionalIntensityNHPP``).
 
 * ``family="inverse_gaussian"``: the frailty has mean 1 and variance
-  :math:`\theta`, as the gamma's, but a lighter right tail, so the
-  dependence it induces fades more slowly as the groups age: frail groups
-  are weeded out less quickly than under a gamma frailty of the same
-  variance.
+  :math:`\theta`, as the gamma's, but a heavier right tail (at variance
+  0.5, :math:`P(u > 5)` is 0.0017 against the gamma's 0.0005). As the
+  frailest groups fail, the spread of the survivors' frailties shrinks
+  under it (their squared coefficient of variation is 0.50, 0.41, 0.29,
+  0.15 and 0.07 at a cumulative hazard of 0, 0.5, 2, 10 and 50), while
+  under the gamma it stays at :math:`\theta`: its dependence fades late
+  in life, between the positive stable frailty's (strongest early) and
+  the gamma's (which lasts).
 * ``family="positive_stable"``: the frailty has no finite mean (its right
   tail is heavy), and in exchange the model stays one of proportional
   hazards once the frailty is integrated out: the population curve of a
@@ -168,7 +172,10 @@ warning. ``theta`` then has no Wald standard error or interval (``nan``):
 on the boundary its estimate is 0 about half the time when the truth is
 0. Test ``theta = 0`` by twice the gain in log-likelihood over the fit
 without frailty against a 50:50 mixture of 0 and :math:`\chi^2_1`
-(halve the :math:`\chi^2_1` p-value).
+(halve the :math:`\chi^2_1` p-value). The test is conservative: on data
+with no frailty the fit lands on ``theta = 0`` in more than half of the
+data sets, and the test's size at a nominal 5% was 2.5% to 3.5% over 400
+simulated no-frailty data sets in the review of these families.
 
 Not offered for these families yet: penalised fits, ``diagnose()``, the
 joint frailty model (``JointFrailty``) and, for the positive stable

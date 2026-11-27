@@ -307,8 +307,11 @@ def whole_counts(D: npt.ArrayLike, family: str) -> npt.NDArray:
             "(its likelihood is a recursion whose cost grows with the "
             "square of the count), and a group here has {}. Use "
             "family='inverse_gaussian' or 'gamma', whose integrals cost "
-            "no more for many events, or split the group (a cluster of "
-            "units into the units).".format(STABLE_MAX_EVENTS, top)
+            "no more for many events; where the group is a cluster of "
+            "several units, giving each unit its own frailty (no "
+            "'cluster=') may bring each under the limit.".format(
+                STABLE_MAX_EVENTS, top
+            )
         )
     return whole
 
