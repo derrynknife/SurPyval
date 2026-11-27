@@ -65,8 +65,13 @@ The functions
    * - ``print(fit)`` (median and its interval)
      - ``km.median``, ``km.median_cb()``
    * - ``survdiff``
-     - ``logrank`` (``weighting="peto-peto"`` and others for ``rho``);
-       ``pairwise_logrank`` for ``survminer::pairwise_survdiff``
+     - ``logrank``; for ``rho = r`` use
+       ``weighting="fleming-harrington"`` with ``rho=r``
+       (``"peto-peto"`` uses Peto and Peto's own survival estimate,
+       close to ``rho = 1`` but not equal);
+       ``pairwise_logrank(..., adjust="bh")`` for
+       ``survminer::pairwise_survdiff``, whose default adjustment is
+       Benjamini-Hochberg (``pairwise_logrank``'s is Holm)
    * - ``coxph``
      - ``CoxPH`` (Efron ties by default, as R)
    * - ``coxph(... + strata(g))``
