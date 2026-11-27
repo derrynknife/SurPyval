@@ -28,6 +28,7 @@ surpyval.CompetingRisks
 surpyval.CompetingRisksProportionalHazards
 surpyval.ConformalLowerBound
 surpyval.CovariatePath
+surpyval.CoxAalen
 surpyval.CoxFrailty
 surpyval.CoxFrailtyFitter
 surpyval.CoxFrailtyModel
@@ -726,6 +727,8 @@ surpyval.univariate.regression.BuckleyJames
 surpyval.univariate.regression.BuckleyJamesModel
 surpyval.univariate.regression.CoefficientPlot
 surpyval.univariate.regression.CovariatePath
+surpyval.univariate.regression.CoxAalen
+surpyval.univariate.regression.CoxAalenModel
 surpyval.univariate.regression.CoxFrailty
 surpyval.univariate.regression.CoxFrailtyFitter
 surpyval.univariate.regression.CoxFrailtyModel

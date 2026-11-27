@@ -304,6 +304,16 @@ PENDING: tuple[Pending, ...] = (
         "distribution that Buckley-James does not.",
     ),
     Pending(
+        "Cox-Aalen regressions",
+        _instance_of(_REG + "cox_aalen.cox_aalen.CoxAalenModel"),
+        "Check the multiplicative covariates' proportional hazards with "
+        "CoxPH.fit(...).diagnose() on the same rows (the model with every "
+        "covariate multiplicative), and whether an additive covariate's "
+        "effect changes over time with "
+        "AalenAdditive.fit(...).constant_effects_test() (the model with "
+        "every covariate additive).",
+    ),
+    Pending(
         "parametric competing-risks regressions as a whole",
         _instance_of(
             "surpyval.univariate.competing_risks.regression."

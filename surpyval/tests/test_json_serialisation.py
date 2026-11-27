@@ -34,6 +34,7 @@ from surpyval import (
     AcceleratedLife,
     AdditiveHazards,
     BuckleyJames,
+    CoxAalen,
     CoxPH,
     InstantlyOccurs,
     KaplanMeier,
@@ -468,6 +469,7 @@ def _build(name):
             *_semipar_data(5)[:2], c=_semipar_data(5)[2]
         ),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
+        "cox_aalen": lambda: CoxAalen.fit(*_semipar_data(3)[:2], additive=[0]),
         "quantile_regression": lambda: QuantileRegression.fit(
             *_semipar_data(3)
         ),
@@ -741,6 +743,7 @@ CASES = [
     "additive_hazards",
     "aalen_additive",
     "buckley_james",
+    "cox_aalen",
     "quantile_regression",
     "proportional_odds",
     "interval_cox",

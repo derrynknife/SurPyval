@@ -417,6 +417,18 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **The Cox-Aalen model: ``CoxAalen``.** Multiplicative Cox terms on an
+  additive Aalen baseline with time-varying effects (Scheike and Zhang
+  2002): ``additive=`` names the columns of ``Z`` that add to the hazard,
+  the rest are hazard ratios. With none additive it is ``CoxPH`` with
+  Breslow ties (coefficients, standard errors, robust covariance and
+  curve bounds agree to rounding); with all additive it is
+  ``AalenAdditive``. It reports ``summary()``, ``covariance()``,
+  ``robust_covariance()`` and Wald ``param_cb`` for the hazard ratios,
+  ``cumulative_coefficients`` and their bounds for the additive part, and
+  ``sf``, ``ff``, ``Hf``, ``qf``, ``random`` and ``cb`` for predictions
+  (a falling additive estimate is held at its running maximum, as in
+  ``AalenAdditive``).
 - **Promotion-time (bounded cumulative hazard) cure regression:
   ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
   ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,

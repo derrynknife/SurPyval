@@ -44,6 +44,7 @@ from .additive_hazards import (
     WeibullAH,
 )
 from .buckley_james import BuckleyJames, BuckleyJamesModel
+from .cox_aalen import CoxAalen, CoxAalenModel
 from .frailty import (
     CoxFrailty,
     CoxFrailtyFitter,
@@ -179,6 +180,9 @@ __all__ = [
     # Buckley-James semi-parametric AFT
     "BuckleyJames",
     "BuckleyJamesModel",
+    # The Cox-Aalen model (multiplicative terms on an additive baseline)
+    "CoxAalen",
+    "CoxAalenModel",
     # Censored quantile regression (Peng-Huang, Portnoy)
     "QuantileRegression",
     "QuantileRegressionModel",
