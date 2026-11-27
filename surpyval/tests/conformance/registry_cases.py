@@ -93,6 +93,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     mixture_data,
     ms_data,
     ms_interval_data,
+    ms_truncated_data,
     offset_data,
     panel_count_data,
     panel_data,
@@ -1125,6 +1126,31 @@ def _multistate():
 
         return fit
 
+    def truncated_from_df(d):
+        df = frame(d)
+        df["i"], df["tr"] = d["i"], d["tr"]
+        return ms.ParametricMultiState.fit_from_df(
+            df,
+            "x",
+            "e",
+            "state",
+            tl_col="tl",
+            i_col="i",
+            n_col="n",
+            transitions=d["transitions"],
+            dist=sp.Exponential,
+            tr_col="tr",
+        )
+
+    def truncated_from_data(d):
+        data = sp.SurpyvalData(
+            d["x"], n=d["n"], tl=d["tl"], tr=d["tr"], e=d["e"],
+            s=d["state"], i=d["i"],
+        )  # fmt: skip
+        return ms.ParametricMultiState.fit(
+            data, transitions=d["transitions"], dist=sp.Exponential
+        )
+
     exact = "an exact (Aalen-Johansen) estimate of the spells"
     return [
         Case(
@@ -1325,6 +1351,36 @@ def _multistate():
                 "transitions' fits to the intervals' middles and takes no "
                 "init or iteration limit to starve; a search that ends "
                 "short is checked by 'maximum'"
+            },
+        ),
+        # Units seen only because they were dead by a cut-off (right
+        # truncation): every transition fitted at once, each truncated
+        # unit's likelihood divided by its chance of dying by then.
+        Case(
+            name="ParametricMultiState[truncated]",
+            fitters=("surpyval.multistate.ParametricMultiState",),
+            model_class="surpyval.multistate.ParametricMultiState",
+            interface=STATES,
+            data=ms_truncated_data,
+            fit=_fit(ms.ParametricMultiState, dist=sp.Exponential),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n", "i", "tr"),
+            times=("x", "tl", "tr"),
+            paths={
+                "fit_from_df": truncated_from_df,
+                "fit(data)": truncated_from_data,
+            },
+            exclude={
+                "convergence": "the joint search starts from the "
+                "transitions' own fits (ignoring the truncation) and takes "
+                "no init or iteration limit to starve; a search that ends "
+                "short is checked by 'maximum'",
+                "counts": "a row repeated keeps its unit (i), so the copies "
+                "overlap in time; truncation is by unit and needs i. The "
+                "untruncated case checks counts",
             },
         ),
         Case(

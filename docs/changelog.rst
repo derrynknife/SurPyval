@@ -469,6 +469,29 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Left-censored moves and right truncation in ``ParametricMultiState``
+  and ``ParametricMultiStateRegression``.** A move known only to have
+  happened by a time (``x = [-inf, xr]``, or ``c = -1`` in a
+  ``SurpyvalData``, which every multi-state model refused before) is read
+  as a move between the start of its spell and ``xr``, on either clock.
+  ``tr=`` (``tr_col``, or a ``SurpyvalData``'s ``tr``) with ``reached=``
+  fits units seen only because they reached a state by a cut-off: each
+  unit's likelihood is divided by its chance of reaching the state by
+  then (the first passage, by the forward equations), every transition
+  fitted at once; forward clock only. With two states both equal the
+  univariate fits (``Weibull.fit`` with ``c = -1``, and with ``tr``) to
+  1e-8 in the log-likelihood; a simulated register of deaths is
+  recovered with ``tr`` and is 9 to 18 standard errors off without it.
+  Where a hazard runs to 0 under the truncation (the truncated units
+  carry little information on its level) the fit warns that it has no
+  finite maximum and gives ``nan`` standard errors for that transition
+  (the others' conditional on it held there);
+  a transition with no moves in truncated data is refused, saying why
+  (by design, such data may show none). A left-censored move in a spell
+  with no ``tl`` on a baseline defined below 0 is refused.
+  Fixed on the way: a ``ParametricMultiState`` reloaded by ``from_dict``
+  from a joint fit (to interval-censored moves) lacked its covariate
+  array, so ``_interval_likelihood()`` failed on it.
 - **Time-varying covariates in ``ParametricMultiStateRegression``.**
   ``fit(..., time_varying_covariates={unit: StepSchedule or
   CovariatePath})`` (and ``fit_from_df``, and a ``SurpyvalData`` holding
