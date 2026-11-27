@@ -217,22 +217,14 @@ def test_mixture_gradient_matches_a_central_difference(name):
         assert float(logits.grad[k]) == pytest.approx(fd, rel=1e-6, abs=1e-6)
 
 
-#: The loss of ``test_a_dominant_component_stays_finite`` in 50-digit
-#: arithmetic (mpmath) where ``MixtureModel``'s is not accurate to 1e-10:
-#: the dominant BirnbaumSaunders(0.3, 4) gives the window [22, 27] a
-#: probability of 8e-11, which ``MixtureModel`` takes as a difference of
-#: CDFs near 1 (121.77324154, 4.4e-9 high).
-_DOMINANT_50_DIGITS = {"BirnbaumSaunders": 121.77324099699673}
-
-
 @pytest.mark.parametrize("name", list(MIX))
 def test_a_dominant_component_stays_finite(name):
     # A weight within 2e-35 of 1: the loss is still the mixture's, and
-    # the gradient is finite in every parameter and logit. (Without
-    # truncation: MixtureModel takes a censored row's window as a
-    # difference of CDFs, which for the dominant Gumbel's [18, 29] loses
-    # 4 digits; this loss, worked out from the survival function there,
-    # agrees with 50-digit arithmetic.)
+    # the gradient is finite in every parameter and logit. (The dominant
+    # BirnbaumSaunders gives the window [22, 27] a probability of 8e-11,
+    # deep in its upper tail; both this loss and MixtureModel's take it
+    # from the survival function there, and agree with 50-digit
+    # arithmetic: test_mixture_tail_windows.py.)
     dist = _dist(name)
     arrays = _arrays("mixed", "none")
     y = spt.targets(**arrays)
@@ -241,9 +233,7 @@ def test_a_dominant_component_stays_finite(name):
     loss = spt.nll(dist, y, params, mixture=logits, reduction="sum")
     loss.backward()
     w = torch.softmax(logits.detach(), dim=0).numpy()
-    expected = _DOMINANT_50_DIGITS.get(name)
-    if expected is None:
-        expected = _reference(dist, arrays, MIX[name], w)
+    expected = _reference(dist, arrays, MIX[name], w)
     assert float(loss.detach()) == pytest.approx(expected, rel=1e-10)
     for value in [*params.values(), logits]:
         assert torch.isfinite(value.grad).all()

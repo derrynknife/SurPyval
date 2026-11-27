@@ -1211,8 +1211,25 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         its windows' inputs (``_window_inputs``), the counts ``n``, the
         distribution's parameters, its ``(gamma, f0, p)`` and the
         functions ``(ff, log_sf, log_ff)`` it evaluates, each called as
-        ``f(x, *dist_params)``."""
+        ``f(x, *dist_params)``: the counts times
+        :meth:`_window_log_probs`."""
+        return np.sum(
+            n * self._window_log_probs(windows, dist_params, extra, fns)
+        )
+
+    def _window_log_probs(
+        self,
+        windows: tuple,
+        dist_params: Any,
+        extra: tuple,
+        fns: tuple[Callable[..., Any], ...],
+    ) -> Any:
+        """Each window's log probability for
+        :meth:`_window_log_likelihood`, row by row (``MixtureModel`` takes
+        its components' windows from here too). A window with no mass at
+        all is ``log 0``."""
         xl, xr, lo_finite, hi_finite, lo_evaluated, xl_safe, xr_safe = windows
+        rows = len(xl)
         gamma, f0, p = extra
         ff, log_sf, log_ff = fns
         # The zero-inflation mass ``f0`` sits at 0 in observed time (see
@@ -1251,7 +1268,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         # elsewhere), so the other cannot put a NaN into the gradient.
         plain = self.discrete or _raw(f0) != 0 or _raw(p) != 1
         upper_tail = (
-            np.zeros(len(n), dtype=bool)
+            np.zeros(rows, dtype=bool)
             if plain
             else lo_finite & (_raw(lower) > 0.5)
         )
@@ -1262,24 +1279,21 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         # space from ``log_ff``, ``log F(r) + log(1 - F(l) / F(r))``
         # (#594). Only such windows: elsewhere nothing changes.
         lower_tail = (
-            np.zeros(len(n), dtype=bool)
+            np.zeros(rows, dtype=bool)
             if plain
             else hi_finite & ~upper_tail & (_raw(window) < _TINY)
         )
         if np.any(lower_tail):
-            return np.sum(
-                n
-                * self._log_windows(
-                    xl_safe - gamma,
-                    xr_safe - gamma,
-                    (lo_evaluated, hi_finite, upper_tail, lower_tail),
-                    window,
-                    dist_params,
-                    (log_sf, log_ff),
-                )
+            return self._log_windows(
+                xl_safe - gamma,
+                xr_safe - gamma,
+                (lo_evaluated, hi_finite, upper_tail, lower_tail),
+                window,
+                dist_params,
+                (log_sf, log_ff),
             )
         if not np.any(upper_tail):
-            return np.sum(n * np.log(window))
+            return np.log(window)
         in_tail = float(xl[upper_tail][0])
         log_sl = log_sf(
             np.where(upper_tail, xl_safe, in_tail) - gamma, *dist_params
@@ -1294,7 +1308,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         )
         tail = log_sl + _log1mexp(np.maximum(log_sl - log_sr, 0.0))
         body = np.log(np.where(upper_tail, 1.0, window))
-        return np.sum(n * np.where(upper_tail, tail, body))
+        return np.where(upper_tail, tail, body)
 
     def _log_windows(
         self,
