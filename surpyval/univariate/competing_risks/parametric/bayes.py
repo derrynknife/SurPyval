@@ -174,8 +174,8 @@ class BayesianCompetingRisks(SerialisableMixin):
         #: causes were fitted together (failures found in a window); else
         #: ``None`` (the causes' posteriors are independent).
         self.posterior = posterior
-        #: Each cause's columns of the joint posterior, ``{cause: [i,
-        #: ...]}`` in its distribution's parameter order.
+        #: Each cause's columns of the joint posterior,
+        #: ``{cause: [i, ...]}``, in its distribution's parameter order.
         self.columns = None if columns is None else dict(columns)
         #: The joint fit (a :class:`~surpyval.bayes.BayesianResult`: its
         #: ``diagnostics``, ``waic``, ``loo``), where it was fitted here.

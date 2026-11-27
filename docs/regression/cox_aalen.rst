@@ -93,9 +93,6 @@ the estimate, and the derivative Newton's method uses matches its
 numerical derivative; and a seeded simulation (n = 400) recovers the
 hazard ratio and both cumulative coefficients with the stated coverage.
 
-.. automodule:: surpyval.univariate.regression.cox_aalen.cox_aalen
-    :no-members:
-
 .. autoclass:: surpyval.univariate.regression.cox_aalen.cox_aalen.CoxAalen_
     :members:
 

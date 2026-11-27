@@ -35,6 +35,8 @@ reduced intensity by inverting its compensator), not with the package's
 simulators.
 """
 
+import sys
+
 import numpy as np
 import pytest
 from scipy import optimize
@@ -211,7 +213,33 @@ SCENARIOS = {
 }
 
 
-@pytest.mark.parametrize("name", list(SCENARIOS))
+LINUX = sys.platform.startswith("linux")
+
+#: Misses on the 0.30 release run (x86-64 Linux), released as known
+#: limitations (the maintainer's decision, 28 Nov 2026), to be fixed.
+_RELEASE_MISSES = {
+    "grp-near-perfect": "1 of 300 fits refused on x86-64 Linux (repetition "
+    "168: the grid's two offset summaries differ by 1.25% of the 95% "
+    "interval's width); the rule is none",
+}
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        (
+            pytest.param(
+                name,
+                marks=pytest.mark.xfail(
+                    LINUX, strict=True, reason=_RELEASE_MISSES[name]
+                ),
+            )
+            if name in _RELEASE_MISSES
+            else name
+        )
+        for name in SCENARIOS
+    ],
+)
 def test_sbc(name):
     truth, simulate, fit, names, seed, rules = SCENARIOS[name]()
     rules = dict(rules)

@@ -10,6 +10,26 @@ old name fails with the line to change. On 0.30 a removed name raises
 an error that names its replacement. Some results change on purpose:
 read **Changed numbers**, whose summary comes first.
 
+**Known limitations.** Four calibration studies of models new in this
+release missed a rule on the release run (x86-64 Linux); each is kept as
+an expected failure, with its numbers, until it is fixed:
+
+- the continuous maturity projection's Stein upper bound on the expected
+  failures covered 84.5% of the time for a nominal 90% (tolerance 5.5
+  points): read it as somewhat narrow;
+- the Bayesian Kijima I renewal fit, with the repair parameter near
+  perfect repair, refused 1 of 300 simulated fits (the grid did not
+  reach its accuracy);
+- the Bayesian gamma-process fit to gauge-quantised readings refused 1
+  of its replicates (the posterior was too flat for its prior);
+- a joint model fitted on the rank-one edge of its spreads (a quadratic
+  path with every parameter varying) is marked ``verified`` on Linux,
+  where that edge cannot be certified (``unverified`` on macOS).
+
+The joint model of several markers with failure modes and the panel
+multi-state model with a way back are checked weekly rather than on the
+release run: their studies take longer than a run can.
+
 **Changed numbers.** This release changes some results on purpose, each
 because the old number was wrong, less accurate than it should be, or
 depended on something it should not (the unit of time, a covariate's
@@ -375,7 +395,7 @@ The entries, in full:
   Phi(-D / (sigma sqrt(t)))``, median ``D**2 / (sigma**2 z_0.75**2)``,
   219.8 at ``D = 10``, ``sigma = 1``). ``random`` with a negative drift
   raised ``ValueError`` and now draws ``inf`` for the units that never
-  cross (a fraction ``1 - exp(2 mu D / sigma**2)``) and the |mu|
+  cross (a fraction ``1 - exp(2 mu D / sigma**2)``) and the ``|mu|``
   Inverse-Gaussian time for the rest. Quantiles (B-lives) and remaining
   lives past the probability of ever crossing were already ``inf`` and
   are unchanged, as is every number at a positive drift. The gamma

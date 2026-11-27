@@ -67,7 +67,13 @@ def _one(r):
 
 
 def test_recovery_and_coverage():
-    with process_pool(max_workers=min(os.cpu_count() or 1, 4)) as pool:
+    # SURPYVAL_CALIBRATION_POOL caps the processes (each fit holds over
+    # 5 GB; the weekly run uses 2); the results do not depend on it.
+    workers = int(
+        os.environ.get("SURPYVAL_CALIBRATION_POOL")
+        or min(os.cpu_count() or 1, 4)
+    )
+    with process_pool(max_workers=workers) as pool:
         out = list(pool.map(_one, range(REPS)))
     est = np.array([o[0] for o in out])
     se = np.array([o[1] for o in out])
