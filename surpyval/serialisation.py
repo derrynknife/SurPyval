@@ -64,6 +64,7 @@ _TAGGED_MODELS: dict[str, str] = {
     "BuckleyJamesModel": (
         "surpyval.univariate.regression.buckley_james.buckley_james"
     ),
+    "RankAFTModel": "surpyval.univariate.regression.rank_aft.rank_aft",
     "QuantileRegressionModel": (
         "surpyval.univariate.regression.quantile.quantile_regression"
     ),
