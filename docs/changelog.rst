@@ -443,6 +443,37 @@ v0.30 (unreleased)
   before was censored. A marked row that is not its unit's next row in
   the same state, starting where the row before was censored, is
   refused. No existing fit's numbers change.
+- **Promotion-time (bounded cumulative hazard) cure regression:
+  ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
+  ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,
+  ``GammaPromotionTimeCure`` and ``ExponentialPromotionTimeCure``
+  built. The survival is ``exp(-theta(z) F0(t))`` for a lifetime
+  distribution ``F0``, so a fraction ``exp(-theta(z))`` never fails; by
+  default the covariates act on ``theta`` through a log link, which
+  makes it a proportional hazards model with a bounded baseline
+  cumulative hazard (``exp(coef)`` a hazard ratio). It sits beside
+  ``MixtureCure`` and shares its interface: ``cure_probability``,
+  ``susceptible_probability``, ``cure_given_survival``,
+  ``susceptible=True``, ``follow_up()``, every bound type, the saved
+  form, and a warning when follow-up shows no plateau. Checked against
+  an independently written likelihood, its limit with no cure
+  (``WeibullPH``) and simulation; see :doc:`Mixture-Cure Regression`.
+- **Cox fits to case-cohort and nested case-control samples:
+  ``CoxPH.fit_case_cohort`` and ``CoxPH.fit_nested_case_control``.** A
+  case-cohort sample (a random subcohort plus every case) is fitted by
+  Prentice's, Self and Prentice's, Lin and Ying's or Barlow's estimator,
+  or, for a subcohort drawn within strata, Borgan's I or II, each with
+  its design-based variance, with delayed entry; the coefficients and
+  standard errors match R's ``survival::cch`` (and ``coxph`` with
+  Barlow's weights) on the Wilms tumour example to about 1e-9. Its
+  baseline is weighted to stand for the cohort, so the curves are given
+  (their bounds refuse). A nested case-control sample (each case with
+  controls drawn from its risk set) is fitted by the conditional logistic
+  likelihood, as ``clogit``; it has no baseline, so its curves refuse.
+  See :doc:`Case-Cohort and Nested Case-Control`.
+- ``WeightedCox`` (internal) takes a multiplier ``rho`` of a row's
+  place in the risk sums only (an offset of ``log rho``), which the
+  case-cohort fits use; its default 1 changes nothing.
 - **``fit_bayes_from_df`` for the competing-risks and multi-state
   fitters.** ``ParametricCompetingRisks``,
   ``ParametricCompetingRisksRegression``, ``ParametricMultiState`` and
@@ -494,6 +525,20 @@ v0.30 (unreleased)
   third coefficient vector), and ``discrete_time_nll`` equals the negative
   log-likelihood of ``DiscreteWeibull`` and ``Geometric`` at their
   hazards; gradients agree with finite differences.
+- **The mean life under a stress profile in ``BayesianProcessModel``.**
+  ``mean(profile)`` and ``mean_cri(profile)`` (a ``StepSchedule`` as
+  ``Z``) are computed at every posterior point at once, where they
+  refused and pointed to ``function_cri(lambda m: m.mean(profile))``:
+  the sum over the profile's steps of the step's stretch of the
+  reference-clock survival's integral over its pace. The Wiener
+  process's stretch is in closed form (the Inverse Gaussian's partial
+  mean, derived in ``_wiener_partial_life``), the gamma process's one
+  integral on a fixed Gauss-Legendre rule. Checked against adaptive
+  quadrature (1e-9), against the fitted model's own mean through the
+  profile at each posterior point (1e-7, fixed and cyclic profiles), a
+  step with the clock all but stopped against a direct integration of
+  the calendar survival (1e-9), and a constant profile against the
+  constant stress (1e-8).
 
 - **``surpyval.utils.dates_to_durations``: dates to durations and
   censoring flags.** Start dates, end dates (a blank meaning still
@@ -1531,6 +1576,19 @@ v0.30 (unreleased)
   fitted both ways.
 
 **Fixed.**
+
+- **A strong prior far from the estimate no longer refuses a Bayesian
+  fit.** A prior given as a distribution (``sp.Normal.from_params([0,
+  0.02])`` on a coefficient the data put at 1.36, 68 of its standard
+  deviations away) had its log density taken as ``log(df)``, which
+  underflows to ``-inf`` past about 38 standard deviations, and only the
+  maximum-likelihood fit and the priors' centre were tried as starts, so
+  the fit was refused ("No starting point"). The log density is now the
+  distribution's own ``log_df``, and the maximum-likelihood start with
+  each prior-bearing parameter moved to its prior's centre is tried too.
+  The case above now fits, its posterior within the Laplace engine's
+  stated accuracy of a brute-force lattice posterior (0.27 standard
+  deviations at most, against 0.1 of the 95% interval's width).
 
 - **``fit_best`` no longer warns that a default candidate was set aside
   when a regular fit was chosen.** With the GeneralizedF among the
