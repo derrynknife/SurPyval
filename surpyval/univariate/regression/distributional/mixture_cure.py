@@ -268,6 +268,126 @@ class MixtureCureFitter(DistributionalFitter):
     def _repr_details(self) -> list[str]:
         return [f"{self.dist.latency.name} latency"]
 
+    def fit_bayes(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        t: npt.ArrayLike | None = None,
+        *,
+        priors: Any = None,
+        fixed: dict[str, float] | None = None,
+        tl: npt.ArrayLike | None = None,
+        tr: npt.ArrayLike | None = None,
+        importance: bool = False,
+        method: str = "auto",
+        **options: Any,
+    ) -> Any:
+        """
+        Fit the mixture-cure regression by Bayes' rule: priors on the
+        latency's parameters, on ``lfp_p`` (the probability of ever
+        failing at the reference row) and on the coefficients, times the
+        likelihood ``fit`` uses, approximated by a normal at the
+        posterior's peak (the Laplace engine, checked against the exact
+        posterior by importance sampling, ``importance=True`` to correct
+        it). For the exact posterior, sample it with PyMC.
+
+        In words: some units never fail, and the covariates move both
+        how many (the incidence) and when the rest fail (the latency).
+        With follow-up long enough to see the survival curve level off,
+        the data say how large the cured fraction is; with too short a
+        follow-up they cannot tell a cured unit from one that has not
+        failed yet. The maximum-likelihood fit then warns that the data
+        show no cured fraction, and so does this fit; with no prior on
+        ``lfp_p`` it refuses (the posterior has no finite mass), and with
+        one the answer about the cure fraction is the prior's.
+
+        Parameters
+        ----------
+        x, Z, c, n, t, tl, tr, fixed
+            The data and fixed parameters, as for ``fit``.
+        priors : dict, joint prior or list, optional
+            A prior for each parameter it names: the latency's (``alpha``,
+            ``beta`` for a Weibull), ``lfp_p`` (``surpyval.prior.between
+            (0.6, 0.95)`` says "60% to 95% of units at the reference row
+            fail eventually") and the coefficients by name
+            (``lfp_p_coef_0``, ``alpha_coef_0``). A coefficient with no
+            prior gets ``Normal(0, 2.5 / sd)``, ``sd`` its covariate's
+            standard deviation (on the incidence's logit scale, a change
+            of 2.5 in the log odds for one standard deviation of the
+            covariate); any other parameter with none is flat on its
+            unconstrained scale.
+        importance : bool, optional
+            Reweight the normal's draws towards the exact posterior.
+        method : {'auto', 'laplace', 'grid'}, optional
+            ``'auto'`` is the Laplace approximation.
+
+        Returns
+        -------
+        surpyval.bayes.regression.BayesianMixtureCure
+            A regression's results (``sf``/``ff``/``qf`` and ``cri`` at
+            covariates, ``param_cri``, ``compare``, ``waic``, ``loo``),
+            and :meth:`cure_probability` and :meth:`cure_cri` for the
+            cured fraction at covariates.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as sp
+        >>> rng = np.random.default_rng(3)
+        >>> Z = rng.binomial(1, 0.5, size=(150, 1)).astype(float)
+        >>> cured = rng.uniform(size=150) < np.where(Z[:, 0] > 0, 0.5, 0.25)
+        >>> life = sp.Weibull.random(150, 10.0, 2.0, random_state=4)
+        >>> x = np.where(cured, 40.0, np.minimum(life, 40.0))
+        >>> c = np.where(cured | (life > 40.0), 1, 0)
+        >>> model = sp.MixtureCure(sp.Weibull).fit_bayes(x, Z, c)
+        >>> sorted(model.default_priors)
+        ['alpha_coef_0', 'lfp_p_coef_0']
+        """
+        from surpyval.bayes.regression import fit as _fit
+
+        return _fit(
+            self,
+            x,
+            Z,
+            c,
+            n,
+            t,
+            priors=priors,
+            fixed=fixed,
+            tl=tl,
+            tr=tr,
+            importance=importance,
+            method=method,
+            **options,
+        )
+
+    def fit_bayes_from_df(
+        self,
+        df: Any,
+        *,
+        priors: Any = None,
+        importance: bool = False,
+        method: str = "auto",
+        **columns: Any,
+    ) -> Any:
+        """:meth:`fit_bayes` on the columns of a DataFrame, named as
+        ``fit_from_df`` names them (``x_col``, ``Z_cols``, ``c_col``,
+        ``n_col``, ...); a coefficient is then named by its parameter and
+        its covariate's column."""
+        from surpyval.bayes.regression import fit_from_df as _fit_from_df
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        return _fit_from_df(
+            self,
+            _as_pandas(df),
+            priors=priors,
+            importance=importance,
+            method=method,
+            **columns,
+        )
+
     @property
     def latency(self) -> Any:
         """The distribution of the time to failure of a susceptible

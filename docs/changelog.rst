@@ -482,6 +482,26 @@ v0.30 (unreleased)
   now share that code (``BuckleyJames``'s numbers are unchanged).
   Checked against exact linear-programme solutions, least squares,
   ``BuckleyJames`` and a seeded simulation (see the docs page).
+- **``MixtureCure(dist).fit_bayes``** (and ``fit_bayes_from_df``): the
+  mixture-cure regression's Bayesian fit, priors on the latency, on
+  ``lfp_p`` and on the coefficients (a coefficient given none gets
+  ``Normal(0, 2.5 / sd)``), by the Laplace approximation with its checks.
+  The result, ``surpyval.bayes.regression.BayesianMixtureCure``, has the
+  regressions' predictions and ``cure_probability(Z)`` and
+  ``cure_cri(Z)`` for the cured fraction. It warns when follow-up is too
+  short to identify the cure fraction (Maller and Zhou's check) and, as
+  the maximum-likelihood fit does, when the data show no cured fraction;
+  then, with no prior on ``lfp_p``, it refuses. See "Cured fractions and
+  mixtures" in :doc:`Bayesian Fitting with SurPyval`.
+- **``MixtureModel.fit_bayes`` refuses**, saying why (label switching:
+  the posterior has a peak for every numbering of the components) and
+  pointing to the new **``surpyval.pymc.mixture_likelihood``** (and
+  ``mixture_log_likelihood``): a mixture's exact censored and truncated
+  likelihood in PyMC, its components numbered in increasing order of one
+  parameter (by default the family's first, a Weibull's ``alpha``). It
+  equals ``MixtureModel``'s own log-likelihood to 1e-10. See "Mixtures"
+  in :doc:`PyMC with SurPyval`.
+
 - **Promotion-time (bounded cumulative hazard) cure regression:
   ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
   ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,

@@ -22,6 +22,10 @@ what to install when it is absent.
   :func:`group_models` turns its draws into a SurPyval model per group
   and one for a new group; :func:`shrinkage` tabulates how far pooling
   pulled each group;
+- :func:`mixture_likelihood` adds the likelihood of a mixture of one
+  family's lives (:func:`mixture_log_likelihood` as an expression), its
+  components numbered in increasing order of one parameter, so that
+  their labels cannot switch;
 - :func:`nhpp_likelihood` adds the power-law (Crow-AMSAA) NHPP
   likelihood of systems' event histories (:func:`nhpp_log_likelihood`
   as an expression), and ``pooled_likelihood(CrowAMSAA, ...)`` pools a
@@ -37,6 +41,7 @@ from surpyval.pymc.likelihood import (
     censored_likelihood,
     log_likelihood,
 )
+from surpyval.pymc.mixture import mixture_likelihood, mixture_log_likelihood
 from surpyval.pymc.nhpp import nhpp_likelihood, nhpp_log_likelihood
 from surpyval.pymc.pooling import group_models, pooled_likelihood, shrinkage
 from surpyval.pymc.posterior import to_surpyval
@@ -53,6 +58,8 @@ __all__ = [
     "censored_likelihood",
     "group_models",
     "log_likelihood",
+    "mixture_likelihood",
+    "mixture_log_likelihood",
     "nhpp_likelihood",
     "nhpp_log_likelihood",
     "pooled_likelihood",

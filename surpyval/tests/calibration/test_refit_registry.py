@@ -1829,6 +1829,9 @@ EXCLUDED: dict[str, str] = {
         "checked in tests/bayes/test_multistate_bayes.py and "
         "tests/bayes/test_regression_cr_ms_bayes.py",
     ),
+    "WeibullMixtureCure[bayes]": "a posterior, not a point estimate to "
+    "recover: the coverage of its credible intervals on simulated data is "
+    "the calibration study calibration/test_coverage_mixture_cure_bayes.py",
     "WeibullPH[bayes]": "a posterior, not a point estimate to recover: "
     "the Laplace engine checks its normal against the exact posterior "
     "(tests/bayes/test_laplace.py) and the fit is tested in "

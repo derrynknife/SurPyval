@@ -387,6 +387,61 @@ a short time, with four events each) the spread's 95% interval holds
 alone) to 0.62 and 0.53, towards the population's 0.74, and the new
 system's interval on its rate is wider than any observed system's.
 
+Mixtures
+--------
+
+A mixture of lives (two failure modes, a weak and a strong
+subpopulation) has a likelihood that does not change when its
+components are renumbered. Its posterior then has a copy of every peak
+for each numbering, and a sampler's draws of "component 0" are a blend
+of the components (*label switching*), so SurPyval's own engines refuse
+it (``MixtureModel.fit_bayes``). ``mixture_likelihood`` adds the
+mixture's exact likelihood, every row type and truncation as
+``MixtureModel.fit`` takes them, and keeps one numbering: the
+components are ordered by one parameter, which must increase from
+component 0 to the last.
+
+**Which parameter is ordered, and what it means.** By default the
+family's first parameter: a Weibull's (or a Gamma's) ``alpha``, a
+LogNormal's or Normal's ``mu``, an Exponential's rate. For a Weibull
+mixture component 0 is then, in every draw, the component with the
+shortest characteristic life (the "infant mortality" mode), and
+component 1 the longer one; its weight ``w[0]`` is the share of units in
+the short-lived subpopulation. Give that parameter PyMC's ordered
+transform, so that every draw is ordered:
+
+.. code:: python
+
+    import pymc as pm
+    import surpyval as sp
+    from surpyval.pymc import mixture_likelihood, to_surpyval
+
+    with pm.Model():
+        w = pm.Dirichlet("w", a=[1.0, 1.0])
+        log_alpha = pm.Normal(
+            "log_alpha", mu=np.log([5.0, 50.0]), sigma=1.5, shape=2,
+            transform=pm.distributions.transforms.ordered)
+        beta = pm.LogNormal("beta", mu=0.3, sigma=0.5, shape=2)
+        mixture_likelihood(
+            sp.Weibull, x=x, c=c, weights=w,
+            alpha=pm.math.exp(log_alpha), beta=beta)
+        trace = pm.sample(random_seed=1)
+
+A second Potential, ``likelihood_order``, is ``-inf`` outside the
+ordered region (it is 0 for every draw of the ordered transform), so the
+order also holds for parameters built some other way. ``order="beta"``
+orders by another parameter (better where the components share a scale
+and differ in shape), and ``order=None`` leaves the labels free.
+Ordering does not help where two components have nearly the same value
+of the ordered parameter: they can still trade places between draws, and
+the parameter they differ in should be the one ordered.
+
+``mixture_log_likelihood`` gives the same term as an expression. In the
+tests it equals ``MixtureModel``'s own log-likelihood at given
+parameters to 1e-10, with exact, right-, left- and interval-censored
+rows, counts and truncation, for Weibull and LogNormal mixtures of two
+and three components.
+
 Priors from SurPyval
 --------------------
 
@@ -455,3 +510,7 @@ API
 .. autofunction:: surpyval.pymc.nhpp_likelihood
 
 .. autofunction:: surpyval.pymc.nhpp_log_likelihood
+
+.. autofunction:: surpyval.pymc.mixture_likelihood
+
+.. autofunction:: surpyval.pymc.mixture_log_likelihood

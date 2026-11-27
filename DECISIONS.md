@@ -15,6 +15,17 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### Bayesian mixture-cure regression; mixtures through PyMC (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `MixtureCure(dist).fit_bayes` goes through the regressions' Bayesian layer (`RegressionTarget`, the Laplace engine by default, `importance=True` to correct), with its own result class `BayesianMixtureCure` adding `cure_probability(Z)` (posterior mean) and `cure_cri(Z)`. | proposed | One Bayesian regression layer; the cure fraction is the question asked of a cure model. | done |
+| Every mixture-cure coefficient (on the incidence's logit and on the latency's parameters) given no prior gets the regressions' default `Normal(0, 2.5 / sd)`; the latency's parameters and `lfp_p` given none are flat on their unconstrained scales. | proposed | The logistic-regression default (2.5 per standard deviation of the covariate); the other regressions already use it. | done |
+| Poor follow-up warns by Maller and Zhou's check (`follow_up()`, p of at least 0.05), a new warning of the Bayesian fit; where the maximum-likelihood fit has no finite maximum (`lfp_p` to 1) the fit says so again through `warn_no_maximum` and, with `lfp_p` flat, refuses. | proposed | The maximum-likelihood fit warns only in the run-off case; a short follow-up can also give a spurious finite cure fraction (on simulated data with follow-up of 0.4 of the latency's scale it found `lfp_p` 0.09 at the reference row for a truth of 0.75, in silence). | done |
+| `MixtureModel.fit_bayes` refuses (label switching), naming `surpyval.pymc.mixture_likelihood`. | maintainer (25 Nov) | — | done |
+| `mixture_likelihood(dist, ..., weights=, order=, **params)`: each parameter a vector of the components' values; the components are ordered by `order`, by default the family's first parameter (Weibull `alpha`: component 0 has the shortest characteristic life), enforced by a second Potential (`-inf` outside the ordered region) and meant to be paired with PyMC's ordered transform; `order=None` frees the labels. | proposed (ordering: maintainer's default, 25 Nov) | The first parameter is a scale or location for every supported family, the parameter components usually differ in. | done |
+| The coverage study (`calibration/test_coverage_mixture_cure_bayes.py`) holds the Laplace fit to the Laplace regressions' band. A reduced run of 60 repetitions missed the band in one place (the latency coefficient's 50% coverage 0.383; the band, 0.41 to 0.59, is for 300); the full study has not been run. | proposed | Reported as it is. | open |
+
 ### Promotion-time cure regression (27 Nov 2026)
 
 | Decision | By | Reason | Status |

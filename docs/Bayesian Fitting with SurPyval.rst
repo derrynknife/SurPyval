@@ -496,6 +496,61 @@ coefficient is the Bayesian penalty), time-varying covariates, the
 semi-parametric Cox model and the other regression families.
 
 
+Cured fractions and mixtures
+----------------------------
+
+**A cured fraction with covariates.** In a mixture-cure regression some
+units never fail (patients cured, parts without the defect), and the
+covariates move both how many fail at all (the *incidence*, ``lfp_p``
+at the reference row, with its coefficients on the logit scale) and when
+the rest fail (the *latency*). ``MixtureCure(dist).fit_bayes`` puts
+priors on all of them; a coefficient given none gets ``Normal(0, 2.5 /
+sd)``, ``sd`` its covariate's standard deviation, as the other
+regressions' do (on the logit scale, a change of 2.5 in the log odds of
+ever failing for one standard deviation of the covariate). The posterior
+is the Laplace approximation, with its checks (``importance=True`` to
+correct it).
+
+.. code-block:: python
+
+    import surpyval as sp
+
+    # 150 units followed to 40 hours; z = 1 for the new supplier
+    model = sp.MixtureCure(sp.Weibull).fit_bayes(
+        x, Z, c,
+        priors={"lfp_p_coef_0": sp.Normal.from_params([-0.5, 0.5])})
+    model.cure_probability([[1.0]])   # 0.33: never fail, new supplier
+    model.cure_cri([[1.0]])           # 0.24 to 0.43
+    model.cri(20.0, [[1.0]])          # survival to 20 hours: 0.25 to 0.44
+
+A cured fraction is only known from a *plateau*: units still under
+observation, and not failing, long after the failures have thinned out.
+With too short a follow-up the data cannot tell a cured unit from one
+that has not failed yet. The fit then warns, saying how it knows
+(Maller and Zhou's check, ``model.mle.follow_up()``), and the cure
+fraction's posterior rests on its prior. Where the data show no cured
+fraction at all (the maximum-likelihood ``lfp_p`` runs to 1) it warns as
+the maximum-likelihood fit does, and with no prior on ``lfp_p`` it
+refuses: that posterior has no finite mass. Give ``lfp_p`` a prior from
+what is known (``sp.prior.between(0.6, 0.95)``: "60% to 95% of units at
+the reference row fail eventually"), or follow the units for longer.
+
+**Mixtures of lives.** ``MixtureModel.fit_bayes`` refuses. A mixture's
+likelihood is the same whichever component is called the first, so its
+posterior has a peak for every numbering of the components (*label
+switching*), and neither a single normal nor the grid describes it.
+Sample it with PyMC through ``surpyval.pymc.mixture_likelihood``, which
+numbers the components in increasing order of one parameter so that the
+labels cannot switch (see "Mixtures" in :doc:`PyMC with SurPyval`).
+
+Checked against: the maximum-likelihood fit (with flat priors, the
+posterior's peak) and simulation-based calibration of the coverage of
+the intervals (a reduced run of 60 repetitions, 200 units: the 90%
+intervals held the truth in 0.87 to 0.92 of them for the five
+parameters; the 50% intervals in 0.38 to 0.58, the latency coefficient's
+0.38 below the band of 0.41 to 0.59 the full study of 300 repetitions
+is held to, which runs with the calibration studies).
+
 An activation energy from the literature
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
