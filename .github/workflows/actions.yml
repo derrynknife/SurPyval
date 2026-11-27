@@ -95,8 +95,11 @@ jobs:
     runs-on: ubuntu-latest
     # 8 minutes on the 0.26 release run, installation included; in one
     # process it passed 20 minutes at 94% on the 0.29 release run, and in
-    # a process per core it took 29 minutes there.
-    timeout-minutes: 60
+    # a process per core it took 29 minutes there. On the 0.30 release
+    # runs (17,605 cases, about twice 0.29's) it was 38% done at its
+    # 60-minute limit: the likelihood-ratio bounds on a regression's mean,
+    # new in 0.30, take minutes a case.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -110,12 +113,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements_dev.txt
 
-      # A per-test limit: no conformance test takes more than seconds, so
-      # ten minutes stops only a test that hangs, naming it.
+      # A per-test limit, which stops only a test that hangs, naming it:
+      # the slowest cases (a regression mean's likelihood-ratio bound)
+      # take up to 15 minutes on a runner.
       - name: pytest (conformance)
         run: >-
           python -m pytest surpyval/tests/conformance -m "not slow"
-          -n auto --timeout=600 --timeout-method=thread
+          -n auto --timeout=2400 --timeout-method=thread
 
   # The test suite runs on the pull request into `main` -- the release --
   # and on nothing else (see the top of this file).
@@ -143,8 +147,12 @@ jobs:
     # the 0.27 release run (13 November 2026), with the suite about twice
     # as long and split by hash into four, seven parts ran into a
     # 60-minute limit: the suite is now in six parts balanced by the
-    # recorded times, each about 25 minutes of tests.
-    timeout-minutes: 75
+    # recorded times, each about 25 minutes of tests. On the 0.30 release
+    # runs (27 November 2026) parts took 30 to 66 minutes and three ran
+    # into the 75-minute limit; the likelihood-ratio bounds on a
+    # regression's mean (new in 0.30) take 5 to 15 minutes a case, past
+    # the 20-minute per-test limit on a slow runner.
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -204,7 +212,7 @@ jobs:
           --shard=${{ matrix.shard }}/6 $ONLY_312
           --shard-durations=.github/test_durations.json
           --store-durations=test-durations-${{ matrix.python-version }}-${{ matrix.shard }}.json
-          --timeout=1200 --timeout-method=thread --durations=20
+          --timeout=2400 --timeout-method=thread --durations=20
 
       - name: Upload the test times
         if: always()
@@ -503,13 +511,14 @@ jobs:
           # Several markers with failure modes: 200 fits of one to two
           # minutes each on an M-series Mac (the full model, 250 items) on
           # every core of one worker, so a group of its own. On the 0.30
-          # release run it reached its 150-minute per-test limit (the
-          # limit ends the worker, reported as a crash): the runner's
-          # cores are slower. No seed, size or tolerance changes.
+          # release runs it reached its per-test limit at 150 minutes and
+          # again at 300 (the limit ends the worker, reported as a crash):
+          # the runner's cores are slower. It now has the most a job can
+          # have (GitHub's six hours). No seed, size or tolerance changes.
           - group: joint-marker-causes
             workers: '1'
-            test-timeout: 18000
-            job-timeout: 330
+            test-timeout: 20700
+            job-timeout: 355
             args: >-
               surpyval/tests/calibration/test_coverage_joint_marker_causes.py
           - group: joint-lag
@@ -558,11 +567,104 @@ jobs:
               surpyval/tests/calibration/test_metric_bias.py
           # 31 minutes on the 0.26 release run; the 0.29 release run
           # stopped it at 60, with the studies the 0.29 models brought.
+          # The studies added in 0.30, out of the rest group, which with
+          # them ran past its per-test limits on the 0.30 release runs.
+          # Those that run their replicates on every core themselves
+          # (process_pool) run without xdist (workers 0). Their times on
+          # the runners are not known yet, so the limits are generous; no
+          # seed, size or tolerance changes.
+          - group: new-pool-families
+            workers: '0'
+            test-timeout: 5400
+            job-timeout: 150
+            args: >-
+              surpyval/tests/calibration/test_coverage_generalized_gamma.py
+              surpyval/tests/calibration/test_coverage_new_families.py
+              surpyval/tests/calibration/test_coverage_promotion_time_cure.py
+              surpyval/tests/calibration/test_coverage_laplace_frailty.py
+          - group: new-pool-joint
+            workers: '0'
+            test-timeout: 5400
+            job-timeout: 150
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint_cif.py
+              surpyval/tests/calibration/test_coverage_joint_unknown_modes.py
+          - group: new-pool-multistate
+            workers: '0'
+            test-timeout: 5400
+            job-timeout: 150
+            args: >-
+              surpyval/tests/calibration/test_coverage_multistate_interval.py
+              surpyval/tests/calibration/test_coverage_multistate_panel_cycles.py
+              surpyval/tests/calibration/test_coverage_multistate_panel_parametric.py
+              surpyval/tests/calibration/test_coverage_multistate_panel_regression.py
+          - group: new-bayes
+            workers: '2'
+            test-timeout: 5400
+            job-timeout: 150
+            args: >-
+              surpyval/tests/calibration/test_coverage_laplace.py
+              surpyval/tests/calibration/test_coverage_laplace_regression.py
+              surpyval/tests/calibration/test_coverage_mixture_cure_bayes.py
+              surpyval/tests/calibration/test_sbc_competing_risks_bayes.py
+              surpyval/tests/calibration/test_sbc_process_bayes.py
+              surpyval/tests/calibration/test_sbc_process_bayes_gauge.py
+              surpyval/tests/calibration/test_sbc_pymc_pooling.py
+              surpyval/tests/calibration/test_sbc_recurrent_bayes.py
+              surpyval/tests/calibration/test_sbc_renewal_bayes.py
+          - group: new-other
+            workers: '2'
+            test-timeout: 5400
+            job-timeout: 150
+            args: >-
+              surpyval/tests/calibration/test_bias_bivariate_estimators.py
+              surpyval/tests/calibration/test_coverage_cox_aalen.py
+              surpyval/tests/calibration/test_coverage_dabrowska.py
+              surpyval/tests/calibration/test_coverage_discrete_growth.py
+              surpyval/tests/calibration/test_coverage_maturity_projection.py
+              surpyval/tests/calibration/test_coverage_rank_aft.py
+              surpyval/tests/calibration/test_coverage_vine_censored.py
+              surpyval/tests/calibration/test_joint_correlation_edge.py
+              surpyval/tests/calibration/test_joint_spread_at_zero.py
+              surpyval/tests/calibration/test_joint_tiny_spread.py
+              surpyval/tests/calibration/test_recovery_copula_nd_censored.py
+              surpyval/tests/calibration/test_recovery_copula_nd_truncated.py
           - group: rest
             workers: auto
             job-timeout: 120
             args: >-
               surpyval/tests/calibration surpyval/tests/scenarios
+              --ignore=surpyval/tests/calibration/test_coverage_generalized_gamma.py
+              --ignore=surpyval/tests/calibration/test_coverage_new_families.py
+              --ignore=surpyval/tests/calibration/test_coverage_promotion_time_cure.py
+              --ignore=surpyval/tests/calibration/test_coverage_laplace_frailty.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint_cif.py
+              --ignore=surpyval/tests/calibration/test_coverage_joint_unknown_modes.py
+              --ignore=surpyval/tests/calibration/test_coverage_multistate_interval.py
+              --ignore=surpyval/tests/calibration/test_coverage_multistate_panel_cycles.py
+              --ignore=surpyval/tests/calibration/test_coverage_multistate_panel_parametric.py
+              --ignore=surpyval/tests/calibration/test_coverage_multistate_panel_regression.py
+              --ignore=surpyval/tests/calibration/test_coverage_laplace.py
+              --ignore=surpyval/tests/calibration/test_coverage_laplace_regression.py
+              --ignore=surpyval/tests/calibration/test_coverage_mixture_cure_bayes.py
+              --ignore=surpyval/tests/calibration/test_sbc_competing_risks_bayes.py
+              --ignore=surpyval/tests/calibration/test_sbc_process_bayes.py
+              --ignore=surpyval/tests/calibration/test_sbc_process_bayes_gauge.py
+              --ignore=surpyval/tests/calibration/test_sbc_pymc_pooling.py
+              --ignore=surpyval/tests/calibration/test_sbc_recurrent_bayes.py
+              --ignore=surpyval/tests/calibration/test_sbc_renewal_bayes.py
+              --ignore=surpyval/tests/calibration/test_bias_bivariate_estimators.py
+              --ignore=surpyval/tests/calibration/test_coverage_cox_aalen.py
+              --ignore=surpyval/tests/calibration/test_coverage_dabrowska.py
+              --ignore=surpyval/tests/calibration/test_coverage_discrete_growth.py
+              --ignore=surpyval/tests/calibration/test_coverage_maturity_projection.py
+              --ignore=surpyval/tests/calibration/test_coverage_rank_aft.py
+              --ignore=surpyval/tests/calibration/test_coverage_vine_censored.py
+              --ignore=surpyval/tests/calibration/test_joint_correlation_edge.py
+              --ignore=surpyval/tests/calibration/test_joint_spread_at_zero.py
+              --ignore=surpyval/tests/calibration/test_joint_tiny_spread.py
+              --ignore=surpyval/tests/calibration/test_recovery_copula_nd_censored.py
+              --ignore=surpyval/tests/calibration/test_recovery_copula_nd_truncated.py
               --ignore=surpyval/tests/calibration/test_size_parametric_competing_risks_diagnostics.py
               --ignore=surpyval/tests/calibration/test_size_distributional_diagnostics.py
               --ignore=surpyval/tests/calibration/test_size_bayes_diagnostics.py

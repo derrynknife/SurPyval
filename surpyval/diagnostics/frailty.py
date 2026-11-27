@@ -1495,7 +1495,7 @@ PARAMETRIC_FAMILY = register(
                 "proportional_hazards",
                 _stratify_message,
                 (
-                    "FrailtyFitter.fit",
+                    "WeibullFrailty.fit",
                     "CoxPH.fit(strata=)",
                     "summary(robust=)",
                 ),
@@ -1517,7 +1517,7 @@ PARAMETRIC_FAMILY = register(
             AdviceRule(
                 "functional_form",
                 _form_message,
-                ("FrailtyFitter.fit_from_df(formula=)",),
+                ("WeibullFrailty.fit_from_df(formula=)",),
             ),
             AdviceRule(
                 "baseline_distribution",

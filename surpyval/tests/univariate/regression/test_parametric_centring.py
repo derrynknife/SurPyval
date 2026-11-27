@@ -578,3 +578,30 @@ def test_760_additive_hazards_Hf_bound_is_plus_zero():
         finite = np.isfinite(b)
         assert np.any(~finite) and np.any(finite)
         assert not np.any(np.signbit(b[finite]))
+
+
+def test_a_custom_distribution_named_like_a_built_in_is_not_moved():
+    # A custom Gompertz, H = nu (e^{bx} - 1) with parameters nu, b, took
+    # the built-in Gompertz's map to Z = 0 (its rate, the second
+    # parameter, times exp(-s)) and moved b instead of nu: the fit was
+    # refused ("do not reproduce the fit's likelihood"). A custom
+    # distribution has no map, so it is fitted at Z = 0 as given.
+    from autograd import numpy as anp
+
+    from surpyval.univariate.regression._fit_skeleton import origin_entry
+
+    def Hf(x, nu, b):
+        return nu * (anp.exp(b * x) - 1)
+
+    custom = sp.CustomDistribution(
+        "Gompertz", Hf, ["nu", "b"], ((0, None), (0, None)), (0, np.inf)
+    )
+    assert origin_entry("Proportional Hazard", custom) is None
+    assert origin_entry("Proportional Hazard", sp.Gompertz) is not None
+    rng = np.random.default_rng(1)
+    u = rng.uniform(size=300)
+    Z = rng.binomial(1, 0.5, 300).astype(float)
+    t = np.log(1 - np.log(u) / (0.2 * np.exp(0.7 * Z))) / 1.5
+    model = sp.PH(custom).fit(t, Z)
+    se = model.standard_errors()
+    assert np.all(np.abs(model.params - [0.2, 1.5, 0.7]) < 3 * se)

@@ -8,8 +8,10 @@ from surpyval.tests._helpers import (
     fit_turnbull_quietly,
     small_kaplan_meier,
 )
-from surpyval.univariate.nonparametric import (
-    greenwood_variance,
+
+# The fitters' variance steps (public until v0.29), from their modules
+from surpyval.univariate.nonparametric.kaplan_meier import greenwood_variance
+from surpyval.univariate.nonparametric.nelson_aalen import (
     nelson_aalen_variance,
 )
 from surpyval.univariate.nonparametric.nonparametric import NonParametric

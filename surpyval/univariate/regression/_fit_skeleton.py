@@ -420,6 +420,21 @@ class HazardIdentitiesMixin:
 # fail; ``center=True`` is the way round it.
 
 
+def origin_entry(kind: str | None, dist: Any) -> Any:
+    """The :data:`ORIGIN_MAPS` entry of ``kind`` with the built-in
+    distribution ``dist``, or ``None``. A ``CustomDistribution`` has none,
+    whatever its name: the maps read the built-in's parameters in the
+    built-in's order, which a custom one named ``"Gompertz"`` (H = nu
+    (e^{bx} - 1), parameters ``nu, b``) does not share."""
+    from surpyval.univariate.parametric.distributions.custom_distribution import (  # noqa: E501
+        CustomDistribution,
+    )
+
+    if isinstance(dist, CustomDistribution):
+        return None
+    return ORIGIN_MAPS.get((kind or "", canonical_name(dist) or ""))
+
+
 def _ph_weibull(p: Any, s: Any) -> list:
     return [p[0] * np.exp(s / p[1]), p[1]]
 
@@ -707,9 +722,7 @@ class Centring:
             return None
         if center:
             return cls(covariate_center(Z, n), fitter.k_dist)
-        entry = ORIGIN_MAPS.get(
-            (kind or "", canonical_name(fitter.dist) or "")
-        )
+        entry = origin_entry(kind, fitter.dist)
         if entry is None:
             return None
         moved, move = entry
@@ -934,7 +947,7 @@ def alias_coefficients(
         return fixed
     n = np.asarray(n, dtype=float).reshape(-1)
     Zf = Z[:, free]
-    intercept = (kind or "", canonical_name(fitter.dist) or "") in ORIGIN_MAPS
+    intercept = origin_entry(kind, fitter.dist) is not None
     if intercept:
         Zf = Zf - covariate_center(Zf, n)
         constant = constant_columns(Z[:, free])

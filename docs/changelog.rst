@@ -2076,6 +2076,13 @@ The entries, in full:
 
 **Fixed.**
 
+- **A custom distribution named like a built-in one is fitted as its
+  own.** A regression on a ``CustomDistribution`` named ``"Gompertz"``
+  (or any built-in's name) took that built-in's move of the baseline to
+  ``Z = 0``, which reads the built-in's parameters in the built-in's
+  order, and was refused when the orders differed (the custom Gompertz
+  on the parametric page). A custom distribution has no such move: it is
+  fitted at ``Z = 0`` on the covariates as given.
 - **A joint model's prediction where an item's curvature is exactly
   singular.** Far beyond the data an item's hazard can leave a direction
   of its varying parameters flat to the last bit, and the batched solve

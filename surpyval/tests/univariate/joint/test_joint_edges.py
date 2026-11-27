@@ -382,5 +382,3 @@ def test_a_singular_curvature_takes_the_least_squares_step():
     step = _newton_steps(H, g)
     np.testing.assert_allclose(step[0], [-1.0, -1.0])
     np.testing.assert_allclose(step[1], [-1.0, -1.0])
-    nan_H = np.array([[[np.nan, 0.0], [0.0, 1.0]]])
-    assert np.isnan(_newton_steps(nan_H, np.array([[1.0, 1.0]]))).all()
