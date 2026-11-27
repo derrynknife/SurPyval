@@ -714,11 +714,14 @@ v0.30 (unreleased)
   marker or several. Checked against a dense-grid integral of that sum
   (the package's fixture of every kind of item with three modes hidden:
   within 1.2e-4 in all) and, item by item, against the sum of its
-  likelihoods with each mode (to 1e-9). A fit with every mode known is
-  unchanged (bit for bit). The printout's ``Failure modes`` line counts
-  the failures of unknown mode; ``n_events_by_cause`` holds the known
-  ones. The modes are taken as unrecorded for reasons unrelated to which
-  mode it was.
+  likelihoods with each mode (to 1e-9 at the fitted parameters; to
+  about 1e-6 away from them, as each label's nodes are placed for it).
+  A fit with every mode known is unchanged (bit for bit). The
+  printout's ``Failure modes`` line counts the failures of unknown mode;
+  ``n_events_by_cause`` holds the known ones. The modes are taken as
+  unrecorded for reasons unrelated to which mode it was. Where ``e``
+  names one mode only and the other failures have none, the fit warns
+  that it is the model of one kind of failure.
 - **Joint models of several markers take failure modes.**
   ``JointPH(Weibull, {"vibration": ..., "temperature": ...}).fit(...,
   e=modes)`` (or ``e_col=``, or the records' event types) fits each

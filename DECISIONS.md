@@ -122,6 +122,8 @@ Design decisions made while working on the open issues, with the reason for each
 | A failure with no mode in `e` (`None`) is fitted as a failure of unknown mode: the sum over every mode of that mode's term (exact: `sum_k h_k(T) S(T)`; inspected or left censored: the chance of failing in the interval by any mode). The likelihood code already had that term for an item with no cause; only the refusal goes. | issue default | The likelihood of a masked cause when any mode is possible (missing at random). | done |
 | Every mode is possible for an unknown one; a set of possible modes ("bearing or seal, not motor") is not taken. | proposed | `e` holds one label per item; a set would need a new form of `e`. | gap |
 | `n_events_by_cause` holds the known failures only; the printout counts the unknown ones (`n_events` less the known). No new saved field. | proposed | Older dicts read as before. | done |
+| Where `e` names one mode only and some failures have none, the fit is the model of one kind of failure (as with one mode named and every failure labelled), with a warning saying so and how many had none. | proposed | With one mode named there is nothing to tell apart; silently dropping the modes would surprise. | done |
+| The evidence for unknown modes is its own study (`test_coverage_joint_unknown_modes.py`): the causes study's fleet with each failure's mode hidden at random with chance 0.3 (seeds 46100 + r, 200; the hiding by its own generator), the causes study's rules. | proposed | The causes study fits every mode known. | done |
 
 ### Joint models: a correlation of +-1 held on its edge, nodes near a singular spread (27 Nov 2026)
 

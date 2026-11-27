@@ -1563,6 +1563,20 @@ def _causes(
     mine = [labels[int(r.id)] for r in records]
     causes = ordered_labels(mine)
     if len(causes) < 2:
+        unlabelled = sum(
+            w
+            for w, label, r in zip(counts, mine, records)
+            if label is None and r.outcome != "right_censored"
+        )
+        if causes and unlabelled:
+            warnings.warn(
+                f"'e' names one failure mode ({causes[0]!r}) and "
+                f"{unlabelled:g} failure(s) have none: with one mode there "
+                "is nothing to tell apart, so every failure, labelled or "
+                "not, is fitted as one kind of failure (the model without "
+                "modes). Give the other failures' modes to fit modes.",
+                stacklevel=caller_stacklevel(),
+            )
         return None
     running = [r.outcome == "right_censored" for r in records]
     labelled = sum(
