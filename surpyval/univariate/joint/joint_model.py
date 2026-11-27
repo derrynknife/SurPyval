@@ -1397,7 +1397,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 "nested in it or this fit did not reach its maximum "
                 "(check both models' 'maximum')."
             )
-        statistic = max(2.0 * gain, 0.0)
+        # a gain within round-off of 0 (two searches reaching one
+        # maximum by different steps) is 0: chi-squared on 0 degrees of
+        # freedom, in the boundary mixture below, is a point at 0, and a
+        # statistic of 1e-13 would halve the p-value
+        statistic = 2.0 * gain if gain > 1e-9 * max(1.0, abs(ll)) else 0.0
         p_value = float(chi2.sf(statistic, df))
         if fewer and len(dropped) == 1:
             # one spread on its lower bound, 0, under the null: half

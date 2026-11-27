@@ -216,6 +216,11 @@ v0.30 (unreleased)
     log-likelihood, which is 0.1 at a log-likelihood of 1e5. Where the
     first answer already beats the fit on the edge, the search off the
     edge starts from that answer rather than from the edge.
+  - ``JointModel.likelihood_ratio_test`` takes a gain in log-likelihood
+    within round-off of 0 (1e-9 of it) as 0. With a spread held at 0
+    the statistic could be 1e-13 rather than 0, and chi-squared on 0
+    degrees of freedom in the boundary mixture then halved the p-value
+    (0.5 for 1).
 - **Joint models hold a spread at 0 on its lower bound (#1334).** Where
   the data put the spread between items of a varying parameter at 0 (any
   parameter, any path, one marker or several), the search, which works
