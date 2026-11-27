@@ -1549,6 +1549,7 @@ SEARCHES: dict[str, Callable] = {
     "ParametricRegressionModel": _search_regression,
     "DistributionalRegressionModel": _search_regression,
     "MixtureCureModel": _search_regression,
+    "PromotionTimeCureModel": _search_regression,
     "ZeroInflatedModel": _search_regression,
     "FrailtyModel": _search_frailty,
     "CoxFrailtyModel": _search_cox_frailty,

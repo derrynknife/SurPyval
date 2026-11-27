@@ -15,6 +15,19 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### Promotion-time cure regression (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| `PromotionTimeCure(F0, covariates=, links=)`, with prebuilt `WeibullPromotionTimeCure`, `LogNormal...`, `LogLogistic...`, `Gamma...`, `Exponential...`: a distributional regression of the defective distribution `S(t) = exp(-theta F0(t))`, parameters F0's then `theta`, as `MixtureCure` is of the limited-failure one, so the fits, bounds, saved form and conformance are that family's. | proposed | The two cure models should feel like one feature; the family already gives every bound. | done |
+| The new parameter is `theta`, the ceiling of the cumulative hazard (the mean number of latent causes), log link, SurPyval's sign (+: more failures); the cure fraction is `cure_probability(Z) = exp(-theta(z))`. flexsurvcure's `theta` is the cure fraction itself; we expect its `link = "loglog"` coefficients to be ours, which is unverified until the R script is first run. | proposed | `theta` is the literature's name (Yakovlev-Tsodikov; Chen-Ibrahim-Sinha); the log link makes `exp(coef)` a hazard ratio. | done |
+| Default covariates: every column on `theta`, none on F0 (the proportional hazards form). | proposed | The issue's default; it makes the model PH on the cumulative-hazard scale. | done |
+| F0 any continuous built-in on the positive half-line whose distribution function reaches 1 (Weibull, Exponential, Gamma, LogNormal, LogLogistic, Rayleigh, InverseGaussian, BirnbaumSaunders, GeneralizedGamma, ExpoWeibull); Gompertz refused (with a negative shape its own F0 is defective), whole-line and discrete ones refused. | proposed | A defective F0 makes the cure fraction unidentifiable. | done |
+| `susceptible=True` is the distribution of a unit that does fail, `(S - e^-theta) / (1 - e^-theta)` (not F0, which is the promotion-time distribution); its mean by numerical integration. | proposed | The same meaning as the mixture model's `susceptible=True`. | done |
+| `distribution_at` refuses (no univariate promotion-time distribution exists); the global likelihood-ratio test's null is the promotion-time fit with no covariates. | proposed | A univariate model would be a separate feature. | gap |
+| The no-plateau case warns through `warn_no_maximum` that the cure fraction is not identified (theta to infinity); the fit then equals `WeibullPH`'s (log-likelihood to 1e-9). | proposed | As the mixture model warns for `lfp_p -> 1`. | done |
+| flexsurvcure is not installed: the R comparison is scripted (`reference_r_promotion_time_cure.R`, not run; its link mapping to be confirmed on first run) with a test that skips until its JSON exists. Nothing claims agreement with flexsurvcure. | proposed | No R package installs without the owner's OK. | open |
+| No direct bound on `cure_probability`: the docs give the recipe, `param_cb("theta", Z=...)` mapped through `exp(-theta)`; a direct bound for both cure models is a follow-up. | proposed | The mapping is exact for a monotone function. | gap |
 ### Case-cohort and nested case-control Cox fits (27 Nov 2026)
 
 | Decision | By | Reason | Status |

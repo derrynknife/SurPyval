@@ -417,6 +417,21 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Promotion-time (bounded cumulative hazard) cure regression:
+  ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
+  ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,
+  ``GammaPromotionTimeCure`` and ``ExponentialPromotionTimeCure``
+  built. The survival is ``exp(-theta(z) F0(t))`` for a lifetime
+  distribution ``F0``, so a fraction ``exp(-theta(z))`` never fails; by
+  default the covariates act on ``theta`` through a log link, which
+  makes it a proportional hazards model with a bounded baseline
+  cumulative hazard (``exp(coef)`` a hazard ratio). It sits beside
+  ``MixtureCure`` and shares its interface: ``cure_probability``,
+  ``susceptible_probability``, ``cure_given_survival``,
+  ``susceptible=True``, ``follow_up()``, every bound type, the saved
+  form, and a warning when follow-up shows no plateau. Checked against
+  an independently written likelihood, its limit with no cure
+  (``WeibullPH``) and simulation; see :doc:`Mixture-Cure Regression`.
 - **Cox fits to case-cohort and nested case-control samples:
   ``CoxPH.fit_case_cohort`` and ``CoxPH.fit_nested_case_control``.** A
   case-cohort sample (a random subcohort plus every case) is fitted by

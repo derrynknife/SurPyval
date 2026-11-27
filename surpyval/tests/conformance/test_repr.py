@@ -38,6 +38,10 @@ FACTORIES = {
         lambda: sp.MixtureCure(sp.Weibull),
         "WeibullMixtureCure",
     ),
+    "surpyval.PromotionTimeCure": (
+        lambda: sp.PromotionTimeCure(sp.Weibull),
+        "WeibullPromotionTimeCure",
+    ),
     "surpyval.Equivalence": (
         lambda: sp.Equivalence(sp.Weibull),
         "WeibullEquivalence",

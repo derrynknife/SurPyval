@@ -115,6 +115,8 @@ _ON_FIRST_USE = {
             "DistributionalRegressionModel",
             "MixtureCureFitter",
             "MixtureCureModel",
+            "PromotionTimeCureFitter",
+            "PromotionTimeCureModel",
             "ZeroInflatedFitter",
             "ZeroInflatedModel",
         ),

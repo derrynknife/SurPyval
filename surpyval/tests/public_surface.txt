@@ -69,6 +69,7 @@ surpyval.ExponentialFrailty
 surpyval.ExponentialMixtureCure
 surpyval.ExponentialPH
 surpyval.ExponentialPO
+surpyval.ExponentialPromotionTimeCure
 surpyval.ExponentialZeroInflated
 surpyval.FineGray
 surpyval.FixedEventProbability
@@ -87,6 +88,7 @@ surpyval.GammaMixtureCure
 surpyval.GammaPH
 surpyval.GammaPO
 surpyval.GammaProcess
+surpyval.GammaPromotionTimeCure
 surpyval.GammaZeroInflated
 surpyval.Gauss
 surpyval.GeneralizedF
@@ -129,6 +131,7 @@ surpyval.LogLogistic
 surpyval.LogLogisticDistributional
 surpyval.LogLogisticEquivalence
 surpyval.LogLogisticMixtureCure
+surpyval.LogLogisticPromotionTimeCure
 surpyval.LogLogisticZeroInflated
 surpyval.LogNormal
 surpyval.LogNormalAFT
@@ -139,6 +142,7 @@ surpyval.LogNormalFrailty
 surpyval.LogNormalMixtureCure
 surpyval.LogNormalPH
 surpyval.LogNormalPO
+surpyval.LogNormalPromotionTimeCure
 surpyval.LogNormalZeroInflated
 surpyval.LogRankResult
 surpyval.Logistic
@@ -196,6 +200,7 @@ surpyval.Poisson
 surpyval.PooledRate
 surpyval.PredictionScores
 surpyval.PrenticeWilliamsPeterson
+surpyval.PromotionTimeCure
 surpyval.ProportionalHazardsFitter
 surpyval.ProportionalIntensityHPP
 surpyval.ProportionalIntensityNHPP
@@ -236,6 +241,7 @@ surpyval.WeibullJointPH
 surpyval.WeibullMixtureCure
 surpyval.WeibullPH
 surpyval.WeibullPO
+surpyval.WeibullPromotionTimeCure
 surpyval.WeibullZeroInflated
 surpyval.WienerProcess
 surpyval.YamadaDelayedS
@@ -783,6 +789,8 @@ surpyval.univariate.regression.ParametricRegressionModel
 surpyval.univariate.regression.PenaltyPath
 surpyval.univariate.regression.Power
 surpyval.univariate.regression.PowerExponential
+surpyval.univariate.regression.PromotionTimeCureFitter
+surpyval.univariate.regression.PromotionTimeCureModel
 surpyval.univariate.regression.ProportionalHazardsFitter
 surpyval.univariate.regression.ProportionalOdds
 surpyval.univariate.regression.ProportionalOddsFitter
