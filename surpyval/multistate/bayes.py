@@ -370,6 +370,7 @@ def fit(
     method: str = "auto",
     points: int | None = None,
     importance: bool = False,
+    carry_on: Any = None,
 ) -> BayesianMultiState:
     """The Bayesian fit of a parametric multi-state model; see
     ``ParametricMultiState.fit_bayes``."""
@@ -380,6 +381,8 @@ def fit(
         _check_reset,
         _durations,
         _fitters,
+        _reset_entries,
+        _with_carry_on,
     )
     from surpyval.univariate.competing_risks.parametric.bayes import (
         labelled,
@@ -388,7 +391,9 @@ def fit(
     from surpyval.utils.no_maximum import quiet_maximum_warnings
 
     _check_clock(clock)
-    data = check_spells(x, e, state, tl, i, n, transitions)
+    data = _with_carry_on(
+        check_spells(x, e, state, tl, i, n, transitions), carry_on
+    )
     tm = data.tm
     fitters = _fitters(Weibull if dist is None else dist, tm, False)
     with quiet_maximum_warnings(), ignoring_warnings():
@@ -405,6 +410,12 @@ def fit(
         rows = data.g == frm[h]
         c = np.where(data.h[rows] == to[h], 0, 1)
         extra: dict = {}
+        if clock == "reset":
+            # (a row that carries on a stay enters at the time already
+            # spent in the state, as the fit)
+            tl_h = _reset_entries(data)[rows]
+            if np.any(np.isfinite(tl_h)):
+                extra = {"tl": tl_h}
         if clock == "forward":
             # As the fit: an entry at or before the start of the
             # distribution's support truncates nothing.
@@ -619,6 +630,7 @@ def fit_regression(
     priors: Any = None,
     method: str = "auto",
     importance: bool = False,
+    carry_on: Any = None,
 ) -> BayesianMultiStateRegression:
     """The Bayesian fit of a parametric multi-state regression; see
     ``ParametricMultiStateRegression.fit_bayes``."""
@@ -629,6 +641,8 @@ def fit_regression(
         _check_reset,
         _durations,
         _fitters,
+        _reset_entries,
+        _with_carry_on,
     )
     from surpyval.multistate.regression import _covariates
     from surpyval.univariate.competing_risks.parametric.bayes import (
@@ -638,7 +652,9 @@ def fit_regression(
     from surpyval.utils.no_maximum import quiet_maximum_warnings
 
     _check_clock(clock)
-    data = check_spells(x, e, state, tl, i, n, transitions)
+    data = _with_carry_on(
+        check_spells(x, e, state, tl, i, n, transitions), carry_on
+    )
     tm = data.tm
     Z_arr, names = _covariates(Z, data.x.size)
     fitters = _fitters(WeibullPH if model is None else model, tm, True)
@@ -659,6 +675,12 @@ def fit_regression(
         rows = data.g == frm[h]
         c = np.where(data.h[rows] == to[h], 0, 1)
         extra: dict = {}
+        if clock == "reset":
+            # (a row that carries on a stay enters at the time already
+            # spent in the state, as the fit)
+            tl_h = _reset_entries(data)[rows]
+            if np.any(np.isfinite(tl_h)):
+                extra = {"tl": tl_h}
         if clock == "forward":
             # As the fit: an entry at or before the start of the
             # distribution's support truncates nothing.

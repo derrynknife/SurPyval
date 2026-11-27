@@ -136,8 +136,11 @@ non-parametric and Cox models refuse it. A left-censored row (``c =
 -1``, a move at some time before ``x``) is refused by every model: with
 no last time the unit was seen in its state, it has no stay it ended;
 give that time as the lower end of an interval. The models take neither
-weights, right truncation, time-varying covariates nor measurements
-(``m``); data holding any of them is refused, saying what to do. ``s`` is also another name for ``state`` in
+weights, right truncation nor measurements (``m``); data holding any of
+them is refused, saying what to do. A ``SurpyvalData`` whose
+``time_varying_covariates`` hold each unit's path (keyed by its ``i``) is
+taken by ``ParametricMultiStateRegression`` (see
+:ref:`multistate-time-varying`) and refused by the others. ``s`` is also another name for ``state`` in
 ``fit``, and ``s_col`` for ``state_col`` in ``fit_from_df``.
 The panel models below take arrays of visits, not a ``SurpyvalData``:
 their ``s`` is the state seen at a visit, not the state during a row, so
@@ -541,6 +544,101 @@ for a unit that *entered* each state at ``s``; since the hazards depend
 only on the time in the state, they depend only on ``x - s``. A
 prediction from a later ``s`` needs ``from_state``: units under
 observation at ``s`` have been in their states for different times.
+
+On the reset clock each row is, by default, a stay of its own: its
+clock starts at its ``tl``. That is right when a unit is renewed in its
+state: a machine censored at a preventive replacement and back in
+service as good as new at the same moment, under the same ``i``, starts
+a new stay. A stay you have split into rows yourself (at a change of
+covariates, say) is different: the later rows carry on the stay, and
+their clock must run on. Mark them with ``carry_on`` (a True or False
+per row, ``carry_on_col`` for a DataFrame): a marked row is fitted on
+the time since the stay began, left truncated at the time already spent
+in the state. A marked row must be the same unit's next row, in the same
+state, starting exactly (as stored) where the row before ended
+censored, so times rounded on the way through a file are refused; anything
+else is refused, saying which rows. On the forward clock the marks
+change nothing, as each row's ``tl`` already says when it starts. (See
+also :doc:`Conventions`.)
+
+.. _multistate-time-varying:
+
+Covariates that change during a stay
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A covariate can change while a unit is in a state: a treatment started
+part-way through an illness, a machine moved to a heavier duty between
+repairs. ``ParametricMultiStateRegression`` takes each unit's covariate
+path, once, in ``time_varying_covariates``: a dict ``{unit:
+StepSchedule}`` (or a :class:`~surpyval.CovariatePath` for a covariate
+that changes continuously), one for each unit in ``i``, on the clock's
+time since the start. The fit splits every spell at its unit's changes
+into rows with the covariates fixed, each ending censored but the last,
+each entering where the one before ended; the path's columns follow those
+of ``Z`` as ``time_varying_0``, ``time_varying_1``, ... The fit is
+exactly the fit to the stays split by hand (and marked with
+``carry_on``).
+
+In words, the hazard of each move at a time is the one for the
+covariates at that time, so the chance of staying in a state is the
+product of the chances of staying through each stretch of fixed
+covariates. For a spell split at the changes into stretches
+:math:`(a_k, b_k]` with covariates :math:`z_k`, ending in a move at
+:math:`x` (``d = 1``) or censored (``d = 0``), its factor for a move out
+of the state is
+
+.. math::
+    \exp\Bigl\{-\sum_k \bigl[H(b_k \mid z_k) - H(a_k \mid z_k)\bigr]
+    \Bigr\}\, h(x \mid z_K)^{d},
+
+with the times since the start on the forward clock, and on the reset
+clock the times since the unit entered the state: a split does not
+restart the time in the state. A ``CovariatePath`` is cut into steps
+(each holding the path's value at its middle), halved until no estimate
+moves by more than 1% of its standard error; ``model.path_steps`` says
+what that took.
+
+.. code-block:: python
+
+    from surpyval import StepSchedule
+
+    # unit "a" starts treatment at 3, unit "b" never does
+    paths = {
+        "a": StepSchedule.from_changepoints([0, 3], [0.0, 1.0]),
+        "b": StepSchedule.constant([0.0]),
+    }
+    model = ParametricMultiStateRegression.fit(
+        x, Z, e, state, tl=tl, i=i, transitions=tm,
+        time_varying_covariates=paths,
+    )
+    # the chance of being dead at 8 for a unit treated from 3
+    model.occupancy(8, StepSchedule(edges=[0, 3, np.inf],
+                                    Z=[[1, 0.0], [1, 1.0]]), "dead")
+
+Predictions on the forward clock take a covariate path in place of a
+row of covariates (``occupancy``, ``transition_probabilities``,
+``length_of_stay``, ``cb``, ``cumulative_hazard``): the path gives every
+covariate of the model, from the start of the prediction on.
+
+Three things are refused rather than approximated, each saying what to
+do instead:
+
+- An accelerated failure time regression for a transition. A change of
+  covariates there rescales the time already spent, so a stay's chance
+  is not the product over its stretches. Proportional hazards, additive
+  hazards and proportional odds regressions are taken.
+- Predictions along a path on the reset clock. The semi-Markov solution
+  needs each state's hazards as functions of the time in it alone; along
+  a path they depend on when the state was entered too.
+- Data with interval-censored moves (``x`` as ``[xl, xr]``) together
+  with time-varying covariates: the move's unknown time would fall among
+  the covariate changes.
+
+The path is taken to be *external*: known in advance and not driven by
+the unit's own moves (a planned dose, a duty schedule). A covariate that
+the process itself changes (a measurement that worsens as the disease
+progresses) is not external, and the predicted probabilities along it
+are then not the chances they appear to be.
 
 .. _multistate-interval-moves:
 
@@ -1061,7 +1159,9 @@ the state would need its probabilities simulated over step hazards, and
 the Aalen-Johansen estimate is Markov by construction (for a non-Markov
 process its occupation probabilities are still consistent, Datta and
 Satten, 2001, but its transition probabilities from a later time are
-not). Covariates that change over a stay are not taken.
+not). Covariates that change over a stay are taken by
+``ParametricMultiStateRegression`` only (not by the Cox or panel models),
+and predictions along a covariate path on the forward clock only.
 
 References
 ----------

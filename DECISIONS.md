@@ -15,6 +15,16 @@ Design decisions made while working on the open issues, with the reason for each
 
 ## 2026-11-27
 
+### Multi-state: time-varying covariates in the parametric regression (27 Nov 2026)
+
+| Decision | By | Reason | Status |
+|---|---|---|---|
+| Each unit's covariate path is given once, `time_varying_covariates={unit: StepSchedule or CovariatePath}` keyed by the labels of `i`, on the clock's time since the start; its columns follow `Z`'s as `time_varying_0`, ... (the names the univariate fits on item records give). Every unit needs a path (`StepSchedule.constant(z)` where nothing changes). | proposed | The package's covariate-path objects and naming, rather than a new long format; a missing unit is more likely an error than "no change". | done |
+| On the reset clock a row carries on its unit's stay from the row before only where marked: `carry_on=` (a True or False per row; `carry_on_col`); the internal split marks its own rows. Unmarked rows keep the meaning they had (each row its own stay), so no existing fit moves. A marked row must be the same unit's next row, in the same state, starting exactly where the row before ended censored; otherwise it is refused with a count and the fix. | proposed | Equal times cannot tell a split stay from a renewal in the same state (preventive maintenance: censored at the PM and renewed as good as new at once), and reading every such pair as one stay biased a renewal fit (scale 5.69 against 2.85, shape 1.20 against 2.60 on a seeded case). Only the user knows which it is. | done |
+| Only regressions whose hazard at a time depends only on the covariates then (PH, AH, PO: `TVCFitMixin` fitters; kinds "Proportional Hazard", "Additive Hazard", "Proportional Odds") are taken with time-varying covariates, on either clock, and for predictions along a path; accelerated failure time is refused. | proposed | Splitting at the changes is exact only where the cumulative hazard is additive over stretches of fixed covariates; an AFT accumulates an accelerated age that a stay's delayed-entry rows cannot carry (and on the forward clock would need the path before the stay). Refused rather than approximated. | done |
+| Predictions along a path are offered on the forward clock only; on the reset clock they are refused. | proposed | The renewal-equation solver takes each state's hazards as functions of the time in it alone; along a path they also depend on the entry time. A solver on the two times (or simulation) is follow-up work. | gap |
+| A `CovariatePath` is fitted on midpoint steps halved until no estimate moves by more than 1% of its standard error, and a move's last step holds the path's value at the move, as the univariate fits on item records do (the same helper). | proposed | One rule for continuous paths across the package. | done |
+| The Cox per-transition model (`MultiStateProportionalHazards`) and the panel models still refuse time-varying covariates. | proposed | Kept to the parametric regression in this change; the Cox model's predictions along a path need their own baseline steps. | gap |
 ### Parametric panel multi-state regression: `coarsen=` (27 Nov 2026)
 
 | Decision | By | Reason | Status |

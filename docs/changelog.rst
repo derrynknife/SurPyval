@@ -469,6 +469,32 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **Time-varying covariates in ``ParametricMultiStateRegression``.**
+  ``fit(..., time_varying_covariates={unit: StepSchedule or
+  CovariatePath})`` (and ``fit_from_df``, and a ``SurpyvalData`` holding
+  them by unit) splits every spell at its unit's changes inside the fit,
+  on either clock (on the reset clock the time in the state carries on
+  across the splits), with delayed entry kept; the fit equals the fit to
+  the stays split by hand. A ``CovariatePath`` is cut into steps, halved
+  until the estimates settle (``path_steps``). Predictions on the forward
+  clock take a covariate path in place of a row of covariates
+  (``occupancy``, ``transition_probabilities``, ``length_of_stay``,
+  ``cb``, ``cumulative_hazard``), checked against an ODE solution of the
+  forward equations. Refused, saying what to do: accelerated failure
+  time regressions with time-varying covariates; predictions along a
+  path on the reset clock; and data with interval-censored moves
+  (``x`` as ``[xl, xr]``) together with time-varying covariates.
+- **``carry_on=`` for stays split into rows by hand (reset clock).**
+  ``ParametricMultiState`` and ``ParametricMultiStateRegression`` (``fit``,
+  ``fit_from_df`` as ``carry_on_col``, and ``fit_bayes``) take a True or
+  False per row: a marked row carries on its unit's stay from the row
+  before, so on the reset clock its time in the state runs on (left
+  truncated at the time already spent) instead of restarting. Unmarked
+  rows are stays of their own, as before, which is right for a unit
+  renewed in its state (a repair as good as new) at the time its row
+  before was censored. A marked row that is not its unit's next row in
+  the same state, starting where the row before was censored, is
+  refused. No existing fit's numbers change.
 - **``ParametricPanelMultiStateRegression(..., coarsen=)``: grouping a
   covariate measured at every visit.** On the forward clock each distinct
   row of covariates is a product integral of its own, so a covariate with

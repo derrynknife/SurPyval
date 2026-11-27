@@ -117,6 +117,7 @@ def _checked(
     regression: bool,
     transitions: Any,
     intervals: bool = False,
+    varying: bool = False,
 ) -> Any:
     """``data`` as the multi-state fits take it, or a refusal saying why
     not and what to do: a shallow copy with ``s`` filled where it has
@@ -189,12 +190,13 @@ def _checked(
             "does not take (it takes each row's entry, tl). Leave it out "
             "of the data."
         )
-    if data.time_varying_covariates is not None:
+    if data.time_varying_covariates is not None and not varying:
         raise ValueError(
-            "The SurpyvalData has time-varying covariates, which the "
-            "multi-state models do not take: split each stay at the "
-            "changes into rows with the covariates fixed, or use "
-            "data.without('time_varying_covariates')."
+            "The SurpyvalData has time-varying covariates, which this "
+            "multi-state model does not take: ParametricMultiStateRegression "
+            "takes them (each unit's path keyed by its i); here, split "
+            "each stay at the changes into rows with the covariates fixed, "
+            "or use data.without('time_varying_covariates')."
         )
     if data.Z is not None and not regression:
         raise ValueError(
@@ -272,6 +274,7 @@ def multistate_data(
         return functools.partial(multistate_data, intervals=intervals)
     signature = inspect.signature(method)
     regression = "Z" in signature.parameters
+    varying = "time_varying_covariates" in signature.parameters
 
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -286,7 +289,11 @@ def multistate_data(
                 "SurpyvalData(x, ..., s=s, e=e, i=i))."
             )
         bound.arguments["x"] = _checked(
-            data, regression, bound.arguments.get("transitions"), intervals
+            data,
+            regression,
+            bound.arguments.get("transitions"),
+            intervals,
+            varying,
         )
         return method(*bound.args, **bound.kwargs)
 

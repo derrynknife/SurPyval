@@ -39,6 +39,10 @@ class SpellData:
     #: state is known only to lie in ``(xl, x]``. ``None``: every end is
     #: known.
     xl: npt.NDArray | None = None
+    #: On the reset clock, the rows that carry on the stay of their
+    #: unit's row before (a stay split into rows): their time in the
+    #: state runs on from that row's. ``None``: every row is its own stay.
+    carry: npt.NDArray | None = None
 
     @property
     def interval(self) -> npt.NDArray:
