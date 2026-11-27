@@ -796,7 +796,18 @@ were followed in its 'from' state are what show such moves. And the
 truncated units carry little information on the level of a hazard (only
 through the timing of their moves), so a hazard can run to 0 where
 nothing else pins it: the fit then warns that it has no finite maximum,
-and that transition's standard errors are ``nan``.
+and that transition's standard errors are ``nan``; the other
+transitions' standard errors are then taken with that hazard held where
+it ran to (the inverse of the curvature in their parameters alone), as
+the warning says. Near this limit, before a hazard runs all the way to
+0, Wald bounds (``cb``, the standard errors) can mislead even where the
+fit reports a maximum: with few events, all of them truncated, an
+estimate can sit far from the truth with a small standard error, as the
+univariate right-truncated fit does on the same data, because the
+curvature at the estimate does not describe a likelihood that flattens
+towards the limit. Use likelihood-ratio bounds where the model offers
+them, and treat a hazard that the truncated units alone inform with
+caution.
 
 Right truncation is taken on the forward clock only (the reset clock's
 chance of reaching the state would need the renewal equations solved

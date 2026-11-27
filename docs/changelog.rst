@@ -432,7 +432,8 @@ v0.30 (unreleased)
   recovered with ``tr`` and is 9 to 18 standard errors off without it.
   Where a hazard runs to 0 under the truncation (the truncated units
   carry little information on its level) the fit warns that it has no
-  finite maximum and gives ``nan`` standard errors for that transition;
+  finite maximum and gives ``nan`` standard errors for that transition
+  (the others' conditional on it held there);
   a transition with no moves in truncated data is refused, saying why
   (by design, such data may show none). A left-censored move in a spell
   with no ``tl`` on a baseline defined below 0 is refused.

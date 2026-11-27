@@ -250,7 +250,9 @@ def check_events(data: SpellData) -> None:
         )
 
 
-def flag_boundary(joint: Any, data: SpellData, hazard: Any, lows: list) -> Any:
+def flag_boundary(
+    joint: Any, data: SpellData, hazard: Any, lows: list, neg_ll: Any = None
+) -> Any:
     """The joint fit, with each transition whose hazard has run to 0
     under the truncation flagged: a warning that there is no finite
     maximum, ``maximum = "no finite maximum"`` and ``nan`` for its
@@ -258,7 +260,12 @@ def flag_boundary(joint: Any, data: SpellData, hazard: Any, lows: list) -> Any:
     estimate) under ``BOUNDARY_SHARE`` of the moves seen in it, which no
     fit without truncation can do; with truncation the units seen carry
     little information on its level (only through the timing of their
-    moves), as dividing by the chance of being seen cancels it."""
+    moves), as dividing by the chance of being seen cancels it. The other
+    transitions' covariance is the inverse of the Hessian of the
+    negative log-likelihood in their parameters alone, with the flagged
+    hazards held at their (boundary) estimates: conditional on them, as
+    the full inverse would carry the boundary's meaningless curvature
+    into the others' standard errors."""
     from dataclasses import replace
 
     from surpyval.utils.no_maximum import warn_no_maximum
@@ -282,16 +289,20 @@ def flag_boundary(joint: Any, data: SpellData, hazard: Any, lows: list) -> Any:
             flagged.append((h, expected, seen))
     if not flagged:
         return joint
-    cov = np.array(joint.cov, dtype=float, copy=True)
     sizes = [len(m.covariance_names) for m in joint.models]
     edges = np.r_[0, np.cumsum(sizes)]
+    boundary = np.zeros(int(edges[-1]), dtype=bool)
     for h, _, _ in flagged:
-        cov[edges[h] : edges[h + 1], :] = np.nan
-        cov[:, edges[h] : edges[h + 1]] = np.nan
+        boundary[edges[h] : edges[h + 1]] = True
+    cov = _conditional_cov(joint, boundary, neg_ll)
     names = ", ".join(
         f"{tm.transition_names()[h]} (expects {e:.2g} moves where {s:g} "
         "were seen)"
         for h, e, s in flagged
+    )
+    held = (
+        "; the other transitions' standard errors are conditional on "
+        "that hazard held at its estimate"
     )
     warn_no_maximum(
         f"under the right truncation the hazard of {names} runs to 0: "
@@ -301,8 +312,53 @@ def flag_boundary(joint: Any, data: SpellData, hazard: Any, lows: list) -> Any:
         "chance leaves the units little information on the hazard's "
         "level (only the timing of their moves)",
         "That transition's estimates, standard errors (nan) and bounds "
-        "mean nothing",
+        "mean nothing" + held,
         "add units that were not truncated (tr = inf), which show how "
         "often the move happens, or fix that hazard from other data",
     )
     return replace(joint, cov=cov, maximum="no finite maximum")
+
+
+def _conditional_cov(joint: Any, boundary: npt.NDArray, neg_ll: Any) -> Any:
+    """The covariance of the parameters not in ``boundary``: the inverse
+    of the numerical Hessian of ``neg_ll`` in them alone (on the joint
+    fit's unconstrained scale, mapped back), the ``boundary`` ones held
+    at their estimates; ``nan`` for every entry that involves a boundary
+    parameter (all ``nan`` where the Hessian is not positive definite,
+    or without ``neg_ll``)."""
+    from surpyval.multistate._joint import Packer
+    from surpyval.utils.linalg import numerical_hessian
+
+    n = boundary.size
+    cov = np.full((n, n), np.nan)
+    if neg_ll is None:
+        return cov
+    pack = Packer.of(joint.models)
+    theta = pack.to_search(pack.est)
+    free_idx = np.flatnonzero(pack.free)
+    keep = ~boundary[free_idx]
+    if not np.any(keep):
+        return cov
+
+    def f(sub: npt.NDArray) -> float:
+        t = theta.copy()
+        t[keep] = sub
+        with np.errstate(all="ignore"):
+            value = float(neg_ll(pack.rebuild(pack.from_search(t))))
+        return value if np.isfinite(value) else 1e300
+
+    sub = theta[keep]
+    step = np.finfo(float).eps ** 0.25 * np.maximum(np.abs(sub), 1.0)
+    H = numerical_hessian(f, sub, step)
+    try:
+        if not np.all(np.isfinite(H)):
+            return cov
+        if np.linalg.eigvalsh(0.5 * (H + H.T)).min() <= 0:
+            return cov
+        cov_t = np.linalg.inv(H)
+    except np.linalg.LinAlgError:
+        return cov
+    J = pack.jacobian(theta)[keep]
+    idx = free_idx[keep]
+    cov[np.ix_(idx, idx)] = J[:, None] * cov_t * J[None, :]
+    return cov

@@ -426,7 +426,7 @@ class _ParametricMultiStateBase(SerialisableMixin):
             )
             if truncated:
                 joint = _truncation.flag_boundary(
-                    joint, data, cls._row_hazard(Z), _lows(fitters)
+                    joint, data, cls._row_hazard(Z), _lows(fitters), lik.neg_ll
                 )
             models = dict(zip(data.tm.transitions, joint.models))
         else:

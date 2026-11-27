@@ -208,7 +208,8 @@ def test_a_hazard_run_to_zero_under_truncation_is_flagged():
     """Every unit that died truncated (a register closing at 15): the
     death hazards run to 0, a maximum of the truncated likelihood only in
     the limit. The fit warns that it has no finite maximum, says so in
-    ``maximum`` and gives nan standard errors for those transitions."""
+    ``maximum`` and gives nan standard errors for those transitions, the
+    others' conditional on them."""
     from surpyval.tests.conformance.registry_fixtures import _MS_UNITS, ms_data
 
     d = ms_data()
@@ -228,7 +229,12 @@ def test_a_hazard_run_to_zero_under_truncation_is_flagged():
         if b == "dead"
     ]  # fmt: skip
     assert np.all(np.isnan(se[into_dead]))
-    assert np.all(np.isfinite(np.delete(se, into_dead, axis=0)))
+    # The others' standard errors are conditional on the boundary hazards
+    # held at their estimates (the inverse of the Hessian in the others'
+    # parameters alone): 0.0365 and 0.0826, where the full inverse with
+    # the boundary block blanked would give 0.0441 and 0.0952.
+    others = np.delete(se, into_dead, axis=0).ravel()
+    assert_allclose(others, [0.0365, 0.0826], atol=5e-5)
 
 
 def test_patients_found_through_a_diagnosis():
@@ -294,3 +300,31 @@ def test_truncated_regression_round_trip():
                     model.neg_ll(), rtol=1e-12)  # fmt: skip
     assert_allclose(back.occupancy(5.0, [1.0], "dead"),
                     model.occupancy(5.0, [1.0], "dead"))  # fmt: skip
+
+
+def test_lognormal_all_truncated_fixture_is_an_interior_maximum():
+    """The all-truncated fixture with LogNormal hazards: the death
+    transitions do not run to a boundary (mu about 6.8, sigma about 2.1
+    and 2.4), the fit reports a verified maximum and no warning. Profiled
+    in either death mu (the other parameters refitted), the negative
+    log-likelihood is lowest there and rises on both sides, but slowly
+    and towards a limit: 0.17 above at mu = 4, 0.09 at 14, 0.15 at 30
+    (healthy -> dead). A genuine interior maximum, with a likelihood-ratio
+    interval for mu open above; the Wald standard errors (about 8 and
+    11) do not show that."""
+    from surpyval.tests.conformance.registry_fixtures import _MS_UNITS, ms_data
+
+    d = ms_data()
+    i, tr = [], []
+    for u, (spells, _, _) in enumerate(_MS_UNITS):
+        dead = spells[-1][3] == "dead"
+        i += [u] * len(spells)
+        tr += [15.0 if dead else np.inf] * len(spells)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        model = ParametricMultiState.fit(
+            **d, i=np.array(i), tr=np.array(tr), dist=sp.LogNormal
+        )
+    assert model.maximum == "verified"
+    mus = model.params.reshape(4, 2)[[1, 3], 0]
+    assert np.all((mus > 6.0) & (mus < 7.5)), mus
