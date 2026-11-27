@@ -5,6 +5,106 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **A Bayesian fit no longer depends on the unit of time.** The
+  Bayesian peak search worked in each parameter's own units, except a
+  regression's coefficients, so a location parameter (the ``mu`` of a
+  Normal, Gumbel or Logistic family) in a unit of millionths or of
+  millions was out of reach of its fixed tolerances and steps:
+  ``NormalAFT.fit_bayes`` and ``GumbelPH.fit_bayes`` with times
+  multiplied by 1e-6 were refused ("curvature not finite"), with times
+  multiplied by 1e6 ``GumbelPH`` moved ``sf`` by 1e-3 (``NormalAFT`` by
+  1.5e-4, ``LogisticAFT`` by 6e-5), and ``Normal.fit_bayes`` and
+  ``Gumbel.fit_bayes`` at 1e-6 were refused. The search now measures
+  every parameter in units of its maximum-likelihood standard error on
+  the unconstrained scale, along its own axis (a coefficient still in
+  units of one over its covariate's spread), or, where the fit has
+  none, of the posterior's curvature at the start. The priors are
+  unchanged and mean what they say in the user's units. With times
+  multiplied by 1e-6, 1e-3, 1e3 or 1e6 every ``sf`` and its credible
+  interval now agree with the unscaled fit's to 1e-6 relative
+  (``test_coordinate_scales.py``; about 1e-8 in ``sf`` for the
+  regressions and 1e-14 for the distributions). Where the posterior is
+  close to normal the posteriors move by the search's tolerance only:
+  the conformance suite's Bayesian fixtures without covariates
+  (distributions, processes, competing risks and multi-state) and the
+  proportional intensity process move by at most 6e-11 relative, and
+  regressions with centred covariates (``WeibullPH``, ``GumbelPH``,
+  ``LogNormalAFT``, ``NormalAFT`` on the regression fixture) by at most
+  2e-8. Regressions with covariates away from 0 move more, by the next
+  entry.
+- **A Bayesian regression is worked out at the covariates' means.** The
+  Laplace engine took the posterior to be normal in the user's own
+  parameters, where, for a covariate away from 0, the baseline (at a
+  covariate of 0) and the coefficient move together along a curved
+  ridge, and the normal missed it: with a covariate near 50 (spread 1),
+  six seeded ``WeibullPH`` designs gave ``sf`` at t = 10 at the
+  covariate's mean 0.284 to 0.444 with 95% intervals of about [0, 0.95],
+  where the same data with the covariate centred give 0.211 to 0.392
+  with intervals of about [0.12, 0.32] to [0.28, 0.52]; near 1000 every
+  one was refused. The engines now work with the baseline at the
+  covariates' means (count-weighted, and including an earlier fit's
+  rows held as a power prior), wherever the family has that baseline in
+  closed form: the proportional hazards Weibull, Exponential and Gumbel,
+  and the accelerated failure time Weibull, LogLogistic, Exponential,
+  Gamma, LogNormal, Normal, Gumbel and Logistic. The change of variables
+  is exact, so the priors, the reported parameters and every prediction
+  are the user's as before; a model with centred and with uncentred
+  covariates now gives the same posterior (``WeibullPH`` and
+  ``LogNormalAFT`` on six designs with covariate means 0, 50 and 1000:
+  to 3e-8 or better, the rule 1e-5, except the WeibullPH designs refused
+  below), and the Laplace normal at the
+  means has the exact curvature (within 3%, the six designs at 50 and
+  those at 1000 that are not refused). Where the change is a shift of
+  the unconstrained parameters (the AFT scale families, the Exponential
+  PH) the stored normal is still one on the parameters; otherwise the
+  summaries are the normal's draws, mapped back. On the conformance
+  suite's fixtures, whose covariates are not centred, ``WeibullPH``'s
+  intervals move by up to 1.5% and the competing risks regression's by
+  up to 23% on a cause's baseline scale (the multi-state regression's by
+  2.4e-4) (cause b's 95% interval for
+  alpha from [8.1, 57.9] to [8.3, 71.2]; the exact posterior, by the
+  grid, is [11.2, 270.9], so both are poor there, and the check says
+  so). For a location-scale AFT family see the warning below.
+- **A Bayesian regression's predictions are formed at the covariates'
+  means.** For a family with that baseline in closed form, every
+  prediction and interval is the model's at ``Z - zbar`` with the
+  baseline at the means: the same numbers, without forming
+  ``e^{beta'Z}``, which for a covariate near 1000 overflowed in some
+  draws and sent their survival to 0 (a LogNormalAFT's sf(10) at the
+  covariate's mean was 0.195 with interval [0, 0.357] where it is 0.255
+  [0.152, 0.364]). Six designs at means 50 and 1000, for WeibullPH and
+  LogNormalAFT, now agree with the centred fits to 3e-8 or better
+  (``test_coordinate_scales.py``, rule 1e-5).
+- **A Bayesian regression the engines cannot get right is refused, saying
+  to centre the covariates.** Two cases. A posterior whose points
+  overflow on the user's scale (at a covariate near 1000 the baseline at
+  0 is ``e^{beta' zbar / shape}`` times the one at the means: four of
+  six WeibullPH designs, 1 to 3 points of 1024). And a family with no
+  closed-form baseline at the means (``LogNormalPH``, ``GammaPH``,
+  ``NormalPH``, ``LogisticPH``) whose design is too collinear: the
+  smallest eigenvalue of the correlation matrix of ``[1, Z]`` below
+  5e-2, a covariate about 3 of its spreads from 0. Uncentred, GammaPH
+  with a covariate near 50 had given sf(10) at the mean 0.362 with a
+  95% interval of [0, 0.945] (centred: 0.270 [0.164, 0.383]).
+- **The default prior on ``mu`` of a Normal, Gumbel or Logistic AFT
+  regression is flat at the covariates' means.** In this package's
+  accelerated failure time models time is multiplicative, so for these
+  families on the whole line the location at covariates of 0 is
+  ``e^{beta' zbar}`` times the one at the means, and the old default,
+  flat on the user's ``mu``, tilted the coefficients by that factor:
+  with a covariate near 50 NormalAFT's coefficient interval was [0.603,
+  1.367] where the centred fit's is [0.146, 0.476] (the
+  maximum-likelihood estimate is 0.309). The default is now flat on the
+  location at the covariates' means (the maintainer's decision), so
+  centred and uncentred covariates give the same posterior (six designs
+  at covariate means 50 and 1000 for all three families, to 1e-5, those
+  refused for overflowing aside); ``default_priors`` says so. A
+  ``prior.flat()`` stated on ``mu`` is still flat on the user's ``mu``.
+- **``prior_data_conflict`` follows the unit of time.** With times (and
+  a prior on ``mu``) multiplied by 1e6, its check of a Normal and of a
+  Gumbel fit said the data did not determine the parameters; it now
+  gives the unscaled check's verdicts (gaps -3.30 and 0.108, p = 0.00098
+  and 0.914).
 - **A mixture's interval and truncation probabilities keep their digits
   deep in a component's upper tail.** ``MixtureModel`` took an
   interval-censored row's probability under each component as ``F(r) -

@@ -542,6 +542,7 @@ def prior_data_conflict(model: Any) -> dict:
     from scipy import stats
 
     from surpyval.bayes.engines.grid import find_mode, hessian
+    from surpyval.bayes.fitting import _search_scales
     from surpyval.bayes.likelihood import LogLikelihood
 
     bound = model._bound()
@@ -592,12 +593,17 @@ def prior_data_conflict(model: Any) -> dict:
         "log-likelihood is flat in some direction at its maximum)"
     )
     try:
-        mode, cov, _ = find_mode(loglik, [start])
-        h = np.clip(0.2 * np.sqrt(np.diag(cov)), 1e-5, 1.0)
+        # (in units of the estimates' standard errors, as the fit's own
+        # search, so that the check is the same whatever the time unit)
+        unit = _search_scales(mle, bound, loglik, start)
+        mode, cov, _ = find_mode(loglik, [start], unit)
+        h = np.clip(0.2 * np.sqrt(np.diag(cov)), 1e-5 * unit, unit)
         H = -hessian(loglik, mode, h)
         H = 0.5 * (H + H.T)
         ok = bool(np.all(np.isfinite(H))) and bool(
-            np.all(np.linalg.eigvalsh(H) > 1e-8)
+            np.all(
+                np.linalg.eigvalsh(H * unit[:, None] * unit[None, :]) > 1e-8
+            )
         )
     except (ValueError, np.linalg.LinAlgError):
         ok = False

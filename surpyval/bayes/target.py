@@ -100,6 +100,10 @@ class Reparameterisation:
         ``u = forward(phi)`` and ``phi = inverse(u)``, on rows.
     log_det : callable
         ``log |det d phi / d u|`` at rows of ``u``.
+    same : list of int, optional
+        The working coordinates that are ``phi``'s own.
+    affine : bool, optional
+        Whether ``phi`` is affine in ``u``.
 
     Examples
     --------
@@ -113,12 +117,26 @@ class Reparameterisation:
     """
 
     def __init__(
-        self, names: list[str], forward: Any, inverse: Any, log_det: Any
+        self,
+        names: list[str],
+        forward: Any,
+        inverse: Any,
+        log_det: Any,
+        *,
+        same: list[int] | None = None,
+        affine: bool = False,
     ) -> None:
         self.names = list(names)
         self.forward = forward
         self.inverse = inverse
         self.log_det = log_det
+        #: The working coordinates that are phi's own (the peak search
+        #: then takes the target's scales for them), or None: the
+        #: target's own choice of scale for every one.
+        self.same = same
+        #: Whether ``phi`` is an affine function of ``u``, so that a
+        #: normal in ``u`` is one in ``phi``.
+        self.affine = affine
 
 
 class Target:
@@ -302,10 +320,72 @@ class Target:
         """The typical size of each free parameter on its unconstrained
         scale (in ``bound.free_names`` order), which the peak search
         divides its coordinates by (``find_mode``'s ``scale``), else
-        ``None`` (all of order 1). Only the search's steps and
-        tolerances use it: the priors, the posterior and every summary
-        are the parameters' own."""
+        ``None``. Only the search's steps and tolerances use it: the
+        priors, the posterior and every summary are the parameters' own.
+
+        By default the maximum-likelihood fit's standard errors on the
+        unconstrained scale, each along its own axis (:func:`axis_scales`:
+        with the other parameters held at their estimates), so that a
+        location parameter in a time unit of millions, or of
+        millionths, is searched as one of order 1. An entry that is not
+        finite (no covariance, or a parameter it does not cover) is
+        left to the search, which takes it from the curvature of the
+        posterior at its start
+        (:func:`~surpyval.bayes.engines.grid.start_scales`)."""
+        if self.mle is None:
+            return None
+        try:
+            with ignoring_warnings(), np.errstate(all="ignore"):
+                theta = np.asarray(self.estimates(), dtype=float).ravel()
+                cov = np.asarray(self.covariance(), dtype=float)
+        except Exception:  # a fit that cannot give its covariance
+            return None
+        return axis_scales(theta, cov, bound)
+
+    def collinearity(self, bound: Any) -> float | None:
+        """For the Laplace engine's refusal of a fit too collinear for it
+        (``result._refuse_collinear``): ``None`` (no check), except where a
+        target says the check applies to it (the regressions with no
+        centring, :meth:`mle_collinearity`)."""
         return None
+
+    def mle_collinearity(self, bound: Any) -> float | None:
+        """The smallest eigenvalue of the correlation matrix of the
+        maximum-likelihood estimates of the free parameters, on their
+        unconstrained scale (1 for independent ones, 0 for collinear
+        ones), or ``None`` where the fit gives no covariance."""
+        if self.mle is None or bound.d < 2:
+            return None
+        try:
+            with ignoring_warnings(), np.errstate(all="ignore"):
+                theta = np.asarray(self.estimates(), dtype=float).ravel()
+                cov = np.asarray(self.covariance(), dtype=float)
+        except Exception:  # a fit that cannot give its covariance
+            return None
+        k = len(bound.names)
+        if theta.size != k or cov.shape != (k, k):
+            return None
+        with np.errstate(all="ignore"):
+            dphi = np.array(
+                [
+                    np.exp(
+                        -bound.transforms[i].log_jacobian(
+                            bound.transforms[i].to_phi(theta[i])
+                        )
+                    )
+                    for i in bound.free_idx
+                ]
+            )
+            idx = np.asarray(bound.free_idx, dtype=int)
+            C = cov[np.ix_(idx, idx)] * dphi[:, None] * dphi[None, :]
+            sd = np.sqrt(np.diag(C))
+            R = C / np.outer(sd, sd)
+        if not np.all(np.isfinite(R)):
+            return None
+        try:
+            return float(np.linalg.eigvalsh(0.5 * (R + R.T)).min())
+        except np.linalg.LinAlgError:
+            return None
 
     def quantities(self) -> dict[str, Any]:
         """The family's named quantities for ``prior.on_quantities``:
@@ -334,6 +414,74 @@ class Target:
     @classmethod
     def from_dict(cls, d: dict) -> Any:
         raise NotImplementedError
+
+
+def axis_scales(
+    theta: npt.NDArray, cov: npt.NDArray, bound: Any
+) -> npt.NDArray | None:
+    """The size of each free parameter's uncertainty on its
+    unconstrained scale along its own axis (``bound.free_names``
+    order), from estimates ``theta`` and their covariance ``cov``
+    (every parameter, in ``bound.names`` order; a row of NaN for one it
+    does not cover): the covariance is carried to the unconstrained
+    scale by the delta method (``d phi / d theta``, ``1 / theta`` for a
+    log scale), and each scale is ``1 / sqrt`` of the diagonal of its
+    inverse, the information. That is the standard error of a parameter
+    with the others held at their estimates: where two parameters are
+    strongly correlated (an intercept and the coefficient of a covariate
+    far from 0) each one's own standard error is many times larger, and
+    a search in those units would be badly conditioned. NaN where a
+    scale is not a positive finite number; ``None`` where ``theta`` or
+    ``cov`` does not have every parameter's row.
+
+    Examples
+    --------
+    Two independent parameters, a location in millionths and a log
+    scale:
+
+    >>> import numpy as np
+    >>> from surpyval.bayes.target import axis_scales
+    >>> from surpyval.bayes.transforms import Transform
+    >>> class Bound:
+    ...     names = free_names = ["mu", "sigma"]
+    ...     free_idx = [0, 1]
+    ...     d = 2
+    ...     transforms = [Transform.for_bounds((None, None)),
+    ...                   Transform.for_bounds((0, None))]
+    >>> cov = np.diag([4e-12, 1e-14])
+    >>> axis_scales(np.array([1e-5, 1e-6]), cov, Bound())
+    array([2.e-06, 1.e-01])
+    """
+    k = len(bound.names)
+    theta = np.asarray(theta, dtype=float).ravel()
+    cov = np.asarray(cov, dtype=float)
+    if theta.size != k or cov.shape != (k, k):
+        return None
+    out = np.full(bound.d, np.nan)
+    with np.errstate(all="ignore"):
+        dphi = np.array(
+            [
+                np.exp(
+                    -bound.transforms[i].log_jacobian(
+                        bound.transforms[i].to_phi(theta[i])
+                    )
+                )
+                for i in bound.free_idx
+            ]
+        )
+        idx = np.asarray(bound.free_idx, dtype=int)
+        block = cov[np.ix_(idx, idx)] * dphi[:, None] * dphi[None, :]
+        covered = np.all(np.isfinite(block), axis=1) & np.isfinite(dphi)
+        if not covered.any():
+            return out
+        try:
+            info = np.linalg.inv(block[np.ix_(covered, covered)])
+        except np.linalg.LinAlgError:
+            return out
+        scale = 1.0 / np.sqrt(np.diag(info))
+        good = np.isfinite(scale) & (scale > 0)
+        out[np.flatnonzero(covered)[good]] = scale[good]
+    return out
 
 
 __all__ = [

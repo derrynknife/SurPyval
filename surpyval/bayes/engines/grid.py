@@ -334,6 +334,46 @@ def hessian(f: LogPost, x: npt.NDArray, h: npt.NDArray) -> npt.NDArray:
     return H
 
 
+def start_scales(log_post: LogPost, x: npt.NDArray) -> npt.NDArray:
+    """A typical size for each coordinate of ``log_post`` at ``x``, for
+    :func:`find_mode`'s ``scale`` where nothing better is known: one
+    over the square root of minus the diagonal of its Hessian there, by
+    central differences with a step relative to the coordinate (``1e-2``
+    to ``1e-4`` of it, or of 1 at 0), the first that gives a positive
+    curvature. 1 where none does.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.bayes.engines.grid import start_scales
+    >>> sd = np.array([2e-6, 0.5])
+    >>> def log_post(x):
+    ...     z = (np.atleast_2d(x) - [1e-5, 0.0]) / sd
+    ...     return -0.5 * np.sum(z**2, axis=1)
+    >>> np.round(start_scales(log_post, np.array([1.2e-5, 0.3])) / sd, 6)
+    array([1., 1.])
+    """
+    x = np.asarray(x, dtype=float)
+    d = x.size
+    out = np.ones(d)
+    with np.errstate(all="ignore"):
+        f0 = float(np.asarray(log_post(x[None, :]))[0])
+        if not np.isfinite(f0):
+            return out
+        for j in range(d):
+            size = abs(x[j]) if x[j] != 0 else 1.0
+            for rel in (1e-2, 1e-3, 1e-4):
+                h = rel * size
+                e = np.zeros(d)
+                e[j] = h
+                v = np.asarray(log_post(np.vstack([x + e, x - e])), float)
+                c = -(v[0] - 2.0 * f0 + v[1]) / h**2
+                if np.isfinite(c) and c > 0:
+                    out[j] = 1.0 / np.sqrt(c)
+                    break
+    return out
+
+
 def find_mode(
     log_post: LogPost,
     starts: list[npt.NDArray],

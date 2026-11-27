@@ -738,16 +738,17 @@ def test_a_prior_on_a_coefficient_is_per_unit_of_the_users_covariate():
 
 
 def test_a_non_centred_covariates_laplace_normal_has_the_exact_curvature():
-    """Where the posterior is not normal (a covariate near 50 with a
-    spread of 1, the approximation's check "poor"), the Laplace normal's
-    curvature is a secant along the axes the peak search found, so a new
-    search moves it. This design is the one of six (seeds 460210 to
-    460215, characterised before this test was written) where the
-    search before the coefficients' units were standardised was furthest
-    off: its standard deviation of log alpha was 20% above the exact
-    Hessian's. Rule: every parameter's standard deviation within 3% of
-    the exact Hessian's (Richardson-extrapolated central differences at
-    1e-3 and 5e-4 standard deviations); observed 1.3% at most."""
+    """Where the covariate is far from 0 (near 50, with a spread of 1)
+    the engines work with the baseline at the covariates' means, where
+    the posterior is close to normal; the Laplace normal there (in those
+    working coordinates) must have the exact curvature. This design is
+    the one of six (seeds 460210 to 460215, characterised before this
+    test was written) where the search in the parameters' own
+    coordinates was furthest off (its standard deviation of log alpha
+    20% above the exact Hessian's). Rule: every working coordinate's
+    standard deviation within 3% of the exact Hessian's
+    (Richardson-extrapolated central differences at 1e-3 and 5e-4
+    standard deviations)."""
     from surpyval.bayes.regression import RegressionTarget
     from surpyval.bayes.result import bind, log_posterior
 
@@ -760,12 +761,19 @@ def test_a_non_centred_covariates_laplace_normal_has_the_exact_curvature():
     x = sp.Weibull.random(n, 10.0, 1.5, random_state=seed + 1)
     x = x * np.exp(-0.3 * (z1 - 50) - 0.4 * z0)
     model = quietly(sp.WeibullPH.fit_bayes, x, Z)
-    cov = np.asarray(model.posterior.normal["cov"])
+    working = model.diagnostics["working_normal"]
+    cov = np.asarray(working["cov"])
+    mode = np.asarray(working["mean"])
     sd = np.sqrt(np.diag(cov))
     target = RegressionTarget(model.mle)
     bound, _ = bind(target, None)
     log_post = log_posterior(target, bound)
-    mode = bound.to_phi(np.asarray(model.diagnostics["mode"])[None, :])[0]
+    rp = target.reparam(bound)
+
+    def in_u(u):
+        u = np.atleast_2d(u)
+        return log_post(rp.inverse(u)) + rp.log_det(u)
+
     d = mode.size
 
     def hessian(h):
@@ -775,10 +783,10 @@ def test_a_non_centred_covariates_laplace_normal_has_the_exact_curvature():
                 ei, ej = np.zeros(d), np.zeros(d)
                 ei[i], ej[j] = h[i], h[j]
                 out[i, j] = (
-                    log_post((mode + ei + ej)[None])[0]
-                    - log_post((mode + ei - ej)[None])[0]
-                    - log_post((mode - ei + ej)[None])[0]
-                    + log_post((mode - ei - ej)[None])[0]
+                    in_u((mode + ei + ej)[None])[0]
+                    - in_u((mode + ei - ej)[None])[0]
+                    - in_u((mode - ei + ej)[None])[0]
+                    + in_u((mode - ei - ej)[None])[0]
                 ) / (4 * h[i] * h[j])
         return out
 
@@ -850,10 +858,12 @@ def test_a_strong_prior_far_from_the_estimate_is_the_brute_force_posterior():
     x, Z = _far_prior_data()
     priors = {"coef_0": sp.Normal.from_params([0.0, 0.02])}
     model = quietly(sp.WeibullPH.fit_bayes, x, Z, priors=priors)
-    mean = np.asarray(model.posterior.normal["mean"])
-    sd = np.sqrt(np.diag(np.asarray(model.posterior.normal["cov"])))
     target = RegressionTarget(model.mle)
     bound, _ = bind(target, priors)
+    # (the engine works at the covariates' means, so its normal is not
+    # one on these coordinates: the lattice is laid by its draws')
+    phi = bound.to_phi(model.posterior.draws(4000, random_state=1))
+    mean, sd = phi.mean(axis=0), phi.std(axis=0)
     log_post = log_posterior(target, bound)
     axes = [np.linspace(m - 6 * s, m + 6 * s, 41) for m, s in zip(mean, sd)]
     mesh = np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, 3)

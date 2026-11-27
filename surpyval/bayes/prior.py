@@ -433,6 +433,39 @@ class Flat(Prior):
         return {"prior": "Flat", "said": self.said}
 
 
+class FlatAtMeans(Flat):
+    """The default prior on the location ``mu`` of an accelerated failure
+    time regression on the whole line (Normal, Gumbel, Logistic): flat on
+    the location at the covariates' means, ``mu_c = mu e^{-beta' zbar}``,
+    not on the user's ``mu`` (the location at covariates of 0). Time is
+    multiplicative in these models, so a flat prior on ``mu`` itself
+    would be one on ``mu_c`` tilted by ``e^{beta' zbar}``, pulling the
+    coefficients towards large ``beta' zbar`` (with a covariate near 50 a
+    NormalAFT coefficient's interval was [0.60, 1.37] where the data put
+    it at 0.31). Its density, ``e^{-beta' zbar}`` on ``(mu, beta)``, is
+    the regression target's (``RegressionTarget.extra_prior``); here it is
+    0, as a flat prior's.
+
+    Examples
+    --------
+    >>> from surpyval.bayes.prior import FlatAtMeans
+    >>> FlatAtMeans().proper
+    False
+    """
+
+    def __init__(self, said: str = "") -> None:
+        super().__init__(said or "flat at the covariates' means")
+
+    def describe(self, t: Transform) -> str:
+        return (
+            "flat on the location at the covariates' means (the data "
+            "alone identify it)"
+        )
+
+    def to_dict(self) -> dict:
+        return {"prior": "FlatAtMeans", "said": self.said}
+
+
 class Fixed(Prior):
     """The parameter is known: held at ``value`` (as ``fixed=`` in
     ``fit``).
@@ -1855,6 +1888,8 @@ def prior_from_dict(d: dict) -> Any:
         )
     if kind == "Flat":
         return Flat(d.get("said", ""))
+    if kind == "FlatAtMeans":
+        return FlatAtMeans(d.get("said", ""))
     if kind == "Fixed":
         return Fixed(d["value"])
     if kind == "MultivariateNormal":
@@ -2075,6 +2110,13 @@ class BoundPriors:
             )
         for jp in self.spec.joint:
             self._factors.append(jp.bind(self))
+        # a family's own term of a default prior on several parameters
+        # (an AFT regression's flat prior on its location at the
+        # covariates' means)
+        extra = getattr(self.target, "extra_prior", None)
+        factor = extra(self) if callable(extra) else None
+        if factor is not None:
+            self._factors.append(factor)
 
     @property
     def proper(self) -> bool:

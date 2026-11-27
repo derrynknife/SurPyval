@@ -318,6 +318,17 @@ interval and prediction is then carried back to the parameters' own
 scales, so a shape's interval is still above zero and a proportion's is
 still between 0 and 1.
 
+**The answer does not depend on your units.** The search for the peak
+(for the grid and for the Laplace approximation alike) measures each
+parameter in units of its own uncertainty: the maximum-likelihood
+standard error along that parameter's axis, and for a regression
+coefficient one over its covariate's spread. So lives in hours or in
+millionths of an hour, or a covariate in grams or tonnes, give the same
+posterior, carried into the new units: in SurPyval's tests, times
+multiplied by 1e-6 to 1e6 change no survival probability or interval by
+more than one part in a million. Only the search's steps use these
+units: a prior still means what it says in the units of your data.
+
 **When it is good.** With a moderate or large amount of data, a
 posterior is close to normal on that scale, and the approximation is
 then close to the exact answer: in SurPyval's tests, 100 Weibull lives
