@@ -3027,8 +3027,10 @@ def _resolved_spreads(
     model: Model, arrays: JointArrays, theta: dict
 ) -> npt.NDArray:
     """Each varying parameter's smallest own spread (its Cholesky
-    diagonal) that the adaptive nodes resolve, ``(q,)``: 1e-9 of the
-    largest of the items' mean values of it, and 1e-8 of the spread that
+    diagonal) that the adaptive nodes resolve, ``(q,)``: 1e-9 of its
+    mean value (``mu``, at the covariates' means: the scale a saved
+    model is checked on, ``JointModel._check_resolved``), and 1e-8 of the
+    spread that
     moves an item's marker by 1% of the noise (:data:`_NO_SPREAD` over
     its reach, :func:`_spread_reach`), whichever is larger. Below the
     first, the nodes' offsets from the mode fall to a few units of the
@@ -3042,10 +3044,7 @@ def _resolved_spreads(
     if not layout.q:
         return np.zeros(0)
     V = list(layout.varying)
-    mu = np.asarray(theta["mu"], dtype=float)
-    Delta = np.asarray(theta["Delta"], dtype=float)
-    means = mu[None, V] + np.asarray(arrays.Z, dtype=float) @ Delta[V].T
-    value = np.max(np.abs(means), axis=0) if means.size else np.zeros(len(V))
+    value = np.abs(np.asarray(theta["mu"], dtype=float)[V])
     try:
         reach = np.asarray(_spread_reach(model, arrays, theta), dtype=float)
     except (ValueError, FloatingPointError, np.linalg.LinAlgError):
