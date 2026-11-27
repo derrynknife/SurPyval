@@ -358,3 +358,13 @@ def test_a_spread_beyond_the_valid_ones_is_refused_clearly():
     edited = JointModel.from_dict(d)
     with pytest.raises(ValueError, match="not a valid covariance matrix"):
         edited.sf([400.0], [0.0], markers={0: 3.1, 300: 3.9}, given=300)
+
+
+def test_a_correlation_of_one_not_held_is_refused(rate_in_level):
+    # a dict edited by hand (or saved without 'proportional'): corr_a_b
+    # exactly -1 with nothing held is a singular spread
+    _, model, _ = rate_in_level
+    free = JointModel.from_dict(dict(model.to_dict()))
+    free._proportional = None
+    with pytest.raises(ValueError, match="does not hold it there"):
+        free.sf([400.0], markers={0: 3.1, 300: 3.9}, given=300)

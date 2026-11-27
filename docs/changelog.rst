@@ -1758,10 +1758,12 @@ v0.30 (unreleased)
 **Fixed.**
 
 - **A joint fit can no longer report a likelihood from a spread too small
-  to integrate.** Below about 1e-16 of a varying parameter's value, the
-  adaptive nodes' offsets fall within rounding of it, the prior's term
-  at them is lost and the change of variables no longer cancels it, so
-  the likelihood reads too high: on the two-mode spline fixture with
+  to integrate.** At an sd below about 1e-11 to 1e-13 of a varying
+  parameter's value the error becomes material: the adaptive nodes'
+  offsets come within a few units of the last place of the value, the
+  prior's term at them is lost to rounding and the change of variables
+  no longer cancels it, so the likelihood reads too high (on the
+  fixture below the onset is lower, its bend's value being large): on the two-mode spline fixture with
   the bend varying (held at a spread of 0, 985.8987), a bend sd of 1e-14
   moved it by 0.003, 1e-16 by 2.3, and 1e-18 or below by 107 (878.50). A
   search could step there and keep it. Now a search does not step a
@@ -1959,6 +1961,19 @@ v0.30 (unreleased)
   Python's own error. Use ``surpyval.EventHistoryData``.
 
 **Changed.**
+
+- **``surpyval.torch.cox_nll`` stays finite and keeps exact gradients at
+  wide risk-score spreads and with delayed entry.** Efron's tied-failure
+  sum now shifts each failure time by its own maximum rather than the
+  batch's ``eta.max()`` (avoiding underflow to Breslow and ``nan``/``inf``
+  gradients when an unrelated row has a much larger risk score), and
+  delayed-entry risk sets are summed directly rather than by subtracting
+  the not-yet-entered suffix sum (avoiding cancellation when a
+  late-entering row has a large risk score). The delayed-entry risk sets
+  keep the fast suffix-sum path and are summed directly only at the
+  failure times where the subtraction would cancel, so a batch with
+  delayed entry stays O((N + T) log N): 0.07 s instead of 16 s for 50,000
+  rows.
 
 - **No warning on a spline bend whose spread is estimated at 0.**
   Joint models on a ``SplinePath`` with bends in ``varying`` warned
