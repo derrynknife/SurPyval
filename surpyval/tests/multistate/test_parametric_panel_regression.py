@@ -384,7 +384,7 @@ def test_coarsen_bins_are_pandas_qcut_with_bin_means():
 
     rng = np.random.default_rng(1)
     z = np.round(rng.gamma(2.0, size=200), 1)  # ties, a long tail
-    Z = np.c_[z, rng.uniform() < 0.5 * np.ones(200), z * 10]
+    Z = np.c_[z, rng.uniform(size=200) < 0.5, z * 10]
     new, info = _coarsen(Z, ["a", "b", "c"], 6)
     for j in (0, 2):
         col = pd.Series(Z[:, j])
@@ -432,6 +432,18 @@ def test_coarsen_is_the_fit_to_the_grouped_covariates(measured, clock):
     # forward clock only.)
     if clock == "forward":
         assert_allclose(a.params, b.params, rtol=1e-4, atol=1e-6)
+    # Fed the model's own grouped covariates back by hand (bit for bit),
+    # the fit is the same, estimates included, on both clocks.
+    grouped = pd.DataFrame(np.empty((len(w), 2)), columns=["male", "w"])
+    order = np.lexsort((measured["x"], pd.factorize(measured["i"])[0]))
+    grouped.iloc[order] = a._panel.Z
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        c = ParametricPanelMultiStateRegression.fit(
+            transitions=TM, clock=clock, **{**measured, "Z": grouped}
+        )
+    assert_allclose(c.params, a.params, rtol=0, atol=0)
+    assert c.log_likelihood == a.log_likelihood
 
 
 def test_coarsen_with_a_function_or_by_name(measured):
@@ -470,6 +482,7 @@ def test_coarsen_round_trip_and_refusals(small, measured):
     for bad, match in [
         ({"weight": 3}, "'weight', which is not a covariate"),
         (0, "number of bins"),
+        (1, "at least 2"),
         (True, "number of bins"),
         (2.5, "number of bins"),
         (lambda z: z[:3], "one\nfinite value|one finite value"),

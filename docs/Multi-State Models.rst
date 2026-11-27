@@ -926,7 +926,10 @@ A function is applied to every covariate instead (``coarsen=np.round``,
 or ``lambda z: z.round(1)``), and a dict coarsens only the covariates it
 names (``coarsen={"w": 10}``). The fit is exactly the fit to the
 covariates grouped that way by hand, and ``model.coarsened`` gives each
-grouped covariate's number of distinct values before and after:
+grouped covariate's number of distinct values before and after. The
+model holds and saves (``to_dict``) the grouped covariates; its
+predictions take the covariate values you give them, measured or not.
+At least 2 bins are needed (one would make the covariate a constant):
 
 .. code-block:: python
 
@@ -939,8 +942,12 @@ How much it changes the answer depends on the data. On a simulated
 illness-death model (100 units seen every unit of time for 5 to 10
 units, Weibull proportional hazards, a covariate fixed for each unit and
 one, ``w``, uniform on (0, 2) and drawn at every visit: 785 visits and
-740 distinct values of ``w``) the full fit took 228 s on one core. With
-``coarsen`` it took 15 s (5 bins), 25 s (10), 38 s (20) and 58 s (40).
+740 distinct values of ``w``; ``visits_covariates(100, 5, ...,
+continuous=True)`` in ``surpyval/tests/multistate/_inspected.py``, with
+the parameters of ``test_parametric_panel_regression.py``) the full fit
+took about 230 s on one core of the machine it was run on. With
+``coarsen`` it took about 15 s (5 bins), 25 s (10), 38 s (20) and 58 s
+(40).
 The coefficient of ``w`` on healthy to ill, 0.639 (standard error 0.184)
 in the full fit, was 0.664, 0.658, 0.657 and 0.652, moving by 0.14 to
 0.07 of its standard error; the chance of being ill at time 5 with

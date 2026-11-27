@@ -178,8 +178,15 @@ def _coarsen(Z: npt.NDArray, names: list, coarsen: Any) -> tuple:
             ):
                 raise ValueError(
                     "coarsen must be a number of bins (a whole number of "
-                    "at least 1), a function of a column's values, or a "
+                    "at least 2), a function of a column's values, or a "
                     f"dict of either by covariate name; got {rule!r}."
+                )
+            if rule == 1:
+                raise ValueError(
+                    f"coarsen of 1 for {names[j]!r} would make it one "
+                    "value, a constant whose coefficient cannot be "
+                    "estimated: give at least 2 bins, or leave the "
+                    "covariate out."
                 )
             if before <= rule:
                 continue
@@ -910,7 +917,8 @@ class ParametricPanelMultiStateRegression(
             covariates it names. The fit is exactly the fit to the
             covariates grouped that way by hand; ``coarsened`` reports
             the distinct values of each grouped covariate before and
-            after.
+            after. Predictions take covariate values as given (measured,
+            not grouped); ``to_dict`` saves the grouped ``Z``.
 
         Returns
         -------
