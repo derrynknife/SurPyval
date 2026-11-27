@@ -504,6 +504,19 @@ v0.30 (unreleased)
   every such fit warned that "the data disagree with the prior". A
   prior whose density vanishes at the end still reports the conflict.
 
+- **Rank-based semi-parametric AFT regression: ``RankAFT``.** A second
+  accelerated-failure-time estimator with no assumed error distribution,
+  beside ``BuckleyJames``: it solves the Gehan (default) or log-rank
+  estimating equations of the residuals' ranks (``rank_weights=``), with
+  induced smoothing (Brown and Wang) for sandwich standard errors, so
+  ``summary()``, ``covariance()``, ``standard_errors()`` and
+  ``param_cb()`` (Wald, or ``method="bootstrap"``) need no resampling.
+  The log-rank root is the fixed point of weighted Gehan refits from the
+  Gehan estimate. Predictions (``sf``, ``ff``, ``Hf``, ``qf``, ``cs``)
+  read the residual Kaplan-Meier, as ``BuckleyJames``'s do, and the two
+  now share that code (``BuckleyJames``'s numbers are unchanged).
+  Checked against exact linear-programme solutions, least squares,
+  ``BuckleyJames`` and a seeded simulation (see the docs page).
 - **Promotion-time (bounded cumulative hazard) cure regression:
   ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
   ``LogNormalPromotionTimeCure``, ``LogLogisticPromotionTimeCure``,
@@ -1638,6 +1651,17 @@ v0.30 (unreleased)
 
 **Fixed.**
 
+- **``BirnbaumSaunders.hf`` is right however far out.** Far above the
+  median the hazard was taken as the difference of the logs of the
+  density and the survival function. That lost about ``xi**2`` of the
+  precision (6e-10 relative at x = 1e6 for ``alpha = 0.3``, ``beta =
+  4``), and at extreme parameters both logs are ``-inf``: at x = 1e300
+  with ``alpha = 4.6e-9``, or with ``beta = 1e-7``, it was NaN where the
+  hazard is its limit ``1 / (2 alpha^2 beta)``. Above ``xi = 1`` it is
+  now the density's factor times the normal hazard of ``xi`` (exact for
+  every ``xi``), and above ``xi = 1e8`` the inverse Mills ratio's series
+  in a form that never forms ``xi``; it agrees with 60-digit arithmetic
+  to 1e-13 at every point checked, from below the median to x = 1.7e308.
 - **A strong prior far from the estimate no longer refuses a Bayesian
   fit.** A prior given as a distribution (``sp.Normal.from_params([0,
   0.02])`` on a coefficient the data put at 1.36, 68 of its standard
