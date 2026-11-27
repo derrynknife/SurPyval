@@ -1086,10 +1086,17 @@ day 365 the cumulative hazard to 400 days was off by 4e-4 of itself
 against 3e-15 with ``breaks = (365.0,)``. The fit checks a path of your
 own that names no ``breaks``: on the five items observed longest, it
 compares the integral by the one rule with the same rule on each half
-of the ages, and where they differ by more than 1e-5 of the integral (a
-smooth path stays well below that) it warns that the path seems to
-have a kink and names ``breaks``. A corner whose age varies between
-items or is estimated cannot be named this way, and is not supported.
+of the ages, an estimate of the one rule's error, and where they differ
+by more than 1e-5 of the integral it warns that the rule loses accuracy
+along the path. That comes of a corner, or of a very steep or sudden
+change in a smooth path (an exponential rising nine times over the
+ages, a logistic step over a month), where ``breaks`` through the
+steep part helps too; a gentle smooth path stays well below 1e-5. The
+check is of one-marker models only (several markers' paths are not
+probed), and a corner close to the end of the observed ages, where
+little of the integral lies past it, can be missed. A corner whose age
+varies between items or is estimated cannot be named this way, and is
+not supported.
 
 Each parameter is on its own scale by default: the rate ``b`` above is
 normal between items, so a fleet whose rates are near 0 would give some

@@ -1899,9 +1899,13 @@ def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
 
 #: A path of one's own whose hazard integral over age, split at its
 #: half, differs from the one rule over it by more than this (relative)
-#: on the probe items gets the kink warning (:func:`_check_kinks`). A
-#: kink gives 1e-4 or more; the built-in smooth paths stay below it (a
-#: quadratic rising steeply, 1.5e-6 at two years).
+#: on the probe items gets the warning (:func:`_check_kinks`). The split
+#: rule is far more accurate than the one, so the difference estimates
+#: the one rule's error: a corner gives 1e-4 or more (7e-4 for a line
+#: turning to rise 3 a year), as does a smooth but very steep or sudden
+#: path (7.6e-3 for an exponential rising 8.9 times; 3.9e-3 for a
+#: logistic step of 3 over 30 days); gentle smooth paths stay below it
+#: (a quadratic rising steeply, 1.5e-6 at two years).
 _KINK_TOL = 1e-5
 
 
@@ -1976,14 +1980,15 @@ def _check_kinks(model: Model, arrays: JointArrays, theta: dict) -> None:
     if off.size and float(off.max()) > _KINK_TOL:
         name = _own_paths(model.path)[0].name
         warnings.warn(
-            f"The {name} path seems to have a kink (a corner where its "
-            "slope jumps): the integral of the hazard over age along it "
-            f"changes by {float(off.max()):.1g} of itself when split at "
-            "half the age, where a smooth path's changes by less than "
-            f"{_KINK_TOL:g}, so the fit's rule for it loses its accuracy. "
-            "If the path has corners at known ages, give its class a "
-            "'breaks' attribute with them (breaks = (365.0,)), and the "
-            "integrals are split there.",
+            f"The rule that integrates the hazard over age loses accuracy "
+            f"along the {name} path: on the items observed longest the "
+            f"integral changes by {float(off.max()):.1g} of itself when "
+            "split at half the age (an estimate of the rule's error; a "
+            f"smooth, gentle path's is below {_KINK_TOL:g}). This comes "
+            "of a corner in the path (its slope jumps) or a very steep or "
+            "sudden change. Give the path's class a 'breaks' attribute "
+            "with the ages of its corners, or ages through its steep part "
+            "(breaks = (365.0,)): the integrals are then split there.",
             stacklevel=caller_stacklevel(),
         )
 

@@ -149,7 +149,7 @@ def test_an_unnamed_kink_is_warned_of_at_the_fit():
         n=150,
         seed=4,
     )
-    with pytest.warns(UserWarning, match="seems to have a kink.*breaks"):
+    with pytest.warns(UserWarning, match="loses accuracy.*breaks"):
         JointPH(Weibull, Hinge(), varying=("a", "b")).fit(
             data, marker_reference=CENTRE
         )
@@ -160,7 +160,7 @@ def test_an_unnamed_kink_is_warned_of_at_the_fit():
             JointPH(Weibull, path, varying=("a", "b")).fit(
                 data, marker_reference=CENTRE
             )
-        assert not [w for w in caught if "kink" in str(w.message)]
+        assert not [w for w in caught if "loses accuracy" in str(w.message)]
 
 
 class Smooth(PathModel):
