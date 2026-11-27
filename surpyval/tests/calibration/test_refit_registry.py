@@ -522,6 +522,44 @@ def _interpolated_odds_curve(case, truth, grid):
     )
 
 
+def _interpolated_residuals(case, model, t, row, kw=None):
+    """``sf`` of a residual-Kaplan-Meier AFT model (Buckley-James, the
+    rank-based AFT) at one row with its residual distribution made
+    continuous: each atom's mass spread uniformly over the interval
+    below it (the first over one mean spacing), so the residual survival
+    is linear between ``(r_0 - spacing, 1)``, ``(r_0, S_0)``, ...,
+    ``(r_K, S_K = 0)``. The coefficients are the model's, so this is an
+    AFT model still, ``sf(t | Z) = S(log t + beta'Z)``, with a continuous
+    error: data drawn from it have no ties. (Drawn from the step function,
+    300 units share its 26 atoms, and the mean refitted curve, judged
+    beside the steps, missed the rule on 4 to 6 of 12 seeds for each of
+    the three models.) The plan, its seeds (the registry's, from the
+    name), n = 300, 40 refits and the curve rule (3 Monte Carlo SE plus
+    0.02) were written down before it was first run."""
+    r = np.asarray(model._resid, dtype=float)
+    S = np.asarray(model._resid_surv, dtype=float)
+    spacing = (r[-1] - r[0]) / max(r.size - 1, 1) if r.size > 1 else 1.0
+    knots = np.r_[r[0] - spacing, r]
+    values = np.r_[1.0, S]
+    t = np.asarray(t, dtype=float)
+    lp = float(model._linear_predictor(np.empty(1), row)[0])
+    with np.errstate(divide="ignore"):
+        e = np.log(np.where(t > 0, t, 1.0)) + lp
+    out = np.interp(e, knots, values, left=1.0, right=0.0)
+    return np.where(t > 0, out, 1.0)
+
+
+def _interpolated_residuals_curve(case, truth, grid):
+    # The true curve of a plan drawing from _interpolated_residuals, in
+    # default_curve's order.
+    return np.concatenate(
+        [
+            _interpolated_residuals(case, truth, grid, row)
+            for row in _z_rows(case)
+        ]
+    )
+
+
 def _positive_additive_rows(truth, Z):
     # An additive-hazards model is a distribution only where its hazard
     # h0(t) + beta'Z stays positive (documented; the registry excludes
@@ -1402,43 +1440,24 @@ for _name in (
         "is biased upwards by design, is not held to the bias rule",
     )
 _SEMI = "semi-parametric: the curve only"
-for _name in ("CoxPH", "CoxPH[strata]", "BuckleyJames"):
+for _name in ("CoxPH", "CoxPH[strata]"):
     PLANS[_name] = Plan(
         _regression(own_random=False, step=True),
         _REG_N,
         _REG_REPS,
         note=_SEMI,
     )
-# The rank-based AFT: the plan of BuckleyJames, which predicts the same
-# way. Both miss the curve rule for the seed set before the run; the
-# reasons were looked into after it, and the plan was not changed.
-_RANK_XFAIL = {
-    "RankAFT": (
-        "the mean refitted curve at point 8 of 30 is 0.1919 against 0.2585 "
-        "(tolerance 0.0467). The draws are from the truth's residual "
-        "Kaplan-Meier, a step function of 26 atoms; for this seed the "
-        "Gehan estimating function at the true coefficients averages 2.1 "
-        "Monte Carlo standard errors from 0 over the 40 data sets, and the "
-        "first coefficient's mean is 2.4 from the truth. With seeds 1 and "
-        "2 (100 data sets each) both are within 1.5, so the function is "
-        "unbiased at the truth and the miss is this seed's"
-    ),
-    "RankAFT[logrank]": (
-        "the mean refitted curve at the last of 30 points, in the tail, is "
-        "0.2541 against 0.3015 (tolerance 0.0397); the coefficients are "
-        "recovered (with this seed and 100 data sets, their mean is within "
-        "0.9 Monte Carlo standard errors of the truth). The tail of a "
-        "residual Kaplan-Meier with an Efron correction, read at the end "
-        "of the data, is where the refits differ"
-    ),
-}
-for _name, _why in _RANK_XFAIL.items():
+# The residual-Kaplan-Meier AFT models: drawn from the fixture's fit with
+# its residual distribution made continuous (see _interpolated_residuals).
+for _name in ("BuckleyJames", "RankAFT", "RankAFT[logrank]"):
     PLANS[_name] = Plan(
-        _regression(own_random=False, step=True),
+        _regression(own_random=False, sf=_interpolated_residuals),
         _REG_N,
         _REG_REPS,
-        note=_SEMI,
-        xfail=_why,
+        truth_curve=_interpolated_residuals_curve,
+        note=_SEMI + "; drawn with the residual distribution interpolated "
+        "linearly between its atoms, an AFT model with a continuous error "
+        "(see _interpolated_residuals)",
     )
 PLANS["ProportionalOdds"] = Plan(
     _regression(own_random=False, sf=_interpolated_odds),
@@ -1855,9 +1874,10 @@ EXCLUDED: dict[str, str] = {
         "with jumps of up to 0.17: data drawn from it are tied at those "
         "steps, a refit's steps fall beside the truth's, and the curve check, "
         "read at the data's own times, sees a whole jump (0.09 at worst over "
-        "40 refits of 300, with the plan of BuckleyJames). Recovery of the "
-        "coefficient process from continuous data with known quantiles is "
-        "tested in tests/univariate/regression/test_quantile_regression.py",
+        "40 refits of 300, with the step-function plan BuckleyJames then "
+        "had). Recovery of the coefficient process from continuous data "
+        "with known quantiles is tested in "
+        "tests/univariate/regression/test_quantile_regression.py",
     ),
     "NeverOccurs": _NO_DATA,
     "InstantlyOccurs": _NO_DATA,

@@ -69,16 +69,23 @@ sandwich covariance below (Brown and Wang 2007; Chiou, Kang and Yan
 2014) until no standard deviation it implies changes by more than 1%;
 it is then held, so the estimate is the root of one smooth function.
 The estimate reported is the root of the
-smoothed function; the root of the step function (the exact linear
-programme) differs from it by much less than its standard error.
+smoothed function, not of the step function. The two differ by a
+fraction of a standard error that shrinks as the data grow: on 100
+units, a tenth of one or less for Gehan (against the exact linear
+programme) and up to about 0.3 for log-rank (median about 0.15, over
+40 seeded data sets). As the smoothing covariance shrinks, the smoothed
+root tends to a root of the step function.
 
 The log-rank root is found as Jin, Lin, Wei and Ying (2003) find it: from
 the Gehan estimate, refit the weighted Gehan loss with each event's weight
 :math:`1 / \\tilde R_i`, the inverse of its (smoothed) number at risk at
 the previous estimate, until the estimate stops moving. A fixed point is
-a root of the smoothed log-rank function. That function can have several
-roots; the one reported is the one this iteration reaches from the Gehan
-estimate.
+a root of the smoothed log-rank function. The unsmoothed log-rank
+function has several exact roots, within a small fraction of a standard
+error of each other (up to 0.06 of one on the test data); the estimate
+reported is the smoothed root this iteration reaches from the Gehan
+estimate, and the exact roots near it are within the smoothing gap above
+of it.
 
 **Standard errors.**
 The sandwich :math:`V = A^{-1} B A^{-\\top}`. :math:`A` is the derivative
@@ -883,6 +890,7 @@ class RankAFTModel(ResidualAFTModel):
         units = np.repeat(np.arange(Y.shape[0]), np.round(w).astype(int))
         whole = np.allclose(w, np.round(w)) and units.size > 0
         boot = []
+        dropped = unsettled = 0
         for _ in range(n_boot):
             if whole:
                 idx = units[rng.integers(0, units.size, size=units.size)]
@@ -892,9 +900,10 @@ class RankAFTModel(ResidualAFTModel):
                 idx = np.flatnonzero(counts)
                 w_b = w[idx] * counts[idx]
             if not np.any(delta[idx] == 1):
+                dropped += 1
                 continue
             try:
-                g = _fit_gamma(
+                g, _, _, _, settled = _fit_gamma(
                     Y[idx],
                     delta[idx],
                     Z[idx],
@@ -902,10 +911,20 @@ class RankAFTModel(ResidualAFTModel):
                     self.rank_weights,
                     1e-4,
                     50,
-                )[0]
-                boot.append(expand(-g, kept, p))
+                )
             except np.linalg.LinAlgError:
+                dropped += 1
                 continue
+            unsettled += not settled
+            boot.append(expand(-g, kept, p))
+        if dropped or unsettled:
+            warnings.warn(
+                f"Of {n_boot} bootstrap refits, {dropped} could not be "
+                "fitted (no event, or a singular design, in the resample) "
+                f"and are left out, and {unsettled} did not settle in 50 "
+                "rounds and are kept at their last estimate. The bounds "
+                "are from the rest; raise n_boot, or use method='wald'."
+            )
         return boot
 
     def __repr__(self) -> str:

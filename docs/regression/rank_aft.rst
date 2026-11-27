@@ -26,10 +26,11 @@ Two weightings are offered:
   reliably.
 - ``rank_weights="logrank"`` gives each failure the same weight, which is
   more efficient when the errors have an extreme-value (Weibull-like)
-  shape. Its estimating function is not monotone and can have several
-  roots close together; the one reported is the one reached by refitting
-  weighted Gehan fits from the Gehan estimate (Jin, Lin, Wei and Ying
-  2003), and the model says so (``rank_weights``).
+  shape. Its estimating function is not monotone and has several exact
+  roots, within a small fraction of a standard error of each other (up
+  to 0.06 of one in the tests). The estimate reported is the smoothed
+  root reached by refitting weighted Gehan fits from the Gehan estimate
+  (Jin, Lin, Wei and Ying 2003).
 
 **Standard errors.** The estimating functions are step functions of the
 coefficients, which have no derivative. Induced smoothing (Brown and Wang
@@ -42,7 +43,9 @@ the unsmoothed function's per-unit contributions; ``summary()``,
 percentile bootstrap with ``method="bootstrap"``) report them. The
 estimate reported is the root of the smoothed function, which differs
 from the root of the step function (an exact linear programme for Gehan)
-by much less than its standard error.
+by a fraction of a standard error that shrinks as the data grow: on 100
+units, a tenth of one or less for Gehan and up to about 0.3 for log-rank
+(median about 0.15).
 
 **The model and the formulas.** With :math:`Y_i = \log x_i`, event flag
 :math:`\delta_i`, counts :math:`w_i` and residuals

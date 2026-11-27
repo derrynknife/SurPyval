@@ -204,9 +204,10 @@ class ResidualAFTModel(
     def qf(self, p: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """
         The quantile function: the first time at which the predicted
-        failure probability ``ff(x, Z)`` reaches ``p`` (#662), ``nan``
-        where it never does -- the residual Kaplan-Meier stops at the
-        last residual, above ``1 - p`` where the data end censored. It is
+        failure probability ``ff(x, Z)`` reaches ``p`` (#662). The
+        residual Kaplan-Meier's tail is corrected (its largest residual is
+        an event), so it reaches 0 and every ``p`` in [0, 1] has a
+        quantile, even where the data end censored. It is
         :math:`e^{q_\\epsilon(p) - \\beta' Z}`, :math:`q_\\epsilon` the
         residual Kaplan-Meier's quantile, taken as the non-parametric
         ``qf`` takes it (a curve within ``1e-9`` of ``p`` reaches it).
