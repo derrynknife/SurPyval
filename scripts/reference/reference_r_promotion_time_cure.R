@@ -14,10 +14,14 @@
 # jsonlite. NOT RUN YET: written against the flexsurvcure 1.3 documentation
 # (mixture = FALSE, link = "loglog"); check the call on the first run.
 #
-# The model: flexsurvcure's non-mixture model is S(t) = theta^F0(t), with
-# theta the cured fraction; with link = "loglog", theta = exp(-exp(eta)),
-# so S(t) = exp(-exp(eta) F0(t)): SurPyval's promotion-time model with
+# The model, AS ASSUMED HERE AND TO BE CONFIRMED ON THE FIRST RUN:
+# flexsurvcure's non-mixture model is S(t) = theta^F0(t), with theta the
+# cured fraction; if its link = "loglog" means theta = exp(-exp(eta)) (and
+# not the complementary log-log, theta = 1 - exp(-exp(eta))), then
+# S(t) = exp(-exp(eta) F0(t)): SurPyval's promotion-time model with
 # log(theta_surpyval) = eta, the same coefficients and the same sign.
+# Check that on the first run (e.g. the fitted cure fraction against
+# exp(-theta) from SurPyval) before trusting the test.
 #
 # The data: 500 units with a binary z1 and a normal z2 (seed 20261127).
 # Each carries a Poisson number of latent causes, mean

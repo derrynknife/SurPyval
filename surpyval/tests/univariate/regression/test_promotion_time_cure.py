@@ -15,9 +15,11 @@ Validated from first principles, since flexsurvcure is not installed:
   age;
 * a seeded simulation recovers the cure fraction inside its bounds.
 
-``scripts/reference/reference_r_promotion_time_cure.R`` writes the
+``scripts/reference/reference_r_promotion_time_cure.R`` is to write a
 flexsurvcure (``mixture = FALSE``) reference, which
-``test_against_flexsurvcure`` checks once it exists.
+``test_against_flexsurvcure`` checks once it exists. The script has not
+been run, and its mapping of flexsurvcure's ``link = "loglog"`` onto
+SurPyval's log-link theta is to be confirmed on its first run.
 """
 
 import json
@@ -113,9 +115,10 @@ def test_recovers_the_cure_fraction_within_its_bounds():
     least 34 of 40 (3 binomial standard errors below 95%). The full
     coverage study is calibration/test_coverage_promotion_time_cure.py.
 
-    (A first version checked one replicate, seed 7, whose interval
-    (0.609, ...) just missed 0.6: one draw of a 95% interval misses 1 time
-    in 20, so it was replaced by this study, not reseeded.)"""
+    (A first version checked one replicate, ``_simulate(4000, 7)`` with
+    its default settings, whose Wald interval on theta, (0.609, 0.692),
+    just missed 0.6: one draw of a 95% interval misses 1 time in 20, so
+    it was replaced by this study, not reseeded.)"""
     truth = np.array([12.0, 1.6, 0.6, 0.7, -0.4])
     est, covered = [], 0
     with warnings.catch_warnings():
@@ -293,8 +296,8 @@ def test_likelihood_ratio_test_against_no_covariates(data, model):
 
 @pytest.mark.skipif(
     not REF.exists(),
-    reason="run scripts/reference/reference_r_promotion_time_cure.R first "
-    "(needs flexsurvcure)",
+    reason="not run yet: run scripts/reference/reference_r_promotion_time_"
+    "cure.R (needs flexsurvcure) and confirm its link mapping first",
 )
 def test_against_flexsurvcure():
     ref = json.loads(REF.read_text())

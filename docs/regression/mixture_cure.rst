@@ -19,7 +19,7 @@ Pre-built instances: ``WeibullMixtureCure``, ``LogNormalMixtureCure``,
     :members: fit, fit_from_df, random
 
 .. autoclass:: surpyval.univariate.regression.distributional.mixture_cure.MixtureCureModel
-    :members: susceptible_probability, cure_probability, cure_given_survival, sf, ff, df, hf, Hf, qf, mean, follow_up, distribution_at, parameters_at, parameter_cb, to_dict
+    :members: susceptible_probability, cure_probability, cure_given_survival, sf, ff, df, hf, Hf, qf, mean, follow_up, distribution_at, parameters_at, param_cb, to_dict
 
 Promotion-time cure
 -------------------
@@ -38,4 +38,4 @@ default) it is a proportional hazards model. Pre-built instances:
     :members: fit, fit_from_df, random
 
 .. autoclass:: surpyval.univariate.regression.distributional.promotion_time.PromotionTimeCureModel
-    :members: theta_at, susceptible_probability, cure_probability, cure_given_survival, sf, ff, df, hf, Hf, qf, mean, follow_up, parameters_at, parameter_cb, to_dict
+    :members: theta_at, susceptible_probability, cure_probability, cure_given_survival, sf, ff, df, hf, Hf, qf, mean, follow_up, parameters_at, param_cb, to_dict

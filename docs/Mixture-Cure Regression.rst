@@ -427,9 +427,35 @@ saved form.
 It is checked against a likelihood written out independently and
 maximised by a general optimiser, against ``WeibullPH`` in the limit of
 no cure, and by simulation (the coverage of its Wald intervals is in
-the calibration suite). A comparison with R's ``flexsurvcure``
-(``mixture = FALSE``) is scripted in
-``scripts/reference/reference_r_promotion_time_cure.R``.
+the calibration suite). It has not yet been compared with R's
+``flexsurvcure``.
+
+**What** ``susceptible=True`` **returns.** It is the life of a unit that
+does fail, :math:`(S(t) - e^{-\theta}) / (1 - e^{-\theta})`, not
+:math:`F_0`: it depends on :math:`\theta`, so a covariate on
+:math:`\theta` moves the timing of the units that fail as well as how
+many do (a unit with more latent causes fails sooner, at the first of
+them). That is the main difference in reading from the mixture model.
+
+**Identifiability.** With covariates on :math:`\theta` alone the model
+is well determined by data with a plateau. Putting covariates on F0's
+parameters as well asks the data to separate a covariate's effect on
+the ceiling from its effect on the shape of the rise, which only a long
+plateau does well; expect wide intervals, and compare with the
+:math:`\theta`-only fit. With a heavy-tailed F0 (log-normal,
+log-logistic) the cure fraction rests on extrapolating F0 beyond the end
+of follow-up: check ``follow_up()``, and compare F0s by AIC.
+
+**A bound on the cure fraction.** The cure fraction at a row is
+:math:`e^{-\theta(z)}`, decreasing in :math:`\theta`, so its bounds are
+those of :math:`\theta` at the row mapped through it, the ends swapped:
+
+.. code:: python
+
+    lo, hi = model.param_cb("theta", Z=[[1.0, 0.0]])[0]
+    cure_lower, cure_upper = np.exp(-hi), np.exp(-lo)
+
+(``method="lr"`` or ``"bootstrap"`` work the same way.)
 
 What is not built
 -----------------
