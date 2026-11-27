@@ -469,6 +469,20 @@ v0.30 (unreleased)
 
 **Added.**
 
+- **``ParametricPanelMultiStateRegression(..., coarsen=)``: grouping a
+  covariate measured at every visit.** On the forward clock each distinct
+  row of covariates is a product integral of its own, so a covariate with
+  a new value at each visit makes a slow fit. ``coarsen=k`` cuts every
+  covariate with more than ``k`` distinct values into ``k`` equal-count
+  bins (as ``pandas.qcut``), each value replaced by its bin's mean; a
+  function, or a dict by covariate name, may be given instead. It is an
+  approximation and is off by default; the fit equals the fit to the
+  covariates grouped the same way by hand, and ``model.coarsened`` reports
+  what was grouped. On a simulated 100-unit illness-death model with 740
+  distinct values of a visit-level covariate, 10 bins cut the fit from
+  228 s to 25 s and moved that covariate's coefficient by 0.1 of its
+  standard error (see "Grouping a covariate measured at every visit" in
+  the multi-state guide).
 - **Inverse Gaussian and positive stable shared frailties:
   ``family="inverse_gaussian"`` and ``family="positive_stable"``** for
   ``Frailty(dist, family=...)``, ``CoxFrailty.fit(..., family=...)`` and

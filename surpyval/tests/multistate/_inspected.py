@@ -128,14 +128,18 @@ def visits(n, seed, pars, clock="forward", gap=1.0):
     return ids, times, states, before
 
 
-def visits_covariates(n, seed, pars, betas, clock="forward", gap=1.0):
+def visits_covariates(
+    n, seed, pars, betas, clock="forward", gap=1.0, continuous=False
+):
     """The visits of :func:`visits` with covariates: ``male`` (0 or 1,
     fixed for a unit, half the units) and ``w`` (0 or 1, drawn afresh at
     each visit, holding until the next), multiplying each transition's
     Weibull hazard by ``exp(b_male male + b_w w)`` (``betas``: ``{(from,
-    to): (b_male, b_w)}``; proportional hazards on either clock). Returns
-    ``(ids, times, states, Z)``, ``Z`` one row ``(male, w)`` per row, a
-    death's row with the covariates of the visit before it."""
+    to): (b_male, b_w)}``; proportional hazards on either clock). With
+    ``continuous`` ``w`` is uniform on (0, 2) instead (a measurement at
+    every visit, a different value at each). Returns ``(ids, times,
+    states, Z)``, ``Z`` one row ``(male, w)`` per row, a death's row with
+    the covariates of the visit before it."""
     from scipy.optimize import brentq
 
     rng = np.random.default_rng(seed)
@@ -144,7 +148,11 @@ def visits_covariates(n, seed, pars, betas, clock="forward", gap=1.0):
         male = float(rng.uniform() < 0.5)
         end = float(rng.uniform(5, 10))
         visits = list(np.arange(0.0, end, gap)) + [end]
-        w = [float(rng.uniform() < 0.5) for _ in visits]
+        w = [
+            2.0 * float(rng.uniform()) if continuous
+            else float(rng.uniform() < 0.5)
+            for _ in visits
+        ]  # fmt: skip
         state, t, path = 1, 0.0, [(0.0, 1)]
         entry = 0.0
         g = 0
