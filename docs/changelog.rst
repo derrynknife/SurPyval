@@ -1677,6 +1677,14 @@ v0.30 (unreleased)
 
 **Fixed.**
 
+- **The Bayesian renewal and mixture-cure fits follow the DataFrame and
+  serialisation conventions.** ``MixtureCure.fit_bayes_from_df`` names
+  its columns (``x_col``, ``Z_cols``, ``c_col``, ``n_col``, ``tl_col``,
+  ...) as the regression fitters' does; ``fit_bayes`` of ``ARA``, ``ARI``
+  and ``GeneralizedRenewal`` takes ``unit=``; ``BayesianRenewal`` and
+  ``BayesianMixtureCure`` are on the serialisation page with round-trip
+  tests.
+
 - **``BirnbaumSaunders.hf`` is right however far out.** Far above the
   median the hazard was taken as the difference of the logs of the
   density and the survival function. That lost about ``xi**2`` of the
