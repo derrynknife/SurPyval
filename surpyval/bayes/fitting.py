@@ -21,6 +21,7 @@ from surpyval.bayes.engines.grid import (
     find_mode,
     lattice_quantile,
     run_grid,
+    start_scales,
 )
 from surpyval.bayes.engines.laplace import run_laplace
 from surpyval.bayes.likelihood import LogLikelihood, model_parameter_names
@@ -282,6 +283,39 @@ def _theta_of(model: Any, names: list[str]) -> npt.NDArray:
     return np.array([float(vals[n]) for n in names])
 
 
+def _search_scales(
+    mle: Any, bound: BoundPriors, log_post: Any, start: npt.NDArray
+) -> npt.NDArray:
+    """The peak search's scale for each free coordinate, as a target's
+    (:meth:`surpyval.bayes.target.Target.coordinate_scales`): the
+    maximum-likelihood fit's standard errors on the unconstrained
+    scale, and where it has none (no fit, or a parameter its
+    covariance does not cover, such as an offset), the posterior's
+    curvature at the first start. So the search is the same whatever
+    the unit of time: a Normal's ``mu`` in a unit of millionths is
+    searched as one of order 1."""
+    from surpyval.bayes.target import axis_scales
+
+    out = np.full(bound.d, np.nan)
+    if mle is not None:
+        try:
+            with ignoring_warnings(), np.errstate(all="ignore"):
+                names = list(mle.covariance_names)
+                part = np.asarray(mle.covariance(), dtype=float)
+            k = len(bound.names)
+            cov = np.full((k, k), np.nan)
+            at = [bound.names.index(n) for n in names]
+            cov[np.ix_(at, at)] = part
+            se = axis_scales(_theta_of(mle, bound.names), cov, bound)
+            if se is not None:
+                out = se
+        except Exception:  # a fit that cannot give its covariance
+            pass
+    if np.isnan(out).any():
+        out = np.where(np.isnan(out), start_scales(log_post, start), out)
+    return out
+
+
 def check_summary(dist: Any, bound: BoundPriors) -> Any:
     """The numbers the grid's self-check compares: the 2.5%, 50% and
     97.5% points of each free parameter and of the 10% quantile."""
@@ -500,7 +534,8 @@ def _posterior(
             f"{', '.join(bound.free_names)}."
         )
     try:
-        mode, cov, _ = find_mode(log_post, starts)
+        scales = _search_scales(mle, bound, log_post, starts[0])
+        mode, cov, _ = find_mode(log_post, starts, scales)
         if method == "laplace":
             approx = run_laplace(log_post, mode, cov, importance=importance)
         else:

@@ -5,6 +5,38 @@ v0.30 (unreleased)
 
 **Changed numbers.**
 
+- **A Bayesian fit no longer depends on the unit of time.** The
+  Bayesian peak search worked in each parameter's own units, except a
+  regression's coefficients, so a location parameter (the ``mu`` of a
+  Normal, Gumbel or Logistic family) in a unit of millionths or of
+  millions was out of reach of its fixed tolerances and steps:
+  ``NormalAFT.fit_bayes`` and ``GumbelPH.fit_bayes`` with times
+  multiplied by 1e-6 were refused ("curvature not finite"), with times
+  multiplied by 1e6 ``GumbelPH`` moved ``sf`` by 1e-3 (``NormalAFT`` by
+  1.5e-4, ``LogisticAFT`` by 6e-5), and ``Normal.fit_bayes`` and
+  ``Gumbel.fit_bayes`` at 1e-6 were refused. The search now measures
+  every parameter in units of its maximum-likelihood standard error on
+  the unconstrained scale, along its own axis (a coefficient still in
+  units of one over its covariate's spread), or, where the fit has
+  none, of the posterior's curvature at the start. The priors are
+  unchanged and mean what they say in the user's units. With times
+  multiplied by 1e-6, 1e-3, 1e3 or 1e6 every ``sf`` and its credible
+  interval now agree with the unscaled fit's to 1e-6 relative
+  (``test_coordinate_scales.py``; about 1e-8 in ``sf`` for the
+  regressions and 1e-14 for the distributions), except one interval end
+  far in a Gumbel tail (``GumbelPH`` at 1e6, a survival probability of
+  2.4e-19), which agrees to 1.6e-6. Where the posterior is
+  close to normal the posteriors move by the search's tolerance only:
+  on the conformance suite's Bayesian fixtures (distributions,
+  regressions, competing risks, multi-state and recurrent fits) the
+  parameters' medians and intervals move by at most 8e-8 relative.
+  Where it is not (a covariate far from 0; the approximation's check
+  says "poor") the Laplace normal is a secant along the axes the search
+  finds, so it moves by up to a few per cent: on the six seeded
+  non-centred ``WeibullPH`` designs of the previous entry ``sf`` at the
+  covariate mean moves by 3e-4 to 0.018, and every standard deviation
+  stays within 2.5% of the exact Hessian's (2.4% at most, against 2.5%
+  before; the pinned design, now 2.4%, is held to 3%).
 - **A Bayesian regression's posterior no longer depends on a covariate's
   unit.** The regressions' ``fit_bayes`` (proportional hazards,
   accelerated failure time, and each cause's or transition's fit in

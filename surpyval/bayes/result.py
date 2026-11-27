@@ -320,7 +320,11 @@ def fit_target(
         where = _WorkingNames(bound, rp)
     # (the scales are of phi's coordinates: not used in other working
     # coordinates, which are the target's own choice of scale)
-    scales = target.coordinate_scales(bound) if rp is None else None
+    scales = (
+        _search_scales(target, bound, log_post, starts[0])
+        if rp is None
+        else None
+    )
     try:
         mode, cov, _ = find_mode(work, starts, scales)
         if method == "laplace":
@@ -406,6 +410,25 @@ def fit_target(
     if method == "laplace":
         warn_laplace(model.diagnostics)
     return model
+
+
+def _search_scales(
+    target: Any, bound: BoundPriors, log_post: Any, start: npt.NDArray
+) -> npt.NDArray:
+    """The peak search's scale for each free coordinate: the target's
+    (:meth:`~surpyval.bayes.target.Target.coordinate_scales`: the
+    maximum-likelihood standard errors on the unconstrained scale, and
+    a regression coefficient's one over its covariate's spread), and
+    where it gives none, the posterior's curvature at the first start
+    (:func:`~surpyval.bayes.engines.grid.start_scales`)."""
+    from surpyval.bayes.engines.grid import start_scales
+
+    given = target.coordinate_scales(bound)
+    out = np.full(bound.d, np.nan) if given is None else np.array(given)
+    out = np.where(np.isfinite(out) & (out > 0), out, np.nan)
+    if np.isnan(out).any():
+        out = np.where(np.isnan(out), start_scales(log_post, start), out)
+    return out
 
 
 def _phi_mode(

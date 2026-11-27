@@ -313,14 +313,18 @@ class RegressionTarget(Target):
         """A coefficient of ``exp(beta'Z)`` is searched in units of one
         over its covariate's standard deviation (as if the covariate
         were standardised), so that the search is the same whatever the
-        covariate's unit; the other parameters (on log or identity
-        scales) in units of 1. The prior is on the coefficient as given,
-        per unit of the covariate: only the search's steps change."""
+        covariate's unit; the other parameters in units of their
+        maximum-likelihood standard errors on the unconstrained scale
+        (:meth:`Target.coordinate_scales`), so that it is the same
+        whatever the time unit too. The prior is on the coefficient as
+        given, per unit of the covariate: only the search's steps
+        change."""
+        base = super().coordinate_scales(bound)
+        out = np.full(bound.d, np.nan) if base is None else base.copy()
         names = _coefficient_names(self.mle)
         if not names:
-            return None
+            return out
         sds = _covariate_sds(self.data)
-        out = np.ones(bound.d)
         for j, name in enumerate(bound.free_names):
             if name in names:
                 sd = float(sds[names.index(name)])
