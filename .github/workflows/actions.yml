@@ -663,9 +663,12 @@ jobs:
   # M-series Mac on 30 October 2026, with PyMC 5.x compiling its graphs on
   # first use; 15 of the tests skip by design, for families without a
   # support edge at 0). The timeout makes a sampler that hangs fail here.
+  # Since the GeneralizedGamma joined the likelihood tests (v0.30) the job
+  # takes over 30 minutes on a runner: its graph takes about a minute to
+  # compile, once for each of its 30-odd row and truncation cases.
   pymc:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
