@@ -128,38 +128,35 @@ def _non_centred(seed, mean):
     return x * np.exp(-0.3 * (z1 - mean) - 0.4 * z0), z1, z0
 
 
+#: The (seed, mean) designs a Weibull PH fit refuses for overflowing on
+#: the user's scale, as test_a_posterior_that_overflows_on_the_users_
+#: scale_is_refused pins.
+_OVERFLOWS = {(seed, 1000.0) for seed in (460211, 460212, 460214, 460215)}
+
+
 @pytest.mark.parametrize("mean", [0.0, 50.0, 1000.0])
 @pytest.mark.parametrize(
     "fitter",
     [sp.WeibullPH, sp.LogNormalAFT],
     ids=["WeibullPH", "LogNormalAFT"],
 )
-@pytest.mark.parametrize("seed", [460210, 460212])
+@pytest.mark.parametrize("seed", range(460210, 460216))
 def test_a_covariates_origin_does_not_change_the_posterior(seed, fitter, mean):
     """Moving a covariate's origin is a change of the baseline the model
     has in closed form (Weibull PH, LogNormal AFT): with the covariate
     centred, or near ``mean``, the coefficient's posterior and every
     prediction at the same physical covariate values are the same.
-    Rules (set after a first exploratory run, from what double precision
-    allows): the coefficient's interval, ``sf`` at t = 10 at the
-    covariate's mean and its interval within 1e-6 relative at means 0
-    and 50, and within 1e-2 at 1000, where the likelihood's terms (the
-    log hazard ratio is about 300 there) leave about 1e-13 of each and
-    the posterior is located to about 1e-3. (Added after the overflow
-    refusal: at 1000 an uncentred fit may instead be refused, saying to
-    centre the covariates, as WeibullPH is for seed 460212.)"""
+    Rule (fixed before this run, after the predictions were moved to the
+    covariates' means): the coefficient's interval, ``sf`` at t = 10 at
+    the covariate's mean and its interval within 1e-5 relative, at every
+    mean, for all six designs; a refusal only where it is pinned
+    (``_OVERFLOWS``)."""
     x, z1, z0 = _non_centred(seed, mean)
-    tol = 1e-2 if mean >= 1000 else 1e-6
+    if (seed, mean) in _OVERFLOWS and fitter is sp.WeibullPH:
+        return
     fits = []
     for z in (z1, z1 - z1.mean()):
-        try:
-            model = quietly(fitter.fit_bayes, x, np.column_stack([z, z0]))
-        except ValueError as e:
-            # (at 1000 only, and only uncentred: see
-            # test_a_posterior_that_overflows_on_the_users_scale_is_refused)
-            assert mean >= 1000 and z is z1, e
-            assert "Centre the covariates" in str(e)
-            return
+        model = quietly(fitter.fit_bayes, x, np.column_stack([z, z0]))
         at = [[float(z.mean()), 0.5]]
         fits.append(
             (
@@ -169,7 +166,7 @@ def test_a_covariates_origin_does_not_change_the_posterior(seed, fitter, mean):
             )
         )
     for got, ref in zip(*fits):
-        np.testing.assert_allclose(got, ref, rtol=tol)
+        np.testing.assert_allclose(got, ref, rtol=1e-5)
 
 
 def test_a_covariate_too_far_from_0_for_the_fit_is_refused_by_it():
@@ -236,16 +233,110 @@ def test_the_laplace_normal_at_the_means_has_the_exact_curvature(seed, mean):
     np.testing.assert_allclose(sd, exact_sd, rtol=0.03)
 
 
-def test_a_family_with_no_centring_is_refused_when_nearly_collinear():
-    # GammaPH has no closed-form baseline at the means; with a covariate
-    # near 1000 (correlation matrix's smallest eigenvalue 3e-7) it is
-    # refused, saying to centre the covariate, where it had returned a
-    # posterior the engine could not get right
-    x, z1, z0 = _non_centred(460210, 1000.0)
+@pytest.mark.parametrize(
+    "fitter", [sp.GammaPH, sp.LogNormalPH], ids=["GammaPH", "LogNormalPH"]
+)
+@pytest.mark.parametrize("mean", [5.0, 50.0, 1000.0])
+def test_a_family_with_no_centring_is_refused_when_nearly_collinear(
+    fitter, mean
+):
+    # These families have no closed-form baseline at the means; with a
+    # covariate 5 or more spreads from 0 the estimates' correlation
+    # matrix has a smallest eigenvalue below 3e-2 and the fit is refused,
+    # saying to centre the covariate. (Uncentred, GammaPH at 50 had
+    # given sf(10) at the mean 0.362 with a 95% interval [0, 0.945].)
+    x, z1, z0 = _non_centred(460210, mean)
     with pytest.raises(ValueError, match="centre it"):
-        quietly(sp.GammaPH.fit_bayes, x, np.column_stack([z1, z0]))
-    # and centred it fits
-    quietly(sp.GammaPH.fit_bayes, x, np.column_stack([z1 - z1.mean(), z0]))
+        quietly(fitter.fit_bayes, x, np.column_stack([z1, z0]))
+    # centred it fits
+    quietly(fitter.fit_bayes, x, np.column_stack([z1 - z1.mean(), z0]))
+
+
+def test_a_well_conditioned_design_is_not_refused():
+    # A rare binary covariate and a normal one (an eigenvalue well above
+    # the cut), for a family with no centring
+    rng = np.random.default_rng(470100)
+    n = 60
+    Z = np.column_stack(
+        [(rng.random(n) < 0.1).astype(float), rng.normal(size=n)]
+    )
+    x = sp.Weibull.random(n, 10.0, 1.5, random_state=470101)
+    x = x * np.exp(-0.5 * Z[:, 0] - 0.3 * Z[:, 1])
+    quietly(sp.GammaPH.fit_bayes, x, Z)
+
+
+#: The location-scale AFT designs refused at a covariate mean of 1000 for
+#: overflowing on the user's scale (``mu = mu_c e^{beta' zbar}``), as
+#: test_a_location_scale_aft_that_overflows_is_refused pins.
+_AFT_OVERFLOWS = {
+    (460214, "LogisticAFT"),
+    (460215, "NormalAFT"),
+    (460215, "GumbelAFT"),
+    (460215, "LogisticAFT"),
+}
+
+
+@pytest.mark.parametrize("seed, name", sorted(_AFT_OVERFLOWS))
+def test_a_location_scale_aft_that_overflows_is_refused(seed, name):
+    # 1 to 13 of 1024 points have an infinite mu at covariates of 0
+    x, z1, z0 = _non_centred(seed, 1000.0)
+    with pytest.raises(ValueError, match="Centre the covariates"):
+        quietly(getattr(sp, name).fit_bayes, x, np.column_stack([z1, z0]))
+
+
+@pytest.mark.parametrize("mean", [50.0, 1000.0])
+@pytest.mark.parametrize(
+    "fitter",
+    [sp.NormalAFT, sp.GumbelAFT, sp.LogisticAFT],
+    ids=["NormalAFT", "GumbelAFT", "LogisticAFT"],
+)
+@pytest.mark.parametrize("seed", range(460210, 460216))
+def test_the_default_location_prior_is_flat_at_the_means(seed, fitter, mean):
+    """For the accelerated failure time families on the whole line the
+    default prior on ``mu`` is flat at the covariates' means (the
+    maintainer's decision, 27 Nov 2026): time is multiplicative, so one
+    flat on the user's ``mu`` had tilted the coefficients by ``e^{beta'
+    zbar}`` (NormalAFT with a covariate near 50: the coefficient's
+    interval [0.603, 1.367] where the centred fit's is [0.146, 0.476]).
+    Rule (fixed before the run): with the covariate centred or near
+    ``mean``, the coefficient's interval, ``sf`` at t = 10 at the
+    covariate's mean and its interval within 1e-5 relative; a refusal
+    only where it is pinned (``_AFT_OVERFLOWS``)."""
+    x, z1, z0 = _non_centred(seed, mean)
+    name = {sp.NormalAFT: "NormalAFT", sp.GumbelAFT: "GumbelAFT"}.get(
+        fitter, "LogisticAFT"
+    )
+    if mean >= 1000 and (seed, name) in _AFT_OVERFLOWS:
+        return
+    fits = []
+    for z in (z1, z1 - z1.mean()):
+        model = quietly(fitter.fit_bayes, x, np.column_stack([z, z0]))
+        at = [[float(z.mean()), 0.5]]
+        fits.append(
+            (
+                np.ravel(model.param_cri("coef_0")),
+                np.ravel(model.sf(10.0, at)),
+                np.ravel(model.cri(10.0, at, on="sf")),
+            )
+        )
+    for got, ref in zip(*fits):
+        np.testing.assert_allclose(got, ref, rtol=1e-5)
+    assert "covariates' means" in model.default_priors["mu"]
+
+
+def test_an_explicit_flat_prior_on_mu_is_the_users():
+    # prior.flat() on mu is flat on the user's mu, as stated: no
+    # adjustment, so with a covariate near 50 it differs from the default
+    x, z1, z0 = _non_centred(460210, 50.0)
+    Z = np.column_stack([z1, z0])
+    default = quietly(sp.NormalAFT.fit_bayes, x, Z)
+    stated = quietly(
+        sp.NormalAFT.fit_bayes, x, Z, priors={"mu": sp.prior.flat()}
+    )
+    assert (
+        np.ravel(stated.param_cri("coef_0"))[0]
+        > np.ravel(default.param_cri("coef_0"))[1]
+    )
 
 
 @pytest.mark.parametrize(
@@ -276,11 +367,15 @@ def test_the_prior_data_conflict_check_follows_the_unit_of_time(
     assert got["p"]["mu"] == pytest.approx(ref["p"]["mu"], rel=1e-6)
 
 
-def test_a_posterior_that_overflows_on_the_users_scale_is_refused():
+@pytest.mark.parametrize("seed", sorted(seed for seed, _ in _OVERFLOWS))
+def test_a_posterior_that_overflows_on_the_users_scale_is_refused(seed):
     # At a covariate mean of 1000 the baseline at a covariate of 0 is
-    # alpha e^{beta' zbar / shape}: for this design 248 of 4000 draws
-    # overflow to an infinite alpha (and gave an sf interval reaching 1),
-    # so the fit is refused, saying to centre the covariates
-    x, z1, z0 = _non_centred(460215, 1000.0)
+    # alpha e^{beta' zbar / shape}: for these four designs 1 to 3 of the
+    # 1024 points overflow to an infinite alpha (for seed 460215, 248 of
+    # 4000 draws, which gave an sf interval reaching 1), so the fit is
+    # refused, saying to centre the covariates. (The posterior at the
+    # covariates' means is right; only the user's baseline at 0 cannot
+    # be held: a follow-up.)
+    x, z1, z0 = _non_centred(seed, 1000.0)
     with pytest.raises(ValueError, match="Centre the covariates"):
         quietly(sp.WeibullPH.fit_bayes, x, np.column_stack([z1, z0]))

@@ -43,6 +43,7 @@ from surpyval.bayes.engines.grid import weighted_quantile
 from surpyval.bayes.posterior import Posterior
 from surpyval.bayes.prior import (
     BoundPriors,
+    FlatAtMeans,
     NormalOnScale,
     PowerPrior,
     PriorSpec,
@@ -142,7 +143,7 @@ def _coefficient_columns(mle: Any) -> dict[str, int]:
     return {name: k for k, name in enumerate(_coefficient_names(mle))}
 
 
-def _coefficient_names(mle: Any) -> list[str]:
+def _coefficient_names(mle: Any, data: Any = None) -> list[str]:
     """The parameters that are coefficients of ``exp(beta'Z)``: those of a
     proportional hazards or accelerated failure time model with the
     log-linear link. (An accelerated life model's are its life model's
@@ -155,7 +156,9 @@ def _coefficient_names(mle: Any) -> list[str]:
     if phi is not LogLinearPhi.phi:
         return []
     names = list(mle.parameter_names)[mle.k_dist :]
-    return names if len(names) == np.shape(mle.data.Z)[1] else []
+    # (a loaded maximum-likelihood fit holds no data: the target's)
+    Z = (mle.data if data is None else data).Z
+    return names if len(names) == np.shape(Z)[1] else []
 
 
 def _covariate_sds(data: Any) -> npt.NDArray:
@@ -180,6 +183,10 @@ _AFFINE = {
     ("Accelerated Failure Time", "Gamma"),
     ("Accelerated Failure Time", "LogNormal"),
 }
+
+#: The accelerated failure time families on the whole line, whose
+#: location a covariate's origin scales (``mu = mu_c e^{beta' zbar}``).
+_LOCATION_SCALE = ("Normal", "Gumbel", "Logistic")
 
 #: The covariates' means below which (each relative to its spread) the
 #: data count as centred already, and no centring is done.
@@ -215,6 +222,26 @@ def _known_means(data: Any, bound: Any) -> npt.NDArray:
     Z, n = np.concatenate(Zs), np.concatenate(ns)
     out: npt.NDArray = np.sum(n[:, None] * Z, axis=0) / n.sum()
     return out
+
+
+def _design_collinearity(data: Any) -> float:
+    """The smallest eigenvalue of the correlation-normalised Gram matrix
+    of the design ``[1, Z]`` (rows weighted by their counts): 1 for a
+    centred, uncorrelated design, about ``1 / (2 m^2)`` for a covariate
+    ``m`` of its spreads from 0. It is what ties a baseline at
+    covariates of 0 to the coefficients, and it needs no fit (the
+    maximum-likelihood covariance is not always finite where it
+    matters)."""
+    Z = np.asarray(data.Z, dtype=float)
+    n = np.asarray(data.n, dtype=float)
+    X = np.column_stack([np.ones(len(Z)), Z])
+    G = (X * n[:, None]).T @ X
+    d = np.sqrt(np.diag(G))
+    with np.errstate(all="ignore"):
+        R = G / np.outer(d, d)
+    keep = np.isfinite(d) & (d > 0)
+    R = R[np.ix_(keep, keep)]
+    return float(np.linalg.eigvalsh(0.5 * (R + R.T)).min())
 
 
 def _centring_map(kind: str, dist_name: str) -> Any | None:
@@ -539,7 +566,7 @@ class RegressionTarget(Target):
         already, a coefficient is not one of ``exp(beta'Z)``, the family
         has no closed form, or a baseline parameter the map changes is
         held fixed."""
-        names = _coefficient_names(self.mle)
+        names = _coefficient_names(self.mle, self.data)
         if not names:
             return None
         mapping = _centring_map(self.kind, getattr(self.dist, "name", ""))
@@ -621,12 +648,102 @@ class RegressionTarget(Target):
             affine=(self.kind, getattr(self.dist, "name", "")) in _AFFINE,
         )
 
+    def collinearity(self, bound: Any) -> float | None:
+        """The design's collinearity (:func:`_design_collinearity`) for a
+        model with coefficients of
+        ``exp(beta'Z)`` whose family has no centring (proportional
+        hazards with a LogNormal, Gamma, Normal or Logistic baseline, for
+        example): a covariate far from 0 ties the baseline to its
+        coefficient along a curved ridge there, which the Laplace normal
+        misses. ``None`` (no check) for the others: those with a centring
+        are worked out at the covariates' means, and the accelerated life
+        models, custom covariate links and mixture-cure regressions are
+        not covered by this check."""
+        if not _coefficient_names(self.mle, self.data):
+            return None
+        if _centring_map(self.kind, getattr(self.dist, "name", "")):
+            return None
+        return _design_collinearity(self.data)
+
+    def prediction_centring(self) -> tuple | None:
+        """``(zbar, to_c)``: the covariates' means in the data and the map
+        of full parameter rows to the same rows with the baseline at those
+        means (:func:`_centring_map`), or ``None`` where the family has no
+        such map. A prediction at ``Z`` is then the model's at ``Z -
+        zbar`` with those parameters, exactly (any centre would do):
+        with a covariate near 1000, ``e^{beta'Z}`` itself overflows (it
+        was formed for every draw, and sent their survival to 0), where
+        ``e^{beta'(Z - zbar)}`` is near 1."""
+        names = _coefficient_names(self.mle, self.data)
+        mapping = _centring_map(self.kind, getattr(self.dist, "name", ""))
+        if not names or mapping is None:
+            return None
+        to_c = mapping[0]
+        k = int(self.mle.k_dist)
+        coef_idx = [self.names.index(nm) for nm in names]
+        zbar = _covariate_means(self.data)
+
+        def centred(theta: npt.NDArray) -> npt.NDArray:
+            theta = np.array(theta, dtype=float, ndmin=2)
+            s = theta[:, coef_idx] @ zbar
+            with np.errstate(all="ignore"):
+                theta[:, :k] = to_c(theta[:, :k], s)
+            return theta
+
+        return zbar, centred
+
     def with_params(self, theta: npt.NDArray) -> Any:
         return self.mle.with_params(theta)
 
     def default_priors(self, spec: Any, fixed: dict) -> dict:
+        """``Normal(0, 2.5 / sd)`` on each coefficient given none, and,
+        for an accelerated failure time model on the whole line (Normal,
+        Gumbel, Logistic), a flat prior on the location at the
+        covariates' means for ``mu`` given none (:class:`FlatAtMeans`;
+        the maintainer's decision, 27 Nov 2026)."""
         out: dict = _default_priors(self.mle, spec, fixed)
+        if (
+            self._location_at_means()
+            and "mu" in self.names
+            and "mu" not in spec.single
+            and "mu" not in fixed
+            and not any(
+                j.names is None or "mu" in (j.names or [])
+                for j in spec.joint
+                if not j.is_likelihood
+            )
+        ):
+            out["mu"] = FlatAtMeans()
         return out
+
+    def _location_at_means(self) -> bool:
+        """Whether the model is an accelerated failure time one on the
+        whole line with coefficients of ``exp(beta'Z)``, whose default
+        prior on ``mu`` is flat at the covariates' means."""
+        return (
+            self.kind == "Accelerated Failure Time"
+            and getattr(self.dist, "name", "") in _LOCATION_SCALE
+            and bool(_coefficient_names(self.mle, self.data))
+        )
+
+    def extra_prior(self, bound: Any) -> Any | None:
+        """The term of :class:`FlatAtMeans` on the free parameters' rows
+        ``phi``: ``log |d mu_c / d mu| = -beta' zbar`` (``zbar`` the
+        covariates' means, with any power prior's rows, as the centring
+        takes them), so that the prior is flat on ``mu_c = mu e^{-beta'
+        zbar}``. ``None`` where ``mu`` has another prior."""
+        if not isinstance(bound.spec.single.get("mu"), FlatAtMeans):
+            return None
+        names = _coefficient_names(self.mle, self.data)
+        coef_idx = [self.names.index(nm) for nm in names]
+        zbar = _known_means(self.data, bound)
+
+        def log_density(phi: npt.NDArray) -> npt.NDArray:
+            theta = bound.full_theta(np.atleast_2d(phi))
+            out: npt.NDArray = -(theta[:, coef_idx] @ zbar)
+            return out
+
+        return log_density
 
     def check(self, bound: BoundPriors) -> None:
         for j in bound.spec.joint:
@@ -1040,16 +1157,31 @@ class BayesianRegression(BayesianResult):
         fit was reweighted."""
         return self.posterior.weights
 
+    def _centred(self, draws: Any, Z: Any) -> tuple:
+        """The draws and covariates a prediction is formed from: the
+        target's centring where it has one
+        (:meth:`RegressionTarget.prediction_centring`: the same
+        predictions, with ``beta'(Z - zbar)`` in place of ``beta'Z``,
+        which overflows for a covariate far from 0), else as given."""
+        centring = getattr(self.target, "prediction_centring", None)
+        found = centring() if callable(centring) else None
+        if found is None:
+            return draws, Z
+        zbar, to_c = found
+        return to_c(np.asarray(draws, dtype=float)), (
+            np.asarray(Z, dtype=float) - zbar
+        )
+
     def _per_draw(self, fname: str) -> Any:
         """The family's function ``fname`` at every predictive draw, as a
         function of prepared ``(x, Z)``: one row per draw."""
         fn = getattr(self.model, fname)
-        draws = self._draws()
 
         def values(x: Any, Z: Any, *_: Any) -> npt.NDArray:
+            draws, Zc = self._centred(self._draws(), Z)
             with np.errstate(all="ignore"):
                 return np.stack(
-                    [np.asarray(fn(x, Z, *d), dtype=float) for d in draws]
+                    [np.asarray(fn(x, Zc, *d), dtype=float) for d in draws]
                 )
 
         return values
@@ -1184,15 +1316,16 @@ class BayesianRegression(BayesianResult):
     def _draw_quantiles(self, p: npt.NDArray, Z: Any) -> npt.NDArray:
         """Each predictive draw's own quantile function at ``(p, Z)``:
         one row per draw."""
+        draws, Zc = self._centred(self._draws(), Z)
         with ignoring_warnings(), np.errstate(all="ignore"):
             return np.stack(
                 [
                     np.atleast_1d(
                         np.asarray(
-                            self.mle.with_params(d).qf(p, Z), dtype=float
+                            self.mle.with_params(d).qf(p, Zc), dtype=float
                         )
                     )
-                    for d in self._draws()
+                    for d in draws
                 ]
             )
 
@@ -1298,7 +1431,7 @@ class BayesianRegression(BayesianResult):
         rows = covariate_rows(self._point._prepare_Z(Z), self._n_covariates())
         rows = np.repeat(rows, size, axis=0)
         rng = as_generator(random_state)
-        draws = self._draws()
+        draws, rows_c = self._centred(self._draws(), rows)
         which = rng.choice(len(draws), size=len(rows), p=self._weights())
         u = rng.random(len(rows))
         out = np.empty(len(rows))
@@ -1306,7 +1439,7 @@ class BayesianRegression(BayesianResult):
             for k in np.unique(which):
                 at = which == k
                 model = self.mle.with_params(draws[k])
-                out[at] = np.asarray(model.qf(u[at], rows[at]), dtype=float)
+                out[at] = np.asarray(model.qf(u[at], rows_c[at]), dtype=float)
         return out, rows
 
     def _n_covariates(self) -> int:

@@ -424,32 +424,39 @@ def _search_scales(
     return out
 
 
-#: The smallest eigenvalue of the correlation matrix of the
-#: maximum-likelihood estimates (unconstrained scale) below which a fit
-#: with no centring is refused: the parameters are then collinear to
-#: about one part in 1e5, which a covariate about 200 of its standard
-#: deviations from 0 makes (1e-4 at 50, 3e-7 at 1000, in six seeded
-#: Weibull PH designs), and the normal approximation is not to be had.
-_COLLINEAR = 1e-5
+#: The design's collinearity (the smallest eigenvalue of the
+#: correlation-normalised Gram matrix of ``[1, Z]``) below which a
+#: regression with no centring is refused. Evidence: six seeded designs
+#: (a covariate near m with a spread of 1, and a binary one), Weibull PH
+#: worked out without its centring against the same data centred, whose
+#: answer is known; the largest error in sf at t = 10 at the covariates'
+#: means and in its 95% interval, as a share of the true interval's
+#: width, is 0.04 at m = 1 (design eigenvalues 0.14 to 0.25), 0.09 at 2
+#: (0.060 to 0.106), 0.13 at 3 (0.031 to 0.052), 0.28 at 5 (0.013 to
+#: 0.019), 0.74 at 10 and 2.9 at 50. The cut keeps the engine's own
+#: accuracy (0.1 of the width): a covariate about 3 of its spreads from 0
+#: is refused.
+_COLLINEAR = 5e-2
 
 
 def _refuse_collinear(target: Any, bound: BoundPriors) -> None:
-    """Refuse a fit the engines would get wrong without a centring
-    (:meth:`~surpyval.bayes.target.Target.reparam`): where the
-    maximum-likelihood correlation matrix's smallest eigenvalue is below
-    ``_COLLINEAR``."""
+    """Refuse a fit the engines would get wrong for want of a centring
+    (:meth:`~surpyval.bayes.target.Target.reparam`): where the target's
+    collinearity (for a regression whose family has no closed-form
+    baseline at the means, the design's) is below ``_COLLINEAR``."""
     worst = target.collinearity(bound)
     if worst is None or worst >= _COLLINEAR:
         return
     raise ValueError(
-        "The parameters are nearly collinear (the smallest eigenvalue of "
-        f"their correlation matrix at the maximum-likelihood fit is "
-        f"{worst:.1e}, below {_COLLINEAR:g}), so no approximation of the "
-        "posterior can be relied on. In a regression this is a covariate "
-        "far from 0 (the baseline and its coefficient then move "
-        "together): centre it (subtract its mean, or a value near it) "
-        "and refit; the coefficient's posterior is the same, and the "
-        "baseline is then the one at that value."
+        "The baseline at covariates of 0 and the coefficients are nearly "
+        "collinear (the smallest eigenvalue of the design's correlation "
+        f"matrix, with its constant, is {worst:.2g}, below {_COLLINEAR:g}), "
+        "and this family has no closed form for its baseline at the "
+        "covariates' means, so the normal approximation would miss the "
+        "posterior. This is a covariate far from 0: centre it (subtract "
+        "its mean, or a value near it) and refit. (For this family the "
+        "centred model puts its baseline at that value instead of at 0, "
+        "a different model of the same kind.)"
     )
 
 

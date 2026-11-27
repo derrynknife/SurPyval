@@ -343,6 +343,13 @@ class Target:
         return axis_scales(theta, cov, bound)
 
     def collinearity(self, bound: Any) -> float | None:
+        """For the Laplace engine's refusal of a fit too collinear for it
+        (``result._refuse_collinear``): ``None`` (no check), except where a
+        target says the check applies to it (the regressions with no
+        centring, :meth:`mle_collinearity`)."""
+        return None
+
+    def mle_collinearity(self, bound: Any) -> float | None:
         """The smallest eigenvalue of the correlation matrix of the
         maximum-likelihood estimates of the free parameters, on their
         unconstrained scale (1 for independent ones, 0 for collinear
