@@ -3648,8 +3648,51 @@ _BAYES_REGRESSION_BOUNDS = (
 )
 
 
+def _bayes_cure_fit(d):
+    """A Bayesian Weibull mixture-cure regression (the Laplace engine):
+    the default priors on the coefficients."""
+    return sp.WeibullMixtureCure.fit_bayes(
+        d["x"], d["Z"], d.get("c"), d.get("n")
+    )
+
+
+def _bayes_cure_df(d):
+    cols = [f"z{k}" for k in range(d["Z"].shape[1])]
+    df = pd.DataFrame(d["Z"], columns=cols)
+    df["x"], df["c"], df["n"] = d["x"], d["c"], d["n"]
+    return sp.WeibullMixtureCure.fit_bayes_from_df(
+        df, x_col="x", Z_cols=cols, c_col="c", n_col="n"
+    )
+
+
 def _bayes_regression():
     return [
+        regression(
+            "WeibullMixtureCure[bayes]",
+            sp.WeibullMixtureCure,
+            data=cure_data,
+            fitters=("surpyval.bayes.regression.BayesianMixtureCure",),
+            model_class="surpyval.bayes.regression.BayesianMixtureCure",
+            fit=_bayes_cure_fit,
+            paths={"fit_from_df": _bayes_cure_df},
+            rtol=1e-6,
+            slow=REFIT_PROPERTIES,
+            coefficients=_cure_coefficients,
+            intercept=True,
+            exclude={
+                "convergence": "not an optimiser: the Laplace engine "
+                "refuses where the posterior has no peak, and checks its "
+                "normal against the exact posterior "
+                "(tests/bayes/test_laplace.py)",
+                **{
+                    key: "a column the data do not determine is refused, "
+                    "naming its coefficient and saying to leave the column "
+                    "out (a posterior along it would be its prior's), "
+                    "not aliased"
+                    for key in ("aliasing", "aliasing_constant")
+                },
+            },
+        ),
         regression(
             "WeibullPH[bayes]",
             sp.WeibullPH,
@@ -3672,7 +3715,7 @@ def _bayes_regression():
                     for key in ("aliasing", "aliasing_constant")
                 },
             },
-        )
+        ),
     ]
 
 
@@ -4999,6 +5042,7 @@ def _bounds(case):
         "Dabrowska[prentice-cai]": _BIVARIATE_NP_BOOT,
         "Dabrowska[lin-ying]": _BIVARIATE_NP_BOOT,
         "BayesianRegression": _BAYES_REGRESSION_BOUNDS,
+        "BayesianMixtureCure": _BAYES_REGRESSION_BOUNDS,
         "BayesianRecurrence": _BAYES_RECURRENCE_BOUNDS,
         "BayesianRenewal": _BAYES_RENEWAL_BOUNDS,
         "BayesianProportionalIntensity": _BAYES_PI_BOUNDS,

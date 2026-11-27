@@ -496,6 +496,83 @@ coefficient is the Bayesian penalty), time-varying covariates, the
 semi-parametric Cox model and the other regression families.
 
 
+Cured fractions and mixtures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+**A cured fraction with covariates.** In a mixture-cure regression some
+units never fail (patients cured, parts without the defect), and the
+covariates move both how many fail at all (the *incidence*, ``lfp_p``
+at the reference row, with its coefficients on the logit scale) and when
+the rest fail (the *latency*). ``MixtureCure(dist).fit_bayes`` puts
+priors on all of them; a coefficient given none gets ``Normal(0, 2.5 /
+sd)``, ``sd`` its covariate's standard deviation, as the other
+regressions' do (on the logit scale, a change of 2.5 in the log odds of
+ever failing for one standard deviation of the covariate). ``lfp_p``
+given none is uniform on (0, 1), a proper prior; a prior flat on its
+logit is refused on any data, because the cure model holds the model
+with no cure (``lfp_p`` at 1), where its likelihood levels off at a
+positive value, so that posterior has no finite mass. The posterior is
+the Laplace approximation, with its checks.
+
+.. code-block:: python
+
+    import surpyval as sp
+
+    # 150 units followed to 40 hours; z = 1 for the new supplier
+    model = sp.MixtureCure(sp.Weibull).fit_bayes(
+        x, Z, c,
+        priors={"lfp_p_coef_0": sp.Normal.from_params([-0.5, 0.5])})
+    model.cure_probability([[1.0]])   # 0.33: never fail, new supplier
+    model.cure_cri([[1.0]])           # 0.24 to 0.43
+    model.cri(20.0, [[1.0]])          # survival to 20 hours: 0.26 to 0.45
+
+A cured fraction is only known from a *plateau*: units still under
+observation, and not failing, long after the failures have thinned out.
+With too short a follow-up the data cannot tell a cured unit from one
+that has not failed yet. The fit then warns, saying how it knows
+(Maller and Zhou's check, ``model.mle.follow_up()``), and the cure
+fraction's posterior rests on its prior. Where the data show no cured
+fraction at all (the maximum-likelihood ``lfp_p`` runs to 1) it warns as
+the maximum-likelihood fit does. Give ``lfp_p`` a prior from what is
+known (``sp.prior.between(0.6, 0.95)``: "60% to 95% of units at the
+reference row fail eventually"), or follow the units for longer.
+
+**When the normal cannot be trusted, the fit refuses.** With short
+follow-up the posterior of the cure fraction is far from normal: on 150
+simulated units followed to 0.9 of the latency's scale (the
+coefficients held at 0, so that the exact posterior is on the grid), the
+normal's 95% interval of ``lfp_p`` is 0.25 to 0.92 where the exact one is
+0.44 to 0.99. Its check (the Pareto k, 0.71) says so, and above 0.7 the
+fit refuses, saying to give ``lfp_p`` an informative prior or to sample
+the exact posterior with PyMC; reweighting cannot repair it there. With
+a k between 0.5 and 0.7 it returns the approximation flagged "poor", and
+``importance=True`` corrects it: followed to twice the scale (k 0.68),
+the plain normal's interval of ``lfp_p`` is 0.614 to 0.766, the
+reweighted one 0.622 to 0.776, the exact 0.621 to 0.783.
+
+**Mixtures of lives.** ``MixtureModel.fit_bayes`` refuses. A mixture's
+likelihood is the same whichever component is called the first, so its
+posterior has a peak for every numbering of the components (*label
+switching*), and neither a single normal nor the grid describes it.
+Sample it with PyMC through ``surpyval.pymc.mixture_likelihood``, which
+numbers the components in order of their scale or location, the first
+the shortest-lived, so that the labels cannot switch (see "Mixtures" in
+:doc:`PyMC with SurPyval`).
+
+Checked against: the maximum-likelihood fit (with ``lfp_p`` uniform and
+the other priors flat, the posterior density on the parameters' own
+scales peaks at it), the exact posterior on the grid (above), and
+simulation-based calibration of the coverage of the intervals
+(a reduced run of 60 repetitions, 200 units: the 90% intervals held
+the truth in 0.87 to 0.92 of them for the five parameters, no fit
+refused; the latency coefficient's 50% coverage, 0.383, was below the
+band, by chance: an independent review's 400 further repetitions gave
+0.520; the full study of 300 runs with the calibration studies). Over 400 such repetitions an independent review
+found the shape ``beta`` mildly biased: the truth's posterior
+probability averaged 0.459 rather than 0.5 (a uniformity test's p-value
+0.005), so the posterior sits a little high on ``beta``, though its 50%
+and 90% intervals held the truth as often as they should.
+
 An activation energy from the literature
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

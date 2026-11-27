@@ -395,6 +395,10 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
         "a posterior, not a maximum: the Laplace engine's checks against "
         "the exact posterior take the place of a verified maximum"
     ),
+    "surpyval.bayes.regression.BayesianMixtureCure": (
+        "a posterior, not a maximum: the Laplace engine's checks against "
+        "the exact posterior take the place of a verified maximum"
+    ),
     **{
         f"surpyval.recurrent.{_name}": (
             "a posterior, not a maximum: the grid's check of its own "

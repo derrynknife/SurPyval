@@ -49,6 +49,20 @@ the Laplace approximation beyond) and returns a
 .. autoclass:: surpyval.bayes.Target
    :members:
 
+Mixture-cure regression
+-----------------------
+
+``MixtureCure(dist).fit_bayes``; see "Cured fractions and mixtures" in
+:doc:`Bayesian Fitting with SurPyval`. ``MixtureModel.fit_bayes``
+refuses, pointing to :func:`surpyval.pymc.mixture_likelihood`.
+
+.. automethod:: surpyval.univariate.regression.MixtureCureFitter.fit_bayes
+
+.. automethod:: surpyval.univariate.regression.MixtureCureFitter.fit_bayes_from_df
+
+.. autoclass:: surpyval.bayes.regression.BayesianMixtureCure
+   :members: cure_probability, cure_cri
+
 Recurrent-event processes
 -------------------------
 
