@@ -9,11 +9,13 @@ from typing import Any
 from numpy.typing import ArrayLike
 
 from surpyval.utils.dataframe import RecurrentBayesDataFrameMixin
+from surpyval.utils.units import takes_unit
 
 
 class RenewalBayesMixin(RecurrentBayesDataFrameMixin):
     """Gives a renewal fitter ``fit_bayes`` and ``fit_bayes_from_df``."""
 
+    @takes_unit
     def fit_bayes(
         self,
         x: ArrayLike,

@@ -383,7 +383,7 @@ def fit(
     return model
 
 
-def _check_points(points: Any) -> int | None:
+def check_grid_points(points: Any) -> int | None:
     """``points`` as a whole number of at least 2 (a grid needs two points
     a parameter to have a cell), or ``None``; refuses anything else,
     naming it."""
@@ -413,7 +413,7 @@ def _posterior(
 ) -> Any:
     from surpyval.bayes.model import BayesianParametric
 
-    points = _check_points(points)
+    points = check_grid_points(points)
     if importance and method not in ("auto", "laplace"):
         raise ValueError(
             f"importance=True reweights the Laplace approximation's draws; "

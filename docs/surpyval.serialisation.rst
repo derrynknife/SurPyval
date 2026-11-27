@@ -576,6 +576,14 @@ with its own ``schema``.
      - ``"model": "BayesianCauseSpecific"``
      - ``event_types``, ``models``, ``surpyval_version``
      - --
+   * - ``BayesianRenewal``
+     - ``"model": "BayesianRenewal"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianMixtureCure``
+     - ``"model": "BayesianMixtureCure"``
+     - ``kind``, ``mle``, ``priors``, ``default_priors``, ``posterior``, ``data``, ``diagnostics``, ``surpyval_version``
+     - --
    * - ``BayesianProcessModel``
      - ``"model": "BayesianProcessModel"``
      - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``

@@ -138,7 +138,7 @@ from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 from .._aliasing import expand, warn_aliased
 from .._residual_aft import ResidualAFTModel, residual_km
 from .._summary import coefficient_table
-from ..buckley_james.buckley_james import _aliased
+from ..buckley_james.buckley_james import aliased_design_columns
 from ..regression_data import (
     FrameDesign,
     canonical_rows,
@@ -1060,7 +1060,7 @@ class RankAFT_(FitterRepr):
                 "observation censored there are no ranks to compare."
             )
         p = Z_a.shape[1]
-        aliased = _aliased(Z_a, n_a)
+        aliased = aliased_design_columns(Z_a, n_a)
         kept = np.setdiff1d(np.arange(p), aliased)
         if aliased.size:
             warn_aliased(

@@ -323,9 +323,9 @@ class RenewalTarget(Target):
         else:
             what = f"memory {float(self.option):g}"
         self.family = f"{mle.kind} process ({self.life.name}, {what})"
-        self._finish()
+        self.finish_result()
 
-    def _finish(self) -> None:
+    def finish_result(self) -> None:
         data = self.data
         self._neg_ll = _create_negll(
             self.fitter, self.family_name, data, self.life, self.option
@@ -1518,9 +1518,9 @@ def _difference(sa: npt.NDArray, sb: npt.NDArray) -> float:
 
 
 def _stretched(v: float) -> float:
-    from surpyval.bayes.engines.grid import _z_of
+    from surpyval.bayes.engines.grid import grid_z_of
 
-    return float(_z_of(np.asarray(v, dtype=float)))
+    return float(grid_z_of(np.asarray(v, dtype=float)))
 
 
 def _slice_at(work: Any, s: float, y0: npt.NDArray) -> tuple:
@@ -1579,20 +1579,20 @@ def _walk(
     from surpyval.bayes.engines.grid import (
         EDGE,
         GridError,
-        _improper_message,
-        _u_of,
+        grid_u_of,
+        improper_posterior_message,
     )
 
     centre = float(mode[0])
     y0, L0, psi0 = _slice_at(work, centre, mode[1:])
     knots = {0: (y0, L0)}
     reach, walls = {}, {}
-    limit = int(np.ceil(_u_of(REPAIR_REACH) / WALK_STEP))
+    limit = int(np.ceil(grid_u_of(REPAIR_REACH) / WALK_STEP))
     for side in (-1, 1):
         y, L = y0, L0
         for j in range(1, limit + 2):
             if j > limit:
-                raise GridError(_improper_message(flat_names))
+                raise GridError(improper_posterior_message(flat_names))
             s = centre + side * sd * _stretched(j * WALK_STEP)
             found = _slice_from(work, s, [y, y0], L)
             if found is None:
@@ -1616,7 +1616,7 @@ def _walk(
     keys = sorted(knots)
     v_lo, v_hi = -reach[-1] * WALK_STEP, reach[1] * WALK_STEP
     for side, at in walls.items():
-        v_at = _u_of((at - centre) / sd)
+        v_at = grid_u_of((at - centre) / sd)
         v_lo, v_hi = (v_at, v_hi) if side < 0 else (v_lo, v_at)
     return {
         "sd": sd,
@@ -1640,7 +1640,7 @@ class _Lattices:
     def __init__(
         self, work: Any, mode: npt.NDArray, walk: dict, points: Any
     ) -> None:
-        from surpyval.bayes.engines.grid import START_HALF_WIDTH, _u_of
+        from surpyval.bayes.engines.grid import START_HALF_WIDTH, grid_u_of
 
         self.work, self.walk = work, walk
         self.centre = float(mode[0])
@@ -1669,7 +1669,7 @@ class _Lattices:
                 2 * int(round(0.5 * ACROSS[k] * self.ns / SLICES)) + 1,
             )
         self.mz_max = max(ACROSS_MAX[k], self.mz)
-        self.across = _u_of(START_HALF_WIDTH)
+        self.across = grid_u_of(START_HALF_WIDTH)
 
     def shape(self, lattices: int) -> tuple:
         return (lattices, self.ns) + (self.mz,) * self.k
@@ -1701,13 +1701,13 @@ class _Lattices:
     def evaluate(self, shift: bool, across_only: Any = None) -> tuple:
         """``(points, log density, log weight, log cell)`` of a
         lattice."""
-        from surpyval.bayes.engines.grid import STRETCH, _z_of
+        from surpyval.bayes.engines.grid import STRETCH, grid_z_of
 
         vs, ds, v_across, dz = self._axes(shift, across_only)
         sd = self.walk["sd"]
-        s = self.centre + sd * _z_of(vs)
+        s = self.centre + sd * grid_z_of(vs)
         centre, L, log_det = self.factors(s)
-        z = _z_of(v_across)
+        z = grid_z_of(v_across)
         # (slice, across) -> point
         lifes = centre[:, None, :] + np.einsum("sij,aj->sai", L, z)
         u = np.concatenate(
@@ -1739,7 +1739,7 @@ class _Lattices:
         parameter's unconstrained scale, each slice's mass spread evenly
         over its cell on the stretched scale (clipped to the lattice's
         range)."""
-        from surpyval.bayes.engines.grid import _u_of
+        from surpyval.bayes.engines.grid import grid_u_of
 
         if not intervals:
             return np.zeros(0)
@@ -1752,8 +1752,8 @@ class _Lattices:
         sd = self.walk["sd"]
         out = []
         for a, b in intervals:
-            va = -np.inf if a == -np.inf else _u_of((a - self.centre) / sd)
-            vb = np.inf if b == np.inf else _u_of((b - self.centre) / sd)
+            va = -np.inf if a == -np.inf else grid_u_of((a - self.centre) / sd)
+            vb = np.inf if b == np.inf else grid_u_of((b - self.centre) / sd)
             overlap = np.clip(
                 np.minimum(right, vb) - np.maximum(left, va), 0.0, None
             )
@@ -1767,8 +1767,8 @@ class _Lattices:
             EDGE,
             MAX_HALF_WIDTH,
             GridError,
-            _improper_message,
-            _u_of,
+            grid_u_of,
+            improper_posterior_message,
         )
 
         widened = 0
@@ -1787,8 +1787,8 @@ class _Lattices:
                 return widened
             widened += 1
             self.across *= 1.25
-            if self.across > _u_of(MAX_HALF_WIDTH):
-                raise GridError(_improper_message(flat_names))
+            if self.across > grid_u_of(MAX_HALF_WIDTH):
+                raise GridError(improper_posterior_message(flat_names))
             self.mz = int(min(self.mz_max, self.mz + 4))
 
     def refined(self, err_s: float, err_z: float, tol: float) -> Any:
@@ -1845,24 +1845,24 @@ def _sliced_fit(target: RenewalTarget, priors: Any, points: Any) -> Any:
     import time
 
     from surpyval.bayes.engines.grid import GridError
-    from surpyval.bayes.fitting import _check_points
+    from surpyval.bayes.fitting import check_grid_points
     from surpyval.bayes.posterior import Posterior
     from surpyval.bayes.result import (
-        _finish,
-        _grid_summary,
-        _phi_mode,
         bind,
+        finish_result,
+        grid_summary_table,
         log_posterior,
+        phi_mode,
     )
 
     started = time.perf_counter()
-    points = _check_points(points)
+    points = check_grid_points(points)
     bound, defaults = bind(target, priors)
     target.check(bound)
     target.check_flat(bound)
     log_post = log_posterior(target, bound)
     rp = target.reparam(bound)
-    plain_summary = _grid_summary(target, bound)
+    plain_summary = grid_summary_table(target, bound)
 
     # (the lattice's points mapped back once: the work density and the
     # summary of the same lattice share them)
@@ -1967,7 +1967,7 @@ def _sliced_fit(target: RenewalTarget, priors: Any, points: Any) -> Any:
         "half_width_sd": float(max(*grid.reach_sd, grid.across_sd)),
         "reach_sd": list(grid.reach_sd),
         "widened": grid.widened,
-        "mode": _phi_mode(bound, log_post, to_phi(grid.mode), rp),
+        "mode": phi_mode(bound, log_post, to_phi(grid.mode), rp),
         "log_evidence": float(grid.log_z) if bound.proper else float("nan"),
         "ok": True,
         "approximate": False,
@@ -1975,7 +1975,7 @@ def _sliced_fit(target: RenewalTarget, priors: Any, points: Any) -> Any:
     model = BayesianRenewal._from_target(
         target, post, bound.spec, defaults, diag
     )
-    return _finish(model, bound, started)
+    return finish_result(model, bound, started)
 
 
 # ---------------------------------------------------------------------------
@@ -2051,7 +2051,7 @@ def _warn_prior_only(model: BayesianRenewal) -> None:
     """Warn where the data say little about the repair parameter: its
     posterior 95% interval is at least :data:`PRIOR_ONLY_SHARE` of its
     prior's (for a prior on it alone)."""
-    from surpyval.bayes.model import _fmt, _prior_interval
+    from surpyval.bayes.model import fmt, prior_interval_text
     from surpyval.utils.warnings import caller_stacklevel
 
     name = model.restoration_name
@@ -2059,7 +2059,7 @@ def _warn_prior_only(model: BayesianRenewal) -> None:
         return
     bound = model._bound()
     t = bound.transforms[0]
-    prior = _prior_interval(bound, name, t, 0.05)
+    prior = prior_interval_text(bound, name, t, 0.05)
     if prior is None or not np.all(np.isfinite(prior)):
         return
     lo, hi = (float(v) for v in model.param_cri(name))
@@ -2084,9 +2084,9 @@ def _warn_prior_only(model: BayesianRenewal) -> None:
         )
     warnings.warn(
         f"The data say little about the repair: {name}'s posterior 95% "
-        f"interval ({_fmt(lo)} to {_fmt(hi)}) is "
-        f"{(hi - lo) / width:.0%} as wide as its prior's ({_fmt(prior[0])} "
-        f"to {_fmt(prior[1])}), so the answer about the repair is mostly "
+        f"interval ({fmt(lo)} to {fmt(hi)}) is "
+        f"{(hi - lo) / width:.0%} as wide as its prior's ({fmt(prior[0])} "
+        f"to {fmt(prior[1])}), so the answer about the repair is mostly "
         f"the prior's.{why}",
         stacklevel=caller_stacklevel(),
     )

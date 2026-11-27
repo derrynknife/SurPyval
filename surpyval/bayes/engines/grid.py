@@ -60,11 +60,11 @@ REPLACE_AT = 15.0
 STRETCH = 3.0
 
 
-def _z_of(u: npt.NDArray) -> npt.NDArray:
+def grid_z_of(u: npt.NDArray) -> npt.NDArray:
     return STRETCH * np.sinh(u / STRETCH)
 
 
-def _u_of(z: float) -> float:
+def grid_u_of(z: float) -> float:
     return float(STRETCH * np.arcsinh(z / STRETCH))
 
 
@@ -488,9 +488,9 @@ def run_grid(
         tol = TOLERANCE[d]
     L = np.linalg.cholesky(cov)
     log_det_l = float(np.sum(np.log(np.diag(L))))
-    lo = np.full(d, -_u_of(START_HALF_WIDTH))
-    hi = np.full(d, _u_of(START_HALF_WIDTH))
-    u_max = _u_of(MAX_HALF_WIDTH)
+    lo = np.full(d, -grid_u_of(START_HALF_WIDTH))
+    hi = np.full(d, grid_u_of(START_HALF_WIDTH))
+    u_max = grid_u_of(MAX_HALF_WIDTH)
     m0 = int(points) if points is not None else START_POINTS[d]
     m_max = max(MAX_POINTS[d], m0)
     m = np.full(d, m0)
@@ -501,7 +501,7 @@ def run_grid(
 
     def evaluate(shift: bool) -> tuple:
         u, step = _lattice(lo, hi, m, shift)
-        phi = centre + _z_of(u) @ L.T
+        phi = centre + grid_z_of(u) @ L.T
         with np.errstate(all="ignore"):
             lp = np.asarray(log_post(phi), dtype=float)
         lp = np.where(np.isfinite(lp), lp, -np.inf)
@@ -528,7 +528,9 @@ def run_grid(
         if not grow:
             break
         widened += 1
-        if not replaced and max(np.max(-lo), np.max(hi)) > _u_of(REPLACE_AT):
+        if not replaced and max(np.max(-lo), np.max(hi)) > grid_u_of(
+            REPLACE_AT
+        ):
             # The curvature at the peak understates the posterior's
             # spread (a long or curved ridge): lay the grid again along
             # the spread the grid has found so far, once.
@@ -544,12 +546,12 @@ def run_grid(
                 centre = mean
                 L = np.linalg.cholesky(spread)
                 log_det_l = float(np.sum(np.log(np.diag(L))))
-                lo = np.full(d, -_u_of(START_HALF_WIDTH))
-                hi = np.full(d, _u_of(START_HALF_WIDTH))
+                lo = np.full(d, -grid_u_of(START_HALF_WIDTH))
+                hi = np.full(d, grid_u_of(START_HALF_WIDTH))
                 m = np.full(d, m0)
                 continue
         if max(np.max(-lo), np.max(hi)) > u_max:
-            raise GridError(_improper_message(flat_names))
+            raise GridError(improper_posterior_message(flat_names))
         # each dimension keeps its cells' size as it widens
         m = np.minimum(
             m_max, np.maximum(m, np.ceil((hi - lo) / target) + 1)
@@ -611,13 +613,13 @@ def run_grid(
         refinements=refinements,
         mode=mode,
         cov=cov,
-        half_widths=_z_of(np.maximum(-lo, hi)),
+        half_widths=grid_z_of(np.maximum(-lo, hi)),
         checks={**checks, "widened": widened},
         shape=(2,) + tuple(int(v) for v in m),
     )
 
 
-def _improper_message(flat_names: list[str] | None) -> str:
+def improper_posterior_message(flat_names: list[str] | None) -> str:
     if flat_names:
         names = ", ".join(flat_names)
         which = "which has" if len(flat_names) == 1 else "which have"

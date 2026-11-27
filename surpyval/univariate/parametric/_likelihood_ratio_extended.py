@@ -396,15 +396,15 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
 
     def _lr_limit_nll(self) -> float | None:
         """The negative log-likelihood of the family's limit as the offset
-        runs to -inf (``fitters.mle._offset_limit``), fitted to the data,
+        runs to -inf (``fitters.mle.offset_limit``), fitted to the data,
         kept; ``None`` where there is no such limit (see
         ``_limit_deviance``)."""
         if "_lr_limit_nll_kept" not in self.__dict__:
             nll = None
             if self._gamma_idx is not None and not self._held:
-                from .fitters.mle import _offset_limit
+                from .fitters.mle import offset_limit
 
-                nll = _offset_limit(self.model)()
+                nll = offset_limit(self.model)()
                 if nll is not None and not onp.isfinite(nll):
                     nll = None
             self.__dict__["_lr_limit_nll_kept"] = nll
@@ -425,7 +425,7 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
         """The deviance of the family's limit as the offset runs to -inf
         (the Normal for a Gamma or a LogNormal, the Logistic for a
         LogLogistic, the smallest extreme value distribution for a
-        Weibull; ``fitters.mle._offset_limit``) against the fit, kept;
+        Weibull; ``fitters.mle.offset_limit``) against the fit, kept;
         ``None`` where there is no such limit (no offset, a limited
         failure population, zero inflation, a hazard ratio, a family
         without one, or a parameter held fixed, which the limit cannot

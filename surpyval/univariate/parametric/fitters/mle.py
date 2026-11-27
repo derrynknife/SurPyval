@@ -379,7 +379,7 @@ class _Judge(NamedTuple):
     #: The last few iterates of the search watched (``watch``).
     last: list
     #: The negative log-likelihood of the family's limit as an offset
-    #: runs to -inf, fitted to the data, or ``None`` (``_offset_limit``).
+    #: runs to -inf, fitted to the data, or ``None`` (``offset_limit``).
     limit: Callable[[], "float | None"]
     #: The model being fitted.
     model: Any = None
@@ -473,7 +473,7 @@ class _Judge(NamedTuple):
 
     def toward_limit(self, x: npt.NDArray) -> bool:
         """Whether ``x`` is on the way to the family's limit as its offset
-        runs to -inf (``_offset_limit``): the search has moved the offset
+        runs to -inf (``offset_limit``): the search has moved the offset
         down from where it started, and the limit fits the data at least
         as well as ``x`` does. ``keep`` checks that the parameter running
         off rises towards an infinite end: the offset itself, or the
@@ -843,7 +843,7 @@ def _space(model: "Parametric") -> tuple:
     return natural, model.bounds, free, edge, corner
 
 
-def _offset_limit(model: "Parametric") -> Callable[[], "float | None"]:
+def offset_limit(model: "Parametric") -> Callable[[], "float | None"]:
     """The negative log-likelihood, on the model's data, of the family its
     distribution tends to as an offset runs to -inf
     (``_offset_limit_family``: the Normal for a LogNormal or a Gamma),
@@ -980,7 +980,7 @@ def _search(
         _space(model),
         {},
         [],
-        _offset_limit(model),
+        offset_limit(model),
         model,
     )
     for method, jac_name, hess_name in _LADDER:

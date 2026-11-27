@@ -69,8 +69,8 @@ SEED = 20261126
 #: hazard against another's of a different shape).
 _V, _W = np.polynomial.legendre.leggauss(48)
 _V = 0.5 * (_V + 1.0)
-_NODES = 3 * _V**2 - 2 * _V**3
-_WEIGHTS = 0.5 * _W * 6 * _V * (1 - _V)
+GAUSS_NODES = 3 * _V**2 - 2 * _V**3
+GAUSS_WEIGHTS = 0.5 * _W * 6 * _V * (1 - _V)
 #: Points of the predictive cumulative incidence's grid, a cause.
 _GRID = 3000
 
@@ -653,14 +653,14 @@ class BayesianCompetingRisks(SerialisableMixin):
             top = np.where(np.isposinf(xs)[None, :], 1.0, top)
             top = np.where(np.isneginf(xs)[None, :], 0.0, top)
             top = np.clip(np.where(np.isfinite(top), top, 0.0), 0.0, 1.0)
-            p = top[:, :, None] * _NODES[None, None, :]
+            p = top[:, :, None] * GAUSS_NODES[None, None, :]
             t = self._at(event, "q", p, 2, source)
             g = np.ones(p.shape)
             for k in self.causes:
                 if k != event:
                     g = g * self._at(k, "R", t, 2, source)
             g = np.where(np.isfinite(g), g, 0.0)
-            out[:, cols] = top * np.einsum("dtq,q->dt", g, _WEIGHTS)
+            out[:, cols] = top * np.einsum("dtq,q->dt", g, GAUSS_WEIGHTS)
         return out
 
     def sf_draws(self, x: npt.ArrayLike) -> npt.NDArray:
