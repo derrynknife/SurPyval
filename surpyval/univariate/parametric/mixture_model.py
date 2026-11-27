@@ -1388,8 +1388,9 @@ class MixtureModel(
         numbering of the components, and neither a single normal (the
         Laplace approximation) nor the grid describes it. Sample it with
         PyMC through :func:`surpyval.pymc.mixture_likelihood`, which
-        numbers the components in increasing order of one parameter (a
-        Weibull's scale, by default) so that the labels cannot switch.
+        numbers the components in order of one parameter (by default
+        the family's scale or location, component 0 the shortest-lived)
+        so that the labels cannot switch.
 
         Examples
         --------
@@ -1408,9 +1409,11 @@ class MixtureModel(
             "the grid cannot describe. Sample it with PyMC: "
             "surpyval.pymc.mixture_likelihood(dist, x=..., weights=w, "
             "alpha=..., beta=...) inside a pm.Model, which numbers the "
-            "components in increasing order of one parameter (by default "
-            "the family's first, a Weibull's alpha) so that the labels "
-            "cannot switch; see 'Mixtures' in PyMC with SurPyval. For a "
+            "components in order of one parameter (by default the "
+            "family's scale or location, so that component 0 has the "
+            "shortest life: a Weibull's alpha increasing) so that the "
+            "labels cannot switch; see 'Mixtures' in PyMC with SurPyval. "
+            "For a "
             "cured fraction (a single component and units that never "
             "fail), dist.fit_bayes(..., lfp=True) or "
             "MixtureCure(dist).fit_bayes is the Bayesian fit."

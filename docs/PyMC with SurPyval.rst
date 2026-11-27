@@ -398,17 +398,22 @@ of the components (*label switching*), so SurPyval's own engines refuse
 it (``MixtureModel.fit_bayes``). ``mixture_likelihood`` adds the
 mixture's exact likelihood, every row type and truncation as
 ``MixtureModel.fit`` takes them, and keeps one numbering: the
-components are ordered by one parameter, which must increase from
-component 0 to the last.
+components are ordered by one parameter.
 
 **Which parameter is ordered, and what it means.** By default the
-family's first parameter: a Weibull's (or a Gamma's) ``alpha``, a
-LogNormal's or Normal's ``mu``, an Exponential's rate. For a Weibull
-mixture component 0 is then, in every draw, the component with the
-shortest characteristic life (the "infant mortality" mode), and
+family's scale or location, in the direction that makes component 0
+the one with the shortest life (at the same shape): increasing for a
+Weibull's, LogLogistic's or Rayleigh's scale, a BirnbaumSaunders'
+``beta``, and the ``mu`` of a LogNormal, Normal, Gumbel, Logistic,
+InverseGaussian or GeneralizedGamma; decreasing for a rate, an
+Exponential's ``failure_rate`` and a Gamma's ``beta``. A Gompertz has no
+parameter that sets its life alone, so ``order=`` must be given for it.
+For a Weibull mixture component 0 is then, in every draw, the component
+with the shortest characteristic life (the "infant mortality" mode), and
 component 1 the longer one; its weight ``w[0]`` is the share of units in
 the short-lived subpopulation. Give that parameter PyMC's ordered
-transform, so that every draw is ordered:
+transform (on its log for a scale; on minus its log for a rate, ``rate =
+pm.math.exp(-z)`` with ``z`` ordered), so that every draw is ordered:
 
 .. code:: python
 
@@ -430,8 +435,9 @@ transform, so that every draw is ordered:
 A second Potential, ``likelihood_order``, is ``-inf`` outside the
 ordered region (it is 0 for every draw of the ordered transform), so the
 order also holds for parameters built some other way. ``order="beta"``
-orders by another parameter (better where the components share a scale
-and differ in shape), and ``order=None`` leaves the labels free.
+orders by another parameter, increasing (``("beta", "decreasing")`` the
+other way; better where the components share a scale and differ in
+shape), and ``order=None`` leaves the labels free.
 Ordering does not help where two components have nearly the same value
 of the ordered parameter: they can still trade places between draws, and
 the parameter they differ in should be the one ordered.
@@ -440,7 +446,9 @@ the parameter they differ in should be the one ordered.
 tests it equals ``MixtureModel``'s own log-likelihood at given
 parameters to 1e-10, with exact, right-, left- and interval-censored
 rows, counts and truncation, for Weibull and LogNormal mixtures of two
-and three components.
+and three components, and with an interval window deep in both
+components' upper tails (probabilities near 1e-18 and 1e-13) to 1e-10
+of a 50-digit value.
 
 Priors from SurPyval
 --------------------

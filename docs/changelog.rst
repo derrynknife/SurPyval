@@ -485,20 +485,26 @@ v0.30 (unreleased)
 - **``MixtureCure(dist).fit_bayes``** (and ``fit_bayes_from_df``): the
   mixture-cure regression's Bayesian fit, priors on the latency, on
   ``lfp_p`` and on the coefficients (a coefficient given none gets
-  ``Normal(0, 2.5 / sd)``), by the Laplace approximation with its checks.
+  ``Normal(0, 2.5 / sd)``; ``lfp_p`` given none is uniform on (0, 1),
+  and a prior flat on its logit is refused, as that posterior has no
+  finite mass on any data), by the Laplace approximation with its
+  checks; where the approximation cannot be trusted (Pareto k above
+  0.7) the fit refuses, saying what to do.
   The result, ``surpyval.bayes.regression.BayesianMixtureCure``, has the
   regressions' predictions and ``cure_probability(Z)`` and
   ``cure_cri(Z)`` for the cured fraction. It warns when follow-up is too
   short to identify the cure fraction (Maller and Zhou's check) and, as
-  the maximum-likelihood fit does, when the data show no cured fraction;
-  then, with no prior on ``lfp_p``, it refuses. See "Cured fractions and
+  the maximum-likelihood fit does, when the data show no cured fraction.
+  See "Cured fractions and
   mixtures" in :doc:`Bayesian Fitting with SurPyval`.
 - **``MixtureModel.fit_bayes`` refuses**, saying why (label switching:
   the posterior has a peak for every numbering of the components) and
   pointing to the new **``surpyval.pymc.mixture_likelihood``** (and
   ``mixture_log_likelihood``): a mixture's exact censored and truncated
-  likelihood in PyMC, its components numbered in increasing order of one
-  parameter (by default the family's first, a Weibull's ``alpha``). It
+  likelihood in PyMC, its components numbered in order of one parameter
+  (by default the family's scale or location, in the direction that
+  puts the shortest life first: a Weibull's ``alpha`` increasing, an
+  Exponential's rate decreasing; ``order=`` is needed for a Gompertz). It
   equals ``MixtureModel``'s own log-likelihood to 1e-10. See "Mixtures"
   in :doc:`PyMC with SurPyval`.
 

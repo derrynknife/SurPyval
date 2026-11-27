@@ -7,12 +7,13 @@ same. A sampler then wanders between the copies (or stays in one by
 luck), and every per-component summary is a blend of components. The
 usual cure, and the default here, is to number the components by one
 parameter: :func:`mixture_likelihood` adds the constraint that the
-``order`` parameter (by default the family's first, a Weibull's scale
-``alpha``) increases from component 0 to component ``m - 1``, so that
-component 0 is always the one with the smallest value of it (for a
-Weibull, the shortest characteristic life). Give that parameter PyMC's
-ordered transform (``transform=pm.distributions.transforms.ordered``) so
-that every draw satisfies it.
+``order`` parameter moves monotonically from component 0 to component
+``m - 1``. By default (:data:`ORDER`) it is the family's scale or
+location, in the direction that makes component 0 the one with the
+shortest life: a Weibull's scale ``alpha`` increasing, an Exponential's
+rate decreasing. Give that parameter PyMC's ordered transform
+(``transform=pm.distributions.transforms.ordered``, on its log for a
+scale, on minus its log for a rate) so that every draw satisfies it.
 """
 
 from __future__ import annotations
@@ -28,8 +29,37 @@ from surpyval.pymc.likelihood import (
     as_surpyval_data,
 )
 
-#: Not given: the family's first parameter.
+#: Not given: the family's own, from :data:`ORDER`.
 _FIRST = object()
+#: Each family's default order: the parameter that sets the length of
+#: life with the shape held (a scale, a location, a mean or a rate), and
+#: whether it increases or decreases from component 0, so that component
+#: 0 is the one with the shortest life. A family with no such parameter
+#: (Gompertz: both of its parameters move the life) has none, and
+#: ``order=`` must be given.
+ORDER: dict[str, tuple[str, str]] = {
+    "Weibull": ("alpha", "increasing"),
+    "Exponential": ("failure_rate", "decreasing"),
+    "LogNormal": ("mu", "increasing"),
+    "Gamma": ("beta", "decreasing"),
+    "LogLogistic": ("alpha", "increasing"),
+    "Normal": ("mu", "increasing"),
+    "Gumbel": ("mu", "increasing"),
+    "Logistic": ("mu", "increasing"),
+    "Rayleigh": ("sigma", "increasing"),
+    "InverseGaussian": ("mu", "increasing"),
+    "GeneralizedGamma": ("mu", "increasing"),
+    "BirnbaumSaunders": ("beta", "increasing"),
+}
+_DIRECTIONS = ("increasing", "decreasing")
+
+
+def default_order(dist: Any) -> tuple[str, str] | None:
+    """The family's default order, ``(parameter, direction)``, or
+    ``None`` where it has none (:data:`ORDER`)."""
+    from surpyval.utils.aliases import canonical_name
+
+    return ORDER.get(canonical_name(dist))
 
 
 def _components(pt: Any, dist: Any, params: dict, m: Any, what: str) -> tuple:
@@ -255,28 +285,35 @@ def mixture_likelihood(
     Add a mixture's censored and truncated likelihood
     (:func:`mixture_log_likelihood`) to the open PyMC model, as a
     ``pm.Potential`` called ``name``, with its components numbered in
-    increasing order of one parameter.
+    order of one parameter.
 
     Why the order: the likelihood is the same whichever component is
     called 0, so with ``m`` components the posterior has ``m!`` copies
     of every peak, and a sampler's draws of "component 0" are a blend of
     the components (label switching). Requiring the ``order`` parameter
-    to increase from component 0 to component ``m - 1`` keeps one copy:
-    component 0 is then, in every draw, the component with the smallest
-    value of that parameter. By default it is the family's first
-    parameter (a Weibull's scale ``alpha``, so component 0 has the
-    shortest characteristic life; a LogNormal's ``mu``). The constraint
-    is a second Potential, ``name + "_order"``, which is 0 where the
-    parameter increases and ``-inf`` elsewhere; give that parameter
-    PyMC's ordered transform (``transform=pm.distributions.transforms
-    .ordered``, on its log for a positive parameter) so that every draw
-    satisfies it and the sampler never meets the wall. With the order
-    fixed, a component's summaries mean "the component with the
-    shortest (second shortest, ...) characteristic life"; where two
-    components have nearly the same value of the parameter, the order
-    can still swap them between draws, and another ``order`` (one in
-    which they differ) is the better choice. ``order=None`` leaves the
-    labels free (for a sampler of the user's own that handles them).
+    to move one way from component 0 to component ``m - 1`` keeps one
+    copy. By default (:data:`ORDER`) it is the family's scale or
+    location, in the direction that makes component 0 the one with the
+    shortest life whatever the shapes: a Weibull's, LogLogistic's or
+    Rayleigh's scale increasing; a LogNormal's, Normal's, Gumbel's,
+    Logistic's, InverseGaussian's or GeneralizedGamma's ``mu``
+    increasing; a BirnbaumSaunders' scale ``beta`` increasing; an
+    Exponential's rate and a Gamma's rate ``beta`` decreasing. A
+    Gompertz has no such parameter (both move its life), so ``order=``
+    must be given for it. With the order fixed, a component's summaries
+    mean "the component with the shortest (second shortest, ...) life at
+    the same shape"; where two components have nearly the same value of
+    the parameter, the order can still swap them between draws, and
+    another ``order`` (one in which they differ) is the better choice.
+    ``order=None`` leaves the labels free (for a sampler of the user's
+    own that handles them).
+
+    The constraint is a second Potential, ``name + "_order"``, which is
+    0 where the parameter is in order and ``-inf`` elsewhere; give the
+    parameter PyMC's ordered transform so that every draw satisfies it
+    and the sampler never meets the wall: on its log for a scale
+    (``alpha = exp(log_alpha)``, ``log_alpha`` ordered), on minus its log
+    for a rate (``rate = exp(-z)``, ``z`` ordered).
 
     Parameters
     ----------
@@ -284,9 +321,11 @@ def mixture_likelihood(
         As for :func:`mixture_log_likelihood`.
     name : str, default "likelihood"
         The name of the Potential.
-    order : str or None, optional
-        The parameter whose values increase with the component's number;
-        by default the family's first. ``None`` for no order.
+    order : str, (str, str) or None, optional
+        The parameter that orders the components, with ``"increasing"``
+        (a name alone) or ``"decreasing"`` as a pair (``("beta",
+        "decreasing")``); by default the family's own (:data:`ORDER`).
+        ``None`` for no order.
 
     Returns
     -------
@@ -325,8 +364,25 @@ def mixture_likelihood(
     names = (
         list(dist.parameter_names) if hasattr(dist, "parameter_names") else []
     )
+    direction = "increasing"
     if order is _FIRST:
-        order = names[0] if names else None
+        found = default_order(dist)
+        if found is None:
+            raise ValueError(
+                f"{what}: {getattr(dist, 'name', dist)} has no parameter "
+                "that sets the length of life alone (each of "
+                f"{', '.join(names)} moves it), so there is no default "
+                "order of its components: give order='<parameter>' (or "
+                "(name, 'decreasing')), or order=None for none."
+            )
+        order, direction = found
+    elif isinstance(order, tuple):
+        if len(order) != 2 or order[1] not in _DIRECTIONS:
+            raise ValueError(
+                f"{what}: order={order!r} must be a parameter's name, or a "
+                "pair (name, 'increasing' or 'decreasing')."
+            )
+        order, direction = order
     if order is not None and order not in names:
         raise ValueError(
             f"{what}: order={order!r} is not a parameter of "
@@ -342,9 +398,17 @@ def mixture_likelihood(
         if not hasattr(value, "type"):
             value = np.asarray(value, dtype=float)
         v = pt.as_tensor_variable(value)
-        increasing = pt.all(pt.gt(v[1:], v[:-1]))
-        pm.Potential(name + "_order", pt.switch(increasing, 0.0, -np.inf))
+        if direction == "increasing":
+            in_order = pt.all(pt.gt(v[1:], v[:-1]))
+        else:
+            in_order = pt.all(pt.lt(v[1:], v[:-1]))
+        pm.Potential(name + "_order", pt.switch(in_order, 0.0, -np.inf))
     return out
 
 
-__all__ = ["mixture_likelihood", "mixture_log_likelihood"]
+__all__ = [
+    "ORDER",
+    "default_order",
+    "mixture_likelihood",
+    "mixture_log_likelihood",
+]

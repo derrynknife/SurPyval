@@ -298,10 +298,23 @@ class MixtureCureFitter(DistributionalFitter):
         With follow-up long enough to see the survival curve level off,
         the data say how large the cured fraction is; with too short a
         follow-up they cannot tell a cured unit from one that has not
-        failed yet. The maximum-likelihood fit then warns that the data
-        show no cured fraction, and so does this fit; with no prior on
-        ``lfp_p`` it refuses (the posterior has no finite mass), and with
-        one the answer about the cure fraction is the prior's.
+        failed yet: this fit warns (Maller and Zhou's check), and where
+        the data show no cured fraction at all it warns as the
+        maximum-likelihood fit does; the answer about the cure fraction
+        is then the prior's.
+
+        ``lfp_p`` with no prior given is uniform on (0, 1), a proper
+        prior. It cannot be flat on its logit scale (``prior.flat()``,
+        refused): the cure model holds the model with no cure as
+        ``lfp_p`` goes to 1, where the likelihood tends to a positive
+        constant, so such a posterior has no finite mass on any data.
+
+        Where the Laplace approximation cannot be trusted (its Pareto k
+        above 0.7, the cure model's posterior far from normal, as with
+        short follow-up) the fit refuses, saying to give ``lfp_p`` an
+        informative prior or to sample the exact posterior with PyMC;
+        with k between 0.5 and 0.7 it returns the approximation flagged
+        "poor", which ``importance=True`` corrects.
 
         Parameters
         ----------
@@ -311,13 +324,13 @@ class MixtureCureFitter(DistributionalFitter):
             A prior for each parameter it names: the latency's (``alpha``,
             ``beta`` for a Weibull), ``lfp_p`` (``surpyval.prior.between
             (0.6, 0.95)`` says "60% to 95% of units at the reference row
-            fail eventually") and the coefficients by name
-            (``lfp_p_coef_0``, ``alpha_coef_0``). A coefficient with no
-            prior gets ``Normal(0, 2.5 / sd)``, ``sd`` its covariate's
-            standard deviation (on the incidence's logit scale, a change
-            of 2.5 in the log odds for one standard deviation of the
-            covariate); any other parameter with none is flat on its
-            unconstrained scale.
+            fail eventually"; with none, uniform on (0, 1)) and the
+            coefficients by name (``lfp_p_coef_0``, ``alpha_coef_0``). A
+            coefficient with no prior gets ``Normal(0, 2.5 / sd)``,
+            ``sd`` its covariate's standard deviation (on the incidence's
+            logit scale, a change of 2.5 in the log odds for one standard
+            deviation of the covariate); the latency's parameters with
+            none are flat on their log scales.
         importance : bool, optional
             Reweight the normal's draws towards the exact posterior.
         method : {'auto', 'laplace', 'grid'}, optional
@@ -343,7 +356,9 @@ class MixtureCureFitter(DistributionalFitter):
         >>> c = np.where(cured | (life > 40.0), 1, 0)
         >>> model = sp.MixtureCure(sp.Weibull).fit_bayes(x, Z, c)
         >>> sorted(model.default_priors)
-        ['alpha_coef_0', 'lfp_p_coef_0']
+        ['alpha_coef_0', 'lfp_p', 'lfp_p_coef_0']
+        >>> model.default_priors["lfp_p"]
+        'Uniform(0, 1)'
         """
         from surpyval.bayes.regression import fit as _fit
 

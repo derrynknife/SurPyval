@@ -24,7 +24,7 @@ what to install when it is absent.
   pulled each group;
 - :func:`mixture_likelihood` adds the likelihood of a mixture of one
   family's lives (:func:`mixture_log_likelihood` as an expression), its
-  components numbered in increasing order of one parameter, so that
+  components numbered in order of their scale or location, so that
   their labels cannot switch;
 - :func:`nhpp_likelihood` adds the power-law (Crow-AMSAA) NHPP
   likelihood of systems' event histories (:func:`nhpp_log_likelihood`

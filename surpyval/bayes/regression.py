@@ -177,7 +177,13 @@ def _default_priors(mle: Any, spec: PriorSpec, fixed: dict) -> dict:
             return {}
         covered |= set(j.names)
     sds = _covariate_sds(mle.data)
-    out = {}
+    out: dict = {}
+    if _is_mixture_cure(mle) and "lfp_p" not in covered:
+        from surpyval.bayes.prior import uniform
+
+        # a proper prior: flat on the logit, the posterior has no finite
+        # mass (see _check_flat)
+        out["lfp_p"] = uniform(0.0, 1.0)
     for name, k in _coefficient_columns(mle).items():
         if name in covered:
             continue
@@ -553,27 +559,22 @@ def _check_flat(mle: Any, data: Any, bound: BoundPriors) -> None:
     """A flat prior is allowed only where the data determine the
     parameter: refused with no failure information, and, where every
     free parameter is flat, unless the maximum-likelihood fit's maximum
-    is verified; and a mixture-cure regression's ``lfp_p`` is refused a
-    flat prior where the data show no cured fraction (its likelihood
-    then rises all the way to 1)."""
+    is verified; and a mixture-cure regression's ``lfp_p`` is always
+    refused one (the posterior would have no finite mass)."""
     improper = bound.improper_names
     if not improper:
         return
-    if (
-        _is_mixture_cure(mle)
-        and "lfp_p" in improper
-        and getattr(mle, "maximum", None) == "no finite maximum"
-    ):
+    if _is_mixture_cure(mle) and "lfp_p" in improper:
         raise ValueError(
-            "The data show no cured fraction (no plateau at the end of "
-            "follow-up): the likelihood keeps rising as lfp_p, the "
-            "probability of ever failing at the reference row, goes to 1, "
-            "so with no prior on it the cure fraction is not identified "
-            "and the posterior has no finite mass. Give lfp_p a prior "
-            "from what is known about the cure fraction (for example "
-            "priors={'lfp_p': surpyval.prior.between(0.6, 0.95)}), fit "
-            "the latency alone without a cure fraction, or follow the "
-            "units for longer."
+            "lfp_p, the probability of ever failing at the reference row, "
+            "cannot have a prior flat on its logit scale: the cure model "
+            "holds the model with no cure as lfp_p goes to 1, where its "
+            "likelihood tends to a positive constant (that model's), so "
+            "with a flat prior on logit(lfp_p) the posterior has no finite "
+            "mass on any data. Leave lfp_p's prior out for the default, "
+            "uniform on (0, 1), or give one from what is known about the "
+            "cure fraction (priors={'lfp_p': surpyval.prior.between(0.6, "
+            "0.95)})."
         )
     if not np.any(np.asarray(data.c) != 1):
         raise ValueError(
@@ -642,14 +643,54 @@ def from_mle(
     _check_covered(mle)
     if _is_mixture_cure(mle):
         _warn_follow_up(mle)
-    result = BayesianMixtureCure if _is_mixture_cure(mle) else None
+    if _is_mixture_cure(mle):
+        return _mixture_cure_from_mle(mle, priors, importance, method)
     model: BayesianRegression = fit_target(
         RegressionTarget(mle),
         priors,
         method=method,
         importance=importance,
-        result=result or BayesianRegression,
+        result=BayesianRegression,
     )
+    return model
+
+
+def _mixture_cure_from_mle(
+    mle: Any, priors: Any, importance: bool, method: str
+) -> BayesianMixtureCure:
+    """A mixture-cure regression's posterior, refused where its Laplace
+    approximation cannot be trusted (Pareto k above ``K_BAD``): its
+    posterior then is far from normal (short follow-up, a cure fraction
+    the data hardly fix), and neither the normal nor its reweighting
+    describes it."""
+    from surpyval.bayes.engines.laplace import K_BAD
+    from surpyval.utils.warnings import caller_stacklevel, collecting_warnings
+
+    with collecting_warnings() as caught:
+        model: BayesianMixtureCure = fit_target(
+            RegressionTarget(mle),
+            priors,
+            method=method,
+            importance=importance,
+            result=BayesianMixtureCure,
+        )
+    k = model.diagnostics.get("pareto_k")
+    if model.method == "laplace" and k is not None and float(k) > K_BAD:
+        raise ValueError(
+            "The Laplace approximation cannot be trusted for this "
+            f"mixture-cure fit: the Pareto k of the exact posterior against "
+            f"the normal is {float(k):.2f} (above {K_BAD}), so the "
+            "posterior is far from normal, and reweighting the draws "
+            "(importance=True) cannot repair it. This is usual where "
+            "follow-up is short and the data hardly fix the cure "
+            "fraction. Give lfp_p an informative prior (priors={'lfp_p': "
+            "surpyval.prior.between(low, high)}), or sample the exact "
+            "posterior with PyMC through surpyval.pymc."
+        )
+    for w in caught:
+        warnings.warn(
+            str(w.message), w.category, stacklevel=caller_stacklevel()
+        )
     return model
 
 
