@@ -391,11 +391,11 @@ with its own ``schema``.
    * - ``ParametricMultiState``
      - ``"model": "ParametricMultiState"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``clock``, ``models``
-     - --
+     - ``joint`` (a joint fit), ``tr``, ``reached`` (right truncation)
    * - ``ParametricMultiStateRegression``
      - ``"model": "ParametricMultiStateRegression"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``clock``, ``models``, ``Z``, ``covariate_names``
-     - --
+     - ``joint`` (a joint fit), ``tr``, ``reached`` (right truncation)
    * - ``PanelMultiState``
      - ``"model": "PanelMultiState"``
      - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``Z``, ``censored``, ``exact_entry``, ``pci``, ``covariate_names``, ``shared``, ``theta``, ``cov_theta``, ``_neg_ll``, ``n_obs``, ``scale``, ``mean``, ``sd``, ``kept``
@@ -575,6 +575,14 @@ with its own ``schema``.
    * - ``BayesianCauseSpecific``
      - ``"model": "BayesianCauseSpecific"``
      - ``event_types``, ``models``, ``surpyval_version``
+     - --
+   * - ``BayesianRenewal``
+     - ``"model": "BayesianRenewal"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianMixtureCure``
+     - ``"model": "BayesianMixtureCure"``
+     - ``kind``, ``mle``, ``priors``, ``default_priors``, ``posterior``, ``data``, ``diagnostics``, ``surpyval_version``
      - --
    * - ``BayesianProcessModel``
      - ``"model": "BayesianProcessModel"``

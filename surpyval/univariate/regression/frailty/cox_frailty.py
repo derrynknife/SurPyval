@@ -87,7 +87,7 @@ from ..regression_data import (
     serialise_covariate_meta,
 )
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
-from .families import check_family
+from .families import LAPLACE_FAMILIES, check_family
 from .frailty_fitter import _log_rising_ratio, grouped_data
 from .frailty_model import _SharedFrailty
 
@@ -775,7 +775,16 @@ class CoxFrailtyFitter(FitterRepr):
             fits several terms and random slopes). ``frailties`` are then
             ``exp`` of each group's predicted ``w`` (its posterior mode),
             and ``log_likelihood`` the Laplace-approximated integrated
-            partial likelihood.
+            partial likelihood. ``"inverse_gaussian"`` (mean 1, variance
+            ``theta``) or ``"positive_stable"`` (index ``1 - theta``;
+            ``theta`` is Kendall's tau, and the frailty has no mean):
+            EM on the full likelihood with the baseline's jumps as
+            parameters (Breslow's ties: ``tie_method="efron"`` is refused
+            where event times are tied), ``theta`` maximising its profile;
+            ``log_likelihood`` is that marginal likelihood, and the
+            standard errors are from its observed information with the
+            jumps profiled out. See the frailty families section of the
+            shared frailty documentation.
 
         Returns
         -------
@@ -877,6 +886,26 @@ class CoxFrailtyFitter(FitterRepr):
                 tie_method,
                 theta,
                 center,
+            )
+        if family in LAPLACE_FAMILIES:
+            from ._cox_laplace import laplace_cox_frailty
+
+            return laplace_cox_frailty(
+                x,
+                Zfull,
+                Zk,
+                means,
+                c,
+                w,
+                labels,
+                inv,
+                kept,
+                cox,
+                maximum,
+                tie_method,
+                theta,
+                center,
+                family,
             )
         em = _CoxFrailtyEM(x, Zk - means, c, w, inv, n_groups, tie_method)
         monotone = maximum == "no finite maximum"
@@ -1255,6 +1284,23 @@ class CoxFrailtyModel(_SharedFrailty):
         }
         rows = table.loc["frailty"].rename(columns=estimates)
         rows.index.name = None
+        if self.family in LAPLACE_FAMILIES:
+            out += (
+                (
+                    "\nFrailty theta (tau) : "
+                    if self.family == "positive_stable"
+                    else "\nFrailty variance    : "
+                )
+                + "observed-information standard error; Wald 95% "
+                "interval\n"
+            ) + format_table(rows, list(estimates.values()))
+            out += (
+                "\nLog-likelihood      : {:.4f} (marginal, Breslow "
+                "baseline; {:.4f} without frailty)".format(
+                    self.log_likelihood, self.log_likelihood_no_frailty
+                )
+            )
+            return out
         out += (
             "\nFrailty variance    : profile-likelihood standard error; "
             "Wald 95% interval\n"

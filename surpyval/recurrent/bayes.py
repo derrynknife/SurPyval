@@ -1054,7 +1054,7 @@ class BayesianRecurrence(BayesianResult):
         return self._refuse_cb("param_cb", "param_cri(name)")
 
 
-def _zero_event_data(
+def zero_event_data(
     x: Any, i: Any, c: Any, n: Any, t: Any, tl: Any, tr: Any, windows: Any
 ) -> EventHistoryData | None:
     """The data as the fit reads them, where they have no events (the
@@ -1115,7 +1115,7 @@ def fit(
                 )
         data = mle.data
     except ValueError as e:
-        data = _zero_event_data(x, i, c, n, t, tl, tr, windows)
+        data = zero_event_data(x, i, c, n, t, tl, tr, windows)
         if data is None:
             raise ValueError(
                 "fit_bayes starts from the maximum-likelihood fit, which "
@@ -1909,3 +1909,8 @@ __all__ = [
     "fit_cause_specific",
     "fit_proportional_intensity",
 ]
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_zero_event_data = zero_event_data

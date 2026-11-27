@@ -231,6 +231,16 @@ Truncation conventions
 - Non-parametric risk sets use the (entry, exit] convention: an item with window starting at :math:`t_l` and value :math:`x` is at risk at time :math:`s` when :math:`t_l < s \le x`. An item entering at exactly an event time is not at risk for that event.
 - A censored value is only known to lie inside its own truncation window, so a left censored row with a finite :math:`t_l` is used as the interval :math:`(t_l, x]`, and a right censored row with a finite :math:`t_r` as :math:`(x, t_r]`. This happens automatically.
 
+What a row is in a multi-state model
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the multi-state spell models a row is a stretch of one unit (``i``) in one state, from ``tl`` to ``x``. On the forward clock (hazards of the time since the start) ``tl`` is a left truncation and nothing more, so a unit's stay may be given as one row or several. On the reset clock (hazards of the time in the state) a row is, by default, a stay of its own: its clock starts at its ``tl``.
+
+- **A renewal in the same state.** A unit censored at a preventive replacement and back in the same state, as good as new, at the same time and under the same ``i``: two rows, the second starting where the first ended. Give them as they are; the second starts a new stay.
+- **A stay split into rows.** A stay you have cut into rows yourself (at a change of covariates, say): mark every row after the first with ``carry_on=True`` (``carry_on_col`` for a DataFrame). A marked row is fitted on the time since its stay began, left truncated at the time already spent, so the clock runs on. It must be the same unit's next row, in the same state, starting exactly (as stored) at the ``x`` of the row before, which ended censored; anything else is refused, so data written out and read back with rounding, where the two times no longer match, is refused rather than read as two stays.
+
+``time_varying_covariates`` splits the stays itself and marks the rows it makes.
+
 
 Function Conventions
 --------------------
