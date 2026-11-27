@@ -270,9 +270,12 @@ v0.30 (unreleased)
     rule (above 1e-4 standard errors). The first search is as it was, so
     a fit that needs no edge handling is unchanged. The quadratic fit
     above then reaches 479.3549 (correlations 0.62, -0.24, 0.61), no worse
-    than the fit with the curvature common (479.6325), but ends
-    unverified, with the warning: its gradient is still above the rule
-    there (before, it stalled at 479.465).
+    than the fit with the curvature common (479.6325). It is a maximum
+    (every perturbation raises the negative log-likelihood) on the edge
+    of the valid spreads with no pair at +-1 (the curvature's own spread
+    about 1.4e-10, an exact combination of the level and the rate), which
+    is not held, so it ends unverified, with the warning (before, it
+    stalled at 479.465).
   - The rule that keeps a search off an edge (a spread at 0, or a
     correlation of +-1) now asks for a rise of 1e-4 in log-likelihood,
     an absolute amount; it was one part in a million of the
@@ -528,6 +531,80 @@ v0.30 (unreleased)
   changes.
 
 **Added.**
+
+- **Bayesian fits of the renewal and imperfect-repair processes:
+  ``GeneralizedRenewal.fit_bayes``, ``ARA.fit_bayes`` and
+  ``ARI.fit_bayes``.** Priors on the repair parameter (Kijima's ``q``,
+  ARA's and ARI's ``rho``), from judgement, and on the life (or the
+  baseline intensity), for example from a non-repairable fit by
+  ``prior.from_model(life_fit)``. The result,
+  ``surpyval.recurrent.renewal.bayes.BayesianRenewal``, states the
+  posterior probability that the repair parameter is near each end of
+  its range (``repair_mass(within)``: perfect and minimal repair), gives
+  each unit's next failure from its own history (``next_failure_sf``,
+  ``next_failure_cri``, ``next_failure_qf``) and the predictive number
+  of failures in the next period (``count``), with the uncertainty in
+  the parameters included (``count``'s Monte Carlo error is in its
+  ``mean_se``). It warns where the data say little about the repair
+  (its posterior 95% interval at least 75% as wide as its prior's). The
+  repair parameter with no prior is
+  uniform over its range (a Kijima ``q`` from 0 to 2). With a
+  two-parameter life the posterior is exact, on a new grid laid out
+  slice by slice along the repair parameter
+  (``surpyval.recurrent.renewal.bayes.sliced_grid``), which follows the
+  long tail of mass piled against an end of the range; beyond three
+  free parameters, the Laplace approximation. Checked against a
+  brute-force integration, the maximum-likelihood fit, the identity of
+  Kijima I with ARA of memory 1, a frozen PyMC reference and
+  simulation-based calibration; see
+  "Repairable systems: how good is a repair?" in
+  :doc:`Bayesian Fitting with SurPyval`.
+- **A Bayesian fit no longer reports a prior conflict for an estimate
+  on an end of its parameter's range** (a repair efficiency or a
+  proportion of exactly 0 or 1) where the prior gives that end at least
+  1% of the density it gives the middle of its 90% interval (a uniform
+  prior): a central prior interval never holds an end of the range, so
+  every such fit warned that "the data disagree with the prior". A
+  prior whose density vanishes at the end still reports the conflict.
+
+- **Rank-based semi-parametric AFT regression: ``RankAFT``.** A second
+  accelerated-failure-time estimator with no assumed error distribution,
+  beside ``BuckleyJames``: it solves the Gehan (default) or log-rank
+  estimating equations of the residuals' ranks (``rank_weights=``), with
+  induced smoothing (Brown and Wang) for sandwich standard errors, so
+  ``summary()``, ``covariance()``, ``standard_errors()`` and
+  ``param_cb()`` (Wald, or ``method="bootstrap"``) need no resampling.
+  The log-rank root is the fixed point of weighted Gehan refits from the
+  Gehan estimate. Predictions (``sf``, ``ff``, ``Hf``, ``qf``, ``cs``)
+  read the residual Kaplan-Meier, as ``BuckleyJames``'s do, and the two
+  now share that code (``BuckleyJames``'s numbers are unchanged).
+  Checked against exact linear-programme solutions, least squares,
+  ``BuckleyJames`` and a seeded simulation (see the docs page).
+- **``MixtureCure(dist).fit_bayes``** (and ``fit_bayes_from_df``): the
+  mixture-cure regression's Bayesian fit, priors on the latency, on
+  ``lfp_p`` and on the coefficients (a coefficient given none gets
+  ``Normal(0, 2.5 / sd)``; ``lfp_p`` given none is uniform on (0, 1),
+  and a prior flat on its logit is refused, as that posterior has no
+  finite mass on any data), by the Laplace approximation with its
+  checks; where the approximation cannot be trusted (Pareto k above
+  0.7) the fit refuses, saying what to do.
+  The result, ``surpyval.bayes.regression.BayesianMixtureCure``, has the
+  regressions' predictions and ``cure_probability(Z)`` and
+  ``cure_cri(Z)`` for the cured fraction. It warns when follow-up is too
+  short to identify the cure fraction (Maller and Zhou's check) and, as
+  the maximum-likelihood fit does, when the data show no cured fraction.
+  See "Cured fractions and
+  mixtures" in :doc:`Bayesian Fitting with SurPyval`.
+- **``MixtureModel.fit_bayes`` refuses**, saying why (label switching:
+  the posterior has a peak for every numbering of the components) and
+  pointing to the new **``surpyval.pymc.mixture_likelihood``** (and
+  ``mixture_log_likelihood``): a mixture's exact censored and truncated
+  likelihood in PyMC, its components numbered in order of one parameter
+  (by default the family's scale or location, in the direction that
+  puts the shortest life first: a Weibull's ``alpha`` increasing, an
+  Exponential's rate decreasing; ``order=`` is needed for a Gompertz). It
+  equals ``MixtureModel``'s own log-likelihood to 1e-10. See "Mixtures"
+  in :doc:`PyMC with SurPyval`.
 
 - **Promotion-time (bounded cumulative hazard) cure regression:
   ``PromotionTimeCure``,** with ``WeibullPromotionTimeCure``,
@@ -1693,6 +1770,33 @@ v0.30 (unreleased)
 
 **Fixed.**
 
+- **A joint fit can no longer report a likelihood from a spread too small
+  to integrate.** Below about 1e-16 of a varying parameter's value, the
+  adaptive nodes' offsets fall within rounding of it, the prior's term
+  at them is lost and the change of variables no longer cancels it, so
+  the likelihood reads too high: on the two-mode spline fixture with
+  the bend varying (held at a spread of 0, 985.8987), a bend sd of 1e-14
+  moved it by 0.003, 1e-16 by 2.3, and 1e-18 or below by 107 (878.50). A
+  search could step there and keep it. Now a search does not step a
+  spread's own part below 1e-9 of its value or 1e-8 of the spread that
+  moves a marker by 1% of the noise; an answer in effect at a spread of
+  0 (or a correlation of +-1) that beats the fit held there by more
+  than 1e-4 is taken as the artefact it is, with a warning, and the
+  held fit reported; and a saved model with a spread above 0 but below
+  1e-9 of its parameter's value is refused, saying to set it to 0.
+  Ordinary fits are unchanged (the bit-for-bit fixtures and the 16
+  straight-line fleets).
+- **``BirnbaumSaunders.hf`` is right however far out.** Far above the
+  median the hazard was taken as the difference of the logs of the
+  density and the survival function. That lost about ``xi**2`` of the
+  precision (6e-10 relative at x = 1e6 for ``alpha = 0.3``, ``beta =
+  4``), and at extreme parameters both logs are ``-inf``: at x = 1e300
+  with ``alpha = 4.6e-9``, or with ``beta = 1e-7``, it was NaN where the
+  hazard is its limit ``1 / (2 alpha^2 beta)``. Above ``xi = 1`` it is
+  now the density's factor times the normal hazard of ``xi`` (exact for
+  every ``xi``), and above ``xi = 1e8`` the inverse Mills ratio's series
+  in a form that never forms ``xi``; it agrees with 60-digit arithmetic
+  to 1e-13 at every point checked, from below the median to x = 1.7e308.
 - **A strong prior far from the estimate no longer refuses a Bayesian
   fit.** A prior given as a distribution (``sp.Normal.from_params([0,
   0.02])`` on a coefficient the data put at 1.36, 68 of its standard

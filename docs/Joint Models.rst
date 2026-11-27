@@ -928,7 +928,12 @@ mode's hazard added) times the survival of every mode; for one found at
 an inspection, the chance of failing in the interval by any mode. Such
 failures tell the fit about the path and the total hazard, but nothing
 about which mode is which: each mode's own estimates rest on the
-failures whose mode is known. The printout's ``Failure modes`` line
+failures whose mode is known. With few of a mode known, its scale and
+shape can trade against each other and against the marker's effect
+along a nearly flat ridge, and its scale's standard error is then large
+(in a fleet with 43 bearing failures known and 33 of either mode, a
+bearing scale of 21,800 with a standard error of 25,800, where every
+label known gave 4,800): read it on the log scale, as its interval is. The printout's ``Failure modes`` line
 counts them (``; 12 of unknown mode``), and ``n_events_by_cause`` holds
 only the known ones. This assumes the mode went unrecorded for reasons
 unrelated to which mode it was (missing at random); where, say, one mode

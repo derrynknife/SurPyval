@@ -23,6 +23,7 @@ from surpyval.utils.deprecation import (
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
 
+from surpyval.recurrent.renewal._bayes_fit import RenewalBayesMixin
 from surpyval.recurrent.renewal._derivatives import (
     intensity_derivatives,
     negated,
@@ -306,7 +307,7 @@ def _event_layout(data: Any) -> tuple:
 
 
 @singleton_fitter
-class ARI(RenewalFitMixin):
+class ARI(RenewalBayesMixin, RenewalFitMixin):
     """
     Arithmetic Reduction of Intensity (ARI) imperfect-repair model of Doyen and
     Gaudoin (2004).
