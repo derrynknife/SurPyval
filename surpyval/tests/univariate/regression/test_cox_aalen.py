@@ -1,10 +1,12 @@
 """The Cox-Aalen model (multiplicative Cox terms on an additive Aalen
 baseline).
 
-No other package is used as a reference here (the R reference script,
-``scripts/reference/reference_r_cox_aalen.R``, is checked by
-``test_against_r_timereg`` once its output exists). The model is checked
-from first principles instead:
+R's ``timereg::cox.aalen`` (2.0.7) is the reference on two cases,
+written by ``scripts/reference/reference_r_cox_aalen.R`` to
+``tests/reference/data/cox_aalen_r.json`` (``test_against_r_timereg``):
+the coefficients and cumulative coefficients agree to 1e-12 relative,
+the standard errors to 0.4% (timereg's own variance estimator). The model
+is also checked from first principles:
 
 - with the baseline alone additive it is the package's ``CoxPH`` with
   Breslow ties: coefficients, model-based and robust standard errors,
@@ -350,12 +352,9 @@ def test_a_fit_that_stops_early_warns_and_predicts_nan_beyond():
 # -- R -----------------------------------------------------------------------
 
 
-@pytest.mark.skipif(
-    not REFERENCE.exists(),
-    reason="the R timereg reference file has not been generated yet",
-)
-def test_against_r_timereg():  # pragma: no cover - needs the file
+def test_against_r_timereg():
     refs = json.loads(REFERENCE.read_text())
+    assert set(refs["cases"]) == {"lung-sex-additive", "simulated"}
     for name, ref in refs["cases"].items():
         Z = np.array(ref["Z"], dtype=float)
         model = CoxAalen.fit(
@@ -364,16 +363,19 @@ def test_against_r_timereg():  # pragma: no cover - needs the file
             c=1 - np.array(ref["delta"]),
             additive=ref["additive"],
         )
+        assert np.isnan(model.stopped_at), name
         np.testing.assert_allclose(
-            model.beta, ref["gamma"], rtol=1e-4, err_msg=name
+            model.beta, ref["gamma"], rtol=1e-10, err_msg=name
         )
+        # timereg's var.gamma is its own estimator of the same variance:
+        # 0.14% (lung) and 0.34% (simulated) from covariance().
         np.testing.assert_allclose(
             model.standard_errors(), ref["se_gamma"], rtol=1e-2, err_msg=name
         )
         np.testing.assert_allclose(
             model.cumulative_coefficients(ref["times"]).to_numpy(),
             np.array(ref["cum"]),
-            rtol=1e-4,
-            atol=1e-8,
+            rtol=1e-10,
+            atol=1e-12,
             err_msg=name,
         )

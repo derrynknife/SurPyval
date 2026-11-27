@@ -10,15 +10,19 @@
 #
 #     Rscript scripts/reference/reference_r_cox_aalen.R
 #
-# Needs timereg and jsonlite. NOT RUN YET: written against the cox.aalen
-# documentation (timereg 2.0) -- additive terms bare, multiplicative ones
-# in prop(); n.sim = 0 (no resampling tests) and robust = 0 for the
-# model-based variance. cox.aalen's default weights and its variance
-# estimate are its own (check var.gamma against surpyval's covariance()
-# and robvar.gamma against robust_covariance() on the first run), so
-# agreement is expected on the coefficients and cumulative coefficients to
-# optimiser tolerance, and on the standard errors to a few per cent, not
-# to the last digit.
+# Needs timereg and jsonlite. Run with R 4.6.2 and timereg 2.0.7; the
+# versions are stored. Additive terms are bare, multiplicative ones in
+# prop(); n.sim = 0 (no resampling tests) and robust = 0. timereg takes
+# one event per time and breaks ties at random, so the lung data's tied
+# times are broken here first, by adding 0.001 * (rank within the tie -
+# 1) after sorting by time, then deaths first, then row; the stored x are
+# the untied times, so the Python side reads them as they are.
+#
+# On the first run (27 Nov 2026) SurPyval matched both cases' gamma and
+# cumulative coefficients to 1e-12 relative. The standard errors differ
+# by 0.2-0.4%: timereg's var.gamma is its own estimator of the same
+# variance (asymptotically equal to SurPyval's covariance()), so the test
+# holds them to 1%.
 
 suppressPackageStartupMessages({
     library(survival)
@@ -55,6 +59,10 @@ add_case <- function(name, time, status, Z, additive, times) {
 
 # survival::lung, complete cases; status 2 is a death. sex additive.
 lung_cc <- na.omit(survival::lung[, c("time", "status", "age", "sex")])
+lung_cc$row <- seq_len(nrow(lung_cc))
+lung_cc <- lung_cc[order(lung_cc$time, -lung_cc$status, lung_cc$row), ]
+lung_cc$time <- lung_cc$time +
+    0.001 * (ave(lung_cc$time, lung_cc$time, FUN = seq_along) - 1)
 add_case("lung-sex-additive", lung_cc$time, as.integer(lung_cc$status == 2),
          lung_cc[, c("age", "sex")], additive = 1L,
          times = c(100, 300, 500))

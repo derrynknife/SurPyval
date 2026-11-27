@@ -346,7 +346,8 @@ with its own ``schema``.
      - --
    * - ``CoxAalenModel``
      - ``"model": "CoxAalenModel"``
-     - ``x``, ``A``, ``A_cov``, ``A_beta_cov``, ``beta``, ``covariance``, ``robust_covariance``, ``additive``, ``multiplicative``, ``aliased``, ``n_iter``, ``converged``
+     - ``x``, ``A``, ``A_cov``, ``A_beta_cov``, ``beta``, ``covariance``, ``robust_covariance``, ``additive``, ``multiplicative``, ``aliased``, ``n_iter``, ``converged``, ``stopped_at``
+     - --
    * - ``RankAFTModel``
      - ``"model": "RankAFTModel"``
      - ``beta``, ``covariance``, ``smoothing``, ``resid``, ``resid_surv``, ``rank_weights``, ``n_iter``, ``converged``, ``data``
