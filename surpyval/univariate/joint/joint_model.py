@@ -1987,10 +1987,15 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         if self.causes is None:
             return ""
         counts = self.n_events_by_cause or {}
-        return "\nFailure modes       : " + ", ".join(
+        line = "\nFailure modes       : " + ", ".join(
             f"{cause} ({counts.get(cause, np.nan):g} failures)"
             for cause in self.causes
         )
+        # the failures of unknown mode (no label in 'e'), any of them
+        unknown = float(self.n_events) - float(sum(counts.values()))
+        if counts and unknown > 0.5:
+            line += f"; {unknown:g} of unknown mode"
+        return line
 
     def _fit_line(self) -> str:
         """What the printout's ``Fit`` line says."""

@@ -1539,9 +1539,11 @@ def _causes(
     """``(causes, index)``: the failure modes of ``e``, in order, and
     each record's (its index among them, -1 for an item still running);
     ``None`` where no event types are given, or one mode only (the model
-    of one kind of failure). What the fit of several modes cannot take
-    is refused: a failure with no mode, a mode on an item still running,
-    the accelerated survival part and the two-stage estimate."""
+    of one kind of failure); a failure with no mode (``None``) is of
+    unknown mode, -1 too (its event flag tells it from a running item).
+    What the fit of several modes cannot take is refused: a mode on an
+    item still running, the accelerated survival part and the two-stage
+    estimate."""
     from surpyval.univariate.competing_risks.labels import ordered_labels
 
     if e is None:
@@ -1561,6 +1563,20 @@ def _causes(
     mine = [labels[int(r.id)] for r in records]
     causes = ordered_labels(mine)
     if len(causes) < 2:
+        unlabelled = sum(
+            w
+            for w, label, r in zip(counts, mine, records)
+            if label is None and r.outcome != "right_censored"
+        )
+        if causes and unlabelled:
+            warnings.warn(
+                f"'e' names one failure mode ({causes[0]!r}) and "
+                f"{unlabelled:g} failure(s) have none: with one mode there "
+                "is nothing to tell apart, so every failure, labelled or "
+                "not, is fitted as one kind of failure (the model without "
+                "modes). Give the other failures' modes to fit modes.",
+                stacklevel=caller_stacklevel(),
+            )
         return None
     running = [r.outcome == "right_censored" for r in records]
     labelled = sum(
@@ -1574,18 +1590,12 @@ def _causes(
             "failure mode in 'e'. An item that has not failed has none: "
             "set their 'e' to None."
         )
-    unknown = sum(
-        w
-        for w, label, r in zip(counts, mine, running)
-        if not r and label is None
-    )
-    if unknown:
-        raise ValueError(
-            f"{unknown:g} failure(s) have no failure mode in 'e' "
-            f"(the others are {causes!r}). A failure of unknown mode is "
-            "not fitted yet: give each failure's mode, or leave 'e' out "
-            "to fit every failure as one kind."
-        )
+    # A failure with no mode in 'e' (None) is a failure of unknown mode:
+    # its likelihood is the sum over the modes of each mode's term, the
+    # hazard of failing at all times the survival of every mode (exact),
+    # or the chance of failing in its interval by any mode (inspected);
+    # the index -1 says so (:func:`._likelihood.log_event_of`,
+    # :func:`._likelihood.log_cause_fails_between`).
     if fitter.survival == "AFT":
         raise ValueError(
             "An accelerated joint model (JointAFT) takes no failure modes "
