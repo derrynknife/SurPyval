@@ -21,6 +21,7 @@ suite's rule) were fixed before any run.
 """
 
 import os
+import sys
 import warnings
 
 import numpy as np
@@ -92,7 +93,32 @@ def bounds(est, se, level):
     return lower, upper
 
 
-@pytest.mark.parametrize("clock", CLOCKS)
+#: Misses on the 0.30 release run (x86-64 Linux), released as known
+#: limitations (the maintainer's decision, 28 Nov 2026), to be fixed: the
+#: standard error of the healthy -> dead scale (parameter 4) overstates
+#: its spread over the replicates.
+_RELEASE_MISSES = {
+    "forward": "se / sd of the healthy -> dead scale 1.7581 (rule 1 +- "
+    "0.25) on x86-64 Linux",
+    "reset": "se / sd of the healthy -> dead scale 1.2652 (rule 1 +- "
+    "0.25) on x86-64 Linux",
+}
+
+
+@pytest.mark.parametrize(
+    "clock",
+    [
+        pytest.param(
+            clock,
+            marks=pytest.mark.xfail(
+                sys.platform.startswith("linux"),
+                strict=True,
+                reason=_RELEASE_MISSES[clock],
+            ),
+        )
+        for clock in CLOCKS
+    ],
+)
 def test_recovery_and_coverage(clock):
     with process_pool(max_workers=min(os.cpu_count() or 1, 4)) as pool:
         out = list(pool.map(_one, [(clock, r) for r in range(REPS)]))

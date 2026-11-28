@@ -115,8 +115,16 @@ jobs:
 
       # A per-test limit, which stops only a test that hangs, naming it:
       # the slowest cases (a regression mean's likelihood-ratio bound)
-      # take up to 15 minutes on a runner.
+      # take up to 15 minutes on a runner. One BLAS thread per process,
+      # as the test suite and the calibration studies run: with a BLAS
+      # thread per core in each of the four workers the job took 4 h 38
+      # on the 0.30 release run, and a Bayesian multi-state label check
+      # that takes 30 s on an M-series Mac ran past 40 minutes.
       - name: pytest (conformance)
+        env:
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
         run: >-
           python -m pytest surpyval/tests/conformance -m "not slow"
           -n auto --timeout=2400 --timeout-method=thread
@@ -574,9 +582,18 @@ jobs:
             job-timeout: 150
             args: >-
               surpyval/tests/calibration/test_coverage_generalized_gamma.py
-              surpyval/tests/calibration/test_coverage_new_families.py
               surpyval/tests/calibration/test_coverage_promotion_time_cure.py
               surpyval/tests/calibration/test_coverage_laplace_frailty.py
+          # The Gompertz, InverseGaussian and GeneralizedF bounds: 1000
+          # Wald and 300 likelihood-ratio replicates a family, past 2.5
+          # hours on the 0.30 release run, so a group of its own with the
+          # most a job can have.
+          - group: new-families
+            workers: '0'
+            test-timeout: 19800
+            job-timeout: 355
+            args: >-
+              surpyval/tests/calibration/test_coverage_new_families.py
           - group: new-pool-joint
             workers: '0'
             test-timeout: 5400
