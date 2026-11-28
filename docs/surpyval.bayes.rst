@@ -150,6 +150,7 @@ in :doc:`Bayesian Fitting with SurPyval`.
    :members:
 
 .. automethod:: surpyval.multistate.ParametricMultiState.fit_bayes
+   :no-index:
 
 .. autoclass:: surpyval.multistate.bayes.BayesianMultiState
    :members:
@@ -163,6 +164,7 @@ in :doc:`Bayesian Fitting with SurPyval`.
    :members:
 
 .. automethod:: surpyval.multistate.ParametricMultiStateRegression.fit_bayes
+   :no-index:
 
 .. autoclass:: surpyval.multistate.bayes.BayesianMultiStateRegression
    :members:

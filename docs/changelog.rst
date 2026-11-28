@@ -10,9 +10,15 @@ old name fails with the line to change. On 0.30 a removed name raises
 an error that names its replacement. Some results change on purpose:
 read **Changed numbers**, whose summary comes first.
 
-**Known limitations.** Four calibration studies of models new in this
+**Known limitations.** Five calibration studies of models new in this
 release missed a rule on the release run (x86-64 Linux); each is kept as
 an expected failure, with its numbers, until it is fixed:
+
+- the panel multi-state regression's standard error of one baseline
+  scale (healthy -> dead, in an illness-death design) was 1.76 times its
+  spread over 200 replicates on the forward clock and 1.27 times on the
+  reset clock (rule: within 0.25 of 1): its Wald bounds on that
+  parameter are wider than they need be;
 
 - the continuous maturity projection's Stein upper bound on the expected
   failures covered 84.5% of the time for a nominal 90% (tolerance 5.5

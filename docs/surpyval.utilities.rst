@@ -66,7 +66,8 @@ Anything computed from it is a plain array.
 
 .. autoclass:: surpyval.utils.bounds.ConfidenceBounds
    :members: wrap
-   :inherited-members: ndarray
+   :no-inherited-members:
+   :exclude-members: lower, upper
 
 Data Wrangling Utilities
 ------------------------

@@ -356,6 +356,7 @@ point. The draws come from a scrambled Sobol sequence with a fixed seed,
 so a fit gives the same numbers on every run.
 
 .. jupyter-execute::
+    :stderr:
 
     x4 = sp.Weibull.random(150, 100, 2, random_state=5) + 50
     c4 = (x4 > 170).astype(int)
