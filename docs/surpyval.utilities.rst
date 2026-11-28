@@ -16,12 +16,26 @@ Data Classes
 every univariate fitter builds one, and the parametric, non-parametric
 and regression ``fit`` methods accept one in place of the arrays (``Weibull.fit(data)``). Its constructors
 ``from_observations`` and ``from_xrd`` read the ``fsli`` and ``xrd``
-layouts, and ``to_xcnt``, ``to_observations`` and ``to_xrd`` write them. ``EventHistoryData`` holds recurrent-event data
-(each row an event of an item); build it from one
+layouts, and ``to_xcnt``, ``to_observations`` and ``to_xrd`` write them.
+
+With each row's unit ``i``, a ``SurpyvalData`` also holds recurrent-event
+data (each row an event of a unit, or the end of its observation), which
+every recurrent ``fit`` takes. Build it from the rows
+(``SurpyvalData(x, c, i=i)``), from one
 :class:`~surpyval.utils.item_history.ItemHistory` per item
-(``EventHistoryData.from_items``), from dictionaries keyed by item
-(``from_histories``), or from arrays with :func:`handle_xicn
-<surpyval.utils.recurrent_utils.handle_xicn>`.
+(``SurpyvalData.from_items``), from dictionaries keyed by item
+(``SurpyvalData.from_histories``) or from a log in a DataFrame
+(``SurpyvalData.from_dataframe``); ``to_first_events`` and ``to_gaps``
+give lifetime data from it.
+
+``EventHistoryData`` is the older class for the same data. It is
+deprecated in v0.30 and removed in v0.31: building one yourself (its
+constructor, ``from_items``, ``from_histories``, ``from_dataframe``,
+``from_dict`` and ``from_json``, :func:`handle_xicn
+<surpyval.utils.recurrent_utils.handle_xicn>` and
+``Items.event_history_data()``) warns (``FutureWarning``) and names the
+``SurpyvalData`` call that does the same. Its ``to_surpyval_data()`` gives
+the same histories as a ``SurpyvalData``.
 
 .. autoclass:: surpyval.utils.surpyval_data.SurpyvalData
    :members:
@@ -34,6 +48,26 @@ layouts, and ``to_xcnt``, ``to_observations`` and ``to_xrd`` write them. ``Event
 
 .. autoclass:: surpyval.utils.item_lifetime.ItemLifetime
    :members:
+
+``NevadaTable`` reads a warranty table of shipments by return period (a
+Nevada chart) into lifetime data, writes it back from a list of returns,
+and forecasts the survivors' returns (see "Warranty returns from a Nevada
+table" in :doc:`Parametric SurPyval Modelling`).
+
+.. autoclass:: surpyval.utils.nevada.NevadaTable
+   :members:
+
+``ConfidenceBounds`` is the array a two-sided bound comes back as where
+its columns are labelled (``NonParametricCounting.mcf_cb`` and
+``CauseSpecificMCF.mcf_cb``): ``[lower, upper]`` on the last axis, as
+every two-sided bound (see :doc:`Conventions`), with the columns also
+named, ``.lower`` and ``.upper``, and printed with their names and level.
+Anything computed from it is a plain array.
+
+.. autoclass:: surpyval.utils.bounds.ConfidenceBounds
+   :members: wrap
+   :no-inherited-members:
+   :exclude-members: lower, upper
 
 Data Wrangling Utilities
 ------------------------
@@ -68,6 +102,11 @@ deprecated and removed in the first release on or after 2027-04-12 (see
 .. autofunction:: surpyval.utils.xrd_to_xcnt
 
 .. autofunction:: surpyval.utils.round_sig
+
+Dates to durations: start and end dates (a blank end date meaning the unit is
+still running) to durations in a unit you choose and the censoring flags.
+
+.. autofunction:: surpyval.utils.dates_to_durations
 
 Unit labels (see :doc:`Conventions`): how a model stores the ``unit=`` it
 was given, and whether two labels name the same unit.

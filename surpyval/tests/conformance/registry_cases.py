@@ -50,6 +50,7 @@ from surpyval.tests.conformance.registry_families import (
 )
 from surpyval.tests.conformance.registry_fixtures import (
     JOINT_ITEM,
+    JOINT_MARKERS_ITEM,
     X_COP,
     X_COP3,
     X_CR,
@@ -80,14 +81,19 @@ from surpyval.tests.conformance.registry_fixtures import (
     equivalence_data,
     exact_event_data,
     frailty_recurrent_data,
+    genf_data,
     growth_data,
     joint_causes_data,
     joint_data,
     joint_frailty_data,
+    joint_marker_causes_data,
+    joint_markers_data,
     lfp_count_data,
     lfp_data,
     mixture_data,
     ms_data,
+    ms_interval_data,
+    ms_truncated_data,
     offset_data,
     panel_count_data,
     panel_data,
@@ -177,6 +183,10 @@ def _univariate():
         "LogNormal",
         "LogLogistic",
         "ExpoWeibull",
+        "GeneralizedGamma",
+        "Gompertz",
+        "InverseGaussian",
+        "BirnbaumSaunders",
         "Rayleigh",
         "Normal",
         "Gumbel",
@@ -188,6 +198,12 @@ def _univariate():
             fitters += (f"surpyval.{alias[name]}",)
         out.append(continuous(name, fitters=fitters))
     out.append(continuous("Uniform", data=uni_exact_data))
+    # On uni_data its maximum is at the edge P = 0 (the generalised
+    # gamma); four parameters and the incomplete beta make each refit
+    # about 0.5 s
+    out.append(
+        continuous("GeneralizedF", data=genf_data, slow=REFIT_PROPERTIES)
+    )
     out.append(
         continuous(
             "Beta",
@@ -1069,16 +1085,71 @@ def _multistate():
             clock=clock,
         )
 
-    def from_data(cls):
-        # fit(data): the spells as a SurpyvalData with states (s).
+    def from_data(cls, **opts):
+        # fit(data): the spells as a SurpyvalData with states (s); a move
+        # known only to lie between two times (x as [xl, xr]) is a row
+        # with c = 2.
         def fit(d):
+            x = np.asarray(d["x"], dtype=float)
+            c = None
+            if x.ndim == 2:
+                c = np.where(
+                    x[:, 0] < x[:, 1],
+                    2,
+                    np.array([v is None for v in d["e"]], dtype=int),
+                )
             data = sp.SurpyvalData(
-                d["x"], n=d["n"], tl=d["tl"], e=d["e"], s=d["state"],
+                x, c=c, n=d["n"], tl=d["tl"], e=d["e"], s=d["state"],
                 Z=d.get("Z"),
             )  # fmt: skip
-            return cls.fit(data, transitions=d["transitions"])
+            return cls.fit(data, transitions=d["transitions"], **opts)
 
         return fit
+
+    def interval_from_df(cls, Z=False, **opts):
+        # fit_from_df with x_col as the two columns [xl, xr]
+        def fit(d):
+            x = np.asarray(d["x"], dtype=float)
+            df = frame({**d, "x": x[:, 1]})
+            df["xl"], df["xr"] = x[:, 0], x[:, 1]
+            cols = (["xl", "xr"], ["z0"]) if Z else (["xl", "xr"],)
+            return cls.fit_from_df(
+                df,
+                *cols,
+                "e",
+                "state",
+                tl_col="tl",
+                n_col="n",
+                transitions=d["transitions"],
+                **opts,
+            )
+
+        return fit
+
+    def truncated_from_df(d):
+        df = frame(d)
+        df["i"], df["tr"] = d["i"], d["tr"]
+        return ms.ParametricMultiState.fit_from_df(
+            df,
+            "x",
+            "e",
+            "state",
+            tl_col="tl",
+            i_col="i",
+            n_col="n",
+            transitions=d["transitions"],
+            dist=sp.Exponential,
+            tr_col="tr",
+        )
+
+    def truncated_from_data(d):
+        data = sp.SurpyvalData(
+            d["x"], n=d["n"], tl=d["tl"], tr=d["tr"], e=d["e"],
+            s=d["state"], i=d["i"],
+        )  # fmt: skip
+        return ms.ParametricMultiState.fit(
+            data, transitions=d["transitions"], dist=sp.Exponential
+        )
 
     exact = "an exact (Aalen-Johansen) estimate of the spells"
     return [
@@ -1250,6 +1321,105 @@ def _multistate():
             coefficients=lambda m: m.betas,
             intercept=True,
         ),
+        # Moves known only to lie between two times (x as [xl, xr]): the
+        # transitions fitted jointly, the move's time integrated out.
+        # Exponential hazards: ten units are too few for two parameters a
+        # transition once five moves are blurred.
+        Case(
+            name="ParametricMultiState[interval]",
+            fitters=("surpyval.multistate.ParametricMultiState",),
+            model_class="surpyval.multistate.ParametricMultiState",
+            interface=STATES,
+            data=ms_interval_data,
+            fit=_fit(ms.ParametricMultiState, dist=sp.Exponential),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            paths={
+                "fit_from_df": interval_from_df(
+                    ms.ParametricMultiState, dist=sp.Exponential
+                ),
+                "fit(data)": from_data(
+                    ms.ParametricMultiState, dist=sp.Exponential
+                ),
+            },
+            exclude={
+                "convergence": "the joint search starts from the "
+                "transitions' fits to the intervals' middles and takes no "
+                "init or iteration limit to starve; a search that ends "
+                "short is checked by 'maximum'"
+            },
+        ),
+        # Units seen only because they were dead by a cut-off (right
+        # truncation): every transition fitted at once, each truncated
+        # unit's likelihood divided by its chance of dying by then.
+        Case(
+            name="ParametricMultiState[truncated]",
+            fitters=("surpyval.multistate.ParametricMultiState",),
+            model_class="surpyval.multistate.ParametricMultiState",
+            interface=STATES,
+            data=ms_truncated_data,
+            fit=_fit(ms.ParametricMultiState, dist=sp.Exponential),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n", "i", "tr"),
+            times=("x", "tl", "tr"),
+            paths={
+                "fit_from_df": truncated_from_df,
+                "fit(data)": truncated_from_data,
+            },
+            exclude={
+                "convergence": "the joint search starts from the "
+                "transitions' own fits (ignoring the truncation) and takes "
+                "no init or iteration limit to starve; a search that ends "
+                "short is checked by 'maximum'",
+                "counts": "a row repeated keeps its unit (i), so the copies "
+                "overlap in time; truncation is by unit and needs i. The "
+                "untruncated case checks counts",
+            },
+        ),
+        Case(
+            name="ParametricMultiStateRegression[interval]",
+            fitters=("surpyval.multistate.ParametricMultiStateRegression",),
+            model_class="surpyval.multistate.ParametricMultiStateRegression",
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_interval_data, True),
+            fit=_fit(
+                ms.ParametricMultiStateRegression, model=sp.ExponentialPH
+            ),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_MSR,
+            Z=Z_MS,
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            times=("x", "tl"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={
+                "fit_from_df": interval_from_df(
+                    ms.ParametricMultiStateRegression,
+                    Z=True,
+                    model=sp.ExponentialPH,
+                ),
+                "fit(data)": from_data(
+                    ms.ParametricMultiStateRegression, model=sp.ExponentialPH
+                ),
+            },
+            coefficients=lambda m: m.betas,
+            intercept=True,
+            exclude={
+                "convergence": "the joint search starts from the "
+                "transitions' fits to the intervals' middles and takes no "
+                "init or iteration limit to starve; a search that ends "
+                "short is checked by 'maximum'"
+            },
+        ),
     ]
 
 
@@ -1278,6 +1448,17 @@ def _panel_multistate():
             "censored": d["censored"],
             "exact_entry": d["exact_entry"],
         }
+
+    def parametric_from_df(d):
+        return ms.ParametricPanelMultiState.fit_from_df(
+            frame(d), "x", "s", "i", dist=sp.Exponential, **options(d)
+        )
+
+    def parametric_reg_from_df(d):
+        return ms.ParametricPanelMultiStateRegression.fit_from_df(
+            frame(d), "x", ["z0"], "s", "i", model=sp.ExponentialPH,
+            **options(d),
+        )  # fmt: skip
 
     def from_df(d):
         return ms.PanelMultiState.fit_from_df(
@@ -1326,6 +1507,65 @@ def _panel_multistate():
             coefficients=lambda m: m.betas,
             intercept=True,
             exclude=_PANEL_EXCLUDE,
+        ),
+        # A distribution per transition fitted to the visits (exponential
+        # here: fourteen units are too few for two parameters a
+        # transition; the Weibull fits are checked in the model's tests).
+        Case(
+            name="ParametricPanelMultiState",
+            fitters=("surpyval.multistate.ParametricPanelMultiState",),
+            model_class="surpyval.multistate.ParametricPanelMultiState",
+            interface=STATES,
+            data=panel_data,
+            fit=_fit(ms.ParametricPanelMultiState, dist=sp.Exponential),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_PANEL,
+            rows=("x", "s", "i"),
+            times=("x",),
+            paths={"fit_from_df": parametric_from_df},
+            exclude={
+                **_PANEL_EXCLUDE,
+                "convergence": "the search starts from a time-homogeneous "
+                "Markov fit and takes no init or iteration limit to starve; "
+                "a search that ends short is checked by 'maximum'",
+            },
+        ),
+        # A regression per transition fitted to the visits, the covariates
+        # of a visit holding until the next (ExponentialPH, as above).
+        Case(
+            name="ParametricPanelMultiStateRegression",
+            fitters=(
+                "surpyval.multistate.ParametricPanelMultiStateRegression",
+            ),
+            model_class=(
+                "surpyval.multistate.ParametricPanelMultiStateRegression"
+            ),
+            interface=STATES_REGRESSION,
+            data=functools.partial(panel_data, True),
+            fit=_fit(
+                ms.ParametricPanelMultiStateRegression, model=sp.ExponentialPH
+            ),
+            functions=(),
+            event_functions=("occupancy",),
+            events=_MS_STATES,
+            x=X_PANEL,
+            Z=Z_MS[: X_PANEL.size],
+            rows=("x", "Z", "s", "i"),
+            times=("x",),
+            covariates="Z",
+            drops_missing_covariate=False,
+            paths={"fit_from_df": parametric_reg_from_df},
+            coefficients=lambda m: m.betas,
+            intercept=True,
+            exclude={
+                **_PANEL_EXCLUDE,
+                "convergence": "the search starts from a time-homogeneous "
+                "Markov fit with covariates and takes no init or iteration "
+                "limit to starve; a search that ends short is checked by "
+                "'maximum'",
+            },
         ),
     ]
 
@@ -1765,6 +2005,7 @@ def _recurrent():
         ("CrowAMSAA", "gamma"),
         ("CoxLewis", "gamma"),
         ("Duane", "lognormal"),
+        ("CrowAMSAA", "inverse_gaussian"),
     ):
         fitter = getattr(rc, name)
         out.append(
@@ -1932,9 +2173,9 @@ def _readings_paths(fitter, **kw):
 
 
 def _degradation():
-    def da(path):
+    def da(path, label=None):
         return Case(
-            name=f"DegradationAnalysis[{path}]",
+            name=f"DegradationAnalysis[{label or path}]",
             fitters=(
                 ("surpyval.degradation.DegradationAnalysis",)
                 if path == "linear"
@@ -1960,7 +2201,9 @@ def _degradation():
             exclude={"counts": "degradation readings carry no counts"},
         )
 
+    # the spline with one knot the fit places from the readings
     out = [da("linear"), da("power")]
+    out.append(da(dg.SplinePath.natural(df=2), "spline"))
     for name in ("WienerProcess", "GammaProcess"):
         fitter = getattr(dg, name)
         out.append(
@@ -2101,6 +2344,75 @@ def _copulas():
     return out
 
 
+def _dabrowska():
+    # Dabrowska's non-parametric joint survival of two lifetimes, on the
+    # copula fixture with its second series' longest four lives censored
+    # (so the censoring is exercised).
+    def data():
+        d = copula_data()
+        c = np.zeros(d["x"].shape, int)
+        c[np.argsort(d["x"][:, 1])[-4:], 1] = 1
+        return {**d, "c": c}
+
+    def common():
+        # The same pairs with one follow-up time per unit: the four with
+        # the longest second lives are followed only until the first of
+        # their two times, both censored there (Lin-Ying needs this)
+        d = copula_data()
+        x = d["x"].copy()
+        c = np.zeros(x.shape, int)
+        rows = np.argsort(x[:, 1])[-4:]
+        x[rows] = np.min(x[rows], axis=1, keepdims=True)
+        c[rows] = 1
+        return {**d, "x": x, "c": c}
+
+    return [
+        Case(
+            name="Dabrowska",
+            fitters=("surpyval.multivariate.Dabrowska",),
+            model_class="surpyval.multivariate.BivariateNonParametric",
+            interface=BIVARIATE,
+            data=data,
+            fit=lambda d: mv.Dabrowska.fit(**d),
+            functions=("sf", "ff", "cdf"),
+            x=X_COP,
+            rows=("x", "c", "n"),
+            rtol=1e-12,
+            starve=None,
+            exclude={
+                "convergence": "a closed-form estimate: nothing to starve",
+                "maximum": "a closed-form estimate, not a search for a "
+                "maximum",
+            },
+        )
+    ] + [
+        Case(
+            name=f"Dabrowska[{estimator}]",
+            fitters=("surpyval.multivariate.Dabrowska",),
+            model_class="surpyval.multivariate.BivariateNonParametric",
+            interface=BIVARIATE,
+            data=data_for,
+            fit=lambda d, e=estimator: mv.Dabrowska.fit(
+                **d, estimator=e, common_censoring=e == "lin-ying"
+            ),
+            functions=("sf", "ff", "cdf"),
+            x=X_COP,
+            rows=("x", "c", "n"),
+            rtol=1e-12,
+            starve=None,
+            exclude={
+                "convergence": "a closed-form estimate: nothing to starve",
+                "maximum": "a closed-form estimate, not a search for a "
+                "maximum",
+            },
+        )
+        for estimator, data_for in (
+            ("prentice-cai", data),
+            ("lin-ying", common),
+        )
+    ]
+
+
 # Copulas of more than two series: (case name, family, structure)
 _COPULAS_ND = (
     ("GaussianCopula[D=3]", "Gaussian", "unstructured"),
@@ -2239,11 +2551,12 @@ def _joint():
     the area under it, or its value and slope together, or its value 90
     days earlier (a lag), or the area with exposure fading over 180 days
     (a weight), or its value with the line's start and rate uncorrelated
-    between items (``random_effects="diagonal"``); or the marker's value
-    speeds up the item's ageing (``WeibullJointAFT``); or the items fail
-    by one of two failure modes, each with a baseline, a coefficient and
-    an effect of its own (``[causes]``: the fit of data with event
-    types ``e``)."""
+    between items (``random_effects="diagonal"``), or the value of a
+    spline path with one knot placed from the readings, its bend common
+    to all items (``[spline]``); or the marker's value speeds up the
+    item's ageing (``WeibullJointAFT``); or the items fail by one of two
+    failure modes, each with a baseline, a coefficient and an effect of
+    its own (``[causes]``: the fit of data with event types ``e``)."""
     fitters = {
         "WeibullJointPH": sp.WeibullJointPH,
         "WeibullJointAFT": sp.WeibullJointAFT,
@@ -2260,6 +2573,11 @@ def _joint():
         ),
         "WeibullJointPH[diagonal]": sp.JointPH(
             sp.Weibull, random_effects="diagonal"
+        ),
+        "WeibullJointPH[spline]": sp.JointPH(
+            sp.Weibull,
+            dg.SplinePath.natural(df=2),
+            varying=("level", "rate"),
         ),
         "WeibullJointPH[causes]": sp.WeibullJointPH,
     }
@@ -2333,6 +2651,115 @@ def _joint():
                 case,
                 times=("x", "markers"),
                 call_kwargs=dict(JOINT_ITEM),
+                call_times=("markers", "given"),
+                events=("a", "b") if causes else (),
+            )
+        )
+    return out
+
+
+def _joint_markers():
+    """The joint model of two markers (``JointPH(Weibull, {name: path,
+    ...})``): :func:`joint_markers_data`'s vibration and temperature,
+    each a line with its level varying between items (correlated across
+    the markers) and a common rate, the hazard following both markers'
+    values; predicting for one item read with both and still running at
+    400 (``JOINT_MARKERS_ITEM``). ``[markers+causes]`` is the same model
+    of :func:`joint_marker_causes_data`'s items, failing by one of two
+    modes, each with a baseline, a coefficient and an effect of each
+    marker of its own (``e``)."""
+    fitter = sp.JointPH(
+        sp.Weibull,
+        {"vibration": dg.LinearPath, "temperature": dg.LinearPath},
+        varying=["vibration.a", "temperature.a"],
+    )
+
+    def measurements(d):
+        ids = [f"u{k}" for k in range(len(d["x"]))]
+        return ids, sp.Measurements(
+            {
+                name: {i: dict(r[name]) for i, r in zip(ids, d["markers"])}
+                for name in ("vibration", "temperature")
+            }
+        )
+
+    def from_arrays(d):
+        ids, m = measurements(d)
+        return fitter.fit(
+            d["x"], c=d["c"], n=d["n"], Z=d["Z"], i=ids, m=m, e=d.get("e")
+        )
+
+    def from_data(d):
+        ids, m = measurements(d)
+        return fitter.fit(
+            sp.SurpyvalData(
+                d["x"],
+                c=d["c"],
+                n=d["n"],
+                Z=d["Z"],
+                i=ids,
+                m=m,
+                e=d.get("e"),
+            )
+        )
+
+    def from_df(d):
+        return fitter.fit_from_df(
+            pd.DataFrame(
+                {
+                    "x": d["x"],
+                    "c": d["c"],
+                    "n": d["n"],
+                    "z0": np.asarray(d["Z"])[:, 0],
+                    "markers": list(d["markers"]),
+                    **({"e": d["e"]} if "e" in d else {}),
+                }
+            ),
+            x_col="x",
+            markers_col="markers",
+            c_col="c",
+            n_col="n",
+            Z_cols=["z0"],
+            e_col="e" if "e" in d else None,
+        )
+
+    out = []
+    for name, data in (
+        ("WeibullJointPH[markers]", joint_markers_data),
+        ("WeibullJointPH[markers+causes]", joint_marker_causes_data),
+    ):
+        causes = name.endswith("causes]")
+        case = regression(
+            name,
+            fitter,
+            fitters=(),
+            model_class="surpyval.univariate.joint.JointModel",
+            data=data,
+            x=X_JOINT,
+            Z=np.ones((X_JOINT.size, 1)),
+            functions=("sf", "ff"),
+            z_style="single",
+            paths={
+                "fit_from_df": from_df,
+                "fit(measurements)": from_arrays,
+                "fit(data)": from_data,
+            },
+            rows=("x", "Z", "c", "n", "markers") + (("e",) if causes else ()),
+            coefficients=_joint_coefficients,
+            intercept=True,
+            draw=None,
+            exclude={
+                "random_sf": "an item's draws depend on its readings: "
+                "JointModel.predict(...).random(size) draws for one item",
+                "row_independence": "one item a call (Z is its covariate "
+                "vector), so there are no rows to mix up",
+            },
+        )
+        out.append(
+            replace(
+                case,
+                times=("x", "markers"),
+                call_kwargs=dict(JOINT_MARKERS_ITEM),
                 call_times=("markers", "given"),
                 events=("a", "b") if causes else (),
             )
@@ -2466,6 +2893,47 @@ def _mixture_cure():
                     else ()
                 ),
                 slow=(frozenset() if name in FAST_CURE else REFIT_PROPERTIES),
+                coefficients=_cure_coefficients,
+                intercept=True,
+            )
+        )
+    return out
+
+
+FAST_PROMOTION = ("WeibullPromotionTimeCure",)
+
+
+def _promotion_time_cure():
+    """The promotion-time cure regressions on the mixture-cure fixture
+    (its plateau identifies theta as it identifies lfp_p), with the
+    default covariates: every column on theta."""
+    out = []
+    for base in CURE_LATENCIES:
+        name = base + "PromotionTimeCure"
+        out.append(
+            regression(
+                name,
+                getattr(sp, name),
+                data=cure_data,
+                model_class=(
+                    "surpyval.univariate.regression."
+                    "DistributionalRegressionModel"
+                ),
+                fitters=(f"surpyval.{name}",)
+                + (
+                    (
+                        "surpyval.PromotionTimeCure",
+                        "surpyval.univariate.regression."
+                        "PromotionTimeCureFitter",
+                        "surpyval.univariate.regression."
+                        "PromotionTimeCureModel",
+                    )
+                    if base == "Weibull"
+                    else ()
+                ),
+                slow=(
+                    frozenset() if name in FAST_PROMOTION else REFIT_PROPERTIES
+                ),
                 coefficients=_cure_coefficients,
                 intercept=True,
             )
@@ -2711,6 +3179,604 @@ def _bayes():
 
 
 # ---------------------------------------------------------------------------
+# Bayesian fits of the recurrent-event processes (surpyval.recurrent.bayes)
+# ---------------------------------------------------------------------------
+def _bayes_hpp_priors(d):
+    """A Gamma prior on the HPP's rate whose second parameter is a time
+    (``prior_time``, rescaled with the data): the closed form."""
+    return {
+        "lambda": sp.Gamma.from_params(
+            [2.0, float(np.asarray(d["prior_time"]))]
+        )
+    }
+
+
+def _bayes_recurrence_fit(fitter, priors=None):
+    def run(d):
+        return fitter.fit_bayes(
+            d["x"],
+            d.get("i"),
+            d.get("c"),
+            d.get("n"),
+            priors=None if priors is None else priors(d),
+        )
+
+    return run
+
+
+def _bayes_recurrence_data_path(fitter, priors=None):
+    """The fixture as an event-history container."""
+
+    def run(d):
+        data = sp.handle_xicn(d["x"], d["i"], d["c"], d["n"])
+        return fitter.fit_bayes(
+            data, priors=None if priors is None else priors(d)
+        )
+
+    return run
+
+
+#: A recurrent-event Bayesian fit's credible intervals: ``cri`` on every
+#: function it takes, each parameter's, and the instantaneous MTBF now
+#: (at the latest time observed) and at a later time.
+_BAYES_RECURRENCE_BOUNDS = (
+    Bound("cri", on=("cif", "iif", "mtbf"), wald=False),
+    Bound("param_cri", kind="param", wald=False),
+    Bound("mtbf_cri", kind="summary", query=((), (40.0,)), wald=False),
+)
+#: A proportional intensity fit's: the same, for one covariate set a call.
+_BAYES_PI_BOUNDS = (
+    Bound("cri", on=("cif", "iif", "mtbf"), wald=False),
+    Bound("param_cri", kind="param", wald=False),
+    Bound(
+        "mtbf_cri",
+        kind="summary",
+        query=(([0.5],), ([1.0], 40.0)),
+        wald=False,
+    ),
+)
+#: Cause-specific fits': each cause's process, all causes together (4,000
+#: joint draws, fixed seed) and each cause's parameters.
+_BAYES_CAUSES_BOUNDS = (
+    Bound("cri", on=("cif", "iif", "mtbf"), wald=False, per_cause=True),
+    Bound("cri", on=("cif", "iif", "mtbf"), wald=False, label="cri[total]"),
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=(("a", "alpha"), ("a", "beta"), ("b", "alpha"), ("b", "beta")),
+        wald=False,
+    ),
+)
+_BAYES_RECURRENCE_EXCLUDE = {
+    "convergence": "not an optimiser: the grid checks its own accuracy and "
+    "refuses when it cannot reach it, and a closed form has nothing to "
+    "starve (tests/bayes/test_recurrent_bayes.py)",
+    # (as for the maximum-likelihood fits of the same processes)
+    "counts": "the xicn format refuses a count above 1 on an event row",
+}
+
+
+def _bayes_recurrent():
+    def hpp_data():
+        return {**recurrent_data(), "prior_time": 20.0}
+
+    common = dict(
+        model_class="surpyval.recurrent.BayesianRecurrence",
+        interface=COUNTING,
+        functions=("cif", "iif", "mtbf"),
+        x=X_REC,
+        rows=("x", "i", "c", "n"),
+        explicit_seed=True,
+        draw=lambda m, s: m.draw_models(3, random_state=s)[0].params,
+        exclude=dict(_BAYES_RECURRENCE_EXCLUDE),
+    )
+    out = [
+        # the grid, flat priors on the log scales (no time unit in them)
+        Case(
+            name="CrowAMSAA[bayes]",
+            fitters=("surpyval.recurrent.BayesianRecurrence",),
+            data=recurrent_data,
+            fit=_bayes_recurrence_fit(rc.CrowAMSAA),
+            paths={
+                "fit(data)": _bayes_recurrence_data_path(rc.CrowAMSAA),
+            },
+            rtol=1e-6,
+            **common,
+        ),
+        # the closed form
+        Case(
+            name="HPP[bayes]",
+            fitters=(),
+            data=hpp_data,
+            fit=_bayes_recurrence_fit(rc.HPP, _bayes_hpp_priors),
+            paths={
+                "fit(data)": _bayes_recurrence_data_path(
+                    rc.HPP, _bayes_hpp_priors
+                ),
+            },
+            times=("x", "prior_time"),
+            rtol=1e-9,
+            **common,
+        ),
+        Case(
+            name="ProportionalIntensityHPP[bayes]",
+            fitters=("surpyval.recurrent.BayesianProportionalIntensity",),
+            model_class="surpyval.recurrent.BayesianProportionalIntensity",
+            interface=COUNTING_REGRESSION,
+            data=functools.partial(recurrent_data, True),
+            fit=lambda d: rc.ProportionalIntensityHPP.fit_bayes(
+                d["x"], d["Z"], d["i"], d["c"], d["n"]
+            ),
+            functions=("cif", "iif", "mtbf"),
+            x=X_REC,
+            Z=Z_REC,
+            # one covariate set a call
+            z_style="single",
+            rows=("x", "Z", "i", "c", "n"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            coefficients=lambda m: np.asarray(m.params[1:]),
+            # the baseline rate absorbs a constant
+            intercept=True,
+            explicit_seed=True,
+            draw=lambda m, s: m.draw_models(3, random_state=s)[0].params,
+            rtol=1e-6,
+            exclude={
+                **_BAYES_RECURRENCE_EXCLUDE,
+                **{
+                    key: "a column the data do not determine is refused, "
+                    "naming its coefficient and saying to leave the column "
+                    "out (a posterior along it would be its prior's), "
+                    "not aliased"
+                    for key in ("aliasing", "aliasing_constant")
+                },
+            },
+        ),
+        Case(
+            name="CauseSpecificNHPP[bayes]",
+            fitters=("surpyval.recurrent.BayesianCauseSpecific",),
+            model_class="surpyval.recurrent.BayesianCauseSpecific",
+            interface=COUNTING_CAUSES,
+            data=functools.partial(recurrent_data, False, True),
+            fit=lambda d: rc.CauseSpecificNHPP.fit_bayes(
+                d["x"], d["i"], d["c"], d["n"], e=d["e"]
+            ),
+            # The total MTBF over the causes is a median of 4,000 joint
+            # draws (fixed seeds, one a cause in order): a Monte Carlo
+            # number, not a function the change of unit or of labels
+            # keeps to 1e-6. Its interval is swept (cri[total]).
+            functions=("cif", "iif"),
+            event_functions=("cif", "iif", "mtbf"),
+            events=("a", "b"),
+            x=X_REC,
+            rows=("x", "i", "c", "n", "e"),
+            rtol=1e-6,
+            exclude=dict(_BAYES_RECURRENCE_EXCLUDE),
+        ),
+    ]
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Bayesian fits of the renewal and imperfect-repair processes
+# (surpyval.recurrent.renewal.bayes): the grid sliced along the repair
+# parameter
+# ---------------------------------------------------------------------------
+#: A renewal process's credible intervals: each parameter's (each unit's
+#: next-failure interval, a units-by-times matrix, is not swept; see
+#: test_options.NOT_SWEPT).
+_BAYES_RENEWAL_BOUNDS = (Bound("param_cri", kind="param", wald=False),)
+
+
+def _bayes_renewals():
+    out = []
+    for name, kw in (
+        ("GeneralizedRenewal", {}),
+        ("ARA", {"m": 2}),
+        ("ARI", {"m": 1}),
+    ):
+        fitter = getattr(rc, name)
+        out.append(
+            Case(
+                name=f"{name}[bayes]",
+                fitters=("surpyval.recurrent.renewal.bayes.BayesianRenewal",),
+                model_class="surpyval.recurrent.renewal.bayes.BayesianRenewal",
+                interface=COUNTING,
+                data=recurrent_data,
+                fit=functools.partial(_bayes_renewal_fit, fitter, kw),
+                # The new system's MCF is simulated over posterior draws;
+                # a fixed seed makes it a function.
+                functions=("mcf",),
+                call_kwargs={"draws": 20, "items": 10, "random_state": 1},
+                x=X_REC,
+                rows=("x", "i", "c", "n"),
+                paths={
+                    "fit(data)": functools.partial(
+                        _bayes_renewal_data_path, fitter, kw
+                    ),
+                },
+                explicit_seed=True,
+                draw=lambda m, s: m.draw_models(3, random_state=s)[0].params,
+                rtol=1e-6,
+                exclude=dict(_BAYES_RECURRENCE_EXCLUDE),
+            )
+        )
+    return out
+
+
+def _bayes_renewal_fit(fitter, kw, d):
+    return fitter.fit_bayes(d["x"], d.get("i"), d.get("c"), d.get("n"), **kw)
+
+
+def _bayes_renewal_data_path(fitter, kw, d):
+    data = sp.handle_xicn(d["x"], d["i"], d["c"], d["n"])
+    return fitter.fit_bayes(data, **kw)
+
+
+# ---------------------------------------------------------------------------
+# Bayesian competing risks and multi-state models (compositions of the
+# causes' or transitions' own Bayesian fits; the causes fitted together
+# where failures are found in a window)
+# ---------------------------------------------------------------------------
+#: A Bayesian competing-risks fit's credible intervals (4,000 joint draws,
+#: or 1,024 at a regression's covariate row; fixed seeds): each cause's
+#: incidence, the all-cause survival and failure probability, the
+#: all-cause B-life, and each cause's parameters.
+_BAYES_CR_BOUNDS = (
+    Bound("cri", on=("cif",), wald=False, per_cause=True, label="cri[cif]"),
+    Bound("cri", on=("sf", "ff"), wald=False, label="cri[all-cause]"),
+    Bound("quantile_cri", point="qf", wald=False),
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=(("a", "failure_rate"), ("b", "failure_rate")),
+        wald=False,
+    ),
+)
+#: A Bayesian competing-risks regression's: the same at the first
+#: covariate row, and each cause's coefficient.
+_BAYES_CRR_BOUNDS = _BAYES_CR_BOUNDS[:3] + (
+    # (a coefficient may be negative: no range to stay in)
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=(("a", "coef_0"), ("b", "coef_0")),
+        wald=False,
+        in_range=False,
+        label="param_cri[coef]",
+    ),
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=(("a", "beta"),),
+        wald=False,
+    ),
+)
+#: A Bayesian multi-state fit's: each state's occupation probability and
+#: expected time in it, over 1,000 joint draws.
+_BAYES_MS_BOUNDS = (
+    Bound(
+        "occupancy_cri",
+        point="occupancy",
+        wald=False,
+        per_cause=True,
+        label="occupancy_cri",
+    ),
+    Bound(
+        "length_of_stay_cri",
+        point="length_of_stay",
+        wald=False,
+        per_cause=True,
+        in_range=False,
+        label="length_of_stay_cri",
+    ),
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=((("healthy", "ill"), "failure_rate"),),
+        wald=False,
+    ),
+)
+_BAYES_MSR_BOUNDS = _BAYES_MS_BOUNDS[:2] + (
+    # (a coefficient may be negative: no range to stay in)
+    Bound(
+        "param_cri",
+        kind="summary",
+        query=((("healthy", "ill"), "z0"),),
+        wald=False,
+        in_range=False,
+    ),
+)
+_BAYES_COMPOSITION_EXCLUDE = {
+    "convergence": "not an optimiser: each cause's (transition's) "
+    "posterior is its distribution's or regression's own fit_bayes, whose "
+    "engines check their own accuracy (tests/bayes/test_fit_bayes.py, "
+    "tests/bayes/test_laplace.py); a joint fit's grid refuses as theirs",
+}
+
+
+def _pcr_bayes(d, **kw):
+    return cr.ParametricCompetingRisks.fit_bayes(
+        d["x"], d["e"], c=d.get("c"), n=d.get("n"), **kw
+    )
+
+
+def _bayes_competing_risks():
+    interval_data = next(
+        c.data
+        for c in _competing_risks()
+        if c.name == "ParametricCompetingRisks[interval]"
+    )
+    causes = dict(
+        interface=CAUSES,
+        functions=("sf", "ff", "Hf", "hf", "df", "qf"),
+        event_functions=("cif",),
+        events=("a", "b"),
+        x=X_CR,
+        rtol=1e-6,
+        exclude=dict(_BAYES_COMPOSITION_EXCLUDE),
+    )
+    model_class = (
+        "surpyval.univariate.competing_risks.parametric.bayes"
+        ".BayesianCompetingRisks"
+    )
+    return [
+        # a cause at a time, the grid of each Weibull
+        Case(
+            name="ParametricCompetingRisks[bayes]",
+            fitters=(model_class,),
+            model_class=model_class,
+            data=cr_data,
+            # (Exponential causes: a one-parameter grid each, so that
+            # the suite's many refits stay quick; the Weibull grids are
+            # checked in tests/bayes/test_competing_risks_bayes.py)
+            fit=functools.partial(_pcr_bayes, dist=sp.Exponential),
+            rows=("x", "e", "n"),
+            **causes,
+        ),
+        # failures found in a window: both causes together on one grid
+        Case(
+            name="ParametricCompetingRisks[interval, bayes]",
+            fitters=(),
+            model_class=model_class,
+            data=interval_data,
+            fit=functools.partial(_pcr_bayes, dist=sp.Exponential),
+            rows=("x", "c", "e", "n"),
+            # (each incidence a mean over the joint grid's 42,000 points)
+            slow=REFIT_PROPERTIES,
+            **causes,
+        ),
+        Case(
+            name="ParametricCompetingRisksRegression[bayes]",
+            fitters=(
+                "surpyval.univariate.competing_risks.regression.bayes"
+                ".BayesianCompetingRisksRegression",
+            ),
+            model_class=(
+                "surpyval.univariate.competing_risks.regression.bayes"
+                ".BayesianCompetingRisksRegression"
+            ),
+            interface=CAUSES_REGRESSION,
+            data=functools.partial(cr_data, True),
+            fit=lambda d: cr.ParametricCompetingRisksRegression.fit_bayes(
+                d["x"], d["Z"], d["e"], n=d.get("n")
+            ),
+            functions=("sf", "ff"),
+            event_functions=("cif",),
+            events=("a", "b"),
+            x=X_CR,
+            Z=Z_CR,
+            # one covariate row a call
+            z_style="single",
+            rows=("x", "Z", "e", "n"),
+            covariates="Z",
+            coefficients=lambda m: np.array(
+                [
+                    np.asarray(m.models[k].params, dtype=float)[2:]
+                    for k in m.causes
+                ]
+            ),
+            intercept=True,
+            rtol=1e-6,
+            exclude={
+                **_BAYES_COMPOSITION_EXCLUDE,
+                **{
+                    key: "a column the data do not determine is refused "
+                    "by each cause's regression fit_bayes, naming its "
+                    "coefficient, not aliased"
+                    for key in ("aliasing", "aliasing_constant")
+                },
+            },
+        ),
+    ]
+
+
+def _bayes_multistate():
+    common = dict(
+        functions=(),
+        event_functions=("occupancy",),
+        events=_MS_STATES,
+        times=("x", "tl"),
+        rtol=1e-6,
+        exclude=dict(_BAYES_COMPOSITION_EXCLUDE),
+    )
+    return [
+        Case(
+            name="ParametricMultiState[bayes]",
+            fitters=("surpyval.multistate.bayes.BayesianMultiState",),
+            model_class="surpyval.multistate.bayes.BayesianMultiState",
+            interface=STATES,
+            data=ms_data,
+            fit=lambda d: ms.ParametricMultiState.fit_bayes(
+                d["x"],
+                d["e"],
+                d["state"],
+                tl=d["tl"],
+                n=d.get("n"),
+                transitions=d["transitions"],
+                dist=sp.Exponential,
+            ),
+            x=X_MS,
+            rows=("x", "e", "state", "tl", "n"),
+            **common,
+        ),
+        Case(
+            name="ParametricMultiStateRegression[bayes]",
+            fitters=(
+                "surpyval.multistate.bayes.BayesianMultiStateRegression",
+            ),
+            model_class=(
+                "surpyval.multistate.bayes.BayesianMultiStateRegression"
+            ),
+            interface=STATES_REGRESSION,
+            data=functools.partial(ms_data, True),
+            fit=lambda d: ms.ParametricMultiStateRegression.fit_bayes(
+                d["x"],
+                d["Z"],
+                d["e"],
+                d["state"],
+                tl=d["tl"],
+                n=d.get("n"),
+                transitions=d["transitions"],
+                model=sp.ExponentialPH,
+            ),
+            x=X_MSR,
+            Z=Z_MS,
+            z_style="single",
+            rows=("x", "Z", "e", "state", "tl", "n"),
+            covariates="Z",
+            drops_missing_covariate=False,
+            coefficients=lambda m: np.array(
+                [
+                    np.asarray(f.params, dtype=float)[1:]
+                    for f in m.models.values()
+                ]
+            ),
+            intercept=True,
+            **{
+                **common,
+                "exclude": {
+                    **_BAYES_COMPOSITION_EXCLUDE,
+                    **{
+                        key: "a column the data do not determine is "
+                        "refused by each transition's regression "
+                        "fit_bayes, naming its coefficient, not aliased"
+                        for key in ("aliasing", "aliasing_constant")
+                    },
+                },
+            },
+        ),
+    ]
+
+
+def _bayes_regression_fit(d):
+    """A Bayesian Weibull proportional hazards fit (the Laplace engine): a
+    prior on the shape, the default on the coefficients."""
+    return sp.WeibullPH.fit_bayes(
+        d["x"],
+        d["Z"],
+        d.get("c"),
+        d.get("n"),
+        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
+    )
+
+
+def _bayes_regression_df(d):
+    cols = [f"z{k}" for k in range(d["Z"].shape[1])]
+    df = pd.DataFrame(d["Z"], columns=cols)
+    df["x"], df["c"], df["n"] = d["x"], d["c"], d["n"]
+    return sp.WeibullPH.fit_bayes_from_df(
+        df,
+        x_col="x",
+        Z_cols=cols,
+        c_col="c",
+        n_col="n",
+        priors={"beta": sp.prior.around(2, between=(1.2, 4))},
+    )
+
+
+#: A Bayesian regression's credible intervals (as the distributions':
+#: no ``mean_cri``, and the hazard's is not swept, for the reason given at
+#: ``_BAYES_BOUNDS``).
+_BAYES_REGRESSION_BOUNDS = (
+    Bound("cri", on=("sf", "ff", "Hf", "df"), wald=False),
+    Bound("quantile_cri", point="qf", wald=False),
+    Bound("param_cri", kind="param", wald=False),
+)
+
+
+def _bayes_cure_fit(d):
+    """A Bayesian Weibull mixture-cure regression (the Laplace engine):
+    the default priors on the coefficients."""
+    return sp.WeibullMixtureCure.fit_bayes(
+        d["x"], d["Z"], d.get("c"), d.get("n")
+    )
+
+
+def _bayes_cure_df(d):
+    cols = [f"z{k}" for k in range(d["Z"].shape[1])]
+    df = pd.DataFrame(d["Z"], columns=cols)
+    df["x"], df["c"], df["n"] = d["x"], d["c"], d["n"]
+    return sp.WeibullMixtureCure.fit_bayes_from_df(
+        df, x_col="x", Z_cols=cols, c_col="c", n_col="n"
+    )
+
+
+def _bayes_regression():
+    return [
+        regression(
+            "WeibullMixtureCure[bayes]",
+            sp.WeibullMixtureCure,
+            data=cure_data,
+            fitters=("surpyval.bayes.regression.BayesianMixtureCure",),
+            model_class="surpyval.bayes.regression.BayesianMixtureCure",
+            fit=_bayes_cure_fit,
+            paths={"fit_from_df": _bayes_cure_df},
+            rtol=1e-6,
+            slow=REFIT_PROPERTIES,
+            coefficients=_cure_coefficients,
+            intercept=True,
+            exclude={
+                "convergence": "not an optimiser: the Laplace engine "
+                "refuses where the posterior has no peak, and checks its "
+                "normal against the exact posterior "
+                "(tests/bayes/test_laplace.py)",
+                **{
+                    key: "a column the data do not determine is refused, "
+                    "naming its coefficient and saying to leave the column "
+                    "out (a posterior along it would be its prior's), "
+                    "not aliased"
+                    for key in ("aliasing", "aliasing_constant")
+                },
+            },
+        ),
+        regression(
+            "WeibullPH[bayes]",
+            sp.WeibullPH,
+            fitters=("surpyval.bayes.BayesianRegression",),
+            model_class="surpyval.bayes.BayesianRegression",
+            fit=_bayes_regression_fit,
+            paths={"fit_from_df": _bayes_regression_df},
+            rtol=1e-6,
+            slow=REFIT_PROPERTIES,
+            exclude={
+                "convergence": "not an optimiser: the Laplace engine "
+                "refuses where the posterior has no peak, and checks its "
+                "normal against the exact posterior "
+                "(tests/bayes/test_laplace.py)",
+                **{
+                    key: "a column the data do not determine is refused, "
+                    "naming its coefficient and saying to leave the column "
+                    "out (a posterior along it would be its prior's), "
+                    "not aliased"
+                    for key in ("aliasing", "aliasing_constant")
+                },
+            },
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Landmark supermodels: dynamic prediction from a landmark s
 # ---------------------------------------------------------------------------
 #: The landmark the conformance queries predict from (inside X_REG).
@@ -2927,16 +3993,24 @@ CASES: list[Case] = (
     + _degradation()
     + _copulas()
     + _copulas_nd()
+    + _dabrowska()
     + _vines()
     + _joint()
+    + _joint_markers()
     + _spline_regression()
     + _distributional()
     + _mixture_cure()
+    + _promotion_time_cure()
     + _equivalence()
     + _zero_inflated()
     + _landmark()
     + _panel_multistate()
     + _bayes()
+    + _bayes_regression()
+    + _bayes_recurrent()
+    + _bayes_renewals()
+    + _bayes_competing_risks()
+    + _bayes_multistate()
     + _panel_count()
     + _relative()
 )
@@ -3014,6 +4088,23 @@ def _col_df(fitter, keys=("x", "i", "c", "n", "e"), **fixed):
     return run
 
 
+def _bayes_col_df(fitter, keys, priors=None, **fixed):
+    """The ``<key>_col`` names of a recurrent fitter's fit_bayes_from_df
+    (the Bayesian options as the case's ``fit`` passes them)."""
+
+    def run(d):
+        df, _ = _frame(d, keys + ("Z",))
+        names = {f"{k}_col": k for k in keys if k in df}
+        if "Z" in d:
+            names["Z_cols"] = _column_names(df, "Z")
+        options = dict(fixed)
+        if priors is not None:
+            options["priors"] = priors(d)
+        return fitter.fit_bayes_from_df(df, **names, **options)
+
+    return run
+
+
 def _copula_df(fitter, **fixed):
     def run(d):
         df, rest = _frame(d, ("x", "n"))
@@ -3079,6 +4170,23 @@ def _df_paths():
     paths["ARI"] = _col_df(rc.ARI, m=1)
     paths["CauseSpecificMCF"] = _col_df(rc.CauseSpecificMCF)
     paths["CauseSpecificNHPP"] = _col_df(rc.CauseSpecificNHPP)
+    paths["CrowAMSAA[bayes]"] = _bayes_col_df(
+        rc.CrowAMSAA, ("x", "i", "c", "n")
+    )
+    paths["GeneralizedRenewal[bayes]"] = _bayes_col_df(
+        rc.GeneralizedRenewal, ("x", "i", "c", "n")
+    )
+    paths["ARA[bayes]"] = _bayes_col_df(rc.ARA, ("x", "i", "c", "n"), m=2)
+    paths["ARI[bayes]"] = _bayes_col_df(rc.ARI, ("x", "i", "c", "n"), m=1)
+    paths["HPP[bayes]"] = _bayes_col_df(
+        rc.HPP, ("x", "i", "c", "n"), _bayes_hpp_priors
+    )
+    paths["ProportionalIntensityHPP[bayes]"] = _bayes_col_df(
+        rc.ProportionalIntensityHPP, ("x", "i", "c", "n")
+    )
+    paths["CauseSpecificNHPP[bayes]"] = _bayes_col_df(
+        rc.CauseSpecificNHPP, ("x", "i", "c", "n", "e")
+    )
     for label, name, kw in (
         ("AndersenGill", "AndersenGill", {}),
         ("PrenticeWilliamsPeterson", "PrenticeWilliamsPeterson", {}),
@@ -3115,6 +4223,21 @@ def _df_paths():
             margins=[sp.Weibull, sp.Weibull],
             rotation=rotation,
         )
+    for estimator in ("dabrowska", "prentice-cai", "lin-ying"):
+        name = (
+            "Dabrowska"
+            if estimator == "dabrowska"
+            else f"Dabrowska[{estimator}]"
+        )
+        paths[name] = lambda d, e=estimator: mv.Dabrowska.fit_from_df(
+            _frame(d, ("x", "c", "n"))[0],
+            x_cols=["x0", "x1"],
+            c_cols=["c0", "c1"],
+            n_col="n",
+            estimator=e,
+            common_censoring=e == "lin-ying",
+        )
+    paths.update(_bayes_cr_ms_df_paths())
     # (its fixture has no counts: the rows alone)
     paths["ClaytonCopula[margins=KaplanMeier]"] = lambda d: (
         mv.Clayton.fit_from_df(
@@ -3124,6 +4247,93 @@ def _df_paths():
         )
     )
     return paths
+
+
+def _bayes_cr_ms_df_paths():
+    """fit_bayes_from_df of the competing-risks and multi-state fitters,
+    with the options each case's fit passes."""
+
+    def pcr(d):
+        df = pd.DataFrame({"x": d["x"], "e": d["e"], "n": d["n"]})
+        return cr.ParametricCompetingRisks.fit_bayes_from_df(
+            df, "x", "e", n_col="n", dist=sp.Exponential
+        )
+
+    def pcr_interval(d):
+        df = pd.DataFrame(
+            {
+                "lo": d["x"][:, 0],
+                "hi": d["x"][:, 1],
+                "c": d["c"],
+                "e": d["e"],
+                "n": d["n"],
+            }
+        )
+        return cr.ParametricCompetingRisks.fit_bayes_from_df(
+            df,
+            None,
+            "e",
+            c_col="c",
+            n_col="n",
+            xl_col="lo",
+            xr_col="hi",
+            dist=sp.Exponential,
+        )
+
+    def pcrr(d):
+        df = pd.DataFrame(
+            {"x": d["x"], "e": d["e"], "n": d["n"], "z0": d["Z"][:, 0]}
+        )
+        return cr.ParametricCompetingRisksRegression.fit_bayes_from_df(
+            df, "x", "e", Z_cols=["z0"], n_col="n"
+        )
+
+    def spells(d):
+        df = pd.DataFrame(
+            {
+                "x": d["x"],
+                "e": d["e"],
+                "state": d["state"],
+                "tl": d["tl"],
+                "n": d["n"],
+            }
+        )
+        if "Z" in d:
+            df["z0"] = d["Z"][:, 0]
+        return df
+
+    def pms(d):
+        return ms.ParametricMultiState.fit_bayes_from_df(
+            spells(d),
+            "x",
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+            dist=sp.Exponential,
+        )
+
+    def pmsr(d):
+        return ms.ParametricMultiStateRegression.fit_bayes_from_df(
+            spells(d),
+            "x",
+            ["z0"],
+            "e",
+            "state",
+            tl_col="tl",
+            n_col="n",
+            transitions=d["transitions"],
+            model=sp.ExponentialPH,
+        )
+
+    return {
+        "ParametricCompetingRisks[bayes]": pcr,
+        "ParametricCompetingRisks[interval, bayes]": pcr_interval,
+        "ParametricCompetingRisksRegression[bayes]": pcrr,
+        "ParametricMultiState[bayes]": pms,
+        "ParametricMultiStateRegression[bayes]": pmsr,
+    }
 
 
 def _add_df_path(case, paths=_df_paths()):
@@ -3205,6 +4415,7 @@ _REGRESSION_LR_X = {
     "WeibullDistributional": (2.0, 8.0),
     "LogNormalDistributional": (2.0, 8.0),
     "WeibullMixtureCure": (2.0, 8.0),
+    "WeibullPromotionTimeCure": (2.0, 8.0),
     "WeibullZeroInflated": (2.0, 8.0),
 }
 
@@ -3323,6 +4534,16 @@ def _parametric_bounds(case):
                     label="rmst_cb[wald]",
                 )
             )
+        # The next window's survival, given an age (cs_cb)
+        out.append(
+            Bound(
+                "cs_cb",
+                kind="summary",
+                kwargs={"method": "wald"},
+                query=_window_query(case),
+                label="cs_cb[wald]",
+            )
+        )
     # The likelihood-ratio search is swept on the cases in _LR_X only.
     # The ExpoWeibull's and NegativeBinomial's sweeps (searches in
     # multi-parameter valleys, seconds each) took about ten minutes on
@@ -3416,7 +4637,28 @@ def _parametric_bounds(case):
                 **lr,
             )
         )
+        out.append(
+            Bound(
+                "cs_cb",
+                kind="summary",
+                kwargs={"method": "lr"},
+                query=_window_query(case),
+                label="cs_cb[lr]",
+                **lr,
+            )
+        )
     return tuple(out)
+
+
+def _window_query(case, Z=None):
+    """The windows ``cs_cb`` is swept at: from the case's first query time
+    to its second, and from its second to its last (with the first
+    covariate row of a regression case)."""
+    x = np.sort(np.asarray(case.x, dtype=float))
+    pairs = ((x[1] - x[0], x[0]), (x[-1] - x[1], x[1]))
+    if Z is None:
+        return pairs
+    return tuple((w, g, Z) for w, g in pairs)
 
 
 def _rmst_tau(case):
@@ -3426,14 +4668,14 @@ def _rmst_tau(case):
 
 def _nonparametric_bounds(case):
     out = []
-    for bound_type in ("exp", "normal"):
+    for bound_type in ("log-log", "plain"):
         for interp in ("step", "linear", "cubic"):
             out.append(
                 Bound(
                     "cb",
                     on=_ON_SURVIVAL,
                     kwargs={"bound_type": bound_type, "interp": interp},
-                    in_range=bound_type == "exp",
+                    in_range=bound_type == "log-log",
                     nan_ok=True,
                     label=f"cb[{bound_type},{interp}]",
                 )
@@ -3451,7 +4693,7 @@ def _nonparametric_bounds(case):
                     # onto the estimate. (It used to be left out because
                     # the search at alpha_ci -> 1 did not end, #420.)
                     wald=False,
-                    in_range=bound_type == "exp",
+                    in_range=bound_type == "log-log",
                     nan_ok=True,
                     label=f"band[{method},{bound_type}]",
                 )
@@ -3505,6 +4747,14 @@ def _nonparametric_bounds(case):
         )
     )
     out.append(Bound("mean_cb", kind="summary", sides=False, query=((),)))
+    # Brookmeyer-Crowley: an inversion of the pointwise bounds, a step
+    # function of alpha_ci that does not close onto the median; the upper
+    # end is NaN where the interval is open to the right.
+    out.append(
+        Bound(
+            "median_cb", kind="summary", query=((),), wald=False, nan_ok=True
+        )
+    )
     out.append(
         Bound("rmst", kind="summary", sides=False, query=((6.0,), (12.0,)))
     )
@@ -3517,12 +4767,12 @@ def _mcf_bounds(per_cause=False):
             "mcf_cb",
             point="mcf",
             kwargs={"bound_type": bound_type, "interp": interp},
-            in_range=bound_type == "exp",
+            in_range=bound_type == "log",
             nan_ok=True,
             per_cause=per_cause,
             label=f"mcf_cb[{bound_type},{interp}]",
         )
-        for bound_type in ("exp", "normal")
+        for bound_type in ("log", "plain")
         for interp in ("step", "linear")
     )
 
@@ -3531,10 +4781,10 @@ def _competing_risks_bounds():
     # The cumulative incidence of each cause (#728), and the all-cause and
     # each cause's net sf / ff / Hf (the single-event estimates' bounds).
     out = []
-    for bound_type in ("exp", "normal"):
+    for bound_type in ("log-log", "plain"):
         common = dict(
             kwargs={"bound_type": bound_type},
-            in_range=bound_type == "exp",
+            in_range=bound_type == "log-log",
             nan_ok=True,
         )
         out += [
@@ -3584,10 +4834,9 @@ _QUANTILE_REGRESSION_BOUNDS = (
         slow=True,
     ),
     Bound(
-        "bootstrap_ci",
+        "param_cb",
         kind="coef",
         kwargs={**_BOOT, "tau": 0.5},
-        sides=False,
         wald=False,
         slow=True,
     ),
@@ -3641,6 +4890,16 @@ _DISTRIBUTIONAL_PARAMETERS.update(
 )
 _DISTRIBUTIONAL_PARAMETERS.update(
     {
+        base
+        + "PromotionTimeCure": [
+            *getattr(sp, base).parameter_names,
+            "theta",
+        ]
+        for base in CURE_LATENCIES
+    }
+)
+_DISTRIBUTIONAL_PARAMETERS.update(
+    {
         base + "ZeroInflated": [*getattr(sp, base).parameter_names, "f0"]
         for base in CURE_LATENCIES
     }
@@ -3660,11 +4919,11 @@ def _multistate_bounds(variances):
                 if v is None
                 else {"variance": v, "bound_type": t}
             ),
-            in_range=t == "exp",
+            in_range=t == "log-log",
             label=f"cb[{t}]" if v is None else f"cb[{v}, {t}]",
         )
         for v in variances
-        for t in ("exp", "normal")
+        for t in ("log-log", "plain")
     )
 
 
@@ -3781,12 +5040,74 @@ def _copula_bounds(case):
     )
 
 
+# The case bootstrap of a non-parametric joint survival, on the joint sf
+# and CDF and on Kendall's tau from the estimate
+_BIVARIATE_NP_BOOT = (
+    Bound(
+        "cb",
+        on=("sf",),
+        label="cb[bootstrap]",
+        kwargs={"method": "bootstrap", **_BOOT},
+        wald=False,
+    ),
+    Bound(
+        "cb",
+        on=("ff",),
+        label="cb[ff, bootstrap]",
+        kwargs={"method": "bootstrap", **_BOOT},
+        wald=False,
+    ),
+    Bound(
+        "kendall_tau_cb",
+        kind="summary",
+        query=((),),
+        kwargs=_BOOT,
+        wald=False,
+    ),
+)
+
+
 def _bounds(case):
     """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
     cls = case.model_class.rsplit(".", 1)[-1]
     # Models whose bounds are a fixed set, whatever the case
     fixed = {
         "BayesianParametric": _BAYES_BOUNDS,
+        # The sandwich (Wald) bound and the case bootstrap, on the
+        # coefficients.
+        "RankAFTModel": (
+            Bound("param_cb", kind="coef"),
+            Bound(
+                "param_cb",
+                kind="coef",
+                kwargs={**_BOOT, "method": "bootstrap"},
+                label="param_cb[bootstrap]",
+                wald=False,
+            ),
+        ),
+        # The influence-function (Wald) bound and the case bootstrap, on
+        # the joint survival and the joint distribution function.
+        # (one sweep each for the joint sf and CDF, which are not
+        # complements, as for the copulas)
+        "BivariateNonParametric": (
+            Bound("cb", on=("sf",)),
+            Bound("cb", on=("ff",), label="cb[ff]"),
+        )
+        + _BIVARIATE_NP_BOOT,
+        # The Prentice-Cai and Lin-Ying estimates: the bootstrap only
+        # (their Wald bound is refused, naming it)
+        "Dabrowska[prentice-cai]": _BIVARIATE_NP_BOOT,
+        "Dabrowska[lin-ying]": _BIVARIATE_NP_BOOT,
+        "BayesianRegression": _BAYES_REGRESSION_BOUNDS,
+        "BayesianMixtureCure": _BAYES_REGRESSION_BOUNDS,
+        "BayesianRecurrence": _BAYES_RECURRENCE_BOUNDS,
+        "BayesianRenewal": _BAYES_RENEWAL_BOUNDS,
+        "BayesianProportionalIntensity": _BAYES_PI_BOUNDS,
+        "BayesianCauseSpecific": _BAYES_CAUSES_BOUNDS,
+        "BayesianCompetingRisks": _BAYES_CR_BOUNDS,
+        "BayesianCompetingRisksRegression": _BAYES_CRR_BOUNDS,
+        "BayesianMultiState": _BAYES_MS_BOUNDS,
+        "BayesianMultiStateRegression": _BAYES_MSR_BOUNDS,
         "JelinskiMorandaModel": _JELINSKI_MORANDA_BOUNDS,
         "LittlewoodVerrallModel": _LITTLEWOOD_VERRALL_BOUNDS,
         "PanelCountMCF": _panel_count_bounds(False),
@@ -3808,6 +5129,10 @@ def _bounds(case):
         # The delta method over the intensities (and coefficients), Wald
         # bounds on each parameter, and on each transient state's mean
         # stay.
+        "ParametricPanelMultiState": _multistate_bounds((None,))
+        + (_LENGTH_OF_STAY,),
+        "ParametricPanelMultiStateRegression": _multistate_bounds((None,))
+        + (_LENGTH_OF_STAY,),
         "PanelMultiState": _multistate_bounds((None,))
         + (
             _PARAM_CB,
@@ -3847,14 +5172,30 @@ def _bounds(case):
             ),
         ),
         # Fine-Gray's cumulative incidence: the case bootstrap
-        # (percentiles); Wald and likelihood-ratio bounds refuse, saying
-        # why.
+        # (percentiles), and on an unstratified, unclustered fit the
+        # delta method on log Lambda(t | Z); the likelihood-ratio bound
+        # refuses, saying why (and the Wald bound on the stratified and
+        # clustered fits).
         "FineGrayModel": (
             Bound(
                 "cb",
                 on=("cif", "sf"),
                 kwargs={"n_boot": 40, "random_state": 0},
                 wald=False,
+            ),
+        ),
+        "FineGray": (
+            Bound(
+                "cb",
+                on=("cif", "sf"),
+                kwargs={"n_boot": 40, "random_state": 0},
+                wald=False,
+            ),
+            Bound(
+                "cb",
+                on=("cif", "sf"),
+                kwargs={"method": "wald"},
+                label="cb[wald]",
             ),
         ),
         "RoystonParmarModel": (Bound("cb", on=_ON_SURVIVAL),),
@@ -4025,6 +5366,18 @@ def _bounds(case):
             else ()
         ),
         "AalenAdditiveModel": (Bound("cb", on=_ON_SURVIVAL),),
+        # The delta-method Wald bounds on the curves, on each scale, and
+        # on the multiplicative coefficients.
+        "CoxAalenModel": tuple(
+            Bound(
+                "cb",
+                on=_ON_SURVIVAL,
+                kwargs={"bound_type": scale},
+                label=f"cb[{scale}]",
+            )
+            for scale in ("log-log", "log", "plain")
+        )
+        + (Bound("param_cb", kind="coef"),),
         # The Cox model's predicted curves: R's survfit conf.types
         "SemiParametricRegressionModel": tuple(
             Bound(
@@ -4158,6 +5511,13 @@ def _bounds(case):
                 query=((np.asarray(case.Z, float)[:1],),),
                 label="mean_cb[wald]",
             ),
+            Bound(
+                "cs_cb",
+                kind="summary",
+                kwargs={"method": "wald"},
+                query=_window_query(case, np.asarray(case.Z, float)[:1]),
+                label="cs_cb[wald]",
+            ),
         )
         if case.name not in _REGRESSION_LR_X:
             return wald
@@ -4184,6 +5544,20 @@ def _bounds(case):
             ),
             Bound("param_cb", kind="param", label="param_cb[lr]", **lr),
             Bound("quantile_cb", point="qf", label="quantile_cb[lr]", **lr),
+            Bound(
+                "mean_cb",
+                kind="summary",
+                query=((np.asarray(case.Z, float)[:1],),),
+                label="mean_cb[lr]",
+                **lr,
+            ),
+            Bound(
+                "cs_cb",
+                kind="summary",
+                query=_window_query(case, np.asarray(case.Z, float)[:1]),
+                label="cs_cb[lr]",
+                **lr,
+            ),
             # The parametric bootstrap (#617): the calls with the same
             # n_boot and seed share one set of refits.
             Bound(
@@ -4231,13 +5605,13 @@ def _bounds(case):
     if cls == "BuckleyJamesModel":
         return (
             Bound(
-                "bootstrap_ci",
+                "param_cb",
                 kind="coef",
                 kwargs=_BOOT,
-                sides=False,
                 wald=False,
             ),
         )
+
     if cls == "ParametricRecurrenceModel":
         return (
             Bound("cif_cb", point="cif"),
@@ -4295,7 +5669,13 @@ def _bounds(case):
             ),
         )
     if cls == "JointModel":
-        return (Bound("cb", on=("sf", "ff"), kwargs=dict(JOINT_ITEM)),)
+        return (
+            Bound(
+                "cb",
+                on=("sf", "ff"),
+                kwargs=dict(case.call_kwargs or JOINT_ITEM),
+            ),
+        )
     if cls == "DestructiveDegradationModel":
         # Every call refits the model n_boot times.
         return (
@@ -4410,6 +5790,8 @@ _PLAIN_CONTINUOUS: tuple[str, ...] = (
     "LogNormal",
 )
 _PLAIN_CONTINUOUS += ("LogLogistic", "ExpoWeibull", "Rayleigh", "Normal")
+_PLAIN_CONTINUOUS += ("GeneralizedGamma", "Gompertz", "InverseGaussian")
+_PLAIN_CONTINUOUS += ("BirnbaumSaunders",)
 _PLAIN_CONTINUOUS += ("Gumbel", "GumbelLEV", "Logistic", "Uniform")
 _PLAIN_DISCRETE: tuple[str, ...] = ("Poisson", "Geometric", "NegativeBinomial")
 _PLAIN_DISCRETE += ("DiscreteWeibull",)
@@ -4427,6 +5809,10 @@ _FAST_ESTIMATORS += ("GumbelCopula", "CrowAMSAA")
 def _estimators(case):
     """(estimators, large-only values, large sample) of ``case``."""
     name = case.name
+    if name == "GeneralizedF":
+        # how="MOM" refuses, as documented: the higher moments of its
+        # power-law tail may not exist
+        return _parametric_estimators(case), {}, _quantile_sample
     if name in _PLAIN_CONTINUOUS + _PLAIN_DISCRETE:
         return (
             _parametric_estimators(case),
@@ -4614,8 +6000,16 @@ def _starve(case):
     """How ``case``'s fit is starved (see ``Case.starve``), or ``None``."""
     name, fit = case.name, case.fit
     cls = case.model_class.rsplit(".", 1)[-1]
-    if name in ("Turnbull", "BuckleyJames", "CompetingRisks[interval]"):
-        # (CompetingRisks[interval]: the self-consistency EM of the NPMLE)
+    if name in (
+        "Turnbull",
+        "BuckleyJames",
+        "RankAFT",
+        "RankAFT[logrank]",
+        "CompetingRisks[interval]",
+        "CoxAalen",
+    ):
+        # (CompetingRisks[interval]: the self-consistency EM of the NPMLE;
+        # CoxAalen: the Newton steps for its multiplicative coefficients)
         return lambda d: fit({**d, "max_iter": 1})
     if name.startswith("WeibullAL"):
         # The life model's first parameter (the first is a fixed

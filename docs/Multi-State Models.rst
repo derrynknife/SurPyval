@@ -128,10 +128,21 @@ The terminal flag ``a`` of a ``SurpyvalData`` is not needed here: a
 terminal event is the same idea as entering an absorbing state, which the
 transitions already say, so the fits ignore it.
 
-These models take neither interval- nor left-censored rows (``c`` of 2 or
--1: a change of state seen only between two inspections), weights, right
-truncation, time-varying covariates nor measurements (``m``); data holding any of them is
-refused, saying what to do. ``s`` is also another name for ``state`` in
+A row with ``c = 2`` is a move known only to lie between two times (see
+:ref:`multistate-interval-moves`): ``ParametricMultiState`` and
+``ParametricMultiStateRegression`` read its ``[xl, xr]`` as the two
+columns of their ``x``, with the same fit as from the arrays; the
+non-parametric and Cox models refuse it. A left-censored row (``c =
+-1``, a move into ``e`` at some time before ``x``) is read by the same
+two as a move between the start of its spell and ``x`` (see
+:ref:`multistate-left-censored`), and refused by the others. Right
+truncation (``tr``) is taken by the same two, with ``reached=`` (see
+:ref:`multistate-right-truncated`). The models take neither weights nor
+measurements (``m``); data holding either is refused, saying what to
+do. A ``SurpyvalData`` whose
+``time_varying_covariates`` hold each unit's path (keyed by its ``i``) is
+taken by ``ParametricMultiStateRegression`` (see
+:ref:`multistate-time-varying`) and refused by the others. ``s`` is also another name for ``state`` in
 ``fit``, and ``s_col`` for ``state_col`` in ``fit_from_df``.
 The panel models below take arrays of visits, not a ``SurpyvalData``:
 their ``s`` is the state seen at a visit, not the state during a row, so
@@ -443,7 +454,7 @@ state, including one occupied 1% to 5% of the time: 95% bounds covered
 hazard out of the rare state rested on some 10 to 35 observed moves, the
 bounds that involve the rare state were two to four points short (as low
 as 91.2% for 95% and 86.0% for 90%), the band lying below the truth more
-often than above it; ``bound_type="normal"`` was further short (85.0%).
+often than above it; ``bound_type="plain"`` was further short (85.0%).
 With few moves between two states, read the bounds as somewhat
 optimistic.
 
@@ -535,6 +546,275 @@ for a unit that *entered* each state at ``s``; since the hazards depend
 only on the time in the state, they depend only on ``x - s``. A
 prediction from a later ``s`` needs ``from_state``: units under
 observation at ``s`` have been in their states for different times.
+
+On the reset clock each row is, by default, a stay of its own: its
+clock starts at its ``tl``. That is right when a unit is renewed in its
+state: a machine censored at a preventive replacement and back in
+service as good as new at the same moment, under the same ``i``, starts
+a new stay. A stay you have split into rows yourself (at a change of
+covariates, say) is different: the later rows carry on the stay, and
+their clock must run on. Mark them with ``carry_on`` (a True or False
+per row, ``carry_on_col`` for a DataFrame): a marked row is fitted on
+the time since the stay began, left truncated at the time already spent
+in the state. A marked row must be the same unit's next row, in the same
+state, starting exactly (as stored) where the row before ended
+censored, so times rounded on the way through a file are refused; anything
+else is refused, saying which rows. On the forward clock the marks
+change nothing, as each row's ``tl`` already says when it starts. (See
+also :doc:`Conventions`.)
+
+.. _multistate-time-varying:
+
+Covariates that change during a stay
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A covariate can change while a unit is in a state: a treatment started
+part-way through an illness, a machine moved to a heavier duty between
+repairs. ``ParametricMultiStateRegression`` takes each unit's covariate
+path, once, in ``time_varying_covariates``: a dict ``{unit:
+StepSchedule}`` (or a :class:`~surpyval.CovariatePath` for a covariate
+that changes continuously), one for each unit in ``i``, on the clock's
+time since the start. The fit splits every spell at its unit's changes
+into rows with the covariates fixed, each ending censored but the last,
+each entering where the one before ended; the path's columns follow those
+of ``Z`` as ``time_varying_0``, ``time_varying_1``, ... The fit is
+exactly the fit to the stays split by hand (and marked with
+``carry_on``).
+
+In words, the hazard of each move at a time is the one for the
+covariates at that time, so the chance of staying in a state is the
+product of the chances of staying through each stretch of fixed
+covariates. For a spell split at the changes into stretches
+:math:`(a_k, b_k]` with covariates :math:`z_k`, ending in a move at
+:math:`x` (``d = 1``) or censored (``d = 0``), its factor for a move out
+of the state is
+
+.. math::
+    \exp\Bigl\{-\sum_k \bigl[H(b_k \mid z_k) - H(a_k \mid z_k)\bigr]
+    \Bigr\}\, h(x \mid z_K)^{d},
+
+with the times since the start on the forward clock, and on the reset
+clock the times since the unit entered the state: a split does not
+restart the time in the state. A ``CovariatePath`` is cut into steps
+(each holding the path's value at its middle), halved until no estimate
+moves by more than 1% of its standard error; ``model.path_steps`` says
+what that took.
+
+.. code-block:: python
+
+    from surpyval import StepSchedule
+
+    # unit "a" starts treatment at 3, unit "b" never does
+    paths = {
+        "a": StepSchedule.from_changepoints([0, 3], [0.0, 1.0]),
+        "b": StepSchedule.constant([0.0]),
+    }
+    model = ParametricMultiStateRegression.fit(
+        x, Z, e, state, tl=tl, i=i, transitions=tm,
+        time_varying_covariates=paths,
+    )
+    # the chance of being dead at 8 for a unit treated from 3
+    model.occupancy(8, StepSchedule(edges=[0, 3, np.inf],
+                                    Z=[[1, 0.0], [1, 1.0]]), "dead")
+
+Predictions on the forward clock take a covariate path in place of a
+row of covariates (``occupancy``, ``transition_probabilities``,
+``length_of_stay``, ``cb``, ``cumulative_hazard``): the path gives every
+covariate of the model, from the start of the prediction on.
+
+Three things are refused rather than approximated, each saying what to
+do instead:
+
+- An accelerated failure time regression for a transition. A change of
+  covariates there rescales the time already spent, so a stay's chance
+  is not the product over its stretches. Proportional hazards, additive
+  hazards and proportional odds regressions are taken.
+- Predictions along a path on the reset clock. The semi-Markov solution
+  needs each state's hazards as functions of the time in it alone; along
+  a path they depend on when the state was entered too.
+- Data with interval-censored moves (``x`` as ``[xl, xr]``) together
+  with time-varying covariates: the move's unknown time would fall among
+  the covariate changes.
+
+The path is taken to be *external*: known in advance and not driven by
+the unit's own moves (a planned dose, a duty schedule). A covariate that
+the process itself changes (a measurement that worsens as the disease
+progresses) is not external, and the predicted probabilities along it
+are then not the chances they appear to be.
+
+.. _multistate-interval-moves:
+
+Moves known only to lie between two times
+-----------------------------------------
+
+Sometimes a move is not seen when it happens but is found at an
+inspection: a pump last seen working at one inspection is found degraded
+at the next; a patient well at one visit is ill at the next. The move
+happened at some unknown time between the two looks. Give such a spell's
+``x`` as two times, ``[xl, xr]``: the last time the unit was seen in its
+state and the first time it was seen in the next (``xl = xr`` for a
+spell whose end is known, and for a censored one). The spell that the
+move began starts somewhere in that interval; give its ``tl`` as either
+end of it (the time the unit was first seen there, say), and the unit
+``i``, which ties the two together.
+
+.. jupyter-execute::
+
+    from surpyval import Exponential
+
+    inspected = ParametricMultiState.fit(
+        x=[[2, 4], [7, 7], [3, 3], [1, 2], [6, 6]],
+        e=["degraded", "failed", "failed", "degraded", None],
+        state=["working", "degraded", "working", "working", "degraded"],
+        tl=[0, 4, 0, 0, 2],
+        i=[1, 1, 2, 3, 3],
+        transitions=[
+            ("working", "degraded"), ("working", "failed"),
+            ("degraded", "failed"),
+        ],
+        dist=Exponential,
+    )
+    inspected.params.round(4)
+
+Unit 1 was found degraded at 4 after working at 2, and failed at 7;
+unit 3 was found degraded at 2 and was still degraded at 6.
+
+The same spells in a :class:`~surpyval.SurpyvalData` mark each such move
+with ``c = 2`` (and ``x`` as ``[xl, xr]``, or the ends in ``xl`` and
+``xr``); the fit is the same:
+
+.. jupyter-execute::
+
+    import surpyval as sp
+
+    data = sp.SurpyvalData(
+        x=[[2, 4], [7, 7], [3, 3], [1, 2], [6, 6]],
+        c=[2, 0, 0, 2, 1],
+        e=["degraded", "failed", "failed", "degraded", None],
+        s=["working", "degraded", "working", "working", "degraded"],
+        tl=[0, 4, 0, 0, 2],
+        i=[1, 1, 2, 3, 3],
+    )
+    ParametricMultiState.fit(
+        data,
+        transitions=[
+            ("working", "degraded"), ("working", "failed"),
+            ("degraded", "failed"),
+        ],
+        dist=Exponential,
+    ).params.round(4)
+
+The likelihood then averages over the unknown time of the move: the
+chance of staying in the old state until then, times the rate of the
+move then, times the chance of what was seen of the unit afterwards had
+it entered the new state then, added up over every time in the interval.
+That ties the transitions together (the moves out of the old state
+share the integral, and so do the old and new states' hazards), so they
+are no longer fitted one at a time but all at once, from their one-at-a-
+time fits to the middles of the intervals, and the covariance is the
+inverse of the whole likelihood's curvature, with terms between
+transitions. On the clock reset the next spell's hazard runs from the
+unknown entry, so its density is averaged over the interval too (and
+over the next interval, where that move was found at an inspection as
+well). The integrals use tanh-sinh quadrature, which stays accurate
+where a hazard is infinite at the start of an interval (a Weibull with a
+shape below 1).
+
+The model takes each move to be direct: in the interval the unit went
+from one state to the next with nothing in between. Where it might have
+passed through another state unseen (fallen ill and recovered between
+visits), the data are panel data, below. With a single transition the
+fit is the univariate interval-censored fit (``Weibull.fit`` with ``c =
+2``), and as an interval narrows to a point the fit becomes the one with
+the move's time known; both are tested. With constant hazards and no way
+back, the model's likelihood is R ``msm``'s for the same visits with
+exactly timed deaths (``obstype = 2``), and the fit agrees with msm's
+to :math:`10^{-6}` (``scripts/reference/reference_r_multistate_interval.R``);
+simulated inspections recover Weibull hazards, and their bounds cover at
+their nominal level (``surpyval/tests/calibration/test_coverage_multistate_interval.py``).
+
+.. _multistate-left-censored:
+
+Moves found after the fact: left censoring
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes all that is known is that a move had happened by a time: a
+unit first looked at is found already failed, a patient is first seen
+already ill, with no earlier look that saw it in its old state. The
+move is *left censored*: at some time between the start of the spell
+(its ``tl``, or 0) and the look. Give it as ``x = [-inf, xr]`` (or, in a
+``SurpyvalData``, ``c = -1`` with the state found in ``e``):
+``ParametricMultiState`` and ``ParametricMultiStateRegression`` read it
+as a move in the interval from the spell's start to ``xr``, on either
+clock, and integrate over its time as above. With two states it is the
+univariate left-censored observation: ``Weibull.fit`` with ``c = -1``
+(divided by :math:`S(t_l)` where the spell starts late), checked to
+:math:`10^{-8}` in the log-likelihood on both clocks.
+
+.. _multistate-right-truncated:
+
+Units seen only because they reached a state: right truncation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some data hold only the units that reached a state by a cut-off: a
+register of deaths up to a date, the returned units of a fleet, patients
+found through a diagnosis. Units that had not got there by then are
+missing altogether, so the ones seen are those that moved early, and a
+fit that ignores this overstates every hazard on the way. Give each
+unit's cut-off in ``tr`` (on each of its rows, ``inf`` for a unit not
+truncated) and the state it had to reach in ``reached`` (by default the
+one absorbing state). Each truncated unit's likelihood is then divided
+by its chance of reaching that state by its cut-off from where its first
+spell starts:
+
+.. math::
+    \frac{L(\text{history})}{P(\text{enter } r \text{ by } \tau \mid
+    g_0 \text{ at } t_0)},
+
+the chance on the right being the occupation probability of :math:`r`
+in the model with every way out of :math:`r` removed (so a unit that got
+there stays), from the product integral of the forward equations. Every
+transition is then fitted at once, as with interval-censored moves.
+With two states it is the univariate right-truncated fit
+(``Weibull.fit(x, tl=tl, tr=tr)``, :math:`f(x) / (F(\tau) - F(t_l))`),
+checked to :math:`10^{-8}`, with and without covariates.
+
+In a simulated register (an illness-death model with Weibull hazards,
+1,200 units healthy at 0 with cut-offs uniform on 2 to 12 years, the 488
+dead by their cut-off kept) the fit with ``tr`` recovered all six
+parameters within one standard error of the truth; the fit that ignores
+the truncation put the scales of healthy to ill, healthy to dead and ill
+to dead at 4.6, 9.8 and 6.0 (truth 6, 25 and 8), 9 to 18 standard
+errors off (seed 710; ``scripts/studies/multistate_truncation_register.py``).
+
+Two things follow from the sampling. Where every unit is truncated, a
+move that would have kept a unit from reaching the state in time may not
+show in the data at all: patients found through a diagnosis of illness
+show no deaths before illness, yet the hazard of that death lowers each
+patient's chance of being found. A transition with no moves is then
+refused, saying so; units that were not truncated (``tr = inf``) and
+were followed in its 'from' state are what show such moves. And the
+truncated units carry little information on the level of a hazard (only
+through the timing of their moves), so a hazard can run to 0 where
+nothing else pins it: the fit then warns that it has no finite maximum,
+and that transition's standard errors are ``nan``; the other
+transitions' standard errors are then taken with that hazard held where
+it ran to (the inverse of the curvature in their parameters alone), as
+the warning says. Near this limit, before a hazard runs all the way to
+0, Wald bounds (``cb``, the standard errors) can mislead even where the
+fit reports a maximum: with few events, all of them truncated, an
+estimate can sit far from the truth with a small standard error, as the
+univariate right-truncated fit does on the same data, because the
+curvature at the estimate does not describe a likelihood that flattens
+towards the limit. Use likelihood-ratio bounds where the model offers
+them, and treat a hazard that the truncated units alone inform with
+caution.
+
+Right truncation is taken on the forward clock only (the reset clock's
+chance of reaching the state would need the renewal equations solved
+inside the likelihood), with a unit's covariates the same on each of its
+rows, and not with time-varying covariates; each is refused, saying
+what to do.
 
 States seen only at visits (panel data)
 ---------------------------------------
@@ -632,6 +912,240 @@ on probabilities from the delta method through the exact derivatives of
 the matrix exponential. Misclassified states (a hidden Markov model,
 where a visit can record the wrong state) are not built.
 
+Intensities that change with time
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A constant intensity says the chance of a move in the next month is the
+same however long the unit has been running, or in its state. Wear,
+ageing and recovery rarely work like that. ``ParametricPanelMultiState``
+takes the same visits and fits a distribution's hazard to each
+transition instead (a Weibull by default, so each move has a scale and
+a shape: a shape above 1 is a rate that rises, below 1 one that falls).
+Two time scales are offered:
+
+- ``clock="forward"`` (the default): each rate depends on the time
+  since the start, such as age or hours since new (a *non-homogeneous*
+  Markov model). The chance of going from one state to another between
+  two visits, by any route, is still an element of a matrix
+  :math:`P(t_{j-1}, t_j)`, now the solution of the Kolmogorov forward
+  equations with rates that change along the way, found by the product
+  integration ``ParametricMultiState`` uses.
+- ``clock="reset"``: each rate depends on the time since the unit
+  entered its current state (a *semi-Markov* model: a repaired item
+  starting afresh, a disease stage with its own course). The time of
+  entering a state is itself not seen, so the likelihood averages over
+  it, and over the entry into every state the unit may have passed
+  through between two visits unseen. Each unit is taken to have entered
+  its first state at its first visit. In a progressive model (no going
+  back to a state once left) those routes can be listed and every one
+  is counted. With a way back (recovery) a unit could make any number
+  of moves between two visits, so the routes of at most ``max_moves``
+  moves (default 3) are counted; see below.
+
+The fitted model is a ``ParametricMultiState``: the same occupation
+probabilities, bounds and lengths of stay. With exponential
+distributions either clock gives ``PanelMultiState``'s fit. Here the
+data above were simulated with constant intensities: each fitted shape
+is within two standard errors of 1, and the AIC barely moves (by less
+than one, for four more parameters), so they give no reason to leave
+the constant model:
+
+.. jupyter-execute::
+
+    from surpyval import Weibull
+    from surpyval.multistate import ParametricPanelMultiState
+
+    weibull = ParametricPanelMultiState.fit(
+        x, s, i, transitions=[("healthy", "ill"), ("healthy", "dead"),
+                              ("ill", "healthy"), ("ill", "dead")],
+        dist=Weibull,
+    )
+    for name, value, se in zip(weibull.parameter_names, weibull.params,
+                               weibull.standard_errors()):
+        print(f"{name:24s} {value:8.3f} ({se:.3f})")
+    print(round(panel.aic(), 1), round(weibull.aic(), 1))
+
+Every transition is fitted at once (the moves share each gap's
+probability), by BFGS on the log of each positive parameter, starting
+from the constant-intensity fit; the covariance is the inverse of the
+whole likelihood's numerical Hessian. On the forward clock the grid of
+the product integral is fixed for the search (every visit time, and the
+points between that the accuracy needs, chosen again at the estimate)
+so that the likelihood is smooth in the parameters. With exponential
+distributions it matches ``PanelMultiState`` and R ``msm`` to
+:math:`10^{-7}`; with Weibull hazards on the forward clock it matches R
+``nhm`` (Titman 2011); on the reset clock it is checked against
+adaptive quadrature and, where no state can be passed unseen, against
+``ParametricMultiState`` with the moves interval censored. Simulated
+visits recover the Weibull shapes, with bounds at their nominal
+coverage (``surpyval/tests/calibration/test_coverage_multistate_panel_parametric.py``).
+
+A way back on the reset clock
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+With recovery, a unit seen healthy at two visits may have stayed
+healthy, or fallen ill and recovered, or done that twice, and so on: on
+the reset clock each of those routes enters a state at an unknown time,
+and each needs its own integral. ``ParametricPanelMultiState`` (and the
+regression) count the routes of at most ``max_moves`` moves in each gap
+between visits (default 3) and leave out the rest. What is left out is
+worked out at the estimate, gap by gap: the chance, given what was seen
+before the gap, of more moves in it than are counted. That is how far
+the gap's factor of the likelihood can be short. The largest is
+``model.truncation_error`` and every gap's is in
+``model.truncation_errors``; a warning names the worst gap when any is
+above ``truncation_tol`` (default :math:`10^{-8}`). Raise ``max_moves``
+until the warning goes, or until the estimates stop moving.
+
+How many moves are needed depends on how many happen in a gap: about
+the rate of leaving a state times the time between visits. With rates
+of 0.2 to 0.45 a unit of time and visits a unit apart, bound 3 leaves
+out up to about :math:`2 \times 10^{-4}` of a gap and the intensities
+are within about 1% of the Markov fit's; each extra move cuts what is
+left out about tenfold. Every extra move nests one more integral, so the
+fit slows quickly as the bound rises. On 40 simulated units seen at 0 to
+5, with constant rates of 0.05 to 0.3 (fitted with exponential
+distributions, so the Markov fit is the exact answer):
+
+.. list-table::
+   :header-rows: 1
+
+   * - ``max_moves``
+     - largest share left out of a gap
+     - log-likelihood short by
+     - intensities off by up to
+     - time to fit
+   * - 1
+     - 0.029
+     - 5.6
+     - 77%
+     - 2 s
+   * - 2
+     - 0.0024
+     - 0.38
+     - 8.5%
+     - 75 s
+   * - 3
+     - 0.0002
+     - 0.030
+     - 1.0%
+     - 3 min
+
+A Weibull fit (eight parameters) of 60 such units at bound 3 had not
+finished after 40 minutes. For
+rare moves or visits close together the default bound is ample; where
+visits are far apart compared with the time a unit stays in a state,
+the forward clock (``clock="forward"``, which takes cycles exactly) or
+``PanelMultiState`` is the practical choice.
+
+With exponential hazards the reset clock is the Markov model, so the
+truncated fit approaches ``PanelMultiState``'s as ``max_moves`` rises
+(checked in the tests, along with the exact chance of each number of
+moves from one block matrix exponential, and adaptive quadrature for a
+Weibull unit that falls ill and recovers between two visits).
+
+Covariates with intensities that change with time
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``ParametricPanelMultiStateRegression`` is the same model with covariates:
+a parametric regression for each transition (``WeibullPH`` by default, so
+each move has a Weibull baseline and its own coefficients; any of the
+package's parametric regressions can be given, ``WeibullAFT`` say). The
+covariates are given per visit, as for ``PanelMultiStateRegression``: the
+values recorded at a visit hold until the unit's next visit, so a
+treatment started at a visit counts from then on.
+
+In words: between two visits the unit's rates of moving are those of a
+unit with that gap's covariates, so the chance of going from the state
+seen at one visit to the state seen at the next is the same product
+integral as above, worked out for that gap's covariates. On the forward
+clock each distinct row of covariates gets its own grid (two rows that
+differ in any covariate are two grids, so a covariate with many values,
+such as a measurement taken at every visit, makes many grids and a slower
+fit; see :ref:`multistate-coarsen`). On the reset clock the unit is
+carried over its unknown entry times as before, each gap's hazards taken
+at that gap's covariates.
+
+With ``ExponentialPH`` regressions the model is
+``PanelMultiStateRegression``'s, on either clock:
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval import ExponentialPH
+    from surpyval.multistate import (
+        PanelMultiStateRegression, ParametricPanelMultiStateRegression,
+    )
+
+    z = (np.asarray(i) % 2).astype(float)  # a covariate per unit
+    tm = [("healthy", "ill"), ("healthy", "dead"), ("ill", "healthy"),
+          ("ill", "dead")]
+    markov = PanelMultiStateRegression.fit(x, z, s, i, transitions=tm)
+    ph = ParametricPanelMultiStateRegression.fit(
+        x, z, s, i, transitions=tm, model=ExponentialPH,
+    )
+    print(markov.betas.ravel().round(4))
+    print(ph.betas.ravel().round(4))
+    print(round(markov.log_likelihood, 6), round(ph.log_likelihood, 6))
+
+.. _multistate-coarsen:
+
+Grouping a covariate measured at every visit
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A covariate measured afresh at every visit (a blood pressure, a vibration
+level) has a different value in almost every gap, and on the forward
+clock every distinct row of covariates is a product integral of its own.
+``coarsen`` groups such a covariate's values before the fit, so that only
+a few distinct rows are left. **It is an approximation**: the model is
+then fitted to the grouped values, not the measured ones. It is off by
+default.
+
+``coarsen=k`` cuts every covariate with more than ``k`` distinct values
+into ``k`` bins of about equal counts (at its quantiles, as
+``pandas.qcut``) and replaces each value by the mean of the values in its
+bin; a covariate with at most ``k`` values (an indicator) is left alone.
+A function is applied to every covariate instead (``coarsen=np.round``,
+or ``lambda z: z.round(1)``), and a dict coarsens only the covariates it
+names (``coarsen={"w": 10}``). The fit is exactly the fit to the
+covariates grouped that way by hand, and ``model.coarsened`` gives each
+grouped covariate's number of distinct values before and after. The
+model holds and saves (``to_dict``) the grouped covariates; its
+predictions take the covariate values you give them, measured or not.
+At least 2 bins are needed (one would make the covariate a constant):
+
+.. code-block:: python
+
+    model = ParametricPanelMultiStateRegression.fit(
+        x, Z, s, i, transitions=tm, coarsen={"w": 10},
+    )
+    model.coarsened  # {'w': (740, 10)}
+
+How much it changes the answer depends on the data. On a simulated
+illness-death model (100 units seen every unit of time for 5 to 10
+units, Weibull proportional hazards, a covariate fixed for each unit and
+one, ``w``, uniform on (0, 2) and drawn at every visit: 785 visits and
+740 distinct values of ``w``; ``visits_covariates(100, 5, ...,
+continuous=True)`` in ``surpyval/tests/multistate/_inspected.py``, with
+the parameters of ``test_parametric_panel_regression.py``) the full fit
+took about 230 s on one core of the machine it was run on. With
+``coarsen`` it took about 15 s (5 bins), 25 s (10), 38 s (20) and 58 s
+(40).
+The coefficient of ``w`` on healthy to ill, 0.639 (standard error 0.184)
+in the full fit, was 0.664, 0.658, 0.657 and 0.652, moving by 0.14 to
+0.07 of its standard error; the chance of being ill at time 5 with
+``w = 1`` (0.5453) moved by at most 0.0005. The coefficient of ``w`` on
+ill to dead, the least well estimated, moved most: 0.284 in the full
+fit, 0.231 with 5 bins and 0.280 with 40. Check the effect on your own
+data by fitting with two numbers of bins: if the answers you need do not
+move between them, the grouping is fine enough.
+
+The fit is joint, as above, with each coefficient searched in its
+covariate's units (a covariate in thousands is searched as well as one in
+ones). A covariate that cannot be told from the others over the gaps (or
+from a constant) is reported, with ``nan`` for its coefficient, as in the
+other regressions.
+
 How it was checked
 ------------------
 
@@ -699,19 +1213,41 @@ Simulated panel data show the bounds on the intensities, the occupation
 probabilities and the mean stays covering at their nominal level. The
 script is ``scripts/reference/reference_r_multistate_panel.R``.
 
+The parametric panel regression was checked on a simulated
+illness-death model with Weibull proportional hazards, one covariate
+fixed for each unit and one drawn at every visit
+(``scripts/reference/reference_r_multistate_panel_regression.R``):
+with exponential hazards against R ``msm`` with covariates (the
+log-likelihood to :math:`10^{-14}`, the intensities and coefficients to
+about :math:`10^{-6}`), and with Weibull hazards against R ``nhm``, whose
+likelihood SurPyval's equals at nhm's estimates to :math:`10^{-9}`. Each
+gap's factor is checked against an ODE solver with the gap's covariates,
+and on the reset clock a stay spanning three rows of covariates against
+adaptive quadrature. Simulated visits recover the coefficients, with
+bounds at their nominal coverage
+(``surpyval/tests/calibration/test_coverage_multistate_panel_regression.py``).
+
 What is not here yet
 --------------------
 
-The spell models refuse interval-censored changes of state: for states
-seen only at visits use ``PanelMultiState``, which has no hidden Markov
-(misclassification) model yet. The parametric models have no
+The non-parametric and Cox spell models refuse interval-censored and
+left-censored changes of state and right truncation (the parametric ones
+take them; right truncation on the forward clock only); for states seen only
+at visits use ``PanelMultiState``, which has no hidden Markov
+(misclassification) model yet.
+On the clock reset with a way back, ``ParametricPanelMultiState`` and
+``ParametricPanelMultiStateRegression`` count at most ``max_moves`` moves
+between two visits, and the nested integrals make large bounds slow; no
+phase-type approximation is offered. The parametric models have no
 likelihood-ratio or bootstrap bounds. The clock reset is offered for the
 parametric spell models only: a Cox model per transition on the time in
 the state would need its probabilities simulated over step hazards, and
 the Aalen-Johansen estimate is Markov by construction (for a non-Markov
 process its occupation probabilities are still consistent, Datta and
 Satten, 2001, but its transition probabilities from a later time are
-not). Covariates that change over a stay are not taken.
+not). Covariates that change over a stay are taken by
+``ParametricMultiStateRegression`` only (not by the Cox or panel models),
+and predictions along a covariate path on the forward clock only.
 
 References
 ----------
@@ -755,13 +1291,18 @@ Putter, H., Fiocco, M. and Geskus, R. B. (2007), "Tutorial in
 biostatistics: competing risks and multi-state models", *Statistics in
 Medicine*, 26(11), 2389-2430.
 
+Titman, A. C. (2011), "Flexible nonhomogeneous Markov models for panel
+observed data", *Biometrics*, 67(3), 780-787.
+
 API
 ---
 
 Import these from ``surpyval.multistate`` (``MultiState``,
 ``MultiStateProportionalHazards``, ``ParametricMultiState``,
 ``ParametricMultiStateRegression``, ``PanelMultiState``,
-``PanelMultiStateRegression`` and ``TransitionMatrix`` are also at
+``PanelMultiStateRegression``, ``ParametricPanelMultiState``,
+``ParametricPanelMultiStateRegression`` and ``TransitionMatrix`` are also
+at
 the top level, ``surpyval.MultiState`` and so on).
 
 .. autoclass:: surpyval.multistate.TransitionMatrix
@@ -783,6 +1324,12 @@ the top level, ``surpyval.MultiState`` and so on).
    :members:
 
 .. autoclass:: surpyval.multistate.PanelMultiStateRegression
+   :members:
+
+.. autoclass:: surpyval.multistate.ParametricPanelMultiState
+   :members:
+
+.. autoclass:: surpyval.multistate.ParametricPanelMultiStateRegression
    :members:
 
 .. autofunction:: surpyval.multistate.to_stacked

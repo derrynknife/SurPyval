@@ -47,10 +47,10 @@ frailty (``group=``) or on a given frailty (``frailty=``). Like the
 parametric regression models it reports ``neg_ll()``, ``aic()``,
 ``bic()`` and ``aic_c()`` (``theta`` counted as a parameter), so a
 frailty fit can be compared directly with the proportional-hazards fit it
-reduces to at ``theta = 0``. ``fit_penalised`` adds a ridge, lasso or
+reduces to at ``theta = 0``. ``fit(..., penalizer=...)`` adds a ridge, lasso or
 elastic-net penalty on the coefficients (the baseline and ``theta`` are not
 penalised); where its objective is smallest at ``theta = 0`` it is the
-penalised proportional-hazards fit (``WeibullPH.fit_penalised`` for
+penalised proportional-hazards fit (``WeibullPH.fit(..., penalizer=...)`` for
 ``WeibullFrailty``). See the penalised regression section of
 :doc:`/Regression Modelling with SurPyval`.
 
@@ -80,6 +80,109 @@ standard error is from the curvature of its profile likelihood. R's
 partial likelihood but chooses :math:`\theta` by a different rule (an
 approximate REML rather than maximum likelihood); at the same
 :math:`\theta` (``theta=``) the two fits agree.
+
+Inverse Gaussian and positive stable frailties
+----------------------------------------------
+
+The frailty family is a modelling choice: it decides how strongly the
+groups' event times hang together early and late in their lives. Two
+more families are offered, with the parametric baselines (``Frailty(dist,
+family=...)``), with the Cox baseline (``CoxFrailty.fit(...,
+family=...)``) and for repairable units (``frailty=`` on ``CrowAMSAA``,
+``Duane``, ``CoxLewis`` and ``ProportionalIntensityNHPP``).
+
+* ``family="inverse_gaussian"``: the frailty has mean 1 and variance
+  :math:`\theta`, as the gamma's, but a heavier right tail (at variance
+  0.5, :math:`P(u > 5)` is 0.0017 against the gamma's 0.0005). As the
+  frailest groups fail, the spread of the survivors' frailties shrinks
+  under it (their squared coefficient of variation is 0.50, 0.41, 0.29,
+  0.15 and 0.07 at a cumulative hazard of 0, 0.5, 2, 10 and 50), while
+  under the gamma it stays at :math:`\theta`: its dependence fades late
+  in life, between the positive stable frailty's (strongest early) and
+  the gamma's (which lasts).
+* ``family="positive_stable"``: the frailty has no finite mean (its right
+  tail is heavy), and in exchange the model stays one of proportional
+  hazards once the frailty is integrated out: the population curve of a
+  unit from an unknown group is that of a proportional hazards model whose
+  coefficients are those of the conditional model multiplied by the
+  stable index :math:`a = 1 - \theta`. Here ``theta`` is not a variance:
+  it is :math:`1 - a`, which is Kendall's tau between two event times of
+  a group, from 0 (``theta = 0``, the frailty fixed at 1: independence)
+  towards 1 (complete dependence).
+
+How to read the coefficients. With any frailty, ``exp(coef)`` is the
+hazard ratio of two units *of the same group* (given the frailty). With
+the positive stable frailty the hazard ratio of two units from the
+population (the frailty averaged over) is :math:`e^{a \beta}`: the
+conditional effect attenuated by the stable index. ``sf`` and ``hf``
+without ``group=`` or ``frailty=`` give that population curve. With the
+other families the population curves are not of proportional hazards,
+and no single marginal hazard ratio exists.
+
+What is identified. Only the dependence within groups identifies
+``theta``: with one unit per group a parametric frailty model's ``theta``
+is confounded with the baseline's shape. Under the positive stable
+frailty the frailty's scale is that of the baseline (it has no mean to
+fix at 1), and the frailties a fit reports for its groups (their
+posterior means given their data, which are finite) are on that scale.
+:attr:`frailty_variance` is ``inf`` for it; compare families by
+``kendall_tau`` (which is :math:`\theta / (\theta + 2)` for the gamma,
+:math:`\theta` for the positive stable, and
+:math:`\tfrac12 - 1/\theta + 2\theta^{-2} e^{2/\theta} E_1(2/\theta)`
+for the inverse Gaussian) and by ``aic()``.
+
+The formulas. Each group's contribution to the marginal likelihood is
+:math:`I(D, H) = \int_0^\infty u^D e^{-uH} \, dG(u)` for a group with
+:math:`D` events and summed cumulative hazard :math:`H`, which is
+:math:`(-1)^D L^{(D)}(H)`, the :math:`D`-th derivative of the frailty's
+Laplace transform :math:`L`. Both families have closed forms for a whole
+number of events (a fractional count is refused; the positive stable's
+recursion costs the square of the count, so a group with more than 1000
+events is refused for it):
+
+* inverse Gaussian, :math:`L(s) = \exp((1 - \sqrt{1 + 2\theta s}) /
+  \theta)`: with :math:`q = \sqrt{1 + 2\theta H}`,
+  :math:`\log I = (1 - q)/\theta - D \log q + \log \sum_{k<D}
+  \frac{(D - 1 + k)!}{k!\,(D - 1 - k)!} (\theta / 2q)^k` (a Bessel
+  function of half-integer order);
+* positive stable, :math:`L(s) = \exp(-s^a)`: :math:`I = e^{-H^a}
+  \sum_{j=1}^{D} c_{D,j} H^{ja - D}` with :math:`c_{d+1,j} = a
+  c_{d,j-1} + (d - ja) c_{d,j}` from :math:`c_{0,0} = 1`.
+
+Both are checked against direct integration over the frailty's density
+(the positive stable's by Kanter's integral representation) and the
+positive stable's against arbitrary-precision derivatives of
+:math:`e^{-s^a}`. The Cox fit of these families is EM on the full
+likelihood with the baseline's jumps as parameters (Breslow's ties;
+Efron's are refused where event times are tied, since they have no full
+likelihood): the E-step is each group's posterior mean frailty
+:math:`I(D + 1, A) / I(D, A)`, the M-step the Cox partial likelihood with
+the log-frailties as offsets, and ``theta`` maximises the profile of the
+marginal likelihood, reported as ``log_likelihood`` (on the scale of the
+full likelihood, not R's integrated likelihood that the gamma fit
+reports; ``log_likelihood_no_frailty`` is on the same scale). The
+standard errors of the coefficients and of ``theta`` are from the
+observed information of that likelihood, the baseline's jumps profiled
+out.
+
+At the boundary. Where the data show no frailty the estimate of
+``theta`` is 0 and the fit is the one without frailty (``WeibullPH``,
+``CoxPH`` with Breslow's ties, or the plain counting process), with a
+warning. ``theta`` then has no Wald standard error or interval (``nan``):
+on the boundary its estimate is 0 about half the time when the truth is
+0. Test ``theta = 0`` by twice the gain in log-likelihood over the fit
+without frailty against a 50:50 mixture of 0 and :math:`\chi^2_1`
+(halve the :math:`\chi^2_1` p-value). The test is conservative: on data
+with no frailty the fit lands on ``theta = 0`` in more than half of the
+data sets, and the test's size at a nominal 5% was 2.5% to 3.5% over 400
+simulated no-frailty data sets in the review of these families.
+
+Not offered for these families yet: penalised fits, ``diagnose()``, the
+joint frailty model (``JointFrailty``) and, for the positive stable
+frailty of repairable units, the population's mean count (``cif``,
+``iif`` and ``mcf`` without ``frailty=``, which is infinite) and
+intervals on each cluster's frailty; each is refused, or ``nan``, with
+the reason.
 
 Mixed-effects Cox models
 ------------------------
@@ -227,3 +330,14 @@ matrix, so a model with many thousands of groups is slow.
     :members:
 
 .. autoclass:: surpyval.univariate.regression.frailty.cox_mixed_effects.RandomEffect
+
+The frailty families' integrals
+-------------------------------
+
+.. autofunction:: surpyval.univariate.regression.frailty.families.inverse_gaussian_log_integral
+
+.. autofunction:: surpyval.univariate.regression.frailty.families.positive_stable_log_integral
+
+.. autofunction:: surpyval.univariate.regression.frailty.families.inverse_gaussian_kendall_tau
+
+.. autofunction:: surpyval.univariate.regression.frailty.families.kendall_tau

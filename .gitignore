@@ -14,6 +14,8 @@ dist
 references
 # ...but not the bundled skill's reference files
 !.claude/skills/surpyval/references/
+# ...nor the Bayesian tests' frozen references
+!surpyval/tests/bayes/references/
 docs/_build
 surpyval-env
 .python-version
@@ -29,3 +31,6 @@ publish.sh
 
 # Local multi-interpreter check environments (scripts/check_all_pythons.py)
 .venvs/
+
+# raw results of the study scripts (their summaries are kept)
+scripts/studies/joint_recovery/results_*.jsonl

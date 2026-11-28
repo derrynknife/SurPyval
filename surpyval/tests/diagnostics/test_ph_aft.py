@@ -644,7 +644,7 @@ def test_columns_and_alpha(meets_ph):
     assert single == {("w",)}
     glob = _rows(d, "proportional_hazards").iloc[-1]
     assert glob["covariates"] == ("z", "w")
-    loose = meets_ph.diagnose(alpha=0.5)
+    loose = meets_ph.diagnose(alpha_ci=0.5)
     tests = loose.table[loose.table["p"].notna()]
     assert ((tests["verdict"] == "fail") == (tests["p"] < 0.5)).all()
 

@@ -18,6 +18,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple
 
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
+
 from .report import COLUMNS, VERDICTS, Advice, Diagnosis, make_table, verdict
 
 #: The modules that define and register a family, imported (once) the
@@ -302,6 +304,25 @@ PENDING: tuple[Pending, ...] = (
         "distribution that Buckley-James does not.",
     ),
     Pending(
+        "Cox-Aalen regressions",
+        _instance_of(_REG + "cox_aalen.cox_aalen.CoxAalenModel"),
+        "Check the multiplicative covariates' proportional hazards with "
+        "CoxPH.fit(...).diagnose() on the same rows (the model with every "
+        "covariate multiplicative), and whether an additive covariate's "
+        "effect changes over time with "
+        "AalenAdditive.fit(...).constant_effects_test() (the model with "
+        "every covariate additive).",
+    ),
+    Pending(
+        "rank-based AFT regressions",
+        _instance_of(_REG + "rank_aft.rank_aft.RankAFTModel"),
+        "Check the covariates' effects with diagnose() on an AFT fit of "
+        "the same data (WeibullAFT, LogNormalAFT, ...), which assumes a "
+        "distribution that the rank estimator does not, and compare the "
+        "coefficients with BuckleyJames.fit on the same data, which "
+        "estimates the same ones.",
+    ),
+    Pending(
         "parametric competing-risks regressions as a whole",
         _instance_of(
             "surpyval.univariate.competing_risks.regression."
@@ -389,7 +410,7 @@ def _check_alpha(alpha: Any) -> float:
         value = float("nan")
     if not 0 < value < 1:
         raise ValueError(
-            "'alpha' must be strictly between 0 and 1 (the level each "
+            "'alpha_ci' must be strictly between 0 and 1 (the level each "
             "check's test is judged at, e.g. 0.05); got {!r}.".format(alpha)
         )
     return value
@@ -432,9 +453,10 @@ def _covariate_names(model: Any) -> list[str]:
     return list(coefficient_names(model, len(params)))
 
 
+@renamed_arguments(REMOVED_IN, FutureWarning, alpha="alpha_ci")
 def diagnose(
     model: Any,
-    alpha: float = 0.05,
+    alpha_ci: float = 0.05,
     columns: Sequence[str] | None = None,
     *,
     n_boot: int | None = None,
@@ -459,7 +481,7 @@ def diagnose(
     >>> diagnose(CoxPH.fit(x, df[["fin", "prio"]].values, c=c)).ok
     True
     """
-    alpha = _check_alpha(alpha)
+    alpha_ci = _check_alpha(alpha_ci)
     family = family_for(model)
     unknown = sorted(set(options) - set(family.options))
     if unknown:
@@ -471,7 +493,7 @@ def diagnose(
                     "its options are "
                     + ", ".join(repr(k) for k in family.options)
                     if family.options
-                    else "it takes only alpha and columns"
+                    else "it takes only alpha_ci and columns"
                 ),
             )
         )
@@ -480,7 +502,7 @@ def diagnose(
     names = (family.covariates or _covariate_names)(model)
     ctx = Context(
         model,
-        alpha,
+        alpha_ci,
         names,
         _resolve_columns(columns, names),
         n_boot=n_boot,
@@ -496,7 +518,7 @@ def diagnose(
             row = dict(row, check=check.name)
             row["covariates"] = tuple(row.get("covariates") or ())
             if row.get("verdict") is None:
-                row["verdict"] = verdict(row.get("p"), alpha)
+                row["verdict"] = verdict(row.get("p"), alpha_ci)
             elif row["verdict"] not in VERDICTS:
                 raise ValueError(
                     "Check {!r} gave the verdict {!r}; a verdict is one of "
@@ -542,7 +564,7 @@ def diagnose(
         make_table(rows, family.columns),
         advice,
         notes,
-        alpha,
+        alpha_ci,
         family.name,
         model_label(model),
         [names[j] for j in ctx.columns],

@@ -14,12 +14,12 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.deprecation import fit_entry
 from surpyval.utils.no_maximum import (
     maximum_warnings_quiet,
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.surpyval_data import (
     SurpyvalData,
     accepts_surpyval_data,
@@ -103,6 +103,75 @@ def _optimizer_label(how: str, res: Any) -> str:
 
 
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
+
+#: The options of ``fit`` that only probability plotting (``how="MPP"``)
+#: reads, each with its default.
+MPP_ONLY_OPTIONS: dict[str, Any] = {
+    "heuristic": "Nelson-Aalen",
+    "rr": "y",
+    "on_d_is_0": False,
+    "turnbull_estimator": "Fleming-Harrington",
+}
+
+
+def warn_mpp_only_options(name: str, how: str, **given: Any) -> None:
+    """Warn, with a ``FutureWarning`` at the user's line, when ``fit`` is
+    given an option only ``how="MPP"`` reads (:data:`MPP_ONLY_OPTIONS`)
+    with another method: the option changes nothing, so the call does not
+    do what it says. The fit and its result are unchanged; from
+    :data:`~surpyval.utils.deprecation.REMOVED_IN` such a call is
+    refused. An option left at its default (given or not) is not
+    reported.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.univariate.parametric.optimised_fit import (
+    ...     warn_mpp_only_options,
+    ... )
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     warn_mpp_only_options("Weibull", "MLE", rr="x", on_d_is_0=False)
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Weibull.fit: rr='x' is read only by how='MPP' (probability
+    plotting), so how='MLE' ignored it and the result is the fit without
+    it. From v0.31 this is refused: drop rr, or fit with how='MPP'.
+    """
+    if how == "MPP":
+        return
+    from surpyval.utils.deprecation import REMOVED_IN
+
+    from ..nonparametric._heuristics import canonical_heuristic
+
+    ignored = []
+    for option, value in given.items():
+        default = MPP_ONLY_OPTIONS[option]
+        if option == "heuristic":
+            same = canonical_heuristic(value) == default
+        else:
+            same = value == default
+        if not same:
+            ignored.append((option, value))
+    if not ignored:
+        return
+    shown = ", ".join(f"{option}={value!r}" for option, value in ignored)
+    names = [option for option, _ in ignored]
+    dropped = (
+        names[0]
+        if len(names) == 1
+        else ", ".join(names[:-1]) + " and " + names[-1]
+    )
+    verb = "is" if len(ignored) == 1 else "are"
+    pronoun = "it" if len(ignored) == 1 else "them"
+    warnings.warn(
+        f"{name}.fit: {shown} {verb} read only by how='MPP' (probability "
+        f"plotting), so how='{how}' ignored {pronoun} and the result is the "
+        f"fit without {pronoun}. From v{REMOVED_IN} this is refused: "
+        f"drop {dropped}, or fit with how='MPP'.",
+        FutureWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
 
 #: How far an ECDF given to ``fit_from_ecdf`` may fall between neighbouring
 #: points (floating-point rounding) before it is refused as not a CDF.
@@ -328,6 +397,11 @@ class OptimisedFitMixin(FitInputsMixin):
             Only MLE supports every kind of censoring and truncation, and
             only MLE can fit ``zi`` and ``lfp`` models; MOM and MSE do not
             support truncation.
+
+            Only MPP reads ``heuristic``, ``rr``, ``on_d_is_0`` and
+            ``turnbull_estimator``: given (other than at its default) with
+            another method, each is ignored with a ``FutureWarning``, and
+            from v0.31 refused.
 
         offset : boolean, optional
             If :code:`True` finds the shifted distribution. If not provided
@@ -648,7 +722,8 @@ class OptimisedFitMixin(FitInputsMixin):
         keep = (np.asarray(non_parametric_model.d) > 0) & np.isfinite(x)
         return self.fit_from_ecdf(x[keep], F[keep])
 
-    fit_from_surpyval_data = fit_entry("_fit_from_surpyval_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_surpyval_data = RemovedName("call fit(data)", "0.30")
 
     @refuses_what_fit_cannot_take
     def _fit_from_surpyval_data(
@@ -699,6 +774,14 @@ turnbull_estimator, hr
         array([6.022, 1.351])
         """
         how = normalise_how(how)
+        warn_mpp_only_options(
+            self.name,
+            how,
+            heuristic=heuristic,
+            rr=rr,
+            on_d_is_0=on_d_is_0,
+            turnbull_estimator=turnbull_estimator,
+        )
         hr = self._checked_fit_hr(hr, how)
         if surv_data.weighted:
             from ._weighted import check_weighted_fit
@@ -873,7 +956,11 @@ turnbull_estimator, hr
         if (
             how == "MLE"
             and not fixed
-            and self._warn_if_at_limit(surv_data, results, zi, lfp)
+            # (with the hazard ratio known at fit time, which a family
+            # comparing the fit with a limit must hold too)
+            and self._warn_if_at_limit(
+                surv_data, {**results, "hr": hr}, zi, lfp
+            )
         ):
             warning = None
             unverified = False
@@ -1148,12 +1235,27 @@ turnbull_estimator, hr
             f"converge along {'its' if one else 'their'} "
             f"profile{'' if one else 's'} where the search stopped"
         )
+        limit = self._offset_limit_family() if offset else None
+        if limit is not None:
+            # The likelihood-ratio bounds are measured from the limit's
+            # fit, the supremum (``ExtendedLikelihoodRatio
+            # ._lr_supremum_nll``), so only the Wald ones mean nothing
+            consequence = (
+                "The reported parameters are where the search stopped, not "
+                "a maximum, and their standard errors and Wald bounds are "
+                "meaningless (likelihood-ratio bounds are measured from the "
+                f"{limit.name} fit, the best the {self.name} approaches)"
+            )
+        else:
+            consequence = (
+                "The reported parameters are where the search stopped, and "
+                "their standard errors and bounds are meaningless"
+            )
         warn_no_maximum(
             f"the {self.name} likelihood keeps increasing as {named} "
             f"run{'s' if one else ''} on, towards a limit of the family "
             f"that none of its members reaches: {how_found}",
-            "The reported parameters are where the search stopped, and "
-            "their standard errors and bounds are meaningless",
+            consequence,
             self._runaway_advice(runaway, values, offset),
         )
 
@@ -1171,6 +1273,7 @@ turnbull_estimator, hr
             # ends; see ``fitters.mle._Judge.keep``) or the shape that
             # makes up for it
             return (
+                "the data do not support an offset: "
                 f"as gamma runs to -inf the {self.name} approaches a "
                 f"{limit.name} distribution, which fits these data at least "
                 f"as well as any {self.name} the search reached: fit "

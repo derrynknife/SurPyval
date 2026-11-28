@@ -275,6 +275,9 @@ def _fit_from_df(
     """The shared body of the process fitters' ``fit_from_df``: fit from
     the columns of ``df`` and record the covariate names on the model.
     The readings' column is ``m_col`` or its other name ``y_col``."""
+    from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+    df = _as_pandas(df)
     refuse_column_names(fit_kwargs, "x", "y", "i")
     y_col = readings_column(m_col, y_col)
     cols = None
@@ -448,8 +451,18 @@ def _unit_steps(i: npt.ArrayLike) -> tuple[npt.NDArray, npt.NDArray]:
     return unit, step
 
 
+def _per_row(beta: Any, shape: tuple) -> npt.NDArray:
+    """The rate ``beta`` (a number, or one a row) broadcast to ``shape``."""
+    beta = np.asarray(beta, dtype=float)
+    return np.broadcast_to(beta[:, None] if beta.ndim else beta, shape)
+
+
 def _gauge_cell_probabilities(
-    delta: npt.NDArray, k: npt.NDArray, beta: float, h: float, m: int
+    delta: npt.NDArray,
+    k: npt.NDArray,
+    beta: float | npt.NDArray,
+    h: float,
+    m: int,
 ) -> npt.NDArray:
     """
     Cell-to-cell step probabilities of the quantised gamma likelihood.
@@ -459,7 +472,8 @@ def _gauge_cell_probabilities(
     of width ``h`` moves into the cell ``d = delta + r h`` above it, for
     ``r = -(m - 1), ..., m - 1``: ``(H(d + h) - 2 H(d) + H(d - h)) / h``,
     with ``H(x)`` the integral from 0 to ``x`` of the ``Gamma(k, beta)``
-    CDF. Returns an array of shape ``(len(delta), 2 m - 1)``.
+    CDF. Returns an array of shape ``(len(delta), 2 m - 1)``. ``beta`` is
+    one rate, or one for each increment.
 
     ``H`` is used in the lower tail, where it is small. In the upper tail
     ``H(x)`` is ``x - k / beta`` plus a tiny remainder that its second
@@ -473,16 +487,17 @@ def _gauge_cell_probabilities(
     r = np.arange(-m, m + 1)
     x = delta[:, None] + r[None, :] * h
     kk = np.broadcast_to(k[:, None], x.shape)
+    bb = _per_row(beta, x.shape)
     mean = np.broadcast_to((k / beta)[:, None], x.shape)
     H = np.zeros(x.shape)
     S = mean - x
     lo = (x > 0) & (x < mean + h)
-    bx = beta * x[lo]
+    bx = bb[lo] * x[lo]
     H[lo] = x[lo] * gammainc(kk[lo], bx) - mean[lo] * gammainc(
         kk[lo] + 1.0, bx
     )
     hi = (x > 0) & (x >= mean - h)
-    bx = beta * x[hi]
+    bx = bb[hi] * x[hi]
     S[hi] = mean[hi] * gammaincc(kk[hi] + 1.0, bx) - x[hi] * gammaincc(
         kk[hi], bx
     )
@@ -494,17 +509,23 @@ def _gauge_cell_probabilities(
 
 
 def _gauge_point_probabilities(
-    offset: npt.NDArray, k: npt.NDArray, beta: float, h: float, m: int
+    offset: npt.NDArray,
+    k: npt.NDArray,
+    beta: float | npt.NDArray,
+    h: float,
+    m: int,
 ) -> npt.NDArray:
     """
     The probabilities that a gamma increment of shape ``k`` from a known
     level lands in each of the ``m`` cells of width ``h`` of a bin whose
-    bottom is ``offset`` above that level. Shape ``(len(offset), m)``.
+    bottom is ``offset`` above that level. Shape ``(len(offset), m)``;
+    ``beta`` is one rate, or one for each increment.
     """
     x = np.maximum(offset[:, None] + np.arange(m + 1)[None, :] * h, 0.0)
     kk = np.broadcast_to(k[:, None], x.shape)
-    lower = gammainc(kk, beta * x)
-    upper = gammaincc(kk, beta * x)
+    bx = _per_row(beta, x.shape) * x
+    lower = gammainc(kk, bx)
+    upper = gammaincc(kk, bx)
     # differences of the CDF below the mean, of the survival function above
     # it, so neither tail cancels away
     by_cdf = lower[:, 1:] - lower[:, :-1]
@@ -523,14 +544,38 @@ def _quantised_log_likelihood(
     """
     The log-likelihood of gauge-rounded gamma-process readings, as a
     function of the increments' shapes ``k`` (pooled order, as from
-    :func:`_increments`) and the rate ``beta``.
+    :func:`_increments`) and the rate ``beta``: the sum over the units of
+    :func:`_quantised_unit_log_likelihood` at one parameter point.
+    """
+    by_unit = _quantised_unit_log_likelihood(delta, i, gauge, m, start)
+
+    def log_lik(k: npt.NDArray, beta: float) -> float:
+        return float(np.sum(by_unit(k[None, :], np.array([float(beta)]))))
+
+    return log_lik
+
+
+def _quantised_unit_log_likelihood(
+    delta: npt.NDArray,
+    i: npt.ArrayLike,
+    gauge: float,
+    m: int,
+    start: float | None,
+) -> Callable[[npt.NDArray, npt.NDArray], npt.NDArray]:
+    """
+    Each unit's log-likelihood of gauge-rounded gamma-process readings,
+    at rows of parameters: a function of the increments' shapes ``k``
+    (``(N, n)``, one row a parameter point, the increments in pooled
+    order as from :func:`_increments`) and the rates ``beta`` (``(N,)``),
+    returning ``(N, units)``.
 
     ``delta`` holds the recorded increments (whole multiples of
     ``gauge``) and ``i`` the unit labels of the readings. Each bin is split
     into ``m`` cells, and the probability of the path is carried forward
-    one reading at a time -- all units together -- as a distribution over
-    the cells of the current bin. It starts uniform over the first bin, or,
-    with ``start``, at the point ``start`` above the first bin's bottom.
+    one reading at a time -- all units and parameter points together -- as
+    a distribution over the cells of the current bin. It starts uniform
+    over the first bin, or, with ``start``, at the point ``start`` above
+    the first bin's bottom.
     """
     unit, step = _unit_steps(i)
     n_units = int(unit.max()) + 1
@@ -538,6 +583,7 @@ def _quantised_log_likelihood(
     # every unit one reading at a time, over contiguous blocks of rows
     order = np.lexsort((unit, step))
     unit, delta = unit[order], delta[order]
+    n = delta.size
     bounds = np.searchsorted(step[order], np.arange(step.max() + 2))
     h = gauge / m
     # T[a, b], the step from cell a to cell b, is the cell probability at
@@ -547,28 +593,42 @@ def _quantised_log_likelihood(
     n_point = int(bounds[1]) if start is not None else 0
     tiny = np.finfo(float).tiny
 
-    def log_lik(k: npt.NDArray, beta: float) -> float:
-        k = k[order]
+    def log_lik(k: npt.NDArray, beta: npt.NDArray) -> npt.NDArray:
+        k = np.atleast_2d(np.asarray(k, dtype=float))[:, order]
+        beta = np.asarray(beta, dtype=float)
+        N = len(k)
+        rest = n - n_point
+        b_rest = np.repeat(beta, rest)
         steps = _gauge_cell_probabilities(
-            delta[n_point:], k[n_point:], beta, h, m
-        )[:, toeplitz]
-        prob = np.full((n_units, m), 1.0 / m)
-        ll = 0.0
+            np.tile(delta[n_point:], N),
+            k[:, n_point:].ravel(),
+            b_rest,
+            h,
+            m,
+        )[:, toeplitz].reshape(N, rest, m, m)
+        prob = np.full((N, n_units, m), 1.0 / m)
+        ll = np.zeros((N, n_units))
         for lo, hi in zip(bounds[:-1], bounds[1:]):
             u = unit[lo:hi]
             if lo < n_point:
                 assert start is not None
                 new = _gauge_point_probabilities(
-                    delta[lo:hi] - start, k[lo:hi], beta, h, m
-                )
+                    np.tile(delta[lo:hi] - start, N),
+                    k[:, lo:hi].ravel(),
+                    np.repeat(beta, hi - lo),
+                    h,
+                    m,
+                ).reshape(N, hi - lo, m)
             else:
                 first, last = lo - n_point, hi - n_point
-                new = np.einsum("na,nab->nb", prob[u], steps[first:last])
-            total = new.sum(axis=1)
-            ll += float(np.sum(np.log(np.maximum(total, tiny))))
+                new = np.einsum(
+                    "Nua,Nuab->Nub", prob[:, u], steps[:, first:last]
+                )
+            total = new.sum(axis=2)
+            ll[:, u] += np.log(np.maximum(total, tiny))
             # keep the filtered distribution, normalised so a long path
             # does not underflow; its scale is already in ``ll``
-            prob[u] = new / np.maximum(total, tiny)[:, None]
+            prob[:, u] = new / np.maximum(total, tiny)[:, :, None]
         return ll
 
     return log_lik
@@ -645,9 +705,108 @@ class ProcessRUL:
         }
 
 
-# Halvings of the Wiener level's quantile bracket: enough to close any
-# double-precision bracket to adjacent floats (the loop stops changing it).
-_LEVEL_BISECTIONS = 200
+# Steps of the Wiener level's quantile search: Newton steps inside a
+# bracket that each step narrows, a halving where a Newton step would leave
+# it. Newton settles in a handful; the cap is only a guard, enough for
+# halvings alone to close any double-precision bracket.
+_LEVEL_STEPS = 200
+# A quantile has settled when a step moves it by at most this fraction of
+# its size (or of the level's spread, for a level near 0): a few units in
+# the last place.
+_LEVEL_TOL = 4.0 * np.finfo(float).eps
+# Probabilities at most this many are solved one at a time on floats, which
+# skips numpy's per-call cost on small arrays; more are solved together.
+_LEVEL_SCALAR_MAX = 8
+_INV_SQRT_2PI = 1.0 / np.sqrt(2.0 * np.pi)
+
+
+def _wiener_below_and_density(
+    y: Any, m: float, s: float, shift: float, log_weight: float
+) -> tuple[Any, Any]:
+    """P(level <= y and no crossing by t), and its density times ``s``,
+    for a Wiener level given survival (see :class:`ProcessLevel`), at
+    ``y`` at most the threshold: floats or arrays alike, by the same
+    operations, so one value and an array of them agree to the bit."""
+    a = (y - m) / s
+    b = (y - m - shift) / s
+    free = ndtr(a)
+    image = np.exp(log_weight + log_ndtr(b))
+    density = (np.exp(-0.5 * a * a) - np.exp(log_weight - 0.5 * b * b)) * (
+        _INV_SQRT_2PI
+    )
+    return np.maximum(free - image, 0.0), density
+
+
+def _wiener_quantile_one(
+    target: float,
+    lo: float,
+    hi: float,
+    m: float,
+    s: float,
+    shift: float,
+    log_weight: float,
+) -> float:
+    """The level ``y`` in ``[lo, hi]`` at which the Wiener level given
+    survival's ``below`` (P(level <= y and no crossing)) reaches
+    ``target``, for one value on floats: Newton steps from ``lo`` on the
+    closed-form density, each step narrowing the bracket, with a halving
+    wherever a Newton step would leave it. :func:`_wiener_quantile_many`
+    is the same search on arrays."""
+    x = lo
+    for _ in range(_LEVEL_STEPS):
+        below, density = _wiener_below_and_density(x, m, s, shift, log_weight)
+        if below < target:
+            lo = x
+        else:
+            hi = x
+        nxt = 0.5 * (lo + hi)
+        if density > 0.0:
+            newton = x - (below - target) * s / density
+            if lo <= newton <= hi:
+                nxt = newton
+        if abs(nxt - x) <= _LEVEL_TOL * max(abs(nxt), s) or hi - lo <= (
+            _LEVEL_TOL * max(abs(nxt), s)
+        ):
+            return float(nxt)
+        x = nxt
+    return float(0.5 * (lo + hi))
+
+
+def _wiener_quantile_many(
+    target: npt.NDArray,
+    lo: npt.NDArray,
+    hi: npt.NDArray,
+    m: float,
+    s: float,
+    shift: float,
+    log_weight: float,
+) -> npt.NDArray:
+    """:func:`_wiener_quantile_one` for arrays: the same steps on each
+    element, stopping each once it has settled."""
+    lo, hi = lo.copy(), hi.copy()
+    x = lo.copy()
+    out = 0.5 * (lo + hi)
+    live = np.arange(x.size)
+    for _ in range(_LEVEL_STEPS):
+        xl, tl, lol, hil = x[live], target[live], lo[live], hi[live]
+        below, density = _wiener_below_and_density(xl, m, s, shift, log_weight)
+        low = below < tl
+        lol = np.where(low, xl, lol)
+        hil = np.where(low, hil, xl)
+        nxt = 0.5 * (lol + hil)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            newton = xl - (below - tl) * s / density
+        take = (density > 0.0) & (lol <= newton) & (newton <= hil)
+        nxt = np.where(take, newton, nxt)
+        tol = _LEVEL_TOL * np.maximum(np.abs(nxt), s)
+        done = (np.abs(nxt - xl) <= tol) | (hil - lol <= tol)
+        out[live[done]] = nxt[done]
+        lo[live], hi[live], x[live] = lol, hil, nxt
+        out[live[~done]] = 0.5 * (lol + hil)[~done]
+        live = live[~done]
+        if live.size == 0:
+            break
+    return out
 
 
 class ProcessLevel:
@@ -677,8 +836,9 @@ class ProcessLevel:
     the density at ``y`` below the threshold ``L`` is proportional to
     ``phi((y - m) / s) - exp(2 mu (L - y0) / sigma**2) phi((y - m - 2 (L
     - y0)) / s)``, and its total is the first-passage survival. ``qf``
-    is closed form for the gamma process and a bisection of ``ff`` for
-    the Wiener process.
+    is closed form for the gamma process; for the Wiener process it is
+    Newton's method on ``ff`` (whose density is closed form), kept inside
+    a bracket that each step narrows.
 
     Attributes
     ----------
@@ -846,20 +1006,32 @@ class ProcessLevel:
             a, rate = self.params["shape"], self.params["rate"]
             out = self.y0 + gammaincinv(a, np.exp(log_target)) / rate
             return np.where(np.isnan(p), np.nan, np.minimum(out, L))
-        m, s, _, _ = self._wiener_terms()
+        m, s, shift, log_weight = self._wiener_terms()
         # Bracket: below(y) <= Phi((y - m) / s), so the quantile is at
         # or above the free path's quantile of p * S; and below L.
         ok = np.isfinite(log_target)
         lo = np.where(ok, m + s * ndtri_exp(np.where(ok, log_target, 0.0)), L)
         lo = np.minimum(lo, L)
-        hi = np.full_like(lo, L)
         target = np.exp(log_target)
-        for _ in range(_LEVEL_BISECTIONS):
-            mid = 0.5 * (lo + hi)
-            low = self._below(mid) < target
-            lo = np.where(low, mid, lo)
-            hi = np.where(low, hi, mid)
-        out = 0.5 * (lo + hi)
+        if p.size <= _LEVEL_SCALAR_MAX:
+            out = np.array(
+                [
+                    _wiener_quantile_one(
+                        float(target_i),
+                        float(lo_i),
+                        L,
+                        m,
+                        s,
+                        shift,
+                        log_weight,
+                    )
+                    for target_i, lo_i in zip(target, lo)
+                ]
+            ).reshape(p.shape)
+        else:
+            out = _wiener_quantile_many(
+                target, lo, np.full_like(lo, L), m, s, shift, log_weight
+            )
         out = np.where(p == 0.0, -np.inf, out)
         out = np.where(p == 1.0, L, out)
         return np.where(np.isnan(p), np.nan, out)
@@ -2420,8 +2592,14 @@ class WienerProcessModel(FirstPassageProcessModel):
     failure ``threshold`` is Inverse-Gaussian distributed with mean ``D /
     mu`` and shape ``D**2 / sigma**2``, where ``D = threshold - y0`` is the
     distance to failure, and the failure-time methods below evaluate that
-    distribution. A positive drift ``mu`` is required for a proper
-    (non-defective) life distribution.
+    distribution. With a drift ``mu`` at or below zero the life is still
+    described exactly, but it is no longer a proper distribution of a
+    finite time: at zero drift every unit crosses eventually (``ff(inf)
+    = 1``, the Levy law) but the mean life is infinite, and with a
+    negative drift a unit crosses only with probability ``exp(2 mu D /
+    sigma**2)`` (``ff(inf)``), so the mean life is infinite, quantiles
+    past that probability are ``inf``, and :meth:`random` draws ``inf``
+    for the units that never cross.
 
     Parameters
     ----------
@@ -2496,31 +2674,30 @@ class WienerProcessModel(FirstPassageProcessModel):
         self._init_stress(gamma, stress_ref)
         self._init_y0(y0)
 
-    def _ig(self, distance: float) -> tuple[float, float]:
-        # Inverse-Gaussian (mean nu, shape lam) parameters for first passage
-        # over ``distance`` at drift mu / diffusion sigma.
-        nu = distance / self.mu
-        lam = distance**2 / self.sigma**2
-        return nu, lam
-
     def _ig_terms(
         self, t: npt.NDArray, distance: float
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
         The two pieces of the Inverse-Gaussian CDF at ``t > 0``,
-        ``F = Phi(a) + exp(2 lam / nu) Phi(-b)``: returns ``a`` and the log
-        of the second term, ``2 lam / nu + log Phi(-b)``.
+        ``F = Phi(a) + exp(2 mu D / sigma**2) Phi(-b)`` with ``a = (mu t -
+        D) / (sigma sqrt(t))`` and ``b = (mu t + D) / (sigma sqrt(t))``:
+        returns ``a`` and the log of the second term, ``2 mu D / sigma**2
+        + log Phi(-b)``.
 
-        The second term is formed in log space because ``exp(2 lam / nu)``
-        overflows once ``2 D mu / sigma**2`` passes ~709 (a low-noise or
-        high-threshold process), which made ``sf``/``ff`` nan. The log is
-        always at most about ``-log(b)``: ``b**2 / 2 >= 2 lam / nu``.
+        It is written in the drift itself, not the Inverse-Gaussian mean
+        ``D / mu``, so it holds for any drift: at zero it is the Levy law
+        ``2 Phi(-D / (sigma sqrt(t)))`` (the mean form divided by zero),
+        and with a negative drift it is the defective law that tends to
+        ``exp(2 mu D / sigma**2)``. The second term is formed in log space
+        because ``exp(2 mu D / sigma**2)`` overflows once it passes ~709 (a
+        low-noise or high-threshold process), which made ``sf``/``ff``
+        nan. The log is always at most about ``-log(b)``.
         """
-        nu, lam = self._ig(distance)
-        root = np.sqrt(lam / t)
-        a = root * (t / nu - 1.0)
-        b = root * (t / nu + 1.0)
-        return a, 2.0 * lam / nu + log_ndtr(-b)
+        root = self.sigma * np.sqrt(t)
+        a = (self.mu * t - distance) / root
+        b = (self.mu * t + distance) / root
+        log_second = 2.0 * self.mu * distance / self.sigma**2 + log_ndtr(-b)
+        return a, log_second
 
     def _ff_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
         # Inverse-Gaussian first-passage CDF over ``distance``.
@@ -2563,14 +2740,19 @@ class WienerProcessModel(FirstPassageProcessModel):
         return np.exp(self._log_sf_distance(t, distance))
 
     def _log_df0(self, t: npt.NDArray, distance: float) -> npt.NDArray:
-        # Log density of the first-passage (Inverse-Gaussian) time.
-        nu, lam = self._ig(distance)
+        # Log density of the first-passage time, ``D / (sigma sqrt(2 pi
+        # t**3)) exp(-(D - mu t)**2 / (2 sigma**2 t))``: the
+        # Inverse-Gaussian density for a positive drift, and the same
+        # formula (the Levy density at zero, a defective one below) for
+        # any other.
         out = np.full_like(t, -np.inf, dtype=float)
         pos = (t > 0) & np.isfinite(t)
         tp = t[pos]
-        out[pos] = 0.5 * np.log(lam / (2.0 * np.pi * tp**3)) - lam * (
-            tp - nu
-        ) ** 2 / (2.0 * nu**2 * tp)
+        out[pos] = (
+            np.log(distance / self.sigma)
+            - 0.5 * np.log(2.0 * np.pi * tp**3)
+            - (distance - self.mu * tp) ** 2 / (2.0 * self.sigma**2 * tp)
+        )
         return out
 
     def _df0(self, t: npt.NDArray, distance: float) -> npt.NDArray:
@@ -2578,18 +2760,40 @@ class WienerProcessModel(FirstPassageProcessModel):
         return np.exp(self._log_df0(t, distance))
 
     def _mean0(self, distance: float) -> float:
-        # Mean time to failure, ``distance / mu``.
-        return distance / self.mu
+        # Mean time to failure, ``distance / mu`` for a positive drift.
+        # At zero drift every unit crosses but the mean of the Levy law is
+        # infinite, and below zero some units never cross: infinite both
+        # ways. ``distance / mu`` divided by zero, or was negative.
+        if self.mu > 0:
+            return distance / self.mu
+        return np.inf
 
     def _quantile_hi0(self, distance: float) -> float:
-        # bracket around the first-passage mean
-        return distance / self.mu
+        # bracket around the first-passage mean, or around the time scale
+        # ``D**2 / sigma**2`` of the diffusion when there is no mean
+        if self.mu > 0:
+            return distance / self.mu
+        return distance**2 / self.sigma**2
 
     def _random0(
         self, size: int, rng: np.random.Generator, distance: float
     ) -> npt.NDArray:
-        nu, lam = self._ig(distance)
-        return rng.wald(nu, lam, size=size)
+        lam = distance**2 / self.sigma**2
+        if self.mu > 0:
+            return rng.wald(distance / self.mu, lam, size=size)
+        if self.mu == 0:
+            # the Levy law: D**2 / (sigma**2 Z**2), Z standard normal
+            return lam / rng.standard_normal(size) ** 2
+        # Below zero a unit crosses with probability exp(2 mu D /
+        # sigma**2), and given that it crosses its time is the
+        # Inverse-Gaussian of drift |mu| (the density with drift mu is
+        # that one times the probability); the rest never cross: inf.
+        crosses = rng.uniform(size=size) < self._ff_at_infinity(distance)
+        draws = np.full(size, np.inf)
+        draws[crosses] = rng.wald(
+            distance / -self.mu, lam, size=int(crosses.sum())
+        )
+        return draws
 
     def _level(
         self, t: float, t0: float, start: float, exposure: float
@@ -2825,6 +3029,100 @@ class WienerProcess:
 
     @classmethod
     @takes_unit
+    @takes_readings
+    def fit_bayes(
+        cls,
+        x: Any,
+        y: npt.ArrayLike = None,  # type: ignore[assignment]
+        i: npt.ArrayLike = None,  # type: ignore[assignment]
+        threshold: float = None,  # type: ignore[assignment]
+        Z: npt.ArrayLike | None = None,
+        stress_ref: npt.ArrayLike | None = None,
+        y0: float | None = None,
+        *,
+        priors: Any = None,
+        method: str = "auto",
+        points: int | None = None,
+        importance: bool = False,
+    ) -> Any:
+        """
+        Fit the Wiener process by Bayes' rule: priors on ``mu`` and
+        ``sigma`` (and the stress coefficients) times the likelihood of
+        the increments :meth:`fit` maximises.
+
+        In words: the readings say how fast the units degrade and how
+        much their paths wander; a prior says what was believed before
+        (a drift from an earlier fleet, or a life: "B10 about 2000
+        hours"); the posterior combines them, and gives a credible
+        interval on the life and on a unit's remaining life.
+
+        The posterior is computed on a grid for up to three free
+        parameters (exact, to its stated error), and by the checked
+        Laplace approximation beyond. With no priors (flat on ``mu`` and
+        on ``log sigma``) it is the textbook normal-inverse-gamma
+        posterior: ``sigma**2`` scaled inverse chi-squared, ``mu`` a
+        Student t about the maximum-likelihood drift.
+
+        Parameters
+        ----------
+        x, y, i, threshold, Z, stress_ref, y0
+            The readings and the model, as for :meth:`fit`. ``y0`` is
+            held at the maximum-likelihood fit's value (given, or
+            estimated from the readings).
+        priors : dict, joint prior or list, optional
+            A prior for each parameter named (``mu``, ``sigma``,
+            ``gamma_0``, ...); for example
+            ``prior.from_model(earlier_fit, param="mu", weight=0.5)``,
+            an earlier fleet's drift counted at half weight, or
+            ``prior.on_quantities(WienerProcess, B10=..., instead_of=
+            ["mu"])``, a belief about the life. A parameter left out is
+            flat on its unconstrained scale.
+        method : {'auto', 'grid', 'laplace'}, optional
+            The engine. Default ``'auto'``.
+        points, importance
+            The grid's starting points per parameter; reweighting of the
+            Laplace draws.
+
+        Returns
+        -------
+        surpyval.degradation.bayes.BayesianProcessModel
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import surpyval as sp
+        >>> from surpyval.degradation import WienerProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 3)
+        >>> i = np.repeat(np.arange(3), 11)
+        >>> steps = rng.normal(0.5 * 10, 1.0 * np.sqrt(10), size=(3, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> model = WienerProcess.fit_bayes(
+        ...     t, y, i, threshold=100,
+        ...     priors={"mu": sp.prior.around(0.5, between=(0.4, 0.6))})
+        >>> lo, hi = model.param_cri("mu")
+        >>> bool(0.4 < lo < hi < 0.65)
+        True
+        """
+        from surpyval.degradation import bayes
+
+        return bayes.fit(
+            cls,
+            x,
+            y,
+            i,
+            threshold,
+            Z,
+            stress_ref,
+            y0,
+            priors=priors,
+            method=method,
+            points=points,
+            importance=importance,
+        )
+
+    @classmethod
+    @takes_unit
     def fit_from_df(
         cls,
         df: pd.DataFrame,
@@ -2866,6 +3164,9 @@ class WienerProcess:
         WienerProcessModel
             The fitted model.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return _fit_from_df(
             cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs, m_col
         )
@@ -3476,6 +3777,106 @@ class GammaProcess:
 
     @classmethod
     @takes_unit
+    @takes_readings
+    def fit_bayes(
+        cls,
+        x: Any,
+        y: npt.ArrayLike = None,  # type: ignore[assignment]
+        i: npt.ArrayLike = None,  # type: ignore[assignment]
+        threshold: float = None,  # type: ignore[assignment]
+        Z: npt.ArrayLike | None = None,
+        stress_ref: npt.ArrayLike | None = None,
+        resolution: float | None = None,
+        y0: float | None = None,
+        *,
+        gauge: float | None = None,
+        rounding: str = "nearest",
+        exact_start: bool = False,
+        gauge_method: str = "exact",
+        priors: Any = None,
+        method: str = "auto",
+        points: int | None = None,
+        importance: bool = False,
+    ) -> Any:
+        """
+        Fit the gamma process by Bayes' rule: priors on ``alpha`` and
+        ``beta`` (and the stress coefficients) times the likelihood of
+        the increments :meth:`fit` maximises (zero increments censored
+        at the ``resolution``, as there).
+
+        Readings off a coarse gauge (``gauge=``, with ``rounding``,
+        ``exact_start`` and ``gauge_method`` as for :meth:`fit`) take the
+        quantised likelihood :meth:`fit` maximises with them: the
+        probability that each unit's true path passes through the gauge
+        bins of its readings. Treating such readings as exact makes the
+        increments look more scattered than they are, which pulls
+        ``alpha`` down; the quantised likelihood does not.
+
+        The posterior is computed on a grid for up to three free
+        parameters (exact, to its stated error), and by the checked
+        Laplace approximation beyond; see
+        :meth:`WienerProcess.fit_bayes` for the priors and the result.
+
+        Returns
+        -------
+        surpyval.degradation.bayes.BayesianProcessModel
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.degradation import GammaProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 5)
+        >>> i = np.repeat(np.arange(5), 11)
+        >>> steps = rng.gamma(shape=2.0 * 10, scale=0.25, size=(5, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> model = GammaProcess.fit_bayes(t, y, i, threshold=100)
+        >>> lo, hi = model.mean_cri()
+        >>> bool(lo < model.mean() < hi)
+        True
+
+        The same wear read off a gauge with a step of 2:
+
+        >>> y_gauge = np.round(y / 2.0) * 2.0
+        >>> read = GammaProcess.fit_bayes(t, y_gauge, i, 100, gauge=2.0)
+        >>> lo, hi = read.param_cri("alpha")
+        >>> bool(lo < 2.0 < hi)
+        True
+        """
+        from surpyval.degradation import bayes
+
+        settings = None
+        if gauge is not None:
+            settings = {
+                "step": gauge,
+                "rounding": rounding,
+                "exact_start": exact_start,
+                "method": gauge_method,
+            }
+        elif rounding != "nearest" or exact_start or gauge_method != "exact":
+            raise ValueError(
+                "rounding, exact_start and gauge_method describe the gauge, "
+                "so they are only meaningful with gauge"
+            )
+        return bayes.fit(
+            cls,
+            x,
+            y,
+            i,
+            threshold,
+            Z,
+            stress_ref,
+            y0,
+            resolution,
+            gauge=settings,
+            priors=priors,
+            method=method,
+            points=points,
+            importance=importance,
+        )
+
+    @classmethod
+    @takes_unit
     def fit_from_df(
         cls,
         df: pd.DataFrame,
@@ -3517,6 +3918,9 @@ class GammaProcess:
         GammaProcessModel
             The fitted model.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return _fit_from_df(
             cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs, m_col
         )
@@ -3607,6 +4011,39 @@ class GammaProcess:
     _GAUGE_CELLS = 16
 
     @classmethod
+    def _gauge_increments(cls, dy: npt.NDArray, gauge: float) -> npt.NDArray:
+        """The recorded increments, snapped to whole gauge steps (readings
+        such as 12.3 - 12.2 carry floating-point noise), and checked: a
+        difference that is not a whole number of steps cannot come from
+        this gauge, which usually means the wrong step (or units) was
+        given."""
+        steps = dy / gauge
+        whole = np.round(steps)
+        if np.any(np.abs(steps - whole) > 1e-6 * np.maximum(1.0, whole)):
+            raise ValueError(
+                "the readings are not on the grid of gauge = {:g}: the "
+                "differences between a unit's readings must be whole "
+                "multiples of the gauge step".format(gauge)
+            )
+        delta = whole * gauge
+        cls._check_monotone(delta)
+        return delta
+
+    @classmethod
+    def _gauge_design(
+        cls, gauge: float, rounding: str, exact_start: bool, gauge_method: str
+    ) -> tuple[int, float | None]:
+        """The cells a gauge bin is split into, and the point of the first
+        bin a unit starts at (``None``: anywhere in it, uniformly). With an
+        exact start the level begins at a point of the first bin: its
+        middle when rounding to nearest, its bottom when flooring."""
+        m = cls._GAUGE_CELLS if gauge_method == "exact" else 1
+        start = None
+        if exact_start:
+            start = 0.5 * gauge if rounding == "nearest" else 0.0
+        return m, start
+
+    @classmethod
     def _quantised_fit(
         cls,
         x: npt.ArrayLike,
@@ -3667,28 +4104,11 @@ class GammaProcess:
             assert z_int is not None
             s, z_ref, scale = _stress_design(z_int, stress_ref)
 
-        # Recorded increments, snapped to whole gauge steps (readings such
-        # as 12.3 - 12.2 carry floating-point noise). A difference that is
-        # not a whole number of steps cannot come from this gauge, which
-        # usually means the wrong step (or units) was given.
-        steps = dy / gauge
-        whole = np.round(steps)
-        if np.any(np.abs(steps - whole) > 1e-6 * np.maximum(1.0, whole)):
-            raise ValueError(
-                "the readings are not on the grid of gauge = {:g}: the "
-                "differences between a unit's readings must be whole "
-                "multiples of the gauge step".format(gauge)
-            )
-        delta = whole * gauge
-        cls._check_monotone(delta)
+        delta = cls._gauge_increments(dy, gauge)
         zero, _ = cls._zero_increments(delta, gauge)
-
-        m = cls._GAUGE_CELLS if gauge_method == "exact" else 1
-        # With an exact start the level begins at a point of the first bin:
-        # its middle when rounding to nearest, its bottom when flooring.
-        start = None
-        if exact_start:
-            start = 0.5 * gauge if rounding == "nearest" else 0.0
+        m, start = cls._gauge_design(
+            gauge, rounding, exact_start, gauge_method
+        )
         log_lik = _quantised_log_likelihood(delta, i, gauge, m, start)
 
         def neg_ll(v: npt.NDArray) -> float:

@@ -466,6 +466,26 @@ cumulative hazard, so it stays exact far in the tail, where the ratio of
     assert np.allclose(demo.cs(1.0, ages[:2], Z=[1.0]), _ratio[:2])
     assert np.isnan(_ratio[2]) and 0 < demo.cs(1.0, 250.0, Z=[1.0]) < 1
 
+The parametric regression models also bound it: ``cs_cb(x, given, Z)``
+gives bounds on the conditional survival, and with ``on="ff"`` on the chance
+of failing in the next ``x`` (for example, a motor that has run 12,000 h at its
+load failing in the next 2,160 h). The bound is on the cumulative hazard over
+the window, :math:`H(given + x \mid Z) - H(given \mid Z)`, carried to the
+probability, by the delta method (``method="wald"``), the likelihood-ratio
+search (``"lr"``) or the parametric bootstrap (``"bootstrap"``):
+
+.. jupyter-execute::
+
+    print('P(fail in next 1 | age 2, Z=1):', 1 - demo.cs(1.0, 2.0, Z=[1.0]))
+    print('95% bounds                    :', demo.cs_cb(1.0, 2.0, [1.0], on='ff'))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _c = demo.cs_cb(1.0, 2.0, [1.0], on='ff')
+    assert _c[0] < 1 - demo.cs(1.0, 2.0, Z=[1.0]) < _c[1]
+
 Summed over a fleet, this is the forecast of how many units will fail over the
 next period, which :func:`surpyval.forecast` gives with a prediction interval
 (see `Forecasting a fleet from its current ages`_).
@@ -1545,7 +1565,7 @@ percentiles:
 
 .. jupyter-execute::
 
-    model.bootstrap_ci(n_boot=200, random_state=1)
+    model.param_cb(n_boot=200, random_state=1)
 
 Predictions use the fitted residual distribution directly,
 :math:`S(t \mid Z) = S_\varepsilon(\log t + \beta' Z)`, so the survival curves
@@ -2698,7 +2718,7 @@ likelihood-ratio bounds).
 The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
 sandwich; Lin-Ying through its sandwich ``standard_errors()``; Buckley-James by
-``bootstrap_ci``; and the frailty model (below) through ``standard_errors()``
+``param_cb`` (a bootstrap); and the frailty model (below) through ``standard_errors()``
 and ``param_cb`` (Wald, or the profile-likelihood interval with
 ``method='lr'``).
 
@@ -3215,7 +3235,15 @@ power law in voltage, :math:`c\, e^{a/Z_1} Z_2^{n}`:
     for name, value in zip(model_2s.parameter_names, model_2s.params):
         if name != model_2s.life_parameter:   # alpha is given by the life model
             print(f'{name:5s} = {value:.4g}')
-    print('activation energy (eV): %.3f' % (model_2s.params[3] * k))
+    energy_2s = model_2s.activation_energy()
+    print('activation energy (eV): %.3f, 95%% interval %.3f to %.3f'
+          % (energy_2s['activation_energy'], energy_2s['lower'],
+             energy_2s['upper']))
+
+``activation_energy()`` reads the temperature term, the first column of
+``Z`` (in kelvin), and gives its interval as for the Arrhenius model; held
+at one voltage, the fit gives the Arrhenius fit's activation energy and
+interval.
 
 The fit separates the two effects — an activation energy of 0.67 eV against
 the true 0.7, and a voltage exponent ``n`` of -1.44 against the true -1.5 —
@@ -3236,6 +3264,7 @@ give the ``Power`` fit, with ``n`` aliased.
     _names = model_2s.parameter_names
     _p = dict(zip(_names, model_2s.params))
     assert round(_p['a'] * k, 2) == 0.67 and round(_p['n'], 2) == -1.44, _p
+    assert energy_2s['lower'] < 0.7 < energy_2s['upper']
 
 Creating a custom life model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -4134,6 +4163,34 @@ above 0. A fraction of the units then never fails and the mean is infinite.
 where the integration stopped, as a fitted univariate model's ``mean()`` does
 for a limited-failure population.
 
+**Quantiles and draws along a path.** ``qf_tvc(p, Z, xl=None, start=None)``
+answers the reverse question: by what age has a fraction ``p`` of the units
+failed along this path? With ``start``, it asks this of the units still
+working at that age. It is the age past ``start`` at which the cumulative
+hazard from ``start`` reaches :math:`-\ln(1 - p)`. ``Hf_tvc(x, Z,
+start=a)`` gives that cumulative hazard from an age, and is
+:math:`-\ln` of ``sf_tvc(x, Z, given=a)``. Feeding uniform random numbers
+into ``qf_tvc`` draws lives along the path (inverse-transform sampling),
+any number in one call. The path is integrated once and each value is found
+inside its own quadrature panel, so a single draw costs about two passes
+along the path. Where the hazard dies away and survival levels off above
+:math:`1 - p`, the answer is ``inf``.
+
+.. jupyter-execute::
+
+    print('median life along the ramp     :', ph.qf_tvc(0.5, ramp).round(4))
+    print('median, still working at 1.0   :', ph.qf_tvc(0.5, ramp, start=1.0).round(4))
+    draws = ph.qf_tvc(np.random.default_rng(1).uniform(size=5), ramp, start=1.0)
+    print('five lives from age 1.0        :', draws.round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _q = ph.qf_tvc([0.1, 0.5, 0.9], ramp, start=1.0)
+    assert np.allclose(ph.sf_tvc(_q, ramp, given=1.0), [0.9, 0.5, 0.1], rtol=1e-8)
+    assert np.allclose(ph.Hf_tvc(_q, ramp, start=1.0), -np.log([0.9, 0.5, 0.1]), rtol=1e-8)
+
 **Accelerated life along a path.** An accelerated life model sets a
 distribution's life parameter to :math:`L(V)`, a function of the stress.
 Where that parameter scales time, :math:`S(t \mid V) = S_1(t / L(V))`, with
@@ -4918,7 +4975,7 @@ Penalised regression: ridge, lasso and elastic net
 
 With many covariates, or correlated ones, the maximum likelihood
 coefficients can be unstable or not exist at all. A penalty on their size
-steadies them: ``fit_penalised`` on ``CoxPH`` and on the parametric
+steadies them: ``fit(..., penalizer=...)`` on ``CoxPH`` and on the parametric
 proportional hazards, AFT and proportional odds fitters minimises the
 negative log-likelihood (the partial likelihood for Cox) divided by the
 number of units, plus
@@ -4953,7 +5010,7 @@ yourself with ``ddof=1`` and turn the package's standardisation off:
 .. code-block:: python
 
     sd = rossi[cols].std(ddof=1)  # pandas' default divisor is N - 1
-    ridge_ll = CoxPH.fit_penalised(rossi['week'], rossi[cols] / sd,
+    ridge_ll = CoxPH.fit(rossi['week'], rossi[cols] / sd,
                                    c=rossi['censored'], penalizer=0.05,
                                    standardise=False)
     ridge_ll.params / sd.values   # in the covariates' own units
@@ -4970,9 +5027,9 @@ is close to, but not exactly, the lasso.)
     rossi['censored'] = 1 - rossi['arrest']
     cols = ['fin', 'age', 'race', 'wexp', 'mar', 'paro', 'prio']
     full = CoxPH.fit(rossi['week'], rossi[cols], c=rossi['censored'])
-    ridge = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+    ridge = CoxPH.fit(rossi['week'], rossi[cols],
                                 c=rossi['censored'], penalizer=0.05)
-    lasso = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+    lasso = CoxPH.fit(rossi['week'], rossi[cols],
                                 c=rossi['censored'], penalizer=0.05,
                                 l1_ratio=1.0)
     pd.DataFrame({'unpenalised': full.params, 'ridge': ridge.params,
@@ -5019,7 +5076,7 @@ and the global ``likelihood_ratio_test``: a penalised estimate does not
 maximise the likelihood, so neither its sandwich nor twice its gain in
 log-likelihood has the distribution those calls rely on.
 
-**Strata and truncation.** ``CoxPH.fit_penalised`` takes ``strata``, as
+**Strata and truncation.** ``CoxPH.fit(..., penalizer=...)`` takes ``strata``, as
 ``CoxPH.fit`` does: a baseline hazard per stratum and one set of
 coefficients (glmnet's ``stratifySurv``). The number of units ``N`` and the
 standardisation are over all the rows, not within each stratum. It takes
@@ -5028,14 +5085,14 @@ with ``tl=start``; with no subject ids, ``N`` is then the number of *rows*
 (weighted by ``n``), as in glmnet, so a subject split into ten rows counts
 ten times in the penalty's scale, and the same ``penalizer`` shrinks less
 the more rows the follow-up is split into. For start-stop data use
-``CoxPH.fit_tvc_penalised(i, start, stop, c, Z)``, which counts subjects. Like ``CoxPH.fit``, it refuses truncation on the right,
+``CoxPH.fit_tvc(i, start, stop, c, Z)``, which counts subjects. Like ``CoxPH.fit``, it refuses truncation on the right,
 for which the partial likelihood has no term: the parametric penalised fits
 take every kind of censoring and truncation (left, right or both).
 
 .. jupyter-execute::
 
     strat_cols = ['fin', 'age', 'race', 'mar', 'paro', 'prio']
-    stratified = CoxPH.fit_penalised(rossi['week'], rossi[strat_cols],
+    stratified = CoxPH.fit(rossi['week'], rossi[strat_cols],
                                      c=rossi['censored'],
                                      strata=rossi['wexp'], penalizer=0.05,
                                      l1_ratio=0.5)
@@ -5048,8 +5105,8 @@ take every kind of censoring and truncation (left, right or both).
     assert stratified.is_stratified
     assert np.sum(stratified.params == 0) == 2, stratified.params
 
-**Weights.** ``CoxPH.fit_penalised``, ``CoxPH.fit_tvc_penalised`` and the
-parametric families' ``fit_penalised`` take sampling weights ``w``, as
+**Weights.** ``CoxPH.fit(..., penalizer=...)``, ``CoxPH.fit_tvc(..., penalizer=...)`` and the
+parametric families' ``fit(..., penalizer=...)`` take sampling weights ``w``, as
 their ``fit`` does (see :doc:`Weighted Data`). In plain words: each row
 counts ``w`` times as much in the likelihood, in the number of units the
 penalty is measured against and in the covariates' standard deviations, so
@@ -5067,7 +5124,7 @@ likelihood of ``CoxPH.fit(w=)`` for Cox) and the covariates standardised
 by their :math:`n w`-weighted standard deviations with divisor
 :math:`N_w`: glmnet's ``weights``, which the Cox fit matches to 1e-6
 (ridge, lasso and elastic net, Breslow and Efron). For start-stop data
-(``fit_tvc_penalised``) :math:`N_w` sums over the subjects, each weighted
+(``fit_tvc(..., penalizer=...)``) :math:`N_w` sums over the subjects, each weighted
 by its rows' weights averaged over its follow-up. A weighted penalised fit
 has no standard errors, robust ones included, and its ``aic`` and ``bic``
 are refused, as for every weighted fit; a ``penalty_path`` of weighted fits
@@ -5076,7 +5133,7 @@ has the coefficients but cannot choose the penalty by them.
 .. jupyter-execute::
 
     w = 0.5 + (np.arange(len(rossi)) % 5) / 2   # survey weights, say
-    weighted = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+    weighted = CoxPH.fit(rossi['week'], rossi[cols],
                                    c=rossi['censored'], w=w,
                                    penalizer=0.05, l1_ratio=0.5)
     weighted.params.round(4)
@@ -5085,7 +5142,7 @@ has the coefficients but cannot choose the penalty by them.
     :hide-code:
     :hide-output:
 
-    rescaled = CoxPH.fit_penalised(rossi['week'], rossi[cols],
+    rescaled = CoxPH.fit(rossi['week'], rossi[cols],
                                    c=rossi['censored'], w=10 * w,
                                    penalizer=0.05, l1_ratio=0.5)
     assert np.allclose(rescaled.params, weighted.params, atol=1e-10)
@@ -5093,23 +5150,23 @@ has the coefficients but cannot choose the penalty by them.
 
 **More models.** The same objective, standardisation and refusals apply to
 
-- ``RoystonParmarPH.fit_penalised`` and ``RoystonParmarPO.fit_penalised``
+- ``RoystonParmarPH.fit(..., penalizer=...)`` and ``RoystonParmarPO.fit(..., penalizer=...)``
   (and any ``RoystonParmarRegression``): the knots are placed as for
   ``fit``, then the PH or PO family on the spline baseline is fitted with
   the penalty; the spline coefficients are not penalised.
-- ``CoxPH.fit_tvc_penalised`` and ``CoxPH.fit_tvc_timeline_penalised``: the
+- ``CoxPH.fit_tvc(..., penalizer=...)`` and ``CoxPH.fit_tvc_timeline(..., penalizer=...)``: the
   start-stop or timeline data of ``fit_tvc`` and ``fit_tvc_timeline``, with
   ``N`` the number of *subjects* and the covariates standardised over the
   subjects, each subject's covariate averaged over its follow-up (each row
   weighted by its length). Splitting a subject's follow-up into more rows
   changes neither the partial likelihood nor these, so it does not change
   the fit.
-- ``CompetingRisksProportionalHazards.fit_penalised``: the cause-specific
+- ``CompetingRisksProportionalHazards.fit(..., penalizer=...)``: the cause-specific
   Cox model, one penalised Cox fit per cause with the other causes
   censored, each with the same ``penalizer`` and ``l1_ratio`` (glmnet
   fitted cause by cause). Its ``penalty.effective_df`` is the sum over the
   causes, and ``models`` holds each cause's penalised Cox model.
-- ``FineGray.fit_penalised``: the Fine-Gray model's weighted partial
+- ``FineGray.fit(..., penalizer=...)``: the Fine-Gray model's weighted partial
   likelihood (the subdistribution risk sets with their censoring weights)
   over ``N``, the units, plus the penalty: the objective of R's
   ``fastcmprsk::fastCrrp``. The weighted partial likelihood is a Cox
@@ -5118,7 +5175,7 @@ has the coefficients but cannot choose the penalty by them.
   baseline, risk sets and censoring distribution per stratum, ``N`` and the
   standardisation over every row); ``cluster`` only changes a covariance,
   which a penalised model does not have, and weights are refused.
-- ``AdditiveHazards.fit_penalised``: Lin and Ying's estimating equation
+- ``AdditiveHazards.fit(..., penalizer=...)``: Lin and Ying's estimating equation
   ``A beta = b`` is the gradient of the quadratic loss
   :math:`\tfrac12 \beta' A \beta - b' \beta`, which takes the place of the
   negative log-likelihood (Gorst-Rasmussen and Scheike 2012; R's
@@ -5131,24 +5188,24 @@ has the coefficients but cannot choose the penalty by them.
   unit. There is no likelihood, so no ``aic`` or ``bic``, and a
   ``penalty_path`` of it has the coefficients but no criterion to choose
   by.
-- ``ProportionalOdds.fit_penalised``: the semi-parametric proportional odds
+- ``ProportionalOdds.fit(..., penalizer=...)``: the semi-parametric proportional odds
   model's profile likelihood (the baseline odds maximised out at each
   ``beta``), with its exact gradient and Hessian, so the solver and its
   check are those of the other fits; delayed entry ``tl`` is taken.
-- ``WeibullFrailty.fit_penalised`` (any ``Frailty(dist, family=...)``):
+- ``WeibullFrailty.fit(..., penalizer=...)`` (any ``Frailty(dist, family=...)``):
   the marginal likelihood of the shared-frailty model, the frailty
   variance ``theta`` and the baseline not penalised. ``theta = 0``, no
   shared frailty, is the edge of its space; where the objective is
   smallest there the fit is the penalised proportional hazards fit of the
-  same baseline (``WeibullPH.fit_penalised``), with ``theta`` 0.
-- ``fit_tvc_penalised`` and ``fit_tvc_timeline_penalised`` of the
+  same baseline (``WeibullPH.fit(..., penalizer=...)``), with ``theta`` 0.
+- ``fit_tvc(..., penalizer=...)`` and ``fit_tvc_timeline(..., penalizer=...)`` of the
   parametric PH and PO families and of the AFT family: the start-stop or
   timeline data of ``fit_tvc`` (for AFT, its accumulated-age likelihood),
   with ``N`` the subjects and the covariates standardised over the
-  subjects, as ``CoxPH.fit_tvc_penalised``, so splitting a subject's rows
+  subjects, as ``CoxPH.fit_tvc(..., penalizer=...)``, so splitting a subject's rows
   does not change the fit. The parametric additive hazards models have no
   penalised fit (their coefficients are rates; see below) and refuse.
-- ``ProportionalIntensityHPP.fit_penalised``: the recurrent-event model
+- ``ProportionalIntensityHPP.fit(..., penalizer=...)``: the recurrent-event model
   with a constant baseline rate, ``N`` the number of items and the
   covariates standardised over the items; for exact event times it is
   glmnet's Poisson regression of each item's events with the log of its
@@ -5156,12 +5213,12 @@ has the coefficients but cannot choose the penalty by them.
   covariance, bounds (``cif_cb``, ``iif_cb``, ``param_cb``) or
   ``cramer_von_mises`` bootstrap. The models with a non-homogeneous
   baseline (``ProportionalIntensityNHPP``) have no penalised fit yet.
-- ``WeibullDistributional.fit_penalised`` and the other distributional
+- ``WeibullDistributional.fit(..., penalizer=...)`` and the other distributional
   regressions: covariates on every parameter, with ``penalizer`` one value,
   one per covariate column (that column on every parameter), or one per
   parameter, ``penalizer={"alpha": 0.02, "beta": 0.2}`` (a parameter not
   named is not penalised). The intercepts are not penalised. With
-  covariates on a Weibull's scale alone it is ``WeibullAFT.fit_penalised``,
+  covariates on a Weibull's scale alone it is ``WeibullAFT.fit(..., penalizer=...)``,
   coefficient for coefficient: the scale's coefficients take the AFT sign
   (``model.coefficient_signs``), a positive one a shorter life.
 
@@ -5169,7 +5226,7 @@ has the coefficients but cannot choose the penalty by them.
 
     from surpyval import WeibullDistributional
 
-    shape_too = WeibullDistributional.fit_penalised(
+    shape_too = WeibullDistributional.fit(
         rossi['week'], rossi[['fin', 'age', 'prio']], c=rossi['censored'],
         penalizer={'alpha': 0.01, 'beta': 0.1}, l1_ratio=1.0)
     pd.Series(shape_too.params, index=shape_too.parameter_names).round(4)
@@ -5195,7 +5252,7 @@ smallest. BIC charges more for each coefficient, so it keeps fewer.
 
     from surpyval import penalty_path
 
-    path = penalty_path(CoxPH.fit_penalised, rossi['week'], rossi[cols],
+    path = penalty_path(CoxPH.fit, rossi['week'], rossi[cols],
                         c=rossi['censored'], l1_ratio=1.0, n_penalties=10)
     path.table().round(4)
 
@@ -5234,10 +5291,10 @@ weighted, and they refuse them rather than ignore them.
 
     from surpyval import AdditiveHazards, ProportionalOdds
 
-    lin_ying = AdditiveHazards.fit_penalised(
+    lin_ying = AdditiveHazards.fit(
         rossi['week'], rossi[cols], c=rossi['censored'], penalizer=0.02,
         l1_ratio=1.0)
-    odds = ProportionalOdds.fit_penalised(
+    odds = ProportionalOdds.fit(
         rossi['week'], rossi[cols], c=rossi['censored'], penalizer=0.02,
         l1_ratio=1.0)
     pd.DataFrame({'excess hazard per week': lin_ying.params,
@@ -5259,11 +5316,11 @@ Sometimes every event happens in one group: all the deaths are among the
 treated patients, or every failure is on the units from one supplier.
 Then the partial likelihood keeps rising as that group's hazard ratio
 grows, the ordinary Cox estimate is infinite, and ``CoxPH.fit`` warns "No
-finite maximum" (it names the coefficients and suggests ``fit_firth``).
+finite maximum" (it names the coefficients and suggests ``fit(..., firth=True)``).
 This is called *monotone likelihood*, or separation, and it is common in
 small studies with a rare event.
 
-``CoxPH.fit_firth`` fits the model with Firth's penalty (Heinze and
+``CoxPH.fit(..., firth=True)`` fits the model with Firth's penalty (Heinze and
 Schemper 2001). In words: it adds a small term that grows very negative
 as the information about a coefficient vanishes, which is exactly what
 happens as a coefficient runs off to infinity, so the estimate stays
@@ -5300,7 +5357,7 @@ and reports the Wald intervals and p-values.
     c_sep = np.array([0, 0, 1, 0, 1, 1, 0, 1, 1, 1])
     Z_sep = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8], [0, -0.4],
                       [1, 1.1], [1, -0.6], [0, 0.9], [0, 0.2], [1, -0.1]])
-    firth = CoxPH.fit_firth(x_sep, Z_sep, c=c_sep)
+    firth = CoxPH.fit(x_sep, Z_sep, c=c_sep, firth=True)
     firth
 
 .. jupyter-execute::
@@ -5314,7 +5371,7 @@ and reports the Wald intervals and p-values.
     assert firth.maximum == 'verified', firth.maximum
     assert np.all(np.isfinite(firth.firth.upper))
 
-``fit_firth`` takes delayed entry ``tl`` (so start-stop rows, as
+``fit(..., firth=True)`` takes delayed entry ``tl`` (so start-stop rows, as
 ``Surv(start, stop, event)``), counts ``n`` and ``strata``. It refuses a
 covariate the partial likelihood cannot estimate at all (a constant
 column, say), since the penalty has no value there, and it does not take
@@ -5578,6 +5635,205 @@ with the same trapezoid weights as its estimate. The numbers agree with
 ``Score`` to rounding (with and without tied times) and with ``timeROC`` on
 data without tied event times. The censoring distribution is estimated from
 the scored data, as ``Score`` does; there is no ``x_train`` here.
+
+Is each predicted distribution right? The PIT and D-calibration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A model that gives every subject their own survival curve can be checked
+with one simple idea. Read each subject's own predicted CDF at what
+actually happened to them, :math:`u_i = F_i(x_i)`: the predicted chance of
+failing by the time they did. If the predictions are right, these numbers
+are spread evenly between 0 and 1, whatever the subjects' covariates: a
+tenth below 0.1, a tenth between 0.1 and 0.2, and so on. Too many near 0
+and 1 means the predicted curves are too narrow; a pile in the middle
+means they are too wide; more on one side means they are shifted. This is
+the *probability integral transform* (PIT) histogram. Note it is the CDF
+*at* the outcome, not a quantile.
+
+A subject censored at :math:`x_i` has not failed yet, so all that is known
+is :math:`u_i > F_i(x_i)`. If the model is right their :math:`u` is equally
+likely to be anywhere in :math:`(F_i(x_i), 1]`, so their weight is spread
+evenly over that range. That is *D-calibration* (Haider, Hoehn, Davis and
+Greiner, 2020). The test compares each of ``B`` equal bins with the
+:math:`N/B` it should hold, by Pearson's chi-square on :math:`B - 1`
+degrees of freedom.
+
+:func:`~surpyval.metrics.d_calibration` takes a fitted model (with ``Z=``
+for one with covariates: any model whose ``sf(x, Z)`` pairs times with
+rows, including the forests and joint models) or, from any other source
+such as a neural network, the predicted CDFs at the outcomes as ``F=``:
+
+.. jupyter-execute::
+
+    from surpyval.metrics import d_calibration
+
+    dcal_cox = d_calibration(x_te, c_te, model=cox, Z=Z_te)
+    print(dcal_cox)
+
+    # A Cox model that leaves out the second covariate
+    cox_1 = CoxPH.fit(x=x_tr, Z=Z_tr[:, :1], c=c_tr)
+    dcal_1 = d_calibration(x_te, c_te, model=cox_1, Z=Z_te[:, :1])
+    print(f"one covariate: p = {dcal_1.p_value:.3f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert dcal_cox.p_value > 0.01 and dcal_1.p_value > 0.01
+
+Both pass, and that is the lesson. The model without the second covariate
+spreads its predictions too widely for each subject, yet across subjects
+its :math:`u` values are still close to even, because its curves are
+right on average. **Calibration is not sharpness**: report it with a
+score of how informative the predictions are (the Brier score, the AUC or
+the concordance). A model that predicts the same curve for everyone can be
+perfectly calibrated and useless.
+
+.. jupyter-execute::
+
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots()
+    dcal_cox.plot(ax=ax);
+
+Three things to know:
+
+- **With censoring the default test is conservative.** Spreading a
+  censored subject's weight gives each bin its expected share instead of
+  one random count, so the bins vary less than the chi-square assumes. In
+  400 simulated data sets under the true model the 5% test rejected 5.25%
+  with no censoring, 1% with 30% censored and none with 82% censored: a
+  model it rejects is badly off, but passing is weaker evidence than the
+  p-value suggests. ``randomise=True`` draws each censored subject's
+  :math:`u` at random from its range instead, and the test then holds its
+  level (3.75% to 5.25% in the same simulation); set ``seed`` to repeat it.
+- **Jumps in the predicted CDF.** For discrete outcomes, or a step-function
+  model scored on the data it was fitted to, :math:`u` is not uniform even
+  for a right model. ``randomise=True`` also draws each outcome's :math:`u`
+  between the CDF just below and at the outcome (the randomised PIT).
+- **Independent subjects.** Repeated forecasts of one unit (at several
+  ages or horizons) are not independent, and the p-value is then too
+  small. Pass each forecast's horizon as ``by=`` for a histogram and test
+  per horizon, each of independent subjects.
+
+Mapping predictions through the observed PIT distribution to correct them
+(recalibration) is not offered.
+
+"At least this long", with a guarantee: conformal lower bounds
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A model's own 10% quantile for a unit says "90% of units like this one
+last at least this long", but only if the model is right. A conformal
+lower bound makes the same promise whether the model is right or not, by
+checking the model on units it was not fitted to.
+
+The idea in words. Split the data once: fit the model on one part, and
+keep the other part, the *calibration* units, aside. For each calibration
+unit, read the model's own predicted CDF at its time, :math:`u_i =
+F_i(x_i)`. If the model were right, a tenth of these would fall below
+0.1. Whatever the model, the calibration units show how many actually
+do, so take the level :math:`\eta` that only a share :math:`\alpha` of
+them fall below. Each new unit's bound is the time at which *its own*
+predicted CDF reaches :math:`\eta`, :math:`L = Q(\eta \mid Z)`. A model
+that is too optimistic gets a lower :math:`\eta`, and so lower bounds; a
+good one gets :math:`\eta` close to :math:`\alpha`, and bounds close to
+its own quantiles. With :math:`n` calibration units, :math:`\eta` is the
+:math:`\lfloor \alpha (n + 1) \rfloor`-th smallest :math:`u_i`: plain
+split conformal prediction (Vovk, Gammerman and Shafer, 2005; Lei et al.,
+2018).
+
+**What is guaranteed, and what is not.** *Marginal* coverage: over new
+units drawn like the calibration units, at least :math:`1 - \alpha` of
+them outlive their bounds, in finite samples and whatever the model. It
+is not a promise for each kind of unit: one group may be covered more
+often and another less, averaging to :math:`1 - \alpha`. It needs the new
+units and the calibration units to come from the same population; it
+breaks if the population drifts.
+
+**Censoring.** A unit censored at :math:`x_i` lasted at least
+:math:`x_i`, so :math:`F_i(x_i)` is at most what its :math:`u` would have
+been at its failure. The default, ``method="observed"``, uses those values
+as they are. That can only lower :math:`\eta`, so the guarantee still
+holds exactly, but the bounds are lower than they need be when many units
+are censored before their :math:`\alpha` quantile (the conservative bound
+of Candès, Lei and Ren, 2023, with the observed times). Censoring after
+that point makes no difference. ``method="ipcw"`` instead weights each
+failure by the inverse of its chance of being seen, :math:`1 / G(x_i-)`
+from the Kaplan-Meier of the censoring times: tighter bounds, but coverage
+only close to :math:`1 - \alpha`, and only if censoring does not depend on
+the covariates or the life.
+
+Below, the true lives are Weibull with a shape of 0.7 (an early-failure
+pattern) and one covariate. An Exponential proportional hazards model, the
+wrong family, is too optimistic early in life: its own 10% quantiles are
+outlived by far fewer than 90% of new units. Calibrated on 300 held-out
+units, a quarter of them censored, the conformal bounds are outlived by
+90%:
+
+.. jupyter-execute::
+
+    import numpy as np
+    from surpyval import ExponentialPH, WeibullPH
+    from surpyval.metrics import conformal_lower_bound
+
+    def units(seed, n):
+        r = np.random.default_rng(seed)
+        Z = r.normal(0, 1, (n, 1))
+        t = 1000 * r.weibull(0.7, n) * np.exp(-0.4 * Z[:, 0])
+        return Z, t
+
+    def censor(t, seed):
+        cens = np.random.default_rng(seed).uniform(0, 4000, len(t))
+        return np.minimum(t, cens), (cens < t).astype(int)
+
+    Z_fit, t_fit = units(1, 300)    # fit on these
+    Z_cal, t_cal = units(2, 300)    # calibrate on these
+    x_fit, c_fit = censor(t_fit, 4)
+    x_cal, c_cal = censor(t_cal, 3)
+    Z_new, t_new = units(5, 10000)  # new units, lives known
+
+    wrong = ExponentialPH.fit(x=x_fit, Z=Z_fit, c=c_fit)
+    own = wrong.qf(np.full(len(t_new), 0.1), Z_new)
+    bound = conformal_lower_bound(wrong, x_cal, c_cal, Z=Z_cal, alpha=0.1)
+    print(bound)
+    print(f"outlive the model's own 10% quantiles: {np.mean(t_new >= own):.3f}")
+    print(f"outlive the conformal bounds:          "
+          f"{np.mean(t_new >= bound.lower(Z_new)):.3f}")
+
+    right = WeibullPH.fit(x=x_fit, Z=Z_fit, c=c_fit)
+    print(f"right model's level: "
+          f"{conformal_lower_bound(right, x_cal, c_cal, Z=Z_cal).level:.3f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.mean(t_new >= own) < 0.85
+    assert 0.88 < np.mean(t_new >= bound.lower(Z_new)) < 0.93
+
+The wrong model's level drops to about 0.035, so each unit's bound is
+its own predicted 3.5% quantile, and the bounds become honest. The right
+model needs almost no correction: its level is close to 0.1.
+
+It takes any fitted model with a CDF: ``ff(x)`` for a model without
+covariates, or ``sf(x, Z)`` paired with rows for one with them (the
+regression families, ``CoxPH``, the survival trees and forests, joint
+models). Bounds come from the model's ``qf`` where it has one and are
+found from its CDF otherwise. Three things to know:
+
+- **The calibration units must be new to the model.** Calibrating on the
+  data the model was fitted to makes it look better than it is, and the
+  guarantee is lost.
+- **Enough units.** :math:`\alpha = 0.1` needs at least 9 calibration
+  units (:math:`1/\alpha - 1`), or every bound is 0, with a warning.
+- **Where the model's CDF never reaches the level**, for example a Cox
+  model beyond its last failure, the bound is ``inf``: the model has
+  nothing to say there. The guarantee counts such units as not covered,
+  so it still holds, but those bounds are not usable.
+
+Right censoring only: left and interval-censored calibration units are
+refused, since a lower bound needs a time each unit is known to have
+lasted.
 
 Concordance
 ~~~~~~~~~~~
@@ -6171,7 +6427,7 @@ survival), so the reloaded model predicts identically:
     print("match:", np.allclose(cox.sf(t, Z_use), cox_reloaded.sf(t, Z_use)))
 
 Cox's time-varying-covariate prediction (``predict_tvc``), the additive model's
-covariance, and Buckley-James's ``bootstrap_ci`` (which keeps a copy of the fit
+covariance, and Buckley-James's ``param_cb`` (which keeps a copy of the fit
 data) all survive the round-trip. The residual diagnostics, ``diagnose()`` and
 the robust variance need the training data and are not available on a restored
 Cox model (a stratified one included). Be aware that

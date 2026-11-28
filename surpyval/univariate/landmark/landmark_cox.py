@@ -263,6 +263,9 @@ class LandmarkCox(SerialisableMixin):
         rest is as :meth:`fit`. Measurements need a ``SurpyvalData`` with
         ``m`` and :meth:`fit`.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.surpyval_data import SurpyvalData
 
         _refuse_unknown(unknown, "LandmarkCox.fit_from_df", "w_col")
@@ -1002,14 +1005,10 @@ class LandmarkCox(SerialisableMixin):
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         on = {"R": "sf", "F": "ff"}.get(on, on)
         check_option("bound", bound, ("two-sided", "lower", "upper"))
-        check_option(
-            "bound_type",
-            bound_type,
-            ("log", "log-log", "plain", "exp", "normal"),
-        )
-        bound_type = {"exp": "log-log", "normal": "plain"}.get(
-            bound_type, bound_type
-        )
+        from surpyval.univariate.nonparametric._scales import scale_name
+
+        bound_type = scale_name("LandmarkCox.cb", bound_type)
+        check_option("bound_type", bound_type, ("log", "log-log", "plain"))
         check_alpha_ci(alpha_ci)
         H, X, tc, shape, stratum, s = self._Hf(x, Z, s)
         if H.size == 0:

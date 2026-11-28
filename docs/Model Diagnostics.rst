@@ -8,7 +8,7 @@ holds, what does not, and what to do about it.
 
 .. code:: python
 
-    d = model.diagnose(alpha=0.05)   # columns=[...] checks a subset
+    d = model.diagnose(alpha_ci=0.05)   # columns=[...] checks a subset
     d.table          # one row per check: test, statistic, p, verdict, covariates
     d.advice         # plain-English remedies, each naming the SurPyval feature
     d.plot()         # the visual checks (matplotlib is imported only here)
@@ -238,7 +238,7 @@ The checks
     ``d.tables['proportional_hazards']`` is the test on one scale, the
     ``transform`` given to ``diagnose()``, as ``cox.zph`` prints it, and
     with ``transform='identity'`` or ``'log'`` the rows test on that
-    scale too. A penalised fit (``CoxPH.fit_penalised``) refuses: it has
+    scale too. A penalised fit (``CoxPH.fit(..., penalizer=...)``) refuses: it has
     no p-values. (lifelines, and R before
     version 3.0, compute Grambsch and Therneau's approximation of it,
     whose statistics differ a little in small samples.)
@@ -304,7 +304,7 @@ them; the joint tests still cover all of them. ``alpha`` sets the level:
 
 .. jupyter-execute::
 
-    small = model.diagnose(alpha=0.01, columns=['age', 'wexp'])
+    small = model.diagnose(alpha_ci=0.01, columns=['age', 'wexp'])
     small.table[['check', 'transform', 'covariates', 'p', 'verdict']]
 
 .. jupyter-execute::

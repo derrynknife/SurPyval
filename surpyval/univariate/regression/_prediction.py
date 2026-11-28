@@ -476,6 +476,7 @@ class RestrictedMeanMixin:
     _wald_state: Callable[..., Any]
     _check_inference: Callable[..., None]
     _refuse_weighted_method: Callable[..., None]
+    _is_additive: Callable[..., bool]
 
     def _rmst_tau(self, tau: Any, what: str) -> npt.NDArray:
         """The horizons as a flat array: the largest observed time where
@@ -856,12 +857,17 @@ class RestrictedMeanMixin:
                         )
                     return m_fin * F / (1.0 - s) ** 2
 
+                # Absolute to 1e-13 of the part above 0: the part below is
+                # often 0 to double precision (a Normal far from 0), where
+                # a purely relative tolerance cannot be met and the
+                # quadrature ran to its limit (21,000 evaluations).
+                scale = float(np.max(np.abs(value))) if value.size else 0.0
                 with np.errstate(all="ignore"):
                     negative, _ = quad_vec(
                         below,
                         0.0,
                         1.0,
-                        epsabs=0.0,
+                        epsabs=1e-13 * scale,
                         epsrel=1e-10,
                         norm="max",
                         limit=500,
@@ -923,10 +929,13 @@ class RestrictedMeanMixin:
             (central differences of the mean, the integral of
             :meth:`sf`) and their covariance, as the univariate models'
             ``mean_cb``. ``'bootstrap'`` is the BCa interval of the mean
-            over the parametric bootstrap refits of :meth:`cb`. There is
-            no likelihood-ratio bound on the mean of a regression model:
-            ``'lr'`` is refused (bound a quantile with ``quantile_cb(...,
-            method='lr')`` instead).
+            over the parametric bootstrap refits of :meth:`cb`. ``'lr'``
+            is the likelihood-ratio bound: the smallest and largest mean
+            over the parameters whose likelihood is within the critical
+            value of the best (all the model's free parameters, as
+            :meth:`cb` with ``method='lr'``), searched on the log of the
+            mean above the support's start; it is slower, and needs the
+            data.
         n_boot : int, optional
             The number of bootstrap refits (``method='bootstrap'`` only).
             Default 200.
@@ -973,13 +982,6 @@ class RestrictedMeanMixin:
 
         check_alpha_ci(alpha_ci)
         method = bound_method(method)
-        if method == "lr":
-            raise ValueError(
-                "mean_cb has no likelihood-ratio bound for a regression "
-                "model: use method='wald' (the default) or "
-                "method='bootstrap', or bound a quantile with "
-                "quantile_cb(p, Z, method='lr')."
-            )
         check_robust_request(robust, cluster, method)
         self._refuse_weighted_method(method)
         self._check_inference()
@@ -989,7 +991,18 @@ class RestrictedMeanMixin:
             dtype=float,
         )
         lower = float(self.distribution.support[0])
-        if method == "bootstrap":
+        if method == "lr":
+            if self._is_additive() and not np.isfinite(lower):
+                raise ValueError(
+                    "mean_cb has no likelihood-ratio bound for an additive "
+                    "hazards model with a baseline on the whole line (its "
+                    "mean needs a schedule, mean_tvc): use method='wald' "
+                    "or method='bootstrap'."
+                )
+            from ._likelihood_ratio import mean_cb_lr
+
+            out = mean_cb_lr(self, rows, alpha_ci, bound)
+        elif method == "bootstrap":
             from ._bootstrap import function_bounds, refits
 
             fits = refits(self, n_boot, random_state)
@@ -1152,3 +1165,263 @@ class RestrictedMeanMixin:
             "rmst_b": mu_b,
             "tau": float(t[0]),
         }
+
+
+def conditional_on(Hd: npt.NDArray, on: str, bound: str) -> npt.NDArray:
+    """Bounds on the cumulative hazard over the window, ``Hd`` (``[lower,
+    upper]`` on its last axis for a two-sided bound), carried to ``on``:
+    ``sf`` is ``exp(-Hd)`` with its ends swapped (it falls as ``Hd``
+    rises), ``ff`` is ``1 - exp(-Hd)``; each kept in ``[0, 1]`` (an
+    additive hazards model's ``Hd`` can be negative)."""
+    with np.errstate(over="ignore", invalid="ignore"):
+        if on == "Hf":
+            return Hd
+        if on == "ff":
+            return np.clip(-np.expm1(-Hd), 0.0, 1.0)
+        out = np.clip(np.exp(-Hd), 0.0, 1.0)
+    if bound == "two-sided":
+        return out[..., ::-1]
+    return out
+
+
+class ConditionalBoundsMixin:
+    """``cs_cb(x, given, Z)``: bounds on the conditional survival (and the
+    chance of failing in the window) of a parametric regression model,
+    from the cumulative hazard over the window,
+    ``H(given + x | Z) - H(given | Z)``: the delta method on its log
+    (on itself for an additive hazards model, whose hazard can be
+    negative), the likelihood-ratio extreme over the region, or the
+    parametric bootstrap.
+
+    The host provides what ``RestrictedMeanMixin`` lists, and
+    ``_is_additive``.
+    """
+
+    model: Any
+    distribution: Any
+    _prepare_Z: Callable[..., Any]
+    _n_covariates: Callable[..., int]
+    _centred: Callable[..., Any]
+    _wald_state: Callable[..., Any]
+    _check_inference: Callable[..., None]
+    _refuse_weighted_method: Callable[..., None]
+    _is_additive: Callable[..., bool]
+
+    def _window_pairs(
+        self, x: Any, given: Any, Z: Any
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, tuple]:
+        """The windows ``(x, given)`` flattened and paired with the
+        covariate rows (one row each), and the shape of the query."""
+        from surpyval.utils.shapes import check_paired_rows, covariate_rows
+
+        xs, gs = np.broadcast_arrays(
+            np.asarray(x, dtype=float), np.asarray(given, dtype=float)
+        )
+        shape = xs.shape
+        xs, gs = xs.reshape(-1), gs.reshape(-1)
+        rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
+        check_paired_rows(xs.size, rows.shape[0], grid=False)
+        n = max(xs.size, rows.shape[0])
+        if xs.size == 1 and n > 1:
+            shape = (n,)
+        xs = np.broadcast_to(xs, (n,)).copy()
+        gs = np.broadcast_to(gs, (n,)).copy()
+        rows = np.ascontiguousarray(
+            np.broadcast_to(np.asarray(rows, float), (n, rows.shape[1]))
+        )
+        return xs, gs, rows, shape
+
+    def _window_H(
+        self,
+        xs: npt.NDArray,
+        gs: npt.NDArray,
+        rows_c: npt.NDArray,
+        params: Any,
+    ) -> npt.NDArray:
+        """``H(given + x | row) - H(given | row)`` at ``params``, for
+        centred covariate rows; 0 where the window ends before the
+        support starts."""
+        lower = float(self.distribution.support[0])
+        with np.errstate(all="ignore"):
+            end = np.asarray(
+                self.model.Hf(np.maximum(xs + gs, lower), rows_c, *params),
+                dtype=float,
+            )
+            start = np.asarray(
+                self.model.Hf(np.maximum(gs, lower), rows_c, *params),
+                dtype=float,
+            )
+        return np.where(np.isinf(start), np.nan, end - start)
+
+    def cs_cb(
+        self,
+        x: npt.ArrayLike,
+        given: npt.ArrayLike,
+        Z: Any,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        on: str = "sf",
+        method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
+        robust: bool = False,
+        cluster: npt.ArrayLike | None = None,
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the conditional survival :meth:`cs`, or on
+        the chance of failing in the next window: for a unit with
+        covariates ``Z`` that has survived to ``given``, the chance it
+        survives (``on="sf"``) or fails (``on="ff"``) within a further
+        ``x``.
+
+        In words: a motor with covariates ``Z`` that has run 12,000 h
+        has survived the risk it met so far; what is left is the risk it
+        meets between 12,000 h and 12,000 h plus the window. That risk is
+        the cumulative hazard over the window,
+
+        .. math::
+            \Delta H = H(given + x \mid Z) - H(given \mid Z), \qquad
+            R(x \mid given, Z) = e^{-\Delta H}, \qquad
+            F(x \mid given, Z) = 1 - e^{-\Delta H},
+
+        and the bounds are bounds on :math:`\Delta H`, carried through
+        those maps.
+
+        Parameters
+        ----------
+        x : array like or scalar
+            The window lengths.
+        given : array like or scalar
+            The ages already survived, broadcast against ``x``.
+        Z : array like or DataFrame
+            The covariates, paired with the windows as :meth:`cs` pairs
+            them (one row per window, or one row for all).
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis.
+        on : {'sf', 'ff', 'Hf'}, optional
+            ``'sf'`` (the default) bounds the conditional survival,
+            ``'ff'`` the conditional failure probability ``1 - cs``,
+            ``'Hf'`` the cumulative hazard over the window.
+        method : {'wald', 'lr', 'bootstrap'}, optional
+            ``'wald'`` (the default) is the delta method on
+            :math:`\log \Delta H` (on :math:`\Delta H` itself for an
+            additive hazards model), from its gradient in the parameters
+            and their covariance, as :meth:`cb`'s on the log of the
+            cumulative hazard. ``'lr'`` is the likelihood-ratio bound, the
+            extreme of :math:`\Delta H` over the parameters' likelihood
+            region, as :meth:`cb` with ``method='lr'``; it is slower and
+            needs the data. ``'bootstrap'`` is the BCa interval over the
+            parametric bootstrap refits of :meth:`cb`.
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only).
+        robust : bool, optional
+            ``True`` uses the robust (sandwich) covariance; ``method``
+            must be ``"wald"``. Default ``False``.
+        cluster : array_like, optional
+            With ``robust=True``, a cluster label for each row given to
+            the fit.
+
+        Returns
+        -------
+        numpy array
+            The bound(s), shaped as the broadcast of ``x`` and ``given``
+            (one per row of ``Z`` for a single window). Where nothing can
+            happen in the window (it is empty, or ends before the support
+            starts) the bound is the value itself; where the unit cannot
+            have survived to ``given`` it is ``nan``, as :meth:`cs` is.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+
+        The chance that a unit with ``Z = 1``, aged 8, fails in the next
+        unit of time, and its 95% bounds:
+
+        >>> round(1 - float(model.cs(1.0, 8.0, [1])), 4)
+        0.3157
+        >>> model.cs_cb(1.0, 8.0, [1], on="ff").round(4)
+        array([0.2372, 0.4122])
+        """
+        from surpyval.utils.linalg import bound_signs, delta_method_se
+        from surpyval.utils.validation import (
+            BOUNDS,
+            check_alpha_ci,
+            check_option,
+        )
+
+        from ._bootstrap import bound_method
+        from ._inference import check_robust_request
+
+        check_alpha_ci(alpha_ci)
+        method = bound_method(method)
+        check_option("on", on, ("sf", "ff", "Hf"))
+        check_robust_request(robust, cluster, method)
+        self._refuse_weighted_method(method)
+        self._check_inference()
+        check_option("bound", bound, BOUNDS)
+        xs, gs, rows, shape = self._window_pairs(x, given, Z)
+        if np.any(xs < 0):
+            raise ValueError(
+                "cs_cb: a window x must be at or above 0 (the time after "
+                f"given); got {xs[xs < 0].tolist()}."
+            )
+        additive = self._is_additive()
+        # sf falls as the hazard rises: its one-sided bound is the
+        # hazard's other side
+        side = bound
+        if on == "sf" and bound != "two-sided":
+            side = "upper" if bound == "lower" else "lower"
+        if method == "lr":
+            from ._likelihood_ratio import window_cb_lr
+
+            Hd = window_cb_lr(self, xs, gs, rows, alpha_ci, side)
+        elif method == "bootstrap":
+            from ._bootstrap import function_bounds, refits
+
+            fits = refits(self, n_boot, random_state)
+            fits.warn()
+
+            def value(p: npt.NDArray, center: Any = None) -> npt.NDArray:
+                rows_c = np.asarray(self._centred(rows, center), float)
+                return self._window_H(xs, gs, rows_c, p)
+
+            out = function_bounds(self, fits, value, on, alpha_ci, bound)
+            return out.reshape(shape + out.shape[1:])
+        else:
+            from scipy.special import ndtri
+
+            params, center, cov = self._wald_state(robust, cluster, "wald")
+            rows_c = np.asarray(self._centred(rows, center), dtype=float)
+            H_hat = self._window_H(xs, gs, rows_c, params)
+            alpha, signs = bound_signs(alpha_ci, side)
+            k = ndtri(1.0 - alpha) * signs
+            with np.errstate(all="ignore"):
+                se = np.asarray(
+                    delta_method_se(
+                        lambda q: self._window_H(xs, gs, rows_c, q),
+                        params,
+                        cov,
+                        scale_free=True,
+                    ),
+                    dtype=float,
+                )
+                if additive:
+                    Hd = H_hat[:, None] + k * se[:, None]
+                else:
+                    Hd = H_hat[:, None] * np.exp(k * (se / H_hat)[:, None])
+            # Nothing can happen in the window: the value is its own bound
+            Hd = np.where((H_hat == 0)[:, None], 0.0, Hd)
+            Hd = np.where(np.isnan(H_hat)[:, None], np.nan, Hd)
+            if bound != "two-sided":
+                Hd = Hd[:, 0]
+        out = conditional_on(Hd, on, bound)
+        return out.reshape(shape + out.shape[1:])

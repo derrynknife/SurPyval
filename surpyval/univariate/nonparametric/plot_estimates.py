@@ -130,7 +130,7 @@ def _bounds(
             on,
             alpha_ci,
             bound,
-            bound_type=bound_type or "exp",
+            bound_type=bound_type or "log-log",
         )
     sf_band = model.band(
         q,
@@ -231,9 +231,9 @@ def plot_nonparametric(
         Pointwise bounds only: a one-sided bound is drawn as a dashed
         step. Defaults to 'two-sided'.
     bound_type : str, optional
-        The scale of the bounds, as ``cb``'s (``'exp'``, the default, or
-        ``'normal'``) or ``band``'s (``'arcsine'``, the default, ``'exp'``
-        or ``'normal'``) ``bound_type``.
+        The scale of the bounds, as ``cb``'s (``'log-log'``, the default,
+        or another of its scales) or ``band``'s (``'arcsine'``, the
+        default, ``'log-log'`` or ``'plain'``) ``bound_type``.
     band_method : ('hall-wellner', 'nair'), optional
         ``band``'s method. Defaults to 'hall-wellner'.
     ci_style : ('fill', 'lines'), optional

@@ -41,6 +41,10 @@ MIX = {
     "Gumbel": [[8.0, 3.0], [20.0, 4.0], [14.0, 6.0]],
     "Logistic": [[5.0, 2.0], [18.0, 3.0], [11.0, 5.0]],
     "Rayleigh": [[4.0], [15.0], [9.0]],
+    "Gompertz": [[0.3, 0.05], [0.15, 0.005], [0.05, 0.05]],
+    "InverseGaussian": [[4.0, 10.0], [18.0, 60.0], [10.0, 5.0]],
+    "BirnbaumSaunders": [[0.3, 4.0], [0.5, 18.0], [1.0, 10.0]],
+    "GeneralizedGamma": [[1.5, 0.5, 0.5], [2.8, 0.4, -0.5], [2.2, 1.0, 1.0]],
 }
 W = [0.2, 0.5, 0.3]
 
@@ -216,11 +220,11 @@ def test_mixture_gradient_matches_a_central_difference(name):
 @pytest.mark.parametrize("name", list(MIX))
 def test_a_dominant_component_stays_finite(name):
     # A weight within 2e-35 of 1: the loss is still the mixture's, and
-    # the gradient is finite in every parameter and logit. (Without
-    # truncation: MixtureModel takes a censored row's window as a
-    # difference of CDFs, which for the dominant Gumbel's [18, 29] loses
-    # 4 digits; this loss, worked out from the survival function there,
-    # agrees with 50-digit arithmetic.)
+    # the gradient is finite in every parameter and logit. (The dominant
+    # BirnbaumSaunders gives the window [22, 27] a probability of 8e-11,
+    # deep in its upper tail; both this loss and MixtureModel's take it
+    # from the survival function there, and agree with 50-digit
+    # arithmetic: test_mixture_tail_windows.py.)
     dist = _dist(name)
     arrays = _arrays("mixed", "none")
     y = spt.targets(**arrays)

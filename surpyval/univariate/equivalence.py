@@ -88,7 +88,6 @@ conditions. *Journal of the American Statistical Association* 82,
 
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import autograd.numpy as anp
@@ -109,7 +108,6 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils.aliases import canonical_name
-from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.linalg import (
     cb_link,
     sf_link_bound,
@@ -122,6 +120,7 @@ from surpyval.utils.no_maximum import (
     warn_no_maximum,
     warn_unverified,
 )
+from surpyval.utils.removed_names import removed_arguments, removed_message
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
@@ -130,7 +129,7 @@ from surpyval.utils.validation import (
     check_option,
     option_error,
 )
-from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
+from surpyval.utils.warnings import ignoring_warnings
 
 #: The lifetime distributions an equivalent-scale model takes: those on
 #: the positive half-line that are closed under a change of scale, so that
@@ -834,7 +833,7 @@ class EquivalenceFitter:
         then ``k``."""
         return [*self.dist.parameter_names, "k"]
 
-    @renamed_arguments(removed_in=REMOVED_IN, x1="x")
+    @removed_arguments("0.30", x1="'x'")
     @takes_unit
     def fit(
         self,
@@ -967,26 +966,15 @@ class EquivalenceFitter:
             size = len(np.atleast_1d(np.asarray(x, dtype=float)))
         except (TypeError, ValueError):
             size = -1  # refused, saying why, as the data are read
-        pair = _old_pair_entry(tl, size)
-        if pair is not None:
-            if isinstance(x2, SecondaryClock) and x2.tl is not None:
-                raise ValueError(
-                    "tl is a pair per unit (0.28's form) and the "
-                    "SecondaryClock has entry readings too: give the "
-                    "second clock's entry once, in SecondaryClock(..., "
-                    "tl=...), and tl= the main clock's alone."
+        if _old_pair_entry(tl, size) is not None:
+            raise ValueError(
+                removed_message(
+                    "EquivalenceFitter.fit: tl is a pair per unit (main "
+                    "clock, second clock)",
+                    (_PAIR_ENTRY_ADVICE, "0.30"),
                 )
-            warnings.warn(
-                "EquivalenceFitter.fit: tl as a pair per unit (main clock, "
-                "second clock) is deprecated and will be removed in "
-                f"v{REMOVED_IN}; {_PAIR_ENTRY_ADVICE}.",
-                DeprecationWarning,
-                stacklevel=caller_stacklevel(),
+                + "."
             )
-            name = x2.name if isinstance(x2, SecondaryClock) else None
-            values = x2.values if isinstance(x2, SecondaryClock) else x2
-            x2 = SecondaryClock(values, tl=pair[:, 1], name=name)
-            tl = pair[:, 0]
         clock = SecondaryClock._of(x2)
         names: tuple[str, ...]
         if clocks is None:
@@ -1006,6 +994,9 @@ class EquivalenceFitter:
         d = _Data(x, clock, c, n, tl, clocks=(names[0], names[1]))
         return _fit(self, d, init)
 
+    @removed_arguments(
+        "0.30", x_cols="x_col and x2_col", tl_cols="tl_col and tl2_col"
+    )
     @takes_unit
     def fit_from_df(
         self,
@@ -1025,8 +1016,6 @@ class EquivalenceFitter:
         tr_col: Any = None,
         x2_name: str | None = None,
         clocks: tuple[str, str] | None = None,
-        x_cols: list[str] | None = None,
-        tl_cols: list[str] | None = None,
     ) -> EquivalenceModel:
         """
         Fit from a DataFrame: the main clock's columns as for any
@@ -1039,8 +1028,8 @@ class EquivalenceFitter:
         ``tl2_col`` also take one number for every row. The
         :class:`SecondaryClock` is built from the columns.
 
-        ``x_cols=[main, second]`` and ``tl_cols``, the 0.28 form, are
-        deprecated.
+        ``x_cols=[main, second]`` and ``tl_cols``, the 0.28 form, were
+        removed in v0.30.
 
         Examples
         --------
@@ -1057,49 +1046,24 @@ class EquivalenceFitter:
         >>> model.clocks
         ('hours', 'starts')
         """
-        # 0.28's form: x_cols = [main, second] (also given by position,
-        # where x_col now is), tl_cols = [main, second]
-        if isinstance(x_col, (list, tuple)):
-            x_cols, x_col = list(x_col), None
-        if isinstance(tl_col, (list, tuple)):
-            tl_cols, tl_col = list(tl_col), None
-        if x_cols is not None or tl_cols is not None:
-            warnings.warn(
-                "EquivalenceFitter.fit_from_df: x_cols and tl_cols (both "
-                "clocks' columns in one list) are deprecated and will be "
-                f"removed in v{REMOVED_IN}; use x_col and x2_col, and "
-                "tl_col and tl2_col.",
-                DeprecationWarning,
-                stacklevel=caller_stacklevel(),
-            )
-        if x_cols is not None:
-            x_cols = list(x_cols)
-            if len(x_cols) != 2:
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
+        # 0.28's form, removed in v0.30: both clocks' columns in one list
+        # (x_cols, also given by position where x_col now is; tl_cols).
+        for given, old, advice in (
+            (x_col, "x_cols", "x_col='hours', x2_col='starts'"),
+            (tl_col, "tl_cols", "tl_col and tl2_col"),
+        ):
+            if isinstance(given, (list, tuple)):
                 raise ValueError(
-                    "x_cols names the two clocks' columns, e.g. "
-                    f"['hours', 'starts']; got {x_cols!r}. Better: "
-                    "x_col='hours', x2_col='starts'."
+                    removed_message(
+                        "EquivalenceFitter.fit_from_df: both clocks' "
+                        f"columns in one list ({old}, the 0.28 form)",
+                        (f"give them one each: {advice}", "0.30"),
+                    )
+                    + "."
                 )
-            if x_col is not None or x2_col is not None:
-                raise ValueError(
-                    "Give the clocks' columns once: x_col and x2_col, or "
-                    "(deprecated) x_cols."
-                )
-            x_col, x2_col = (str(v) for v in x_cols)
-        if tl_cols is not None:
-            tl_cols = list(tl_cols)
-            if len(tl_cols) != 2:
-                raise ValueError(
-                    "tl_cols names the two columns of the ages at entry, "
-                    f"in the order of the clocks; got {tl_cols!r}. Better: "
-                    "tl_col and tl2_col."
-                )
-            if tl_col is not None or tl2_col is not None:
-                raise ValueError(
-                    "Give the entry columns once: tl_col and tl2_col, or "
-                    "(deprecated) tl_cols."
-                )
-            tl_col, tl2_col = tl_cols
         names = [
             v
             for v in (

@@ -216,6 +216,84 @@ for their parameter count, or non-convergence — are excluded and score
 with physical justification when one is known, since the winner is
 extrapolated well beyond the data.
 
+**A path with no formula: a spline.** A measurement that is flat and then
+climbs, or falls and then rises, follows none of the shapes above.
+``SplinePath`` is a smooth curve of joined cubic pieces (a natural cubic
+spline) that bends where the measurements do: ``level + rate x`` plus one
+bend ``s_k`` after each knot, a straight line before the first boundary
+knot and after the last. ``SplinePath.natural(df=3)`` places its knots from
+the measurement times (the boundary at the first and last, two interior
+knots at the thirds of all the units' times) and the fitted model's
+``path_model`` records them; ``SplinePath(knots=[...], boundary=(lo, hi))``
+takes yours. It is linear in its parameters, so each unit's fit is in
+closed form, and each unit needs measurements at as many distinct times as
+the path has parameters (``df + 1``). Units read at 13 times whose
+measurement holds near 2 until age 4 and then rises, failing at 12:
+
+.. jupyter-execute::
+    :stderr:
+
+    from surpyval.degradation import SplinePath
+
+    knee_rng = np.random.default_rng(11)
+    t_knee = np.arange(0.0, 13.0)
+    x_k, y_k, i_k = [], [], []
+    for unit in range(8):
+        start, climb = knee_rng.normal(2.0, 0.3), knee_rng.normal(0.8, 0.1)
+        x_k.append(t_knee)
+        y_k.append(
+            start
+            + climb * np.maximum(t_knee - 4.0, 0.0)
+            + knee_rng.normal(0, 0.05, t_knee.size)
+        )
+        i_k.append(np.full(t_knee.size, unit))
+    x_k, y_k, i_k = (np.concatenate(v) for v in (x_k, y_k, i_k))
+    bent = DegradationAnalysis.fit(
+        x_k, y_k, i_k, threshold=12.0, path=SplinePath.natural(df=3)
+    )
+    straight = DegradationAnalysis.fit(x_k, y_k, i_k, threshold=12.0, path="linear")
+    print(bent.path_model)
+    print(bent.pseudo_failure_times.round(1))
+    print(straight.pseudo_failure_times.round(1))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert bent.path_model.knots == (4.0, 8.0)
+    assert (straight.pseudo_failure_times > bent.pseudo_failure_times).all()
+    assert bent.measurement_var < 0.1 * straight.measurement_var
+
+The spline's fit warns that the units' spread is not determined in
+every direction: eight units do not tell apart the covariance of four
+path parameters, and these units differ only in their start and their
+climb, so the bends' spread is estimated as 0. The paths and the
+crossing times do not rest on it; the bounds drawn from the population
+do. The line is held down by the flat years and reaches the threshold
+later than the units will.
+
+How far a bend's spread between units can be told depends on how much
+each unit's readings say about its own bend. Each unit's estimate of a
+bend carries the reading noise, and the spread between units is what is
+left of the estimates' scatter once that noise is taken off. Where the
+units' bends differ by much less than one unit's readings can tell, the
+remainder is often below 0, the estimate is held at a valid covariance
+(it warns that it was clipped), and on average it is too high. In a
+study of 40 units read ten times (the bend's true variance 0.21, each
+unit's own estimate of it carrying a variance of 18.5) the reported
+variance averaged 1.5 to 2.0, against an unbiased but often negative
+unclipped estimate; REML (``population_method="reml"``) was higher still
+(1.9 to 2.5). With the true variance at 5.0 (27% of that noise) the bias is
+0.2 standard deviations, and at 20, 0.05. The knots were the same in
+every data set, so they were not the cause. So read a bend's variance
+next to its warnings, and prefer fewer knots, or readings past each
+knot, when the bends' spread matters. The crossing time is the first time after 0 at which
+the spline reaches the threshold, found numerically; past the last knot
+the curve is extended as a straight line, so a threshold far beyond the
+measurements rests on the last piece's slope. A spline is not among the
+shapes ``path="best"`` tries: it is given as an object. Saved models keep
+the knots (``to_dict`` writes them under ``"path_model"``).
+
 **A custom path.** When the physics suggests a shape that is not in the list,
 subclass :class:`~surpyval.degradation.path_models.PathModel`: give it a ``name``, its
 ``parameter_names``, the ``path`` itself and its inverse ``inv_path`` (the time the
@@ -444,9 +522,22 @@ taken out) while its readings were short of the threshold: its failure by
 degradation was never seen, so for the threshold's life it is censored when it
 stopped, as a competing failure mode is. A unit listed there whose path
 reaches the threshold within its readings has failed by the threshold's
-definition, and is refused. The life times and censoring of a
-:class:`~surpyval.SurpyvalData` holding the readings are not read; pass its
-running units as ``censored_units``.
+definition, and is refused.
+
+A unit is often known to be running later than its last reading: the
+readings stopped at 52 hours but the study ran to 60. Give the time as
+``censored_units={unit: time}`` and the unit is censored there, which tells
+the life fit it survived longer than its readings show (``None`` is its last
+reading). The time must be at or after the last reading, and before the
+time the unit's fitted path crosses the threshold: a unit said to be running
+past its crossing has, by its path, failed unseen, so that is refused (give
+an earlier time, or leave it out to take the crossing as its failure time).
+
+The life times and censoring of a :class:`~surpyval.SurpyvalData` holding
+the readings are not read by default, so the fit is the same as from the
+readings alone. Ask for them with ``censored_units="data"``: each
+right-censored unit (``c = 1``) is still running at its ``x``, as if given
+in the dict; its observed and other censored rows are left to the threshold.
 
 .. jupyter-execute::
 
@@ -454,6 +545,14 @@ running units as ``censored_units``.
                                     censored_units=[1])
     print("censor flags, unit 1 marked   :", broke.c)
     broke
+
+.. jupyter-execute::
+
+    _last = x_run[i_run == 1].max()
+    later = DegradationAnalysis.fit(x_run, y_run, i_run, threshold=450.0,
+                                    censored_units={1: _last + 10.0})
+    print("unit 1 censored at            :", later.pseudo_failure_times[1])
+    print("reliability at 1000, 1500 h   :", later.sf([1000.0, 1500.0]).round(3))
 
 .. jupyter-execute::
     :hide-code:
@@ -465,6 +564,8 @@ running units as ``censored_units``.
     assert broke.c[1] == 1 and broke.c.sum() == 1
     assert broke.pseudo_failure_times[1] == x_run[i_run == 1].max()
     assert "Extrapolated Units  : 4" in repr(broke)
+    assert later.c[1] == 1 and later.pseudo_failure_times[1] == _last + 10.0
+    assert later.censored_at == {1: _last + 10.0}
     try:
         DegradationAnalysis.fit(x, y, i, threshold=450.0, running="censor")
     except ValueError as error:
@@ -1607,8 +1708,12 @@ divided by the average speed. The shape controls how tightly the failure times
 cluster around that mean (more diffusion → more scatter). Because the increments
 are independent, the model also needs the drift to be **positive** — a
 non-positive drift would mean the process is not reliably heading toward the
-threshold at all, so SurPyval raises an error rather than return a "life" that
-may never end.
+threshold at all, so the fit raises an error rather than return a "life" that
+may never end. A ``WienerProcessModel`` built by hand with such a drift still
+describes its life exactly: at zero drift every unit crosses but the mean life is
+infinite, and below zero a unit crosses only with probability
+:math:`e^{2\mu D/\sigma^2}`, so ``mean()`` is ``inf`` and quantiles past that
+probability are ``inf``.
 
 Let's fit one. We simulate 30 units, each measured every half–time-unit, with a
 true drift of ``0.5`` and diffusion ``0.4``, failing at a degradation of ``10``:

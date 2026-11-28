@@ -504,7 +504,9 @@ def _expand_windows(
 
     ``windows`` is a mapping ``{item: [(start, end), ...]}`` giving each item's
     disjoint observation windows. Every provided row must be an observed event
-    (``c=0``); the windows supply the censoring / close rows. Returns the
+    (``c=0``); the windows supply the censoring / close rows. An item with
+    windows and no row had no failure while it was watched: each of its
+    windows is a sub-item with its close row only. Returns the
     expanded ``(x, i, c, n, tl, tr)`` arrays and a ``window_map`` from each
     synthetic item id to its ``(real_item, (start, end))``.
     """
@@ -540,7 +542,12 @@ def _expand_windows(
     new_tr: list = []
     window_map: dict = {}
     synth = 0
-    for ii in unique_i:
+    # An item with windows and no event row was watched and did not fail:
+    # its windows are exposure, as the c = 1 row of an item with no
+    # failures is without windows.
+    with_rows = set(unique_i.tolist())
+    quiet = [ii for ii in windows if ii not in with_rows]
+    for ii in [*unique_i, *quiet]:
         wins = [tuple(w) for w in windows[ii]]
         if len(wins) == 0:
             raise ValueError(
@@ -1331,6 +1338,13 @@ def handle_xicn(
     :class:`~surpyval.utils.event_history_data.EventHistoryData`, the
     object every recurrent fitter's ``_fit_from_recurrent_data`` takes.
 
+    .. deprecated:: 0.30
+        Called from your own code, ``handle_xicn`` warns and is removed in
+        v0.31: a :class:`~surpyval.SurpyvalData` with each row's unit
+        ``i`` is the one container for recurrent data, and every
+        recurrent ``fit`` takes the arrays (or that ``SurpyvalData``)
+        directly. The fits still use it inside, with no warning.
+
     Each row is one event (or the right-censored end of observation) of
     the item named in ``i``, at time ``x`` measured from the start of that
     item's life.
@@ -1398,9 +1412,16 @@ def handle_xicn(
     >>> from surpyval import handle_xicn
     >>> data = handle_xicn([2, 5, 8, 3, 9], i=[1, 1, 1, 2, 2],
     ...                    c=[0, 0, 1, 0, 1])
-    >>> data.ids
+    >>> data.item_ids
     [1, 2]
     """
+    from surpyval.utils.event_history_data import warn_built_by_user
+
+    warn_built_by_user(
+        "surpyval.handle_xicn",
+        "SurpyvalData(x, c, n, i=i, tl=tl, tr=tr, Z=Z, e=e), or pass the "
+        "arrays to the fit (CrowAMSAA.fit(x, i=i, c=c, windows=...))",
+    )
     x = coerce_xcnt_x(x, recurrent=True)
 
     if x.shape[0] == 0:

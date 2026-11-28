@@ -274,7 +274,7 @@ def test_quantile_cb_is_nan_for_p_outside_0_1(p):
 
 
 @pytest.mark.parametrize("alpha_ci", [0.05, 0.3])
-@pytest.mark.parametrize("bound_type", ["exp", "normal"])
+@pytest.mark.parametrize("bound_type", ["log-log", "plain"])
 def test_quantile_cb_inverts_the_pointwise_bounds(alpha_ci, bound_type):
     # Brookmeyer-Crowley: the interval of the p-quantile is the times at
     # which the pointwise interval of sf, at the same alpha_ci, contains
@@ -522,7 +522,7 @@ def test_turnbull_saved_before_tol_was_recorded_bootstraps_as_fitted():
 
 
 @pytest.mark.parametrize("method", ["hall-wellner", "nair"])
-@pytest.mark.parametrize("bound_type", ["exp", "normal"])
+@pytest.mark.parametrize("bound_type", ["log-log", "plain"])
 @pytest.mark.parametrize("alpha_ci", [0.05, 0.2])
 def test_band_over_a_single_time_is_the_pointwise_interval(
     method, bound_type, alpha_ci
@@ -570,7 +570,7 @@ def test_band_round_trips_with_truncation(name):
     assert_allclose(restored.band(q), model.band(q), rtol=1e-12)
     if name == "KaplanMeier":
         assert_allclose(
-            restored.band(q, bound_type="exp")[0],
+            restored.band(q, bound_type="log-log")[0],
             [0.4900, 0.8917],
             atol=5e-5,
             rtol=0,
@@ -596,7 +596,7 @@ def test_band_n_is_stored_only_where_the_risk_set_differs():
     del old["band_n"]
     q = np.quantile(x, [0.2])
     assert_allclose(
-        sp.from_dict(old).band(q, bound_type="exp"),
+        sp.from_dict(old).band(q, bound_type="log-log"),
         [[0.4535, 0.9018]],
         atol=5e-5,
         rtol=0,
@@ -732,7 +732,7 @@ def test_R_cb_defaults_are_those_of_cb():
     # R_cb is cb(on='sf') with the columns as [upper, lower] (documented),
     # with the same defaults. Kills nonparametric.py:803 (alpha_ci = 1.05).
     model = _fit()
-    assert_allclose(model.R_cb([2, 5]), np.fliplr(model.cb([2, 5])))
+    assert_allclose(model._survival_cb([2, 5]), np.fliplr(model.cb([2, 5])))
 
 
 def test_support_keeps_the_estimate_up_to_the_last_time():
@@ -815,7 +815,7 @@ def test_plot_draws_the_estimate_its_bounds_and_the_censored_items(
     assert_allclose(ty, _flat(model.sf(x[c == 1], interp=interp)))
     assert ticks.get_marker() == "|"
     (band,) = bands
-    bounds = model.R_cb(model.x, interp=interp, alpha_ci=alpha_ci)
+    bounds = model._survival_cb(model.x, interp=interp, alpha_ci=alpha_ci)
     assert_allclose(np.unique(band[:, 1]), np.unique(bounds))
     assert (len(band) > 3 * len(x)) == (interp == "step")
     assert_allclose(to_rgb(colours[0]), to_rgb(curve.get_color()))
@@ -831,7 +831,9 @@ def test_plot_of_a_one_sided_bound_is_a_dashed_line(interp):
     assert not bands
     (_, _, curve), (bx, by, bound) = lines
     assert_allclose(bx, model.x)
-    assert_allclose(by, model.R_cb(model.x, bound="upper", interp=interp))
+    assert_allclose(
+        by, model._survival_cb(model.x, bound="upper", interp=interp)
+    )
     assert bound.get_linestyle() == "--"
     assert bound.get_color() == curve.get_color()
     assert (bound.get_drawstyle() == "steps-post") == (interp == "step")
@@ -843,10 +845,10 @@ def test_plot_passes_on_the_bound_options_and_line_style():
     # :2003 (the curve's kwargs dropped for an interpolated curve).
     model = _fit(c=np.r_[C[:-1], 1])
     lines, bands, _, _ = _plotted(
-        model, bound_type="normal", dist="z", interp="linear", color="C3"
+        model, bound_type="plain", dist="z", interp="linear", color="C3"
     )
     assert to_rgb(lines[0][2].get_color()) == to_rgb("C3")
-    expected = model.R_cb(model.x, bound_type="normal", interp="linear")
+    expected = model._survival_cb(model.x, bound_type="plain", interp="linear")
     assert_allclose(np.unique(bands[0][:, 1]), np.unique(expected))
 
 
@@ -878,7 +880,7 @@ def test_get_plot_data():
     assert (d["x_scale_min"], d["x_scale_max"]) == (0, 20 + 2.0)
     assert (d["y_scale_min"], d["y_scale_max"]) == (0, 1)
     assert_allclose(d["F"], model.F)
-    assert_allclose(d["cbs"], model.R_cb(model.x, alpha_ci=0.3))
+    assert_allclose(d["cbs"], model._survival_cb(model.x, alpha_ci=0.3))
     negative = NonParametric.fit_from_ecdf([-5.0, 5.0], [0.5, 0.0])
     d = negative.get_plot_data(plot_bounds=False)
     assert (d["x_scale_min"], d["x_scale_max"], d["cbs"]) == (-5, 6, None)

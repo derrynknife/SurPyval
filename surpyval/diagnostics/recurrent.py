@@ -77,6 +77,7 @@ from typing import Any
 import numpy as np
 from scipy.stats import chi2, norm
 
+from surpyval.utils.model_data import event_data
 from surpyval.utils.warnings import collecting_warnings, ignoring_warnings
 
 from ._shared import _fmt
@@ -176,7 +177,7 @@ def _windows(ctx: Context) -> list:
     """Each item's ``(item, events, entry, close, explicit_close)``."""
     from surpyval.recurrent.diagnostics import item_windows
 
-    return ctx.cached("windows", lambda: item_windows(ctx.model.data))
+    return ctx.cached("windows", lambda: item_windows(event_data(ctx.model)))
 
 
 def _item_cif(ctx: Context) -> Any:
@@ -497,12 +498,16 @@ def _uniforms(ctx: Context) -> np.ndarray:
 
     model = ctx.model
     if _is_renewal(model):
-        increments = model._fitter._rescaled_increments(model, model.data)
+        increments = model._fitter._rescaled_increments(
+            model, event_data(model)
+        )
         u, _ = diagnostics._renewal_conditional_uniforms(
-            model.data, increments
+            event_data(model), increments
         )
     else:
-        u, _ = diagnostics._conditional_uniforms(model.data, _item_cif(ctx))
+        u, _ = diagnostics._conditional_uniforms(
+            event_data(model), _item_cif(ctx)
+        )
     return np.sort(np.asarray(u, dtype=float))
 
 
@@ -799,7 +804,7 @@ def _repair_panels(ctx: Context) -> list[Panel]:
 def _validate(model: Any) -> None:
     from surpyval.recurrent.diagnostics import validate_diagnostic_data
 
-    if getattr(model, "data", None) is None:
+    if event_data(model) is None:
         raise ValueError(
             "diagnose() needs a model fitted from data, and this one has "
             "none: a model built from its parameters (from_params / "
@@ -820,7 +825,7 @@ def _validate(model: Any) -> None:
             "warned); the tests of its fit and repair have no estimate "
             "to test. Fit a simpler model, or one with more data."
         )
-    validate_diagnostic_data(model.data, "diagnose()")
+    validate_diagnostic_data(event_data(model), "diagnose()")
 
 
 def _notes(ctx: Context) -> list[str]:
@@ -867,7 +872,7 @@ def _notes(ctx: Context) -> list[str]:
             "the Kijima model, of which the power law (CrowAMSAA) with "
             "q = 1 is the minimal-repair case."
         )
-    if getattr(model.data, "window_map", None):
+    if getattr(event_data(model), "window_map", None):
         notes.append(
             "Each observation window of an item with gaps in its "
             "observation is counted as an item of its own."
@@ -1073,7 +1078,7 @@ def _perfect_repair(row: Any, ctx: Context) -> str:
         "The data are consistent with perfect repair ({} = {:g}, as good "
         "as new): a renewal process, whose times between failures all "
         "follow the one lifetime distribution. It is the {} fitted to "
-        "the times between failures, model.data.to_gaps() (EventHistoryData"
+        "the times between failures, model.data.to_gaps() (SurpyvalData"
         ".to_gaps), with one parameter fewer.".format(
             name, value, model.model.dist.name
         )

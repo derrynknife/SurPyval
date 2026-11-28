@@ -15,13 +15,15 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.bayes.engines import conjugate
+from surpyval.bayes.engines.grid import START_POINTS as _GRID_DIMS
 from surpyval.bayes.engines.grid import (
     GridError,
     find_mode,
-    laplace_grid,
     lattice_quantile,
     run_grid,
+    start_scales,
 )
+from surpyval.bayes.engines.laplace import run_laplace
 from surpyval.bayes.likelihood import LogLikelihood, model_parameter_names
 from surpyval.bayes.prior import BoundPriors, PriorSpec, quantity_at
 from surpyval.utils.surpyval_data import SurpyvalData, notation_as_data
@@ -93,7 +95,8 @@ def _check_dist(dist: Any, method: str) -> None:
     if method not in METHODS:
         raise ValueError(
             f"method must be one of {', '.join(METHODS)}; got {method!r}. "
-            "(A sampler for more than three free parameters is planned.)"
+            "('laplace' takes any number of free parameters; for an exact "
+            "posterior of more than three, use PyMC through surpyval.pymc.)"
         )
 
 
@@ -280,6 +283,39 @@ def _theta_of(model: Any, names: list[str]) -> npt.NDArray:
     return np.array([float(vals[n]) for n in names])
 
 
+def search_scales(
+    mle: Any, bound: BoundPriors, log_post: Any, start: npt.NDArray
+) -> npt.NDArray:
+    """The peak search's scale for each free coordinate, as a target's
+    (:meth:`surpyval.bayes.target.Target.coordinate_scales`): the
+    maximum-likelihood fit's standard errors on the unconstrained
+    scale, and where it has none (no fit, or a parameter its
+    covariance does not cover, such as an offset), the posterior's
+    curvature at the first start. So the search is the same whatever
+    the unit of time: a Normal's ``mu`` in a unit of millionths is
+    searched as one of order 1."""
+    from surpyval.bayes.target import axis_scales
+
+    out = np.full(bound.d, np.nan)
+    if mle is not None:
+        try:
+            with ignoring_warnings(), np.errstate(all="ignore"):
+                names = list(mle.covariance_names)
+                part = np.asarray(mle.covariance(), dtype=float)
+            k = len(bound.names)
+            cov = np.full((k, k), np.nan)
+            at = [bound.names.index(n) for n in names]
+            cov[np.ix_(at, at)] = part
+            se = axis_scales(_theta_of(mle, bound.names), cov, bound)
+            if se is not None:
+                out = se
+        except Exception:  # a fit that cannot give its covariance
+            pass
+    if np.isnan(out).any():
+        out = np.where(np.isnan(out), start_scales(log_post, start), out)
+    return out
+
+
 def check_summary(dist: Any, bound: BoundPriors) -> Any:
     """The numbers the grid's self-check compares: the 2.5%, 50% and
     97.5% points of each free parameter and of the 10% quantile."""
@@ -342,6 +378,7 @@ def fit(
     method: str = "auto",
     points: int | None = None,
     unit: Any = None,
+    importance: bool = False,
 ) -> Any:
     """The Bayesian fit; see ``ParametricFitter.fit_bayes``."""
     from surpyval.utils.units import normalise_unit, same_unit
@@ -373,14 +410,14 @@ def fit(
             "Every parameter is fixed, so there is nothing to fit: use "
             f"{dist.name}.from_params(...)."
         )
-    model = _posterior(dist, data, bound, method, points)
+    model = _posterior(dist, data, bound, method, points, importance)
     model.unit = canonical if canonical is not None else held
     model.diagnostics["seconds"] = time.perf_counter() - started
     model._warn_conflicts()
     return model
 
 
-def _check_points(points: Any) -> int | None:
+def check_grid_points(points: Any) -> int | None:
     """``points`` as a whole number of at least 2 (a grid needs two points
     a parameter to have a cell), or ``None``; refuses anything else,
     naming it."""
@@ -406,10 +443,17 @@ def _posterior(
     bound: BoundPriors,
     method: str,
     points: int | None,
+    importance: bool = False,
 ) -> Any:
     from surpyval.bayes.model import BayesianParametric
 
-    points = _check_points(points)
+    points = check_grid_points(points)
+    if importance and method not in ("auto", "laplace"):
+        raise ValueError(
+            f"importance=True reweights the Laplace approximation's draws; "
+            f"method={method!r} computes the posterior without one. Leave "
+            "importance out, or use method='laplace'."
+        )
     offset, lfp, zi = bound.offset, bound.lfp, bound.zi
     case = None
     if data is not None and method in ("auto", "conjugate"):
@@ -432,14 +476,16 @@ def _posterior(
         res = conjugate.solve(case, dist, bound, data)
         return BayesianParametric._from_conjugate(dist, data, bound, res)
 
-    if bound.d > 3:
+    if method == "grid" and bound.d not in _GRID_DIMS:
         raise ValueError(
             f"This fit has {bound.d} free parameters "
-            f"({', '.join(bound.free_names)}); the grid takes 1 to 3. Fix "
-            "some with fixed= or prior.fixed(), or use posterior draws "
-            "from another sampler (log_likelihood_fn gives SurPyval's "
-            "likelihood)."
+            f"({', '.join(bound.free_names)}); the grid takes 1 to 3. Use "
+            "method='laplace' (a normal approximation, any number), fix "
+            "some with fixed= or prior.fixed(), or sample the exact "
+            "posterior with PyMC through surpyval.pymc."
         )
+    if method == "auto" and bound.d not in _GRID_DIMS:
+        method = "laplace"
 
     pooled = None if data is None else _pooled(data, bound)
     if pooled is not None and bound.has_flat:
@@ -488,9 +534,11 @@ def _posterior(
             f"{', '.join(bound.free_names)}."
         )
     try:
-        mode, cov, _ = find_mode(log_post, starts)
-        chosen = "laplace" if method == "laplace" else "grid"
-        if chosen == "grid":
+        scales = search_scales(mle, bound, log_post, starts[0])
+        mode, cov, _ = find_mode(log_post, starts, scales)
+        if method == "laplace":
+            approx = run_laplace(log_post, mode, cov, importance=importance)
+        else:
             result = run_grid(
                 log_post,
                 mode,
@@ -499,12 +547,14 @@ def _posterior(
                 points=points,
                 flat_names=bound.improper_names,
             )
-        else:
-            result = laplace_grid(mode, cov, points)
     except GridError as e:
         raise ValueError(str(e)) from None
+    if method == "laplace":
+        return BayesianParametric._from_laplace(
+            dist, data, bound, approx, log_post, mle, importance
+        )
     return BayesianParametric._from_grid(
-        dist, data, bound, result, chosen, log_post, mle
+        dist, data, bound, result, "grid", log_post, mle
     )
 
 
@@ -663,3 +713,9 @@ def fit_from_df(
             ]
         )
     return fit(dist, **arrays, **options)
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_check_points = check_grid_points

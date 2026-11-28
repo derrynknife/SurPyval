@@ -739,7 +739,7 @@ def _bootstrap_curves(
         ys: npt.NDArray,
         ids: npt.NDArray,
         Zs: Any,
-        censored: list,
+        censored: dict,
     ) -> "tuple[npt.NDArray, Any] | None":
         # The resample's curve and what its life fit reached, or None
         # where the curve is not finite where the model's own is.
@@ -767,8 +767,10 @@ def _bootstrap_curves(
 
     n_units = len(model.units)
     clock = bool(clock_kwargs)
-    # a unit given as censored stays so in every resample it is drawn in
+    # a unit given as censored stays so in every resample it is drawn in,
+    # at the time it was given as running at (None: its last reading)
     marked = set(model.censored_units or ())
+    running_at = model.censored_at or {}
     curves = []
     # Each resampled fit may emit the usual small-sample path-covariance
     # warnings; silence them here so a single bootstrap call does not surface
@@ -776,10 +778,11 @@ def _bootstrap_curves(
     with ignoring_warnings():
         for _ in range(n_boot):
             picks = rng.choice(n_units, size=n_units)
-            xs, ys, ids, Zs, censored = [], [], [], [], []
+            xs, ys, ids, Zs = [], [], [], []
+            censored: dict = {}
             for new_id, idx in enumerate(picks):
                 if model.units[idx] in marked:
-                    censored.append(new_id)
+                    censored[new_id] = running_at.get(model.units[idx])
                 mask = model.i == model.units[idx]
                 n_meas = int(mask.sum())
                 xs.append(model.x[mask])

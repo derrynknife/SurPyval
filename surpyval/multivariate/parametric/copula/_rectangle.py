@@ -12,18 +12,30 @@ of coordinates ``k``:
 - three: the integral, over the first coordinate, of the bivariate
   rectangle of the other two given it, by tanh-sinh quadrature on the
   first coordinate's probability scale, split where the integrand bends
-  (where a conditional median passes a limit). It is a deterministic,
-  smooth function of the limits and the correlations, which a likelihood
-  search and its finite-difference Hessian need (a randomised integrator
-  gives neither), accurate to about 1e-9 (see ``test_rectangle.py``);
+  (where a conditional median passes a limit, and where the other two's
+  standardised limits meet). It is a deterministic, smooth function of
+  the limits and the correlations, which a likelihood search and its
+  finite-difference Hessian need (a randomised integrator gives neither).
+  Against R's mvtnorm (``tests/reference/test_rectangle3_mvtnorm.py``)
+  it agrees to within the reference's own error (1e-10 for the normal,
+  up to 4e-7 for the t), also for correlation matrices whose smallest
+  eigenvalue is 7e-4; against a rule ten times finer it is within 4e-10
+  (and 5e-6 of the probability, where that is above 1e-8) down to a
+  smallest eigenvalue of 1e-4;
 - four or more: Genz's (1992) sequential conditioning on all but the last
-  two coordinates, integrated on a fixed rank-1 lattice (tent
-  transformed, so the rule is the same on every call), with the bivariate
-  rectangle of the last two in closed form at each node. It is
-  deterministic but accurate only to about 1e-4 (1e-5 away from
-  near-singular correlation matrices), so it serves the predictions (a
-  joint survival) and not the likelihood: a fit refuses rows with four or
-  more censored coordinates (see ``elliptical_nd.py``).
+  coordinate, which is in closed form at each node, integrated on a fixed
+  rank-1 lattice of 65,521 points (tent transformed, so the rule is the
+  same on every call and the result a smooth function of the limits and
+  the correlations for a given order of conditioning). The coordinates
+  are conditioned in Genz and Bretz's order (least likely first, given
+  the ones before), which makes the rule accurate relative to small
+  probabilities and for nearly singular correlation matrices.
+  A t vector is the normal one over an independent scale, which is the
+  lattice's first coordinate. Against references to 1e-12 (an
+  equicorrelated or one-factor correlation reduces the integral to one
+  dimension; see ``test_rectangle.py``), the error is below 3e-6 for
+  four to ten coordinates, and below 4e-4 of the probability itself for
+  the normal (3e-3 for the t, where the probability is below 1e-4).
 
 Every interval is written for the coordinate or its negative, whichever
 puts it in the lower tail, so that a small probability is a difference of
@@ -47,24 +59,27 @@ from .elliptical import (
     _tanh_sinh,
 )
 
-#: The most coordinates a likelihood's rectangle may have (see the module
-#: docstring): beyond it the integral is not accurate enough to fit with.
-MAX_LIKELIHOOD_AXES = 3
+# The outer rule of the three-coordinate integral (a step of 1/12: with
+# 1/8 a nearly singular matrix's probability was off by up to 2e-7; with
+# 1/12 it is within 4e-10 of a rule ten times finer)
+_Z, _ZC, _W = _tanh_sinh(step=1.0 / 12.0)
 
-# The outer rule of the three-coordinate integral
-_Z, _ZC, _W = _tanh_sinh(step=1.0 / 8.0)
-
-# The lattice of four or more coordinates: ``_LATTICE_N`` points with the
-# generating vector below (built component by component for the Korobov
-# space of smoothness 2), one component per integrated dimension.
-_LATTICE_N = 4093
-_LATTICE_Z = (1, 1210, 1542, 1785, 942, 736)
+# The lattice of four or more coordinates: ``_LATTICE_N`` (prime) points
+# with the generating vector below, built component by component (the
+# fast construction of Nuyens and Cools 2006) for the Korobov space of
+# smoothness 2 with product weights ``1 / sqrt(j + 1)``; one component per
+# integrated dimension.
+_LATTICE_N = 65521
+_LATTICE_Z = (
+    1, 24876, 5411, 42062, 24076, 38393, 57101,
+    26116, 53040, 44926, 30341, 59079, 63116, 52047,
+)  # fmt: skip
 #: The most coordinates :func:`rectangle` integrates (a t rectangle has
 #: one dimension more, its mixing scale).
-MAX_AXES = len(_LATTICE_Z) + 2
+MAX_AXES = len(_LATTICE_Z) + 1
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _lattice(dims: int) -> npt.NDArray:
     """The lattice's points in ``dims`` dimensions, shifted off the
     faces of the unit cube and tent transformed."""
@@ -184,10 +199,27 @@ def _rect3(lo: Any, hi: Any, corr: Any, nu: float | None) -> Any:
         onp.clip((corr[1, 2] - r[0] * r[1]) / (s[0] * s[1]), -1.0, 1.0)
     )
     lo0, hi0 = lo[:, 0], hi[:, 0]
-    # Where the integrand bends: where a conditional median passes a limit
+    # Where the integrand bends: where a conditional median passes a
+    # limit, and where the other two's standardised limits meet (a limit
+    # of one equal to a limit of the other, negated if their conditional
+    # correlation is negative). Near the meeting points the bivariate
+    # rectangle changes over a width of about sqrt(1 - rho_c^2), which a
+    # nearly singular correlation matrix makes narrow: without them as
+    # panel ends the rule missed up to 1e-5 of the probability.
     limits = onp.concatenate([lo[:, 1:], hi[:, 1:]], axis=1)
+    sign = 1.0 if rho_c >= 0.0 else -1.0
     with onp.errstate(divide="ignore", invalid="ignore"):
         kinks = limits / onp.tile(r, 2)[None, :]
+        meet = onp.stack(
+            [
+                (a / s[0] - sign * b / s[1])
+                / (r[0] / s[0] - sign * r[1] / s[1])
+                for a in (lo[:, 1], hi[:, 1])
+                for b in (lo[:, 2], hi[:, 2])
+            ],
+            axis=1,
+        )
+    kinks = onp.concatenate([kinks, meet], axis=1)
     kinks = onp.where(onp.isfinite(kinks), kinks, lo0[:, None])
     kinks = onp.clip(kinks, lo0[:, None], hi0[:, None])
     edges = onp.sort(
@@ -224,12 +256,96 @@ def _rect3(lo: Any, hi: Any, corr: Any, nu: float | None) -> Any:
     return onp.clip(total, 0.0, 1.0)
 
 
-def _rect_lattice(lo: Any, hi: Any, corr: Any, nu: float | None) -> Any:
+def _smooth_ends(t: Any) -> tuple:
+    """``(w, 1 - w, dw / dt)`` for ``w = t^3 (10 - 15 t + 6 t^2)``, a
+    polynomial map of ``(0, 1)`` onto itself flat at both ends: it tames
+    the t's mixing scale, whose quantile is singular at 0 and 1, for the
+    lattice."""
+
+    def psi(v: Any) -> Any:
+        return v**3 * (10.0 + v * (6.0 * v - 15.0))
+
+    return psi(t), psi(1.0 - t), 30.0 * (t * (1.0 - t)) ** 2
+
+
+def _interval_mass(a: Any, b: Any) -> Any:
+    """``Phi(b) - Phi(a)``, formed in the lower tail."""
+    _, v1, v2 = _lower_tail(a, b)
+    with onp.errstate(invalid="ignore"):
+        return onp.nan_to_num(ndtr(v1) - ndtr(v2), nan=1.0)
+
+
+def _order(lo: Any, hi: Any, corr: Any) -> npt.NDArray:
+    """Each row's order of conditioning, by Genz and Bretz's (2009,
+    section 4.1.3) prioritisation: at each step the coordinate least
+    likely to lie in its interval given the ones before it (each at its
+    conditional mean in its interval). The rule is then accurate relative
+    to small probabilities and for nearly singular correlation matrices,
+    where a fixed order can be wrong by orders of magnitude. (The normal
+    order serves the t too.)"""
+    m, k = lo.shape
+    rows = onp.arange(m)
+    a, b = lo.copy(), hi.copy()
+    C = onp.broadcast_to(corr, (m, k, k)).copy()
+    L = onp.zeros((m, k, k))
+    y = onp.zeros((m, k))
+    perm = onp.tile(onp.arange(k), (m, 1))
+    for i in range(k):
+        rest = L[:, i:, :i]
+        sd = onp.sqrt(
+            onp.maximum(
+                onp.diagonal(C, axis1=1, axis2=2)[:, i:]
+                - onp.sum(rest**2, axis=2),
+                1e-300,
+            )
+        )
+        mu = onp.einsum("mjl,ml->mj", rest, y[:, :i])
+        with onp.errstate(invalid="ignore"):
+            p = _interval_mass((a[:, i:] - mu) / sd, (b[:, i:] - mu) / sd)
+        j = i + onp.argmin(p, axis=1)
+        for arr in (a, b, perm, y):
+            arr[rows, i], arr[rows, j] = arr[rows, j], arr[rows, i].copy()
+        for arr in (C, L):
+            tmp = arr[rows, i].copy()
+            arr[rows, i] = arr[rows, j]
+            arr[rows, j] = tmp
+        tmp = C[rows, :, i].copy()
+        C[rows, :, i] = C[rows, :, j]
+        C[rows, :, j] = tmp
+        diag = onp.sqrt(
+            onp.maximum(C[:, i, i] - onp.sum(L[:, i, :i] ** 2, axis=1), 1e-300)
+        )
+        L[:, i, i] = diag
+        L[:, i + 1 :, i] = (
+            C[:, i + 1 :, i]
+            - onp.einsum("mjl,ml->mj", L[:, i + 1 :, :i], L[:, i, :i])
+        ) / diag[:, None]
+        centre = onp.einsum("ml,ml->m", L[:, i, :i], y[:, :i])
+        with onp.errstate(invalid="ignore", divide="ignore"):
+            alpha = (a[:, i] - centre) / diag
+            beta = (b[:, i] - centre) / diag
+            dens = onp.where(
+                onp.isfinite(alpha), onp.exp(-0.5 * alpha**2), 0.0
+            ) - onp.where(onp.isfinite(beta), onp.exp(-0.5 * beta**2), 0.0)
+            mass = onp.maximum(_interval_mass(alpha, beta), 1e-300)
+            mean = dens / (onp.sqrt(2.0 * onp.pi) * mass)
+        # (an interval far in a tail: its end nearest the bulk)
+        mean = onp.where(
+            onp.isfinite(mean),
+            mean,
+            onp.where(onp.isfinite(alpha), alpha, beta),
+        )
+        y[:, i] = onp.clip(mean, -38.0, 38.0)
+    return perm
+
+
+def _rect_lattice(
+    lo: Any, hi: Any, corr: Any, nu: float | None, order: Any
+) -> Any:
     """Four or more coordinates, by Genz's conditioning on a fixed
     lattice (see the module docstring)."""
     m, k = lo.shape
-    outer = k - 2
-    dims = outer + (nu is not None)
+    dims = k - 1 + (nu is not None)
     if dims > len(_LATTICE_Z):
         raise ValueError(
             f"A joint probability over {k} axes is not computed: the "
@@ -239,46 +355,48 @@ def _rect_lattice(lo: Any, hi: Any, corr: Any, nu: float | None) -> Any:
             "correlations)."
         )
     nodes = _lattice(dims)
-    chol = onp.linalg.cholesky(corr)
-    tail = chol[outer:, outer:] @ chol[outer:, outer:].T
-    sd = onp.sqrt(onp.diag(tail))
-    rho_c = float(onp.clip(tail[0, 1] / (sd[0] * sd[1]), -1.0, 1.0))
+    scale: Any = 1.0
+    weight: Any = 1.0
+    first = int(nu is not None)
+    if nu is not None:
+        # The t vector is the normal one over sqrt(chi2_nu / nu); its
+        # mixing scale is the lattice's first coordinate (the best
+        # spread: it moves every limit at once).
+        w0, w0c, weight = _smooth_ends(nodes[:, 0])
+        chi2 = 2.0 * onp.where(
+            w0 <= 0.5,
+            gammaincinv(nu / 2.0, onp.minimum(w0, 0.5)),
+            gammainccinv(nu / 2.0, onp.minimum(w0c, 0.5)),
+        )
+        scale = onp.sqrt(chi2 / nu)[None, :]
     out = onp.empty(m)
-    # (rows in blocks, to bound the memory of rows x nodes)
-    block = max(1, 400_000 // _LATTICE_N)
-    for start in range(0, m, block):
-        a = lo[start : start + block, None, :]
-        b = hi[start : start + block, None, :]
-        if nu is not None:
-            w0 = nodes[:, -1]
-            chi2 = 2.0 * onp.where(
-                w0 <= 0.5,
-                gammaincinv(nu / 2.0, onp.minimum(w0, 0.5)),
-                gammainccinv(nu / 2.0, onp.minimum(1.0 - w0, 0.5)),
-            )
-            scale = onp.sqrt(chi2 / nu)[None, :, None]
-            a, b = a * scale, b * scale
-        rows = a.shape[0]
-        y = onp.zeros((rows, _LATTICE_N, outer))
-        f = onp.ones((rows, _LATTICE_N))
-        for i in range(outer):
-            shift = y[:, :, :i] @ chol[i, :i] if i else 0.0
-            s, v1, v2 = _lower_tail(
-                (a[:, :, i] - shift) / chol[i, i],
-                (b[:, :, i] - shift) / chol[i, i],
-            )
-            d, e = ndtr(v2), ndtr(v1)
-            f = f * (e - d)
-            with onp.errstate(divide="ignore"):
-                step = ndtri(d + nodes[None, :, i] * (e - d))
-            y[:, :, i] = s * onp.clip(step, -38.0, 38.0)
-        shift = y @ chol[outer:, :outer].T
-        inner = [
-            ((lim[:, :, outer:] - shift) / sd[None, None, :]).reshape(-1, 2)
-            for lim in (a, b)
-        ]
-        mass = _rect2(inner[0], inner[1], rho_c, None).reshape(f.shape)
-        out[start : start + block] = onp.mean(f * mass, axis=1)
+    orders, which = onp.unique(order, axis=0, return_inverse=True)
+    which = onp.ravel(which)
+    # (rows in blocks, to bound the memory of rows x nodes x axes)
+    block = max(1, 2_000_000 // (nodes.shape[0] * k))
+    for g, perm in enumerate(orders):
+        chol = onp.linalg.cholesky(corr[onp.ix_(perm, perm)])
+        members = onp.flatnonzero(which == g)
+        for start in range(0, members.size, block):
+            rows = members[start : start + block]
+            a = lo[onp.ix_(rows, perm)]
+            b = hi[onp.ix_(rows, perm)]
+            y = onp.zeros((rows.size, nodes.shape[0], k - 1))
+            f = onp.ones((rows.size, nodes.shape[0]))
+            for i in range(k):
+                shift = y[:, :, :i] @ chol[i, :i] if i else 0.0
+                s, v1, v2 = _lower_tail(
+                    (a[:, i, None] * scale - shift) / chol[i, i],
+                    (b[:, i, None] * scale - shift) / chol[i, i],
+                )
+                d, e = ndtr(v2), ndtr(v1)
+                f = f * (e - d)
+                if i == k - 1:
+                    break
+                with onp.errstate(divide="ignore"):
+                    step = ndtri(d + nodes[None, :, first + i] * (e - d))
+                y[:, :, i] = s * onp.clip(step, -38.0, 38.0)
+            out[rows] = onp.mean(f * weight, axis=1)
     return onp.clip(out, 0.0, 1.0)
 
 
@@ -287,6 +405,7 @@ def rectangle(
     hi: npt.ArrayLike,
     corr: npt.ArrayLike,
     nu: float | None = None,
+    order: npt.ArrayLike | None = None,
 ) -> npt.NDArray:
     """The probability that a standard multivariate normal (``nu`` is
     ``None``) or t (``nu`` degrees of freedom) vector with correlation
@@ -301,6 +420,14 @@ def rectangle(
         The correlation matrix (unit diagonal, positive definite).
     nu : float, optional
         The degrees of freedom of a t vector.
+    order : array like of int, shape (m, k), optional
+        For four or more coordinates, the order each row's coordinates
+        are conditioned in (a permutation of ``range(k)`` per row); by
+        default Genz and Bretz's prioritisation (see :func:`_order`).
+        A fixed order makes the result a smooth function of the limits
+        and the correlations; the default is smooth except where the
+        prioritisation changes, where the result moves by about the
+        rule's accuracy.
 
     Returns
     -------
@@ -312,11 +439,22 @@ def rectangle(
     m, k = lo.shape
     if k == 0 or m == 0:
         return onp.ones(m)
+    given = (
+        onp.zeros((m, 0))
+        if order is None or k < 4
+        else onp.broadcast_to(onp.asarray(order, dtype=int), (m, k))
+    )
     # Rows with the same limits (units censored at one time) once
     both, back = onp.unique(
-        onp.concatenate([lo, hi], axis=1), axis=0, return_inverse=True
+        onp.concatenate([lo, hi, given], axis=1), axis=0, return_inverse=True
     )
-    lo, hi = both[:, :k], both[:, k:]
+    lo, hi = both[:, :k], both[:, k : 2 * k]
+    if k >= 4:
+        order = (
+            _order(lo, hi, corr)
+            if order is None
+            else both[:, 2 * k :].astype(int)
+        )
     if k == 1:
         out = _rect1(lo[:, 0], hi[:, 0], nu)
     elif k == 2:
@@ -324,5 +462,5 @@ def rectangle(
     elif k == 3:
         out = _rect3(lo, hi, corr, nu)
     else:
-        out = _rect_lattice(lo, hi, corr, nu)
+        out = _rect_lattice(lo, hi, corr, nu, order)
     return onp.asarray(out, dtype=float)[onp.ravel(back)]

@@ -16,6 +16,14 @@ from surpyval.ml.forest.oob import (
     time_origin,
     weighted_mean,
 )
+from surpyval.ml.forest.random_cut import parse_splitrule
+from surpyval.ml.forest.readouts import (
+    PartialDependence,
+    horizon_importance,
+    minimal_depth,
+    minimal_depth_threshold,
+    partial_dependence,
+)
 from surpyval.ml.forest.tree import (
     SurvivalTree,
     check_covariate_count,
@@ -178,9 +186,11 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         n_jobs: int = 1,
         split: str | None = None,
         event: Any = None,
+        splitrule: str = "searched",
     ) -> None:
         _check_n_jobs(n_jobs)
         self.selection = parse_selection(selection, alpha_split)
+        self.splitrule = parse_splitrule(splitrule)
         self.alpha_split = float(alpha_split)
         Z, self.feature_names = covariate_matrix(Z, feature_names)
         # Set by ``fit_from_df(formula=...)``: the formula and its
@@ -262,6 +272,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                 n_features_split=n_features_split,
                 kind=kind,
                 selection=selection,
+                splitrule=splitrule,
                 alpha_split=alpha_split,
                 random_state=tree_states[i],
                 feature_names=self.feature_names,
@@ -301,6 +312,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         e: ArrayLike | None = None,
         split: str | None = None,
         event: Any = None,
+        splitrule: str = "searched",
     ) -> "RandomSurvivalForest":
         """
         Fit a random survival forest.
@@ -356,6 +368,15 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             With ``selection="ctree"``, a node splits only if the
             Bonferroni-adjusted p-value of its chosen feature is below
             ``alpha_split``. Defaults to 0.05.
+        splitrule : str, optional
+            Which cuts of a feature each tree tries: ``"searched"`` (the
+            default), every value, or ``"random"``, one cut drawn
+            uniformly between the feature's smallest and largest value at
+            the node (an extremely randomised forest, Geurts, Ernst and
+            Wehenkel, 2006). The forest keeps its own resampling
+            (``bootstrap``), so out-of-bag scores exist as before; pass
+            ``bootstrap=False`` for the original Extra-Trees, each tree
+            seeing the whole sample.
         min_split_gain : float, "aic" or "bic", optional
             The least gain in log-likelihood a split of a ``"weibull"`` or
             ``"exponential"`` tree must make: a node splits only if its
@@ -511,6 +532,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             n_jobs,
             split=split,
             event=event,
+            splitrule=splitrule,
         )
 
     def sf(
@@ -1001,10 +1023,16 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         return weighted_mean(ll, terms.n)
 
     def feature_importances(
-        self, n_repeats: int = 5, random_state: Any = None, event: Any = None
-    ) -> NDArray:
+        self,
+        n_repeats: int = 5,
+        random_state: Any = None,
+        event: Any = None,
+        *,
+        times: ArrayLike | None = None,
+        metric: str = "brier",
+    ) -> Any:
         r"""Permutation importance of each feature, by out-of-bag
-        log-likelihood.
+        log-likelihood, or by horizon with ``times``.
 
         For each feature, its values are shuffled among each tree's
         out-of-bag rows (Breiman, 2001), which breaks its link with the
@@ -1032,6 +1060,24 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         :meth:`oob_log_likelihood`), so the importance is what the feature
         adds to predicting that cause's hazard.
 
+        **By horizon.** A feature can matter for early failures and not
+        late ones, or the other way round. With ``times``, the score is
+        instead the out-of-bag Brier score (``metric="brier"``, the
+        default) or time-dependent AUC (``metric="auc"``) at each of the
+        horizons, from the ensemble's out-of-bag predicted survival
+        :math:`S(t \mid Z_i)` (with ``event``, that cause's cumulative
+        incidence), and the importance at a horizon is how much worse the
+        score gets when the feature is shuffled: the rise in the Brier
+        score, or the fall in the AUC, so positive for a feature the
+        forest relies on at that horizon either way. The scores are those
+        of :func:`surpyval.metrics.brier_score` and
+        :func:`surpyval.metrics.auc_td` on the rows that have an
+        out-of-bag prediction, with the censoring weights of those rows.
+        The shuffles do not depend on the horizons, so with the same
+        ``random_state`` the importance at a horizon is the same whatever
+        other horizons are asked for. It needs observed and
+        right-censored times without truncation.
+
         Parameters
         ----------
         n_repeats : int, optional
@@ -1045,13 +1091,23 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             For a forest grown with causes, the cause whose restricted
             score is used; ``None`` (the default) is the full
             competing-risks score (or, without causes, the plain one).
+            With ``times``, the cause whose cumulative incidence is
+            scored; ``None`` scores the all-cause survival.
+        times : array_like, optional
+            Keyword only: the horizons for the importance by horizon. By
+            default the importance is by the out-of-bag log-likelihood,
+            exactly as before.
+        metric : {"brier", "auc"}, optional
+            Keyword only, with ``times``: the score. Default ``"brier"``.
 
         Returns
         -------
-        pandas.Series
+        pandas.Series or pandas.DataFrame
             One importance per column of ``Z``, indexed by the feature
             names (:attr:`feature_labels`: ``feature_names`` for a forest
-            fitted from a DataFrame, ``Z0``, ``Z1``, ... otherwise).
+            fitted from a DataFrame, ``Z0``, ``Z1``, ... otherwise). With
+            ``times``, a DataFrame with one row per feature and one column
+            per horizon.
 
         Raises
         ------
@@ -1084,6 +1140,15 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         ):
             raise ValueError(
                 f"n_repeats must be a positive integer, got {n_repeats!r}"
+            )
+        if times is not None:
+            return horizon_importance(
+                self,
+                times,
+                metric,
+                int(n_repeats),
+                as_generator(random_state),
+                event,
             )
         code = self._event_code(event)
         rng = as_generator(random_state)
@@ -1128,6 +1193,171 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             importances, index=self.feature_labels, name="importance"
         )
 
+    def partial_dependence(
+        self,
+        covariate: Any,
+        values: ArrayLike,
+        x: ArrayLike,
+        *,
+        Z: Any = None,
+        weights: ArrayLike | None = None,
+        on: str = "sf",
+        event: Any = None,
+    ) -> PartialDependence:
+        r"""How the prediction changes with one covariate: ICE and
+        partial-dependence curves.
+
+        A forest has no coefficient to read a covariate's effect from.
+        Instead, take each unit, keep its other covariates as they are,
+        set this covariate to each of ``values`` in turn, and predict its
+        survival: one curve per unit, its *individual conditional
+        expectation* (ICE; Goldstein et al., 2015). Their average over
+        the units is the *partial dependence* (Friedman, 2001): what the
+        forest predicts, on average over the population, for each value
+        of the covariate,
+
+        .. math::
+            \bar S(t \mid z_j = v) = \frac{\sum_i w_i\,
+            S(t \mid z_j = v, z_{i,-j})}{\sum_i w_i}.
+
+        Parallel ICE curves mean the covariate acts the same way for
+        every unit; curves that cross or fan out mean it interacts with
+        other covariates, which the average hides. Both describe the
+        fitted forest, not the cause: setting a covariate to a value
+        rarely seen with a unit's other covariates asks the forest about
+        a region it has little data in.
+
+        Parameters
+        ----------
+        covariate : str or int
+            The covariate to vary, by name (:attr:`feature_labels`) or by
+            its column of ``Z``. For a formula fit it is a column of the
+            design matrix.
+        values : array_like
+            The values to set it to.
+        x : array_like
+            The times at which the function is evaluated.
+        Z : array_like or pandas.DataFrame, optional
+            Keyword only: the units, one row each. Default: the rows the
+            forest was grown on (needed for a forest restored with
+            ``from_dict``). Rows with a missing covariate are left out.
+        weights : array_like, optional
+            Keyword only: each row's weight in the average. Default: the
+            counts ``n`` of the rows grown on, or equal weights for a
+            ``Z`` passed in.
+        on : {"sf", "ff", "Hf", "cif"}, optional
+            Keyword only: the function. Default ``"sf"``; ``"cif"`` (of
+            cause ``event``) for a forest grown with causes.
+        event : optional
+            Keyword only: the cause, for ``on="cif"``.
+
+        Returns
+        -------
+        PartialDependence
+            With ``ice`` (rows by values by times), ``average`` (values
+            by times), ``to_frame()`` and ``plot(at=...)``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.ml import RandomSurvivalForest
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 2))
+        >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
+        >>> forest = RandomSurvivalForest.fit(
+        ...     x, Z, n_trees=10, max_depth=1, kind="exponential",
+        ...     random_state=0,
+        ... )
+        >>> pd_ = forest.partial_dependence(0, [0.25, 0.75], [5.0])
+        >>> pd_.ice.shape, pd_.average.shape
+        ((200, 2, 1), (2, 1))
+        >>> bool(pd_.average[0, 0] > pd_.average[1, 0])
+        True
+        """
+        return partial_dependence(
+            self,
+            covariate,
+            values,
+            x,
+            Z=Z,
+            weights=weights,
+            on=on,
+            event=event,
+        )
+
+    def minimal_depth(self) -> pd.DataFrame:
+        """How near the root each covariate first splits the trees.
+
+        A covariate that matters tends to be split on early, near the root,
+        where a split divides the most units; one the forest does not need
+        is split on deep down, or never. The *minimal depth* of a covariate
+        in a tree is the depth of its shallowest split, the root being at
+        depth 0 (Ishwaran et al., 2010). A tree that never splits on the
+        covariate gives it the depth of the tree (its deepest leaf), as
+        randomForestSRC's ``max.subtree`` does. Smaller is more
+        important. Unlike the permutation importance it needs no
+        out-of-bag rows, so it is also available for a forest restored
+        with ``from_dict``.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per covariate (:attr:`feature_labels`):
+            ``minimal_depth``, the mean over the trees, and
+            ``split_fraction``, the share of the trees that split on it at
+            all, and ``selected``, whether the mean is below the
+            threshold. The threshold itself is ``result.attrs["threshold"]``
+            and :meth:`minimal_depth_threshold`.
+
+        Notes
+        -----
+        **Which covariates to keep.** A covariate with no effect is split
+        on by chance, and the more nodes a tree has near the root, the
+        sooner chance alone reaches it. The *threshold* is the minimal
+        depth you would expect on average from such a covariate in these
+        trees; a covariate whose mean minimal depth is below it is split on
+        earlier than chance explains and is ``selected`` (Ishwaran et al.,
+        2010).
+
+        At a node, a given covariate is the one split on with chance
+        ``1/p`` when none is better than another, whatever ``n_features_split``
+        is (it is a candidate with chance ``m/p`` and then chosen with
+        chance ``1/m``); ``p`` is the number of covariates
+        (:attr:`feature_labels`, one per column of ``Z``). With ``l_d``
+        the number of split nodes at depth ``d`` of a tree, ``D`` its
+        depth and ``L_d = l_0 + ... + l_(d-1)``, the minimal depth ``D_v``
+        of such a covariate has
+
+        ``P(D_v = d) = (1 - 1/p)**L_d * (1 - (1 - 1/p)**l_d)``,
+        ``d = 0, ..., D - 1``, and ``P(D_v = D)`` the rest,
+
+        the last being a covariate never split on, which is counted at
+        depth ``D`` as in the table. The threshold is the mean of this
+        distribution, found tree by tree and averaged over the trees, so it
+        is on the same footing as the table's mean over the trees.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.ml import RandomSurvivalForest
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 2))
+        >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
+        >>> forest = RandomSurvivalForest.fit(
+        ...     x, Z, n_trees=10, max_depth=2, kind="exponential",
+        ...     n_features_split=2, random_state=0,
+        ... )
+        >>> forest.minimal_depth()["minimal_depth"].round(2).tolist()
+        [0.0, 1.0]
+        """
+        return minimal_depth(self)
+
+    def minimal_depth_threshold(self) -> float:
+        """The cut-off for :meth:`minimal_depth`: the mean minimal depth of
+        a covariate with no effect in these trees (Ishwaran et al., 2010).
+        Covariates whose mean minimal depth is below it are selected."""
+        return minimal_depth_threshold(self)
+
     @property
     def feature_labels(self) -> list[str]:
         """The name of each feature: ``feature_names`` for a forest
@@ -1142,6 +1372,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         return (
             f"RandomSurvivalForest(kind={self.kind!r}, "
             f"n_trees={self.n_trees}, selection={self.selection!r}, "
+            f"splitrule={self.splitrule!r}, "
             + (
                 ""
                 if self.causes is None
@@ -1161,6 +1392,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             "n_trees": int(self.n_trees),
             "bootstrap": bool(self.bootstrap),
             "selection": self.selection,
+            "splitrule": self.splitrule,
             "alpha_split": float(self.alpha_split),
             "min_split_gain": self.min_split_gain,
             "trees": [tree.to_dict() for tree in self.trees],
@@ -1186,6 +1418,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         forest.bootstrap = model_dict["bootstrap"]
         # Forests saved before selection existed were grown greedily.
         forest.selection = model_dict.get("selection", "greedy")
+        forest.splitrule = model_dict.get("splitrule", "searched")
         forest.alpha_split = model_dict.get("alpha_split", 0.05)
         forest.min_split_gain = model_dict.get("min_split_gain", 0.0)
         if "causes" in model_dict:

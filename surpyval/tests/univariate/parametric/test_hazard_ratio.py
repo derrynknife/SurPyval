@@ -206,10 +206,13 @@ def test_refusals_say_what_to_do():
             sp.Weibull.from_params([10, 2], hr=bad)
     with pytest.raises(ValueError, match="1 - \\(1 - q\\) \\*\\* hr"):
         sp.Bernoulli.from_params([0.3], hr=2.0)
-    with pytest.raises(ValueError, match="integrate"):
-        sp.Gamma.from_params([2.0, 1.0], hr=2.0).entropy()
-    with pytest.raises(ValueError, match="sum over"):
-        sp.Poisson.from_params([3.0], hr=2.0).mean()
+    with pytest.raises(ValueError, match="sum -p \\* log\\(p\\)"):
+        sp.Poisson.from_params([3.0], hr=2.0).entropy()
+    with pytest.raises(ValueError, match="sum the survival beyond"):
+        sp.Poisson.from_params([3.0], hr=2.0).mrl(2)
+    # a power-law tail: P(T > k) ~ k ** (-0.5 * 1.5), no finite mean
+    with pytest.raises(ValueError, match="has not settled"):
+        sp.BetaGeometric.from_params([0.5, 1.0], hr=1.5).mean()
 
 
 def test_with_params_extras_and_repr():
@@ -347,16 +350,294 @@ def test_fits_with_hr_refuse_what_they_cannot_carry():
     x, c = _censored_sample()
     with pytest.raises(ValueError, match="how='MLE'"):
         sp.Weibull.fit(x, c, how="MPP", hr=2.0)
-    model = sp.Weibull.fit(x, c, hr=2.0)
-    with pytest.raises(ValueError, match="method='wald'"):
-        model.cb([5.0], method="lr")
-    with pytest.raises(ValueError, match="method='wald'"):
-        model.quantile_cb(0.5, method="lr")
-    for call in (
-        lambda: model.mean_cb(),
-        lambda: model.mrl_cb([5.0]),
-        lambda: model.rmst_cb(10.0),
-        lambda: model.rmst(10.0),
+
+
+def test_lr_bounds_on_functions_are_the_familys():
+    # A Weibull with a known hr is the Weibull at alpha * hr ** (-1 /
+    # beta): one-to-one, so its likelihood region is the family's, and so
+    # is the extreme of every function over it.
+    x, c = _censored_sample()
+    plain = sp.Weibull.fit(x, c)
+    scaled = sp.Weibull.fit(x, c, hr=2.0)
+    t = np.array([3.0, 8.0, 13.0])
+    for on in ("sf", "ff", "Hf", "hf", "df"):
+        for bound in ("two-sided", "lower", "upper"):
+            np.testing.assert_allclose(
+                scaled.cb(t, on=on, method="lr", bound=bound),
+                plain.cb(t, on=on, method="lr", bound=bound),
+                rtol=FIT_RTOL,
+            )
+    np.testing.assert_allclose(
+        scaled.quantile_cb([0.1, 0.5, 0.9], method="lr"),
+        plain.quantile_cb([0.1, 0.5, 0.9], method="lr"),
+        rtol=FIT_RTOL,
+    )
+
+
+def test_lr_bounds_of_an_exponential_are_its_rates():
+    # One parameter: the band on sf(t) = exp(-hr * rate * t) is that
+    # function of the rate's own likelihood-ratio interval.
+    x, c = _censored_sample()
+    model = sp.Exponential.fit(x, c, hr=0.5)
+    lo, hi = model.param_cb("failure_rate", method="lr")
+    t = np.array([2.0, 5.0, 20.0])
+    want = np.column_stack([np.exp(-0.5 * hi * t), np.exp(-0.5 * lo * t)])
+    np.testing.assert_allclose(model.cb(t, method="lr"), want, rtol=1e-8)
+    # qf(p) = -log(1 - p) / (hr * rate)
+    p = np.array([0.1, 0.5])
+    want_q = np.column_stack(
+        [-np.log1p(-p) / (0.5 * hi), -np.log1p(-p) / (0.5 * lo)]
+    )
+    np.testing.assert_allclose(
+        model.quantile_cb(p, method="lr"), want_q, rtol=1e-8
+    )
+
+
+def test_lr_bound_is_on_the_deviance_contour():
+    # A lognormal with hr is no lognormal: check the bound directly, as
+    # the least deviance with sf(5) held at it, which is the critical
+    # value at each end.
+    from scipy.optimize import minimize
+    from scipy.stats import chi2
+
+    x, c = _censored_sample()
+    model = sp.LogNormal.fit(x, c, hr=0.5)
+    nll_hat = model.neg_ll()
+
+    def nll(theta):
+        return sp.LogNormal._neg_ll_func(
+            model.surv_data, *theta, 0.0, 0.0, 1.0, hr=0.5
+        )
+
+    lower, upper = model.cb([5.0], method="lr")[0]
+    assert lower < model.sf(5.0) < upper
+    for end in (lower, upper):
+        held = {
+            "type": "eq",
+            "fun": lambda th, end=end: float(
+                sp.LogNormal.from_params(th, hr=0.5).sf(5.0)
+            )
+            - end,
+        }
+        found = minimize(
+            nll,
+            model.params,
+            constraints=[held],
+            method="SLSQP",
+            options={"ftol": 1e-14, "maxiter": 500},
+        )
+        np.testing.assert_allclose(
+            2 * (found.fun - nll_hat), chi2.ppf(0.95, 1), rtol=1e-8
+        )
+
+
+def test_lr_bounds_with_hr_and_the_other_options():
+    x, c = _censored_sample()
+    t = np.array([5.0, 10.0])
+    for model in (
+        sp.Weibull.fit(x, c, hr=2.0, offset=True),
+        sp.Weibull.fit(x, c, hr=2.0, lfp=True),
+        sp.Poisson.fit(np.round(x).astype(int), hr=2.0),
     ):
-        with pytest.raises(ValueError, match="bootstrap"):
-            call()
+        for on in ("sf", "Hf", "hf", "df"):
+            band = model.cb(t, on=on, method="lr")
+            point = getattr(model, on)(t)
+            assert np.all(band[:, 0] <= point) and np.all(point <= band[:, 1])
+        q = model.quantile_cb(0.5, method="lr")
+        assert q[0] <= model.qf(0.5) <= q[1]
+
+
+@pytest.mark.parametrize("method", ["wald", "lr"])
+def test_summary_bounds_are_the_familys(method):
+    # The mean, mean residual life and restricted mean of a Weibull with
+    # hr are the plain fit's (one model, reparameterised); the delta
+    # method is invariant to that too, at the maximum.
+    x, c = _censored_sample()
+    plain = sp.Weibull.fit(x, c)
+    scaled = sp.Weibull.fit(x, c, hr=2.0)
+    np.testing.assert_allclose(
+        scaled.mean_cb(method=method),
+        plain.mean_cb(method=method),
+        rtol=FIT_RTOL,
+    )
+    t = np.array([2.0, 8.0])
+    np.testing.assert_allclose(
+        scaled.mrl_cb(t, method=method),
+        plain.mrl_cb(t, method=method),
+        rtol=FIT_RTOL,
+    )
+    taus = np.array([5.0, 10.0])
+    np.testing.assert_allclose(
+        scaled.rmst_cb(taus, method=method),
+        plain.rmst_cb(taus, method=method),
+        rtol=FIT_RTOL,
+    )
+    if method == "wald":
+        got, want = scaled.rmst(10.0), plain.rmst(10.0)
+        for key in ("rmst", "se", "lower", "upper"):
+            np.testing.assert_allclose(got[key], want[key], rtol=FIT_RTOL)
+
+
+def test_wald_mean_of_an_exponential_with_hr():
+    # mean = 1 / (hr * rate); the delta method on log(mean) has the
+    # standard error se(rate) / rate.
+    from scipy.stats import norm
+
+    x, c = _censored_sample()
+    model = sp.Exponential.fit(x, c, hr=0.5)
+    rate = model.params[0]
+    se = np.sqrt(model.covariance()[0, 0]) / rate
+    z = norm.ppf(0.975)
+    mean = 1 / (0.5 * rate)
+    np.testing.assert_allclose(
+        model.mean_cb(), mean * np.exp([-z * se, z * se]), rtol=1e-6
+    )
+    # memoryless: the mean residual life is the mean at every age
+    np.testing.assert_allclose(
+        model.mrl_cb([3.0])[0], model.mean_cb(), rtol=1e-6
+    )
+
+
+def test_lr_mean_of_a_lognormal_with_hr_is_on_the_contour():
+    from scipy.optimize import minimize
+    from scipy.stats import chi2
+
+    x, c = _censored_sample()
+    model = sp.LogNormal.fit(x, c, hr=0.5)
+    nll_hat = model.neg_ll()
+
+    def nll(theta):
+        return sp.LogNormal._neg_ll_func(
+            model.surv_data, *theta, 0.0, 0.0, 1.0, hr=0.5
+        )
+
+    lower, upper = model.mean_cb(method="lr")
+    assert lower < model.mean() < upper
+    for end in (lower, upper):
+        held = {
+            "type": "eq",
+            "fun": lambda th, end=end: sp.LogNormal.from_params(
+                th, hr=0.5
+            ).mean()
+            / end
+            - 1,
+        }
+        found = minimize(
+            nll,
+            model.params,
+            constraints=[held],
+            method="SLSQP",
+            options={"ftol": 1e-14, "maxiter": 500},
+        )
+        np.testing.assert_allclose(
+            2 * (found.fun - nll_hat), chi2.ppf(0.95, 1), rtol=1e-6
+        )
+
+
+def test_summary_bounds_with_hr_contain_the_estimate():
+    x, c = _censored_sample()
+    model = sp.Gamma.fit(x, c, hr=0.5)
+    for method in ("wald", "bootstrap"):
+        kw = {} if method == "wald" else {"n_boot": 30, "random_state": 1}
+        lo, hi = model.mrl_cb([5.0], method=method, **kw)[0]
+        assert lo < model.mrl(5.0) < hi
+        lo, hi = model.rmst_cb(10.0, method=method, **kw)
+        assert lo < model.mean(tau=10.0) < hi
+    res = model.rmst(10.0)
+    assert res["lower"] < res["rmst"] < res["upper"] and res["se"] > 0
+    np.testing.assert_allclose(res["rmst"], model.mean(tau=10.0), rtol=1e-9)
+
+
+def test_entropy_by_quadrature_against_closed_forms():
+    hr = 2.5
+    cases = [
+        # a Gumbel's hazard exp((t - mu) / sigma) times hr moves mu by
+        # -sigma log hr; the entropy does not depend on the location
+        (
+            sp.Gumbel.from_params([10.0, 2.0], hr=hr),
+            1 + np.euler_gamma + math.log(2.0),
+        ),
+        # a Rayleigh is a Weibull of shape 2: sigma / sqrt(hr)
+        (
+            sp.Rayleigh.from_params([3.0], hr=hr),
+            1
+            + math.log(3.0 / math.sqrt(hr) / math.sqrt(2))
+            + np.euler_gamma / 2,
+        ),
+        # Beta(1, b) has survival (1 - t) ** b, so with hr it is
+        # Beta(1, b hr) on a finite support: entropy 1 - 1 / b - log b
+        (
+            sp.Beta.from_params([1.0, 3.0], hr=hr),
+            -math.log(3.0 * hr) + 1 - 1 / (3.0 * hr),
+        ),
+        # a gamma of shape 1 is the exponential of rate hr * 0.5
+        (sp.Gamma.from_params([1.0, 0.5], hr=hr), 1 - math.log(0.5 * hr)),
+        # an ExpoWeibull with mu = 1 is the Weibull at alpha hr ** (-1 / 2)
+        (
+            sp.ExpoWeibull.from_params([10.0, 2.0, 1.0], hr=hr),
+            sp.Weibull.from_params([10 * hr**-0.5, 2.0]).entropy(),
+        ),
+    ]
+    for model, want in cases:
+        np.testing.assert_allclose(model.entropy(), want, rtol=1e-10)
+    # the family's own entropy, through the same quadrature
+    np.testing.assert_allclose(
+        sp.Beta.from_params([1.0, 3.0], hr=hr).entropy(),
+        sp.Beta.from_params([1.0, 3.0 * hr]).entropy(),
+        rtol=1e-10,
+    )
+
+
+def test_discrete_moments_by_summing_the_survival():
+    hr = 2.5
+    # a geometric's constant hazard p becomes 1 - (1 - p) ** hr
+    p = 1 - 0.7**hr
+    model = sp.Geometric.from_params([0.3], hr=hr)
+    np.testing.assert_allclose(model.mean(), 1 / p, rtol=1e-12)
+    np.testing.assert_allclose(model.var(), (1 - p) / p**2, rtol=1e-11)
+    # E[T^3] of a geometric on 1, 2, ...: (p^2 - 6p + 6) / p^3
+    np.testing.assert_allclose(
+        model.moment(3), (p**2 - 6 * p + 6) / p**3, rtol=1e-11
+    )
+    # a discrete Weibull's q becomes q ** hr (its own moments are summed
+    # to seven figures)
+    dw = sp.DiscreteWeibull.from_params([0.8, 1.5], hr=hr)
+    same = sp.DiscreteWeibull.from_params([0.8**hr, 1.5])
+    np.testing.assert_allclose(dw.mean(), same.mean(), rtol=1e-8)
+    np.testing.assert_allclose(dw.var(), same.var(), rtol=1e-7)
+    # a Poisson, against the sum over its own mass function
+    poisson = sp.Poisson.from_params([3.0], hr=hr)
+    k = np.arange(0, 200, dtype=float)
+    pk = poisson.df(k)
+    np.testing.assert_allclose(poisson.mean(), np.sum(k * pk), rtol=1e-12)
+    np.testing.assert_allclose(
+        poisson.moment(2), np.sum(k**2 * pk), rtol=1e-12
+    )
+
+
+def test_mixtures_and_non_parametric_fits_refuse_hr():
+    # They take hr= so that the refusal can say what to use; 1 is no
+    # hazard ratio, and an invalid one is refused as for any model
+    x, c = _censored_sample()
+    calls = [
+        lambda hr: sp.KaplanMeier.fit(x, c, hr=hr),
+        lambda hr: sp.NelsonAalen.fit(x, c, hr=hr),
+        lambda hr: sp.Turnbull.fit(x, c, hr=hr),
+        lambda hr: sp.MixtureModel.fit(x, c, dist=sp.Weibull, hr=hr),
+        lambda hr: sp.MixtureModel(sp.Weibull, 2).fit(x, c, hr=hr),
+        lambda hr: sp.MixtureModel.from_params(
+            sp.Weibull, [[10, 2], [50, 4]], [0.3, 0.7], hr=hr
+        ),
+    ]
+    for call in calls:
+        with pytest.raises(ValueError, match=r"model.sf\(t\) \*\* hr"):
+            call(2.0)
+        with pytest.raises(ValueError, match="hr, the hazard ratio"):
+            call(0)
+    np.testing.assert_array_equal(
+        sp.KaplanMeier.fit(x, c, hr=1).R, sp.KaplanMeier.fit(x, c).R
+    )
+    mm = sp.MixtureModel.from_params(
+        sp.Weibull, [[10, 2], [50, 4]], [0.3, 0.7], hr=1
+    )
+    np.testing.assert_allclose(mm.sf([5.0, 40.0]), [0.9336, 0.4647], atol=1e-4)

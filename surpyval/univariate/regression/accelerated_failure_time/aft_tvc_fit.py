@@ -48,6 +48,10 @@ from autograd.extend import defvjp, primitive
 
 from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.utils.covariates import (
     coefficient_floor,
 )
@@ -249,6 +253,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
     accumulated-age likelihood rather than a reshape-and-refit.
     """
 
+    @penalty_argument("_fit_tvc_penalised")
     def fit_tvc(
         self,
         i: npt.ArrayLike,
@@ -301,7 +306,12 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         mark_tvc_fit(model, start_stop_rows(ident, tl, x, c_a, Z_a, n_a))
         return model
 
-    def fit_tvc_penalised(
+    fit_tvc_penalised = penalised_entry(
+        "_fit_tvc_penalised",
+        "call fit_tvc(..., penalizer=...); its default was penalizer=0.1",
+    )
+
+    def _fit_tvc_penalised(
         self,
         i: npt.ArrayLike,
         xl: npt.ArrayLike,
@@ -365,7 +375,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         >>> Z = np.column_stack(
         ...     [np.column_stack([z, z + 0.5]).ravel(), other[i]]
         ... )
-        >>> model = WeibullAFT.fit_tvc_penalised(
+        >>> model = WeibullAFT.fit_tvc(
         ...     i, xl, xr, c, Z, penalizer=0.05, l1_ratio=1
         ... )
         >>> model.params.round(3)
@@ -391,7 +401,13 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         mark_tvc_fit(model, start_stop_rows(ident, tl, x, c_a, Z_a, n_a))
         return model
 
-    def fit_tvc_timeline_penalised(
+    fit_tvc_timeline_penalised = penalised_entry(
+        "_fit_tvc_timeline_penalised",
+        "call fit_tvc_timeline(..., penalizer=...); its default was "
+        "penalizer=0.1",
+    )
+
+    def _fit_tvc_timeline_penalised(
         self,
         i: npt.ArrayLike,
         x: npt.ArrayLike,
@@ -425,7 +441,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         from ..proportional_hazards.tvc import handle_tvc_timeline
 
         i2, xl, xr, c2, Z2, n2 = handle_tvc_timeline(i, x, Z, c, n)
-        return self.fit_tvc_penalised(
+        return self._fit_tvc_penalised(
             i2,
             xl,
             xr,
@@ -439,6 +455,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             w=w,
         )
 
+    @penalty_argument("_fit_tvc_timeline_penalised")
     def fit_tvc_timeline(
         self,
         i: npt.ArrayLike,
@@ -484,6 +501,9 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         predicts from a DataFrame with the same design. ``fixed`` and
         ``center`` are as for :meth:`fit_tvc`.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return fit_tvc_df(
             self.fit_tvc,
             df,
@@ -544,6 +564,9 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         >>> model.feature_names
         ['z']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return fit_tvc_df(
             self.fit_tvc_timeline,
             df,

@@ -517,9 +517,102 @@ def _wald_sd(model: Any, coords: list[_LRCoord], free: list[int]) -> Any:
     with np.errstate(all="ignore"):
         sd = np.sqrt(np.diag(np.asarray(hess_inv, dtype=float))[free])
         sd = sd / np.abs(slopes)
+    adjust = getattr(model.dist, "_lr_search_sd", None)
+    if adjust is not None:
+        # A family whose Wald standard error is no scale for a search at
+        # the estimate (the GeneralizedF's log P at its generalised gamma
+        # edge, where it is in the thousands) says what to use instead.
+        sd = adjust(theta, free, sd)
     if not (np.all(np.isfinite(sd)) and np.all(sd > 0)):
         return None
     return sd
+
+
+# The most times ``_lr_follow_valley`` takes the likelihood's curvature
+# again and searches in its whitened coordinates, and the least fall in
+# the negative log-likelihood (1e-10, 2e-10 of deviance) it counts as
+# having moved further down the valley.
+_LR_VALLEY_ROUNDS = 12
+_LR_VALLEY_GAIN = 1e-10
+
+
+def _lr_follow_valley(
+    obj: Callable[[npt.NDArray], float],
+    best: float,
+    best_u: npt.NDArray,
+    box: list[tuple[Any, Any]] | None,
+) -> tuple[float, npt.NDArray, bool]:
+    """Follow a profile minimum down a narrow, slanting valley.
+
+    The searches of ``_profile_neg_ll`` move the nuisance parameters in
+    their coordinates scaled by the Wald standard errors at the fit. Far
+    out along a profile whose model tends to a limiting one (a Gamma with
+    an offset as the offset goes to minus infinity, which tends to the
+    Normal), the nuisance parameters' minimum lies along a valley that
+    slants across those coordinates and is only about ``1 / (x - offset)``
+    wide: L-BFGS-B stops on its wall, and the deviance it reports is far
+    too high (93 at an offset of -1e6 where it is 0.85), which made a
+    flat profile look as though it crossed the critical value.
+
+    So, from the search's best point ``best_u`` (its minimum ``best``),
+    the curvature of ``obj`` is taken there (``numdifftools``) and the
+    search is run again in the coordinates it whitens (along its
+    eigenvectors, each divided by the square root of its eigenvalue's
+    size), in which the valley is round; and again from where that ends,
+    until a search falls by less than ``_LR_VALLEY_GAIN``. Returns the
+    minimum, its point, and whether it is settled: a whitened search from
+    it falls no further. A point the first whitened search cannot move
+    (or whose curvature cannot be taken: near an offset's corner, where
+    the likelihood above the fit's maximum is refused) is the search's
+    own, as before; one that moved and goes on moving after
+    ``_LR_VALLEY_ROUNDS`` rounds, or whose curvature is lost on the way,
+    is not settled. A point on a box limit is returned as it is: the
+    whitened search has no box.
+    """
+    from numdifftools import Hessian  # type: ignore
+
+    u = onp.asarray(best_u, dtype=float)
+    if box is not None:
+        for k, (lo, hi) in enumerate(box):
+            if (lo is not None and u[k] <= lo) or (
+                hi is not None and u[k] >= hi
+            ):
+                return best, u, True
+
+    def inside(v: npt.NDArray) -> float:
+        if box is not None:
+            for k, (lo, hi) in enumerate(box):
+                if (lo is not None and v[k] < lo) or (
+                    hi is not None and v[k] > hi
+                ):
+                    return np.inf
+        return obj(v)
+
+    # (numdifftools warns of the all-nan slices of a refused likelihood)
+    with np.errstate(all="ignore"), ignoring_warnings():
+        for k in range(_LR_VALLEY_ROUNDS):
+            try:
+                hess = onp.asarray(Hessian(inside)(u), dtype=float)
+                lam, vec = onp.linalg.eigh(hess)
+            except (onp.linalg.LinAlgError, ValueError, ArithmeticError):
+                return best, u, k == 0
+            if not (onp.all(onp.isfinite(lam)) and onp.all(lam != 0)):
+                return best, u, k == 0
+            rot = vec / onp.sqrt(onp.abs(lam))
+            origin = u
+            res = minimize(
+                lambda zz: inside(origin + rot @ zz),
+                onp.zeros(len(u)),
+                method="L-BFGS-B",
+                jac="3-point",
+                options={"ftol": 1e-15, "gtol": 1e-10, "maxiter": 1000},
+            )
+            if not (
+                onp.isfinite(res.fun) and res.fun < best - _LR_VALLEY_GAIN
+            ):
+                return best, u, True
+            best, u = float(res.fun), origin + rot @ res.x
+    return best, u, False
 
 
 def _scaled_bounds(
@@ -633,7 +726,7 @@ class _PsiBoundSearch:
         self.ends = ends
         self.box = box
         self.theta_hat = np.array(model.params, dtype=float)
-        self.nll_hat = model._lr_neg_ll(self.theta_hat)
+        self.nll_hat = model._lr_reference_nll()
         self.coords, _ = model._lr_coords()
         self.free_coords = [self.coords[j] for j in free]
         self.bounds = box if any(b != (None, None) for b in box) else None
@@ -783,6 +876,12 @@ class _PsiBoundSearch:
         # The search is checked where its answer is known, at the
         # estimate: if it fails there, it cannot be trusted anywhere.
         _, u_start = self.solve(psi_hat, [self.u_hat])
+        if u_start is None and 0.0 < self.dev_u(self.u_hat) <= self.crit:
+            # The fit is not the maximum (``_lr_reference_nll``): the
+            # search at psi_hat runs off from it along the valley to the
+            # family's limit, which it only approaches. The fit is itself
+            # a point of the region with psi at psi_hat.
+            u_start = np.array(self.u_hat, dtype=float)
         if u_start is None:
             return np.nan, np.nan
         self.u_start = u_start
@@ -1921,6 +2020,13 @@ class LikelihoodRatioMixin:
         def _user_fixed_idx(self) -> set: ...
         def _summary_scale(self, zero_floor: bool = False) -> tuple: ...
 
+    #: Whether ``_profile_neg_ll`` follows each profile minimum down a
+    #: narrow valley (``_lr_follow_valley``) and reports a minimum it
+    #: cannot verify as not found: an offset model's searches
+    #: (``ExtendedLikelihoodRatio``), whose profiles tend to a limiting
+    #: model along such valleys.
+    _follows_valleys: bool = False
+
     def __getstate__(self) -> dict:
         """What pickles: everything but the likelihood-ratio searches'
         caches (the ``_lr_`` attributes: the likelihoods, walks, regions
@@ -1942,8 +2048,11 @@ class LikelihoodRatioMixin:
         """The searches over every fitted parameter of an offset,
         limited-failure or zero-inflated model
         (``ExtendedLikelihoodRatio``), kept; ``None`` for a model with
-        none of the three, whose searches are its own."""
-        if not (self.offset or self.lfp or self.zi):
+        none of the three, whose searches are its own. A model with a
+        hazard ratio ``hr`` other than 1 (held fixed) takes them too: they
+        evaluate the model's own functions at each point, which carry
+        ``hr``, where the plain searches evaluate the distribution's."""
+        if not (self.offset or self.lfp or self.zi or self._lr_hr() != 1):
             return None
         from ._likelihood_ratio_extended import ExtendedLikelihoodRatio
 
@@ -1952,6 +2061,7 @@ class LikelihoodRatioMixin:
             float(self.gamma),
             float(self.lfp_p),
             float(self.f0),
+            self._lr_hr(),
             id(self.surv_data),
         )
         kept = self.__dict__.get("_lr_extended_search")
@@ -1959,6 +2069,10 @@ class LikelihoodRatioMixin:
             kept = (key, ExtendedLikelihoodRatio(self))
             self.__dict__["_lr_extended_search"] = kept
         return kept[1]
+
+    def _lr_hr(self) -> float:
+        """The model's known hazard ratio (1 where it has none)."""
+        return float(getattr(self, "hr", 1.0))
 
     def _lr_neg_ll(self, theta: npt.NDArray) -> float:
         """The negative log-likelihood at core parameters ``theta``, as
@@ -1985,10 +2099,68 @@ class LikelihoodRatioMixin:
         if kept is None or kept[0] != params.tobytes():
             kept = (params.tobytes(), self._lr_raw_neg_ll(params))
             self.__dict__["_lr_nll_hat"] = kept
-        slack = max(_LR_NOISE, 2e-8 * abs(kept[1]))
-        if 2.0 * (nll - kept[1]) < -slack:
+        floor = kept[1]
+        supremum = self._lr_supremum_nll()
+        if supremum is not None and supremum < floor:
+            floor = supremum
+        slack = max(_LR_NOISE, 2e-8 * abs(floor))
+        if 2.0 * (nll - floor) < -slack:
             return np.nan
         return nll
+
+    def _lr_supremum_nll(self) -> float | None:
+        """The negative log-likelihood of a model the family only tends
+        to, where it fits the data better than the fit: the fit is then
+        not the maximum, and the likelihood's supremum is there. ``None``
+        for a family without such a limit; a distribution with one gives
+        it as ``_lr_limit_nlls`` (the GeneralizedF's, as P runs to
+        infinity). See ``ExtendedLikelihoodRatio._lr_supremum_nll``."""
+        limits = self._lr_family_limits()
+        if not limits:
+            return None
+        return float(min(limits.values()))
+
+    def _lr_family_limits(self) -> dict:
+        """The distribution's limits at the edges of its parameters'
+        space (``dist._lr_limit_nlls``), by the side of a parameter's
+        interval that runs to each, ``{(idx, direction): nll}``, kept;
+        empty for a family without them or with a parameter held fixed
+        at fit time (which the limit cannot follow)."""
+        find = getattr(self.dist, "_lr_limit_nlls", None)
+        if find is None:
+            return {}
+        key = (
+            np.asarray(self.params, dtype=float).tobytes(),
+            id(self.surv_data),
+        )
+        kept = self.__dict__.get("_lr_limits_kept")
+        if kept is None or kept[0] != key:
+            limits: dict = {}
+            if not self._user_fixed_idx():
+                with np.errstate(all="ignore"):
+                    limits = dict(find(self._lr_raw_neg_ll, self.params))
+            kept = (key, limits)
+            self.__dict__["_lr_limits_kept"] = kept
+        return kept[1]
+
+    def _lr_reference_nll(self) -> float:
+        """The negative log-likelihood every deviance is measured from:
+        the fit's, or the supremum's where the fit is not the maximum
+        (``_lr_supremum_nll``). A likelihood-ratio region is the set of
+        parameters whose likelihood is within ``crit / 2`` of the best the
+        family can do; measured from a point below that best, it is too
+        wide."""
+        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        supremum = self._lr_supremum_nll()
+        if supremum is not None and supremum < nll_hat:
+            return supremum
+        return nll_hat
+
+    def _lr_reference_deviance(self) -> float:
+        """The deviance of the fit itself from the reference
+        (``_lr_reference_nll``): 0 where the fit is the maximum."""
+        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        return float(max(2.0 * (nll_hat - self._lr_reference_nll()), 0.0))
 
     def _lr_raw_neg_ll(self, theta: npt.NDArray) -> float:
         # Kept by the parameters' bytes: the searches ask for the same
@@ -2244,6 +2416,18 @@ class LikelihoodRatioMixin:
         u_hat = np.array([coords[j].to_u(self.params[j]) for j in free])
         w = coords[idx].to_u(value)
         starts = [] if path is None else path.starts(w)
+        # A family can add starts of its own: the GeneralizedF's from P of
+        # 1 where the fit is at its generalised gamma edge, P near 0, where
+        # the likelihood is flat in log P and a search started there does
+        # not leave it.
+        extra = getattr(self.dist, "_lr_profile_starts", None)
+        if extra is not None:
+            for th in extra(self, theta, idx):
+                starts.append(
+                    np.array(
+                        [coords[j].to_u(th[j]) for j in free], dtype=float
+                    )
+                )
         best, best_u, zero = np.inf, None, False
         # Searched in the coordinates divided by the Wald standard errors
         # (``_wald_sd``), where L-BFGS-B's first steps are to scale.
@@ -2282,6 +2466,15 @@ class LikelihoodRatioMixin:
                     best, best_u = float(res.fun), np.asarray(res.x)
         if best_u is None:
             return np.inf if zero else np.nan
+        if self._follows_valleys:
+            best, best_u, settled = _lr_follow_valley(
+                obj, best, best_u, bounds
+            )
+            if not settled:
+                # Not shown to be the profile's minimum: the deviance
+                # here is an upper bound only, which the walk must not
+                # read as a crossing (``_lr_walk``'s *Resolution*).
+                return np.nan
         if path is not None:
             path.add(w, best_u, best)
         return best
@@ -2368,6 +2561,20 @@ class LikelihoodRatioMixin:
                 side = "upper" if direction > 0 else "lower"
                 key = searches._lr_key(idx, crit, direction)
                 beyond = searches.__dict__.get("_lr_unresolved", {}).get(key)
+                if key in searches.__dict__.get("_lr_outside", set()):
+                    warnings.warn(
+                        f"The likelihood-ratio {side} bound on '{name}' "
+                        "could not be found: the fit is not the maximum of "
+                        "the likelihood, and is outside the region at this "
+                        "level (its deviance from the best fit, "
+                        f"{searches._lr_reference_deviance():.4g}, is above "
+                        f"the critical value {crit:.4g}). A simpler model "
+                        "the family tends to fits the data better (see the "
+                        "fit's warning); fit it instead. nan is returned.",
+                        RuntimeWarning,
+                        stacklevel=caller_stacklevel(),
+                    )
+                    return value
                 if beyond is not None:
                     warnings.warn(
                         f"The likelihood-ratio {side} bound on '{name}' "
@@ -2426,7 +2633,7 @@ class LikelihoodRatioMixin:
         cache = self.__dict__.setdefault("_lr_sides", {})
         if key in cache:
             return cache[key]
-        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        nll_hat = self._lr_reference_nll()
 
         hess_inv = getattr(self, "hess_inv", None)
         if (
@@ -2477,18 +2684,42 @@ class LikelihoodRatioMixin:
                 solved[at] = (nll, kept)
             return 2.0 * (nll - nll_hat)
 
-        status, w = _lr_walk(
-            deviance,
-            w_hat,
-            step,
-            direction,
-            crit,
-            end=coord.ends[1] if direction > 0 else coord.ends[0],
-            stop=limits[idx][1] if direction > 0 else limits[idx][0],
-        )
+        # The fit's own deviance: 0, but where the fit is not the maximum
+        # the deviance there from the supremum (``_lr_reference_nll``)
+        d_hat = self._lr_reference_deviance()
+        if d_hat >= crit:
+            # The fit is outside the region: the walk out from it finds no
+            # piece of the region around it (``_param_cb_lr`` warns)
+            self.__dict__.setdefault("_lr_outside", set()).add(key)
+            cache[key] = np.nan
+            self.__dict__.setdefault("_lr_points", {})[key] = []
+            return np.nan
+        if self._lr_limit_inside(idx, _LR_RESOLVED, direction, nll_hat):
+            # The likelihood's supremum is a limit of the family at the
+            # edge this side runs to (the fit has stopped short of it):
+            # the side is that edge, and the walk is not run, as far out
+            # along the valley to it the searches read noise as a crossing
+            # (a GeneralizedF P upper bound of 1.1e15 for infinity).
+            status, w = "edge", np.nan
+        else:
+            status, w = _lr_walk(
+                deviance,
+                w_hat,
+                step,
+                direction,
+                crit,
+                end=coord.ends[1] if direction > 0 else coord.ends[0],
+                stop=limits[idx][1] if direction > 0 else limits[idx][0],
+                d_hat=d_hat,
+            )
         if status in ("root", "stop"):
             value = coord.from_u(w)
         elif status == "edge":
+            value = float(coord.edge(direction))
+        elif self._lr_limit_inside(idx, crit, direction, nll_hat):
+            # The walk lost the profile along the valley to a limit of the
+            # family at the edge of this parameter's space, and that limit
+            # is inside the region: no value out to the edge is excluded.
             value = float(coord.edge(direction))
         else:
             value = np.nan
@@ -2500,6 +2731,22 @@ class LikelihoodRatioMixin:
         cache[key] = value
         self._lr_keep_points(idx, key, coord, path, crit, nll_hat)
         return value
+
+    def _lr_limit_inside(
+        self, idx: int, crit: float, direction: Any, nll_hat: float
+    ) -> bool:
+        """Whether a limit of the family that side ``direction`` of
+        parameter ``idx``'s interval runs to (``_lr_family_limits``) has
+        a deviance from ``nll_hat`` below ``crit``: the family's members
+        near it are then inside the region, so the side is the edge.
+
+        Where the parameter's walk settles its profile, it finds that
+        itself; this is for the walks that lose it in the narrow valley
+        the members follow out to the limit (the GeneralizedF's sigma to
+        0 as P runs to infinity), which reported the bound as not found.
+        """
+        nll = self._lr_family_limits().get((idx, float(np.sign(direction))))
+        return nll is not None and bool(2.0 * (nll - nll_hat) < crit)
 
     def _lr_keep_points(
         self,
@@ -3077,7 +3324,7 @@ class LikelihoodRatioMixin:
         path = _LRPath()
         for u in walk:
             path.add(u[k], u[others])
-        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        nll_hat = self._lr_reference_nll()
         w = coord.to_u(float(self.params[j]))
         dev = 0.0
         if path.w:
@@ -3224,7 +3471,7 @@ class LikelihoodRatioMixin:
         right, see ``_lr_neg_ll``), the estimate in those coordinates and
         the negative log-likelihood there."""
         theta_hat = np.array(self.params, dtype=float)
-        nll_hat = self._lr_neg_ll(theta_hat)
+        nll_hat = self._lr_reference_nll()
         coords, _ = self._lr_coords()
         free_coords = [coords[j] for j in free]
         u_hat = np.array([coords[j].to_u(theta_hat[j]) for j in free])

@@ -20,6 +20,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
+from surpyval.utils.model_data import event_data
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.recurrent_data import notes_text
 from surpyval.utils.rng import as_generator
@@ -290,8 +291,8 @@ class ParametricRecurrenceModel(
         observation (in the order of its labels)."""
         if age is None:
             self._check_has_data("Prediction for the fitted items")
-            item = np.asarray(self.data.i)
-            x = np.asarray(self.data.x, dtype=float)
+            item = np.asarray(event_data(self).i)
+            x = np.asarray(event_data(self).x, dtype=float)
             x = x.reshape(item.size, -1).max(axis=1)
             # Each item's largest time, in the order of its sorted labels
             # (a maximum, so the same whatever order it is taken in).
@@ -631,7 +632,9 @@ class ParametricRecurrenceModel(
             The residuals.
         """
         self._check_has_data("residuals")
-        return diagnostics.intensity_residuals(self.data, self.cif, kind)
+        return diagnostics.intensity_residuals(
+            event_data(self), self.cif, kind
+        )
 
     def trend_test(
         self,
@@ -674,7 +677,10 @@ class ParametricRecurrenceModel(
         """
         self._check_has_data("trend_test")
         return diagnostics.trend_test(
-            self.data, test=test, alternative=alternative, alpha_ci=alpha_ci
+            event_data(self),
+            test=test,
+            alternative=alternative,
+            alpha_ci=alpha_ci,
         )
 
     def cramer_von_mises(
@@ -732,7 +738,7 @@ class ParametricRecurrenceModel(
         The variance of the fitted CIF is propagated from the parameter
         covariance (the inverse observed information) through the CIF's
         gradient, and the bounds are computed on the log scale -- the same
-        construction as the default (``bound_type="exp"``) bounds on the
+        construction as the default (``bound_type="log"``) bounds on the
         nonparametric MCF -- so they cannot go negative.
 
         Parameters
@@ -1021,7 +1027,7 @@ class ParametricRecurrenceModel(
         so its message says that rather than offer ``method='wald'``
         (#663).
         """
-        windows = diagnostics.item_windows(self.data)
+        windows = diagnostics.item_windows(event_data(self))
         entries = {entry for _, _, entry, _, _ in windows}
         closes = {close for _, _, _, close, _ in windows}
         explicit = {flag for _, _, _, _, flag in windows}
@@ -1091,13 +1097,13 @@ class ParametricRecurrenceModel(
         """
         check_alpha_ci(alpha_ci)
         self._check_has_data("plot")
-        x, r, d = self.data.to_xrd()
+        x, r, d = event_data(self).to_xrd()
         if ax is None:
             import matplotlib.pyplot as plt
 
             ax = plt.gcf().gca()
 
-        x_plot = np.linspace(0, self.data.x.max(), 1000)
+        x_plot = np.linspace(0, event_data(self).x.max(), 1000)
 
         band = None
         if plot_bounds and hasattr(self, "_neg_ll"):

@@ -1,12 +1,12 @@
 """One function per design: the quantity left None is solved for.
 
 Each design function agrees, to the last digit, with the function of one
-unknown it replaces (still reachable, deprecated), solves round trips,
-and refuses to guess which quantity is wanted.
+unknown it replaced (removed in v0.30; its private body is kept beside
+the design function), solves round trips, and refuses to guess which
+quantity is wanted.
 """
 
 import json
-import warnings
 from typing import Any
 
 import numpy as np
@@ -36,13 +36,17 @@ RATE: dict[str, Any] = dict(rate=30 / 10000, exposure_before=10000)
 
 
 def old(name):
-    """The deprecated function ``name``, which must warn as it is reached
-    and name the design function that replaces it."""
-    with pytest.warns(FutureWarning, match=name) as caught:
-        function = getattr(tp, name)
-    assert "_design(" in str(caught[0].message)
-    assert "v0.30" in str(caught[0].message)
-    return function
+    """The private body of ``name``, the function of one unknown removed in
+    v0.30; the public name raises an error naming the design function that
+    replaces it."""
+    import importlib
+
+    with pytest.raises(AttributeError, match=r"_design\("):
+        getattr(tp, name)
+    module = importlib.import_module(
+        f"surpyval.test_planning.{tp._REPLACED[name][0]}"
+    )
+    return getattr(module, f"_{name}")
 
 
 # Each old call and the new call solving for the same unknown.
@@ -192,10 +196,8 @@ def test_every_old_function_is_compared():
 
 
 def test_arrays_are_answered_element_by_element():
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", FutureWarning)
-        before = tp.logrank_events([0.5, 0.7], [0.8, 0.9])
-        rates = tp.rate_ratio_power([0.3, 0.7], 30 / 10000, 10000, 20000)
+    before = old("logrank_events")([0.5, 0.7], [0.8, 0.9])
+    rates = old("rate_ratio_power")([0.3, 0.7], 30 / 10000, 10000, 20000)
     plan = logrank_design([0.5, 0.7], power=[0.8, 0.9])
     np.testing.assert_array_equal(plan.events, before)
     np.testing.assert_array_equal(

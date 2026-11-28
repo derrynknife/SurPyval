@@ -144,12 +144,12 @@ def refuse_weights(w: Any) -> None:
         from surpyval.utils.weights import WeightedRefusal
 
         raise WeightedRefusal(
-            "This fit_penalised does not take weights (w) yet: the "
+            "This penalised fit does not take weights (w) yet: the "
             "penalty's scale (the objective is divided by the number of "
             "units) and the covariates' standardisation would both have to "
-            "be weighted, and that is built only for CoxPH.fit_penalised, "
-            "CoxPH.fit_tvc_penalised and the parametric PH, AFT and PO "
-            "fit_penalised. Fit the unpenalised model with w (fit), or give "
+            "be weighted, and that is built only for the penalised fits of "
+            "CoxPH (fit and fit_tvc) and the parametric PH, AFT and PO "
+            "families. Fit the unpenalised model with w, or give "
             "repeated rows as counts n."
         )
 

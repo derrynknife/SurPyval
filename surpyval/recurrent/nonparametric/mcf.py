@@ -19,8 +19,9 @@ from surpyval.univariate.nonparametric._support import (
     on_support,
     support_from_dict,
 )
+from surpyval.utils.bounds import labels_two_sided
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
-from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     EventHistoryData,
     accepts_event_history_data,
@@ -28,6 +29,7 @@ from surpyval.utils.event_history_data import (
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.fitter_repr import FitterRepr
+from surpyval.utils.model_data import event_data
 from surpyval.utils.recurrent_data import (
     accepts_recurrent_surpyval_data,
     notes_text,
@@ -36,6 +38,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import BOUNDS, check_option
@@ -100,7 +103,7 @@ class NonParametricCounting(
             "=" * len(title),
             "Model            : Mean cumulative function (Nelson-Aalen)",
         ]
-        data = getattr(self, "data", None)
+        data = event_data(self)
         if data is not None:
             c = np.asarray(data.c)
             n = np.asarray(data.n)
@@ -352,6 +355,7 @@ class NonParametricCounting(
             )
         return np.asarray(self.x, dtype=float), values
 
+    @labels_two_sided
     @keeps_query_shape
     def mcf_cb(
         self,
@@ -360,15 +364,18 @@ class NonParametricCounting(
         interp: str = "step",
         *,
         alpha_ci: float = 0.05,
-        bound_type: str = "exp",
+        bound_type: str = "log",
         dist: str = "z",
     ) -> npt.NDArray:
         """
         Confidence bounds for the MCF at the query times ``x``.
 
         Two-sided bounds return one row per query with columns ordered
-        ``[lower, upper]`` (matching the parametric ``cif_cb``); one-sided
-        bounds return a 1-D array. Queries before the first event return 0
+        ``[lower, upper]`` (matching the parametric ``cif_cb``), as a
+        :class:`~surpyval.utils.bounds.ConfidenceBounds`: the same array,
+        which also names its columns (``.lower``, ``.upper``) and prints
+        them labelled; one-sided bounds return a plain array of the
+        query's shape. Queries before the first event return 0
         (for ``interp="linear"``, bounds rising from 0 at the origin, as
         the MCF does); queries after the last observed time or before the
         origin return NaN, mirroring :meth:`mcf`. With a support set (see
@@ -390,17 +397,19 @@ class NonParametricCounting(
             probability ``alpha_ci``. Defaults to 0.05. Keyword only, as
             are the arguments after it.
         bound_type : str, optional
-            ``"exp"`` (the default) for bounds on the log scale,
+            ``"log"`` (the default) for bounds on the log scale,
             :math:`\\hat{M} e^{\\pm z \\sqrt{V} / \\hat{M}}`, which stay
-            positive; or ``"normal"`` for Wald bounds
-            :math:`\\hat{M} \\pm z \\sqrt{V}`.
+            positive; or ``"plain"`` for Wald bounds
+            :math:`\\hat{M} \\pm z \\sqrt{V}`. (``"exp"`` and ``"normal"``
+            are still accepted, with a warning, until v0.31.)
         dist : str, optional
             Only ``"z"``, the normal critical value.
 
         Returns
         -------
-        numpy array
-            The bound(s) at each ``x``.
+        ConfidenceBounds or numpy array
+            The bound(s) at each ``x``: two-sided, ``[lower, upper]`` on
+            the last axis, labelled; one-sided, the bound itself.
 
         Raises
         ------
@@ -415,6 +424,14 @@ class NonParametricCounting(
         check_option("bound", bound, BOUNDS)
         check_option("interp", interp, _MCF_INTERP)
         check_alpha_ci(alpha_ci)
+        from surpyval.utils.deprecation import renamed_value
+
+        bound_type = renamed_value(
+            f"{type(self).__name__}.mcf_cb",
+            "bound_type",
+            bound_type,
+            {"exp": "log", "normal": "plain"},
+        )
         return self._within_support(
             x,
             lambda q: self._mcf_cb(
@@ -434,7 +451,7 @@ class NonParametricCounting(
         # ``mcf_cb`` without the bounds (see ``set_support``).
         # The stored variance (Lawless-Nadeau robust for a fitted MCF, the
         # per-step one for ``from_xrd``) with a normal (z) critical value.
-        check_option("bound_type", bound_type, ("exp", "normal"))
+        check_option("bound_type", bound_type, ("log", "plain"))
         check_option(
             "dist",
             dist,
@@ -464,7 +481,7 @@ class NonParametricCounting(
                 "This model carries no variance (a simulated MCF), so "
                 "confidence bounds are unavailable."
             )
-        if bound_type == "exp":
+        if bound_type == "log":
             # Log-scale (exponential) bounds
             # Before the first event (possible for one cause of a
             # cause-specific MCF) the estimate and its variance are both
@@ -644,7 +661,8 @@ class NonParametricCounting(
         out.var = np.cumsum(step_var)
         return out
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     @refuses_unmodelled_data
     def _fit_from_recurrent_data(
@@ -756,10 +774,13 @@ class NonParametricCounting(
         >>> model = NonParametricCounting.fit(x, i=i, c=c)
         >>> model.mcf([10, 30, 60])
         array([1. , 2. , 3.5])
-        >>> model.mcf_cb([10, 30, 60])
-        array([[0.25009765, 3.99843816],
-               [1.00019529, 3.999219  ],
-               [1.93248007, 6.33900458]])
+        >>> bounds = model.mcf_cb([10, 30, 60])
+        >>> bounds.lower
+        array([0.25009765, 1.00019529, 1.93248007])
+        >>> bounds.upper
+        array([3.99843816, 3.999219  , 6.33900458])
+        >>> bounds[0]  # the same array: [lower, upper] at each time
+        ConfidenceBounds(lower=0.25009765, upper=3.99843816, level=95%)
         """
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, windows=windows)
         return self._fit_from_recurrent_data(data)

@@ -88,12 +88,12 @@ shape at each load is one call away:
     model.parameters_at(loads).round(2)
 
 At 1 kN the shape is 1.25, close to random failures; at 4 kN it is 2.8,
-clear wear-out. ``parameter_cb`` bounds a parameter at each row, and
+clear wear-out. ``param_cb(name, Z=...)`` bounds a parameter at each row, and
 ``plot_parameter`` draws it against one covariate with its band:
 
 .. jupyter-execute::
 
-    print(model.parameter_cb("beta", loads).round(2))
+    print(model.param_cb("beta", Z=loads).round(2))
     ax = model.plot_parameter("beta", "load")
 
 The likelihood-ratio test of "the shape does not depend on load"
@@ -139,7 +139,7 @@ start early.
                        atol=0.05)
     assert np.allclose(model.quantile_cb(0.1, loads)[3], [237.1, 347.3],
                        atol=0.05)
-    _b = model.parameter_cb("beta", loads)
+    _b = model.param_cb("beta", Z=loads)
     assert np.all(_b[:, 0] < model.parameters_at(loads).iloc[:, 1])
 
 Choosing each parameter's covariates
@@ -223,21 +223,23 @@ Each parameter's sign :math:`s_k` (``model.coefficient_signs``) says how
 its coefficients enter, one rule for each kind of parameter:
 
 - A **scale** (a Weibull's, log-logistic's or ExpoWeibull's ``alpha``, a
-  Rayleigh's ``sigma``): :math:`s = -1`, so :math:`\alpha(z) = \alpha
-  e^{-b'z}` and a positive coefficient shrinks the scale, exactly as the
-  AFT model's coefficient does.
-- A **rate** (an Exponential's ``failure_rate``, a Gamma's ``beta``):
+  Rayleigh's ``sigma``, a BirnbaumSaunders's ``beta``, its median):
+  :math:`s = -1`, so :math:`\alpha(z) = \alpha e^{-b'z}` and a positive
+  coefficient shrinks the scale, exactly as the AFT model's coefficient
+  does.
+- A **rate** (an Exponential's ``failure_rate``, a Gamma's ``beta``, a
+  Gompertz's ``rate`` and its ``shape``, the hazard's growth rate):
   :math:`s = +1`, so :math:`\lambda(z) = \lambda e^{b'z}` and a positive
   coefficient raises the rate, again the AFT model's coefficient.
-- A **location** (``mu`` of a LogNormal, Normal, Gumbel, GumbelLEV or
-  Logistic): :math:`s = -1`, so :math:`\mu(z) = \mu - b'z` (or
+- A **location** (``mu`` of a LogNormal, GeneralizedGamma, Normal,
+  Gumbel, GumbelLEV or Logistic, and an InverseGaussian's mean ``mu``): :math:`s = -1`, so :math:`\mu(z) = \mu - b'z` (or
   :math:`\mu e^{-b'z}` with a log link) and a positive coefficient moves
   failures earlier; for the LogNormal it is the AFT model's coefficient.
 - A **shape that orders lives**, one whose increase makes every quantile
   later (a Gamma's shape ``alpha``, an ExpoWeibull's ``mu``, a Beta's
   ``alpha``): :math:`s = -1`, so a positive coefficient lowers it and
-  shortens lives; a Beta's ``beta``, whose increase makes values earlier,
-  has :math:`s = +1`.
+  shortens lives; a Beta's ``beta`` and a GeneralizedGamma's ``Q``, whose
+  increase makes values earlier, have :math:`s = +1`.
 - A **shape or spread with no direction** (a Weibull's or log-logistic's
   shape ``beta``, every ``sigma`` of a location-scale distribution): it
   makes some quantiles earlier and others later, so "shorter life" does
@@ -307,7 +309,7 @@ tests check each of these gives the same fit.
 ``method="lr"`` gives likelihood-ratio bounds and ``method="bootstrap"``
 parametric bootstrap bounds, for the parameters (``param_cb``), the
 functions (``cb``), the quantiles (``quantile_cb``) and each row's
-parameters (``parameter_cb``, computed on the link's scale, so a shape's
+parameters (``param_cb`` with ``Z``, computed on the link's scale, so a shape's
 bound stays above 0). A calibration study (in the test suite) checks
 their coverage. ``parameters_at(Z)`` gives each row's parameters and
 ``distribution_at(row)`` the univariate distribution of one unit, with
@@ -376,8 +378,9 @@ Limits
 
 - The distributions are the continuous ones whose support does not
   depend on their parameters: Exponential, Rayleigh, Weibull, Gamma,
-  LogNormal, LogLogistic, Normal, Gumbel, GumbelLEV, Logistic, Beta and
-  ExpoWeibull. Prebuilt fitters are ``WeibullDistributional``,
+  LogNormal, LogLogistic, Normal, Gumbel, GumbelLEV, Logistic, Beta,
+  ExpoWeibull, GeneralizedGamma, GeneralizedF, Gompertz,
+  InverseGaussian and BirnbaumSaunders. Prebuilt fitters are ``WeibullDistributional``,
   ``ExponentialDistributional``, ``GammaDistributional``,
   ``LogNormalDistributional``, ``LogLogisticDistributional``,
   ``NormalDistributional``, ``GumbelDistributional`` and

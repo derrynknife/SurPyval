@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import os
 import warnings
 from collections.abc import Callable
 from pathlib import Path
@@ -42,6 +43,88 @@ def _grouped_in_order(inverse: npt.NDArray) -> bool:
     return bool(np.all(inverse[1:] >= inverse[:-1]))
 
 
+def _outside_package(frame: Any) -> bool:
+    """Whether ``frame`` is user code: outside the package, or one of the
+    package's own tests (which are callers too, as for
+    :func:`~surpyval.utils.warnings.caller_stacklevel`)."""
+    import os
+
+    package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    tests_dir = os.path.join(package_dir, "tests") + os.sep
+    name = os.path.abspath(frame.f_code.co_filename)
+    return not name.startswith(package_dir + os.sep) or name.startswith(
+        tests_dir
+    )
+
+
+def warn_built_by_user(what: str, instead: str, depth: int = 2) -> None:
+    """Warn that building an :class:`EventHistoryData` yourself (``what``)
+    is deprecated, naming the :class:`~surpyval.SurpyvalData` call that
+    does the same (``instead``). Only a call from user code warns: the
+    package still builds one inside every recurrent fit, and that warns
+    nobody. ``depth`` is the frame of the call, counted from the
+    function that calls this one's caller (2: the caller of the entry
+    point that calls this)."""
+    import sys
+
+    from surpyval.utils.deprecation import REMOVED_IN
+
+    if not _outside_package(sys._getframe(depth)):
+        return
+    warnings.warn(
+        f"{what} is deprecated and will be removed in v{REMOVED_IN}: "
+        "SurpyvalData with each row's unit i is the one container for "
+        f"several rows per unit. Use {instead}.",
+        FutureWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
+_CHANGING = {
+    "ids": (
+        "is one per row there (each row's unit, as i), not one per unit as "
+        "here, so code that counts or indexes by it would silently miscount. "
+        "For the units, one each, use data.item_ids, which means the same "
+        "on both"
+    ),
+    "tl": (
+        "is a unit's late entry on its first row only there (-inf on its "
+        "later rows), not repeated on each of its rows as here. Read it "
+        "per unit from data.to_items(), or as it will be from "
+        "data.to_surpyval_data().tl"
+    ),
+}
+
+
+_PACKAGE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_TESTS_DIR = os.path.join(_PACKAGE_DIR, "tests") + os.sep
+_PACKAGE_DIR += os.sep
+
+
+def _warn_changing(name: str) -> None:
+    """Warn user code reading ``name``, an attribute whose meaning changes
+    when a fitted model's ``data`` (and a simulation's) becomes a
+    ``SurpyvalData``. The package's own reads are silent."""
+    import sys
+
+    from surpyval.utils.deprecation import REMOVED_IN
+
+    frame = sys._getframe(2)
+    if frame.f_code.co_filename.startswith(_PACKAGE_DIR) and not (
+        frame.f_code.co_filename.startswith(_TESTS_DIR)
+    ):
+        return  # the package's own read: the common case, kept cheap
+    if not _outside_package(frame):
+        return
+    warnings.warn(
+        f"EventHistoryData.{name} changes meaning in v{REMOVED_IN}, "
+        "when a fitted recurrent model's data, and what the simulations "
+        f"return, become a SurpyvalData: its {name} {_CHANGING[name]}.",
+        FutureWarning,
+        stacklevel=caller_stacklevel(),
+    )
+
+
 class EventHistoryData(ReshapeMixin):
     """
     Event history data: the history of each of several items over time --
@@ -50,6 +133,24 @@ class EventHistoryData(ReshapeMixin):
     and its changes of state. The recurrent event models fit it; it was
     called ``RecurrentEventData`` before v0.25 (the old name was removed in
     v0.26).
+
+    This class is being phased out: a
+    :class:`~surpyval.SurpyvalData` with each row's unit ``i`` is the
+    form for several rows per unit, built by ``SurpyvalData.from_items``
+    (from :class:`~surpyval.utils.item_history.ItemHistory` records),
+    ``SurpyvalData.from_histories`` and ``SurpyvalData.from_dataframe``,
+    with ``to_first_events``, ``to_gaps`` and ``to_histories`` of its
+    own, and every recurrent ``fit`` takes it. :meth:`to_surpyval_data`
+    gives the data held here (a fitted model's ``data``, simulated data,
+    the result of ``handle_xicn``) in that form.
+
+    .. deprecated:: 0.30
+        Building one yourself (the constructor, :meth:`from_items`,
+        :meth:`from_histories`, :meth:`from_dataframe`,
+        :meth:`from_dict`, :meth:`from_json`, ``surpyval.handle_xicn``
+        and ``Items.event_history_data()``) warns, and is removed in
+        v0.31: use the ``SurpyvalData`` call of the same name. The
+        recurrent fits still build one inside, with no warning.
 
     Build one from each item's record with :meth:`from_items`
     (:class:`~surpyval.utils.item_history.ItemHistory`), from each item's
@@ -132,6 +233,11 @@ class EventHistoryData(ReshapeMixin):
         tr: npt.ArrayLike | None = None,
         unit: Any = None,
     ) -> None:
+        warn_built_by_user(
+            "Building an EventHistoryData",
+            "SurpyvalData(x, c, n, i=i, tl=tl, tr=tr), or pass the arrays "
+            "to the fit (CrowAMSAA.fit(x, i=i, c=c))",
+        )
         self.x = np.atleast_1d(x).copy()  # the caller's stays theirs
         # One i, c or n is every row's, as for handle_xicn
         self.i, self.c, self.n = (
@@ -324,7 +430,7 @@ class EventHistoryData(ReshapeMixin):
         --------
         >>> from surpyval import handle_xicn
         >>> data = handle_xicn([1, 2, 3, 4], i=[2, 1, 2, 1])
-        >>> data.ids, data.i
+        >>> data.item_ids, data.i
         ([1, 2], array([1, 1, 2, 2]))
         >>> data.item_rows()
         (array([0, 2]), array([0, 0, 1, 1]))
@@ -637,6 +743,43 @@ class EventHistoryData(ReshapeMixin):
     # was removed in v0.26.
     get_times_to_first_events = RemovedName("use 'to_first_events()'", "0.26")
 
+    def to_surpyval_data(self) -> SurpyvalData:
+        """
+        The same histories as a :class:`~surpyval.SurpyvalData` with units
+        ``i``, the form for several rows per unit, which every recurrent
+        ``fit`` takes: one row per event in time order, then the end of
+        the item's observation (``c = 1``) where it has one, with its late
+        entry ``tl`` on its first row, its right truncation ``tr``, its
+        covariates, attributes and the events' types. An item watched in
+        separate stretches (observation windows) has each stretch start
+        with its ``tl`` and end with a ``c = 1`` row. An inspection that
+        found no events stays a row with ``n = 0``. A fit of the rows is the
+        fit of this data.
+
+        The rows are read back and compared with this data before they
+        are returned, so nothing is lost on the way; data they cannot hold
+        (changes of state) is refused, naming what to use.
+
+        Examples
+        --------
+        >>> from surpyval import EventHistoryData
+        >>> data = EventHistoryData.from_histories(
+        ...     observed={"A": [5, 9], "B": [4]},
+        ...     right_censored={"A": 12, "B": 10},
+        ... )
+        >>> data.to_surpyval_data()
+        SurpyvalData: 2 items, 5 rows
+           id     x  c  n  a
+          'A'   5.0  0  1  0
+          'A'   9.0  0  1  0
+          'A'  12.0  1  1  0
+          'B'   4.0  0  1  0
+          'B'  10.0  1  1  0
+        """
+        from surpyval.utils.history_rows import rows_from_event_history
+
+        return rows_from_event_history(self)
+
     def to_first_events(self) -> SurpyvalData:
         """
         Each item's time to its first failure, as lifetime data, one
@@ -791,7 +934,7 @@ class EventHistoryData(ReshapeMixin):
         ...     observed={"M1": [420, 1310, 2050], "M2": [980, 2400]},
         ...     right_censored={"M1": 2600, "M2": 2900, "M3": 3100},
         ... )
-        >>> data.ids
+        >>> data.item_ids
         ['M1', 'M2', 'M3']
         >>> data.x[data.i == "M1"], data.c[data.i == "M1"]
         (array([ 420., 1310., 2050., 2600.]), array([0, 0, 0, 1]))
@@ -806,62 +949,22 @@ class EventHistoryData(ReshapeMixin):
         >>> bool((again.x == data.x).all())
         True
         """
-        from surpyval.utils.item_history import ItemHistory
-
-        if unknown:
-            from surpyval.utils.record_keywords import (
-                FROM_HISTORIES_ALIASES,
-                accepted_names,
-                refuse_unknown_keywords,
-            )
-
-            refuse_unknown_keywords(
-                "EventHistoryData.from_histories",
-                unknown,
-                accepted_names(EventHistoryData.from_histories),
-                FROM_HISTORIES_ALIASES,
-            )
-        observed = _history_dict("observed", observed)
-        right_censored = _history_dict("right_censored", right_censored)
-        items = list(dict.fromkeys([*observed, *right_censored]))
-        if not items:
-            raise ValueError(
-                "Give each item's failures (observed) or end of observation "
-                "(right_censored), keyed by the item's id."
-            )
-        starts = _per_item("left_truncation", left_truncation, items, None)
-        ends = _per_item("right_truncation", right_truncation, items, None)
-        rows = None
-        if covariates is not None:
-            rows = _item_covariate_rows(
-                _history_dict("covariates", covariates), items
-            )
-        histories = []
-        for k, item in enumerate(items):
-            ages = _failure_times(item, observed.get(item, []))
-            end = right_censored.get(item)
-            if end is not None:
-                end = _single_age("right_censored", item, end)
-            if gaps:
-                if (ages < 0).any() or (end is not None and end < 0):
-                    raise ValueError(
-                        f"Item {item!r}: with gaps=True the times are times "
-                        "between failures, which cannot be negative."
-                    )
-                origin = 0.0 if starts[k] is None else starts[k]
-                ages = origin + np.cumsum(ages)
-                if end is not None:
-                    end = (ages[-1] if len(ages) else origin) + end
-            histories.append(
-                ItemHistory(
-                    item,
-                    observed=ages,
-                    right_censored=end,
-                    left_truncation=starts[k],
-                    right_truncation=ends[k],
-                    covariates=None if rows is None else rows[k],
-                )
-            )
+        warn_built_by_user(
+            "EventHistoryData.from_histories",
+            "SurpyvalData.from_histories(observed, right_censored, ...), "
+            "which takes the same arguments",
+        )
+        histories = _histories_from_dicts(
+            "EventHistoryData.from_histories",
+            EventHistoryData.from_histories,
+            observed,
+            right_censored,
+            left_truncation,
+            right_truncation,
+            covariates,
+            gaps,
+            unknown,
+        )
         return cls.from_items(histories, unit=unit)
 
     @classmethod
@@ -958,9 +1061,17 @@ class EventHistoryData(ReshapeMixin):
         ...     log, i_col="machine", x_col="hours", e_col="part",
         ...     ends={"M1": 2600, "M2": 2900, "M3": 3100},
         ... )
-        >>> data.ids, data.c.tolist()
+        >>> data.item_ids, data.c.tolist()
         (['M1', 'M2', 'M3'], [0, 0, 1, 0, 1, 1])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
+        warn_built_by_user(
+            "EventHistoryData.from_dataframe",
+            "SurpyvalData.from_dataframe(df, i_col=..., ...), which takes "
+            "the same columns",
+        )
         from surpyval.utils.data_frames import history_from_frame
 
         return history_from_frame(
@@ -1032,6 +1143,9 @@ class EventHistoryData(ReshapeMixin):
         >>> data.c, data.n
         (array([0, 0, 1, 2, 1]), array([1, 1, 1, 3, 1]))
         """
+        warn_built_by_user(
+            "EventHistoryData.from_items", "SurpyvalData.from_items(items)"
+        )
         from surpyval.utils.item_history import ItemHistory
         from surpyval.utils.record_keywords import (
             FROM_ITEMS_ALIASES,
@@ -1074,33 +1188,8 @@ class EventHistoryData(ReshapeMixin):
             ),
         )
         typed = [h.has_event_types for h in items]
-        events = [
-            bool(len(h.observed) or len(h.interval_censored))
-            or h.left_censored is not None
-            for h in items
-        ]
-        masked = []
         if any(typed):
-            # Failures whose type was not recorded: masked causes
-            masked = [
-                h.id
-                for h, t, ev in zip(items, typed, events)
-                if ev
-                and (
-                    not t
-                    or any(
-                        k is None
-                        for k in (
-                            *h.observed_event_types,
-                            *h.interval_censored_event_types,
-                        )
-                    )
-                    or (
-                        h.left_censored is not None
-                        and h.left_censored_event_types is None
-                    )
-                )
-            ]
+            masked = _masked_items(items)
             if masked:
                 warn_masked(len(masked), "items " + named(masked))
         x: list = []
@@ -1395,7 +1484,7 @@ class EventHistoryData(ReshapeMixin):
 
     def __len__(self) -> int:
         """The number of rows (events and ends of observation), as
-        ``SurpyvalData``'s length is its rows; ``len(data.ids)`` is the
+        ``SurpyvalData``'s length is its rows; ``len(data.item_ids)`` is the
         number of items."""
         return len(self.x)
 
@@ -1441,7 +1530,46 @@ class EventHistoryData(ReshapeMixin):
     @property
     def n_items(self) -> int:
         """The number of items (``len(data)`` is the number of rows)."""
-        return len(self.ids)
+        return len(self.__dict__["ids"])
+
+    @property
+    def ids(self) -> list:
+        """The distinct item ids, sorted: one per item.
+
+        .. deprecated:: 0.30
+            Reading it from your code warns: from v0.31 a fitted model's
+            ``data`` (and a simulation's) is a
+            :class:`~surpyval.SurpyvalData`, whose ``ids`` is one per row.
+            Use :attr:`item_ids`, one per item on both."""
+        _warn_changing("ids")
+        return self.__dict__["ids"]
+
+    @ids.setter
+    def ids(self, value: Any) -> None:
+        self.__dict__["ids"] = value
+
+    @property
+    def tl(self) -> npt.NDArray:
+        """Each row's left truncation: its item's late entry, on every one
+        of the item's rows (``-inf`` for none).
+
+        .. deprecated:: 0.30
+            Reading it from your code warns: from v0.31 a fitted model's
+            ``data`` is a :class:`~surpyval.SurpyvalData`, whose ``tl`` is
+            the late entry on a unit's first row only."""
+        _warn_changing("tl")
+        return self.__dict__["tl"]
+
+    @tl.setter
+    def tl(self, value: Any) -> None:
+        self.__dict__["tl"] = value
+
+    @property
+    def item_ids(self) -> list:
+        """The items' ids, one per item, in the order of their first rows
+        (sorted here): the same on a :class:`~surpyval.SurpyvalData`, so
+        code reading it does not change when a model's ``data`` does."""
+        return list(self.__dict__["ids"])
 
     def records(self) -> Any:
         """
@@ -1602,6 +1730,11 @@ class EventHistoryData(ReshapeMixin):
         >>> EventHistoryData.from_dict(data.to_dict()).x
         array([ 5.,  9., 12.])
         """
+        warn_built_by_user(
+            "EventHistoryData.from_dict",
+            "surpyval.from_dict, which reads what an EventHistoryData's "
+            "to_dict wrote",
+        )
         from surpyval.serialisation import decode_non_finite
         from surpyval.utils.data_json import label_back, schedule_back
 
@@ -1702,9 +1835,14 @@ class EventHistoryData(ReshapeMixin):
         >>> data = EventHistoryData.from_histories(
         ...     observed={"A": [5, 9]}, right_censored={"A": 12}
         ... )
-        >>> EventHistoryData.from_json(data.to_json()).ids
+        >>> EventHistoryData.from_json(data.to_json()).item_ids
         ['A']
         """
+        warn_built_by_user(
+            "EventHistoryData.from_json",
+            "surpyval.from_json, which reads what an EventHistoryData's "
+            "to_json wrote",
+        )
         from surpyval.utils.data_json import load
 
         return cls.from_dict(load(source))
@@ -2000,6 +2138,110 @@ def _all_or_none(items: list, name: str, get: Callable) -> bool:
             f"Every item's '{name}' must have the same number of values."
         )
     return True
+
+
+def _histories_from_dicts(
+    owner: str,
+    method: Any,
+    observed: dict | None,
+    right_censored: dict | None,
+    left_truncation: Any,
+    right_truncation: Any,
+    covariates: dict | None,
+    gaps: bool,
+    unknown: dict,
+) -> list:
+    """The :class:`~surpyval.utils.item_history.ItemHistory` records of
+    the dicts ``from_histories`` takes (``owner`` names it in a refusal,
+    and ``method`` is it, for the keywords it accepts)."""
+    from surpyval.utils.item_history import ItemHistory
+
+    if unknown:
+        from surpyval.utils.record_keywords import (
+            FROM_HISTORIES_ALIASES,
+            accepted_names,
+            refuse_unknown_keywords,
+        )
+
+        refuse_unknown_keywords(
+            owner,
+            unknown,
+            accepted_names(method),
+            FROM_HISTORIES_ALIASES,
+        )
+    observed = _history_dict("observed", observed)
+    right_censored = _history_dict("right_censored", right_censored)
+    items = list(dict.fromkeys([*observed, *right_censored]))
+    if not items:
+        raise ValueError(
+            "Give each item's failures (observed) or end of observation "
+            "(right_censored), keyed by the item's id."
+        )
+    starts = _per_item("left_truncation", left_truncation, items, None)
+    ends = _per_item("right_truncation", right_truncation, items, None)
+    rows = None
+    if covariates is not None:
+        rows = _item_covariate_rows(
+            _history_dict("covariates", covariates), items
+        )
+    histories = []
+    for k, item in enumerate(items):
+        ages = _failure_times(item, observed.get(item, []))
+        end = right_censored.get(item)
+        if end is not None:
+            end = _single_age("right_censored", item, end)
+        if gaps:
+            if (ages < 0).any() or (end is not None and end < 0):
+                raise ValueError(
+                    f"Item {item!r}: with gaps=True the times are times "
+                    "between failures, which cannot be negative."
+                )
+            origin = 0.0 if starts[k] is None else starts[k]
+            ages = origin + np.cumsum(ages)
+            if end is not None:
+                end = (ages[-1] if len(ages) else origin) + end
+        histories.append(
+            ItemHistory(
+                item,
+                observed=ages,
+                right_censored=end,
+                left_truncation=starts[k],
+                right_truncation=ends[k],
+                covariates=None if rows is None else rows[k],
+            )
+        )
+    return histories
+
+
+def _masked_items(items: list) -> list:
+    """The ids of the ItemHistory records with a failure whose type was
+    not recorded (masked causes), where any of ``items`` has event
+    types."""
+    typed = [h.has_event_types for h in items]
+    events = [
+        bool(len(h.observed) or len(h.interval_censored))
+        or h.left_censored is not None
+        for h in items
+    ]
+    return [
+        h.id
+        for h, t, ev in zip(items, typed, events)
+        if ev
+        and (
+            not t
+            or any(
+                k is None
+                for k in (
+                    *h.observed_event_types,
+                    *h.interval_censored_event_types,
+                )
+            )
+            or (
+                h.left_censored is not None
+                and h.left_censored_event_types is None
+            )
+        )
+    ]
 
 
 def _item_covariate_rows(covariates: dict, items: list) -> list:

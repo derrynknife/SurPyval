@@ -122,6 +122,7 @@ import numpy as np
 from scipy.stats import norm
 
 from surpyval.utils.aliases import canonical_name
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.warnings import ignoring_warnings
 
 from ._shared import _fmt, _is_cox, _note
@@ -396,6 +397,7 @@ def _risk_set_means(
     return sums[:, 1:] / sums[:, :1]
 
 
+@renamed_arguments(REMOVED_IN, FutureWarning, alpha="alpha_ci")
 def calibration_curve(
     survival: Any,
     x: Any,
@@ -404,7 +406,7 @@ def calibration_curve(
     tl: Any = None,
     *,
     t0: float,
-    alpha: float = 0.05,
+    alpha_ci: float = 0.05,
 ) -> CalibrationCurve:
     """
     The smoothed calibration curve of predicted survival at ``t0``
@@ -434,8 +436,8 @@ def calibration_curve(
         Entry (left-truncation) times; ``-inf``, none, by default.
     t0 : float
         The time the risks are of.
-    alpha : float, optional
-        The band is the pointwise ``1 - alpha`` one. Default 0.05.
+    alpha_ci : float, optional
+        The band is the pointwise ``1 - alpha_ci`` one. Default 0.05.
 
     Returns
     -------
@@ -535,7 +537,7 @@ def calibration_curve(
         outside=float("nan"),
         knots=knots,
         model=cal,
-        alpha=float(alpha),
+        alpha=float(alpha_ci),
         _sums=(np.asarray(cal.h0, dtype=float)[keep], d[keep], bbar),
     )
     curve.observed, curve.lower, curve.upper = _observed(curve, B)
@@ -759,7 +761,7 @@ def _curves(
                     data.n,
                     data.tl,
                     t0=float(t0),
-                    alpha=ctx.alpha,
+                    alpha_ci=ctx.alpha,
                 )
             except (ValueError, np.linalg.LinAlgError) as error:
                 curve = str(error)

@@ -216,8 +216,14 @@ Without ``i`` every row is its own unit. With ``i``, a unit may have several
 rows: stays in states, stretches with different covariates, or repeated
 events. This is the form for several rows per unit: every recurrent fitter
 takes it, and :class:`~surpyval.utils.notation.Items` writes it as
-histories. ``EventHistoryData`` is being phased out in its favour; it still
-works, and nothing new depends on it. Each row is a stretch of the unit's own clock, from ``tl`` to
+histories. ``SurpyvalData.from_items`` builds it from ``ItemHistory``
+records, ``from_histories`` from each unit's failure ages, and
+``from_dataframe`` from a log; ``to_first_events()`` and ``to_gaps()``
+give each unit's first failure, or the times between its failures, as
+lifetime data. ``EventHistoryData``, the older class, is deprecated in
+v0.30 and removed in v0.31 (building one warns and names the
+``SurpyvalData`` call to use); its ``to_surpyval_data()`` gives the same
+histories in this form. Each row is a stretch of the unit's own clock, from ``tl`` to
 ``x``; where ``tl`` is not given, a row starts where the unit's previous row
 ended.
 

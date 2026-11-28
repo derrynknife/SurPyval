@@ -89,3 +89,117 @@ def test_filliben_end_points_go_to_extreme_ranks_only():
 def test_modal_needs_two_items():
     with pytest.raises(ValueError, match="at least two"):
         no_warnings(plotting_positions, [5.0], heuristic="Modal")
+
+
+# The Lieblein-Zelen ball bearings (millions of revolutions), 23 failures.
+BEARINGS = np.array(
+    [
+        17.88, 28.92, 33.00, 41.52, 42.12, 45.60, 48.48, 51.84, 51.96,
+        54.12, 55.56, 67.80, 68.64, 68.64, 68.88, 84.12, 93.12, 98.64,
+        105.12, 105.84, 127.92, 128.04, 173.40,
+    ]
+)  # fmt: skip
+
+
+def test_exact_median_ranks_are_the_beta_medians():
+    # The median of the i-th of N uniform order statistics, Beta(i,
+    # N - i + 1): for N = 5 the middle one is 0.5 and the first is
+    # 1 - 0.5**(1/5).
+    from scipy.stats import beta
+
+    x = np.arange(1.0, 6.0)
+    _, _, _, F = plotting_positions(x, heuristic="Exact")
+    np.testing.assert_allclose(
+        F, beta.ppf(0.5, np.arange(1, 6), 5 - np.arange(1, 6) + 1), rtol=1e-12
+    )
+    assert F[2] == pytest.approx(0.5, abs=1e-15)
+    assert F[0] == pytest.approx(1 - 0.5 ** (1 / 5), rel=1e-12)
+
+
+@pytest.mark.parametrize("name", ["exact", "Exact median", "EXACT-MEDIAN"])
+def test_exact_median_ranks_by_any_of_their_names(name):
+    _, _, _, F = plotting_positions(BEARINGS, heuristic=name)
+    _, _, _, G = plotting_positions(BEARINGS, heuristic="Exact")
+    np.testing.assert_array_equal(F, G)
+
+
+def test_exact_median_ranks_match_weibullr_with_suspensions():
+    # WeibullR 1.2.4, getPPP(failures, suspensions) (ppos = "beta",
+    # Johnson's adjusted ranks): every fourth bearing suspended at its
+    # time.
+    c = np.zeros(BEARINGS.size, int)
+    c[np.arange(2, BEARINGS.size, 4)] = 1
+    _, _, d, F = plotting_positions(BEARINGS, c, heuristic="Exact")
+    weibullr = [
+        0.0296872472502, 0.0719057007042, 0.116610702314, 0.161418769236,
+        0.206263712459, 0.25376506044, 0.30127641045, 0.348793438214,
+        0.399969324534, 0.451147353169, 0.502326323037, 0.559191752394,
+        0.616055745811, 0.672916499962, 0.741140859152, 0.809345114987,
+        0.877494600142,
+    ]  # fmt: skip
+    np.testing.assert_allclose(F[d == 1], weibullr, rtol=1e-10)
+    # a suspension carries the previous failure's position
+    np.testing.assert_array_equal(F[2], F[1])
+
+
+@pytest.mark.parametrize(
+    "case, expected",
+    [
+        # WeibullR 1.2.4, MRRw2p (rank regression on X, exact median ranks)
+        ("complete", (80.9470163809, 2.25501242274)),
+        ("stopped at 110", (77.7857958302, 2.41114215068)),
+        ("interleaved", (90.9707880768, 2.19540667674)),
+    ],
+)
+def test_exact_median_rank_regression_matches_weibullr(case, expected):
+    import surpyval as sp
+
+    x, c = BEARINGS, np.zeros(BEARINGS.size, int)
+    if case == "stopped at 110":
+        c = (BEARINGS > 110).astype(int)
+        x = np.where(c == 1, 110.0, BEARINGS)
+    elif case == "interleaved":
+        c = c.copy()
+        c[np.arange(2, BEARINGS.size, 4)] = 1
+    model = sp.Weibull.fit(x, c, how="MPP", rr="x", heuristic="Exact")
+    np.testing.assert_allclose(model.params, expected, rtol=1e-9)
+
+
+def test_median_and_benard_are_the_approximation_of_the_exact_ranks():
+    # Benard's (i - 0.3) / (N + 0.4) is within half a percent of the
+    # exact median rank here, but not equal to it.
+    _, _, _, exact = plotting_positions(BEARINGS, heuristic="Exact")
+    _, _, _, benard = plotting_positions(BEARINGS, heuristic="Median")
+    assert np.max(np.abs(benard - exact)) < 0.002
+    assert not np.allclose(benard, exact, rtol=1e-6)
+
+
+@pytest.mark.parametrize("seed", range(8))
+@pytest.mark.parametrize(
+    "heuristic", ["Nelson-Aalen", "Kaplan-Meier", "Fleming-Harrington"]
+)
+def test_estimator_positions_are_those_of_the_risk_sets_bit_for_bit(
+    seed, heuristic
+):
+    # plotting_positions validates its data once and reads the risk sets
+    # from the handled arrays: the result is exactly that of the data's
+    # own to_xrd(), which validates them again (ties, counts, right
+    # censoring and delayed entry).
+    import surpyval as sp
+    from surpyval.univariate.nonparametric.plotting_positions import (
+        ESTIMATOR_FUNCS,
+    )
+
+    rng = np.random.default_rng(seed)
+    k = int(rng.integers(5, 200))
+    x = np.round(rng.weibull(1.3, k) * 10, int(rng.integers(0, 3))) + 0.01
+    c = (rng.uniform(size=k) < 0.3).astype(int)
+    n = rng.integers(1, 4, k)
+    tl = np.where(rng.uniform(size=k) < 0.3, x * rng.uniform(0, 0.9, k), 0)
+    t = np.column_stack([tl, np.full(k, np.inf)])
+    x_e, r, d, F = plotting_positions(x, c, n, t, heuristic=heuristic)
+    x_ref, r_ref, d_ref = sp.SurpyvalData(x, c, n, t).to_xrd()
+    np.testing.assert_array_equal(x_e, x_ref)
+    np.testing.assert_array_equal(r, r_ref)
+    np.testing.assert_array_equal(d, d_ref)
+    np.testing.assert_array_equal(F, 1 - ESTIMATOR_FUNCS[heuristic](r, d))

@@ -45,6 +45,10 @@ from surpyval.univariate.regression._partial_effects import (
     CompetingRisksPartialEffectsMixin,
 )
 from surpyval.univariate.regression._penalised import PenalisedModelMixin
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.univariate.regression._summary import (
     coefficient_names,
     coefficient_repr,
@@ -991,6 +995,9 @@ class CompetingRisksProportionalHazards(
         ...                  model.cif(np.full(3, 5.0), new, "a")))
         True
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         design = FrameDesign(df, Z_cols, formula, drop_missing=True)
         return design.fit(
             cls.fit,
@@ -1006,11 +1013,16 @@ class CompetingRisksProportionalHazards(
             tl=design.column(tl_col),
         )
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @classmethod
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         cls,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -1074,7 +1086,7 @@ class CompetingRisksProportionalHazards(
         >>> t_b = rng.exponential(1 / 0.05, 300)
         >>> x = np.minimum(t_a, t_b).round(3)
         >>> e = np.where(t_a < t_b, "a", "b")
-        >>> model = CompetingRisksProportionalHazards.fit_penalised(
+        >>> model = CompetingRisksProportionalHazards.fit(
         ...     x, Z, e, penalizer=0.05, l1_ratio=1
         ... )
         >>> model.betas.round(3)
@@ -1106,7 +1118,7 @@ class CompetingRisksProportionalHazards(
         penalty = None
         for i, event in enumerate(causes):
             c_e = np.where(label_mask(e, event), 0, 1)
-            cox_model = CoxPH.fit_penalised(
+            cox_model = CoxPH._fit_penalised(
                 x,
                 Z,
                 c=c_e,
@@ -1152,6 +1164,7 @@ class CompetingRisksProportionalHazards(
         return out
 
     @classmethod
+    @penalty_argument("_fit_penalised")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data

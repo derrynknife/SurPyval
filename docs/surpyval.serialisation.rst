@@ -184,12 +184,13 @@ Keys in every dictionary
    * - ``model`` or ``parameterization``
      - Which class wrote it, so that :func:`~surpyval.serialisation.from_dict`
        can choose the reader. Most classes write ``"model"``, set to the
-       class name. Four write ``"parameterization"`` instead:
+       class name. Five write ``"parameterization"`` instead:
        ``"parametric"`` (``Parametric``), ``"non-parametric"``
        (``NonParametric``, whose ``"model"`` holds the estimator,
        ``"Kaplan-Meier"`` for example), ``"parametric-regression"``
-       (``ParametricRegressionModel``) and ``"copula"``
-       (``CopulaModel``). A few classes write both; ``"model"`` then
+       (``ParametricRegressionModel``), ``"copula"``
+       (``CopulaModel``) and ``"bivariate-non-parametric"``
+       (``BivariateNonParametric``). A few classes write both; ``"model"`` then
        decides.
 
 .. _saved-model-optional-keys:
@@ -307,6 +308,10 @@ with its own ``schema``.
      - ``"model": "MixtureCureModel"``
      - ``kind``, ``distribution``, ``links``, ``coefficient_signs``, ``covariate_positions``, ``width``, ``phi_param_map``, ``params``, ``aliased_coefficients``, ``k``, ``k_dist``, ``fixed``, ``covariance``, ``inference_centring``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``, ``latency``
      - --
+   * - ``PromotionTimeCureModel``
+     - ``"model": "PromotionTimeCureModel"``
+     - ``kind``, ``distribution``, ``links``, ``coefficient_signs``, ``covariate_positions``, ``width``, ``phi_param_map``, ``params``, ``aliased_coefficients``, ``k``, ``k_dist``, ``fixed``, ``covariance``, ``inference_centring``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``, ``latency``
+     - --
    * - ``ZeroInflatedModel``
      - ``"model": "ZeroInflatedModel"``
      - ``kind``, ``distribution``, ``links``, ``coefficient_signs``, ``covariate_positions``, ``width``, ``phi_param_map``, ``params``, ``aliased_coefficients``, ``k``, ``k_dist``, ``fixed``, ``covariance``, ``inference_centring``, ``_neg_ll``, ``maximum``, ``ic_n``, ``data_summary``, ``latency``
@@ -333,11 +338,19 @@ with its own ``schema``.
      - --
    * - ``AalenAdditiveModel``
      - ``"model": "AalenAdditiveModel"``
-     - ``x``, ``B``, ``B_var``, ``B_cov``, ``n_terms``, ``penalizer``, ``aliased``
+     - ``x``, ``B``, ``B_var``, ``B_cov``, ``n_terms``, ``penalizer``, ``aliased``, ``stopped_at``
      - --
    * - ``BuckleyJamesModel``
      - ``"model": "BuckleyJamesModel"``
      - ``beta``, ``resid``, ``resid_surv``, ``n_iter``, ``converged``, ``data``
+     - --
+   * - ``CoxAalenModel``
+     - ``"model": "CoxAalenModel"``
+     - ``x``, ``A``, ``A_cov``, ``A_beta_cov``, ``beta``, ``covariance``, ``robust_covariance``, ``additive``, ``multiplicative``, ``aliased``, ``n_iter``, ``converged``, ``stopped_at``
+     - --
+   * - ``RankAFTModel``
+     - ``"model": "RankAFTModel"``
+     - ``beta``, ``covariance``, ``smoothing``, ``resid``, ``resid_surv``, ``rank_weights``, ``n_iter``, ``converged``, ``data``
      - --
    * - ``QuantileRegressionModel``
      - ``"model": "QuantileRegressionModel"``
@@ -382,11 +395,11 @@ with its own ``schema``.
    * - ``ParametricMultiState``
      - ``"model": "ParametricMultiState"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``clock``, ``models``
-     - --
+     - ``joint`` (a joint fit), ``tr``, ``reached`` (right truncation)
    * - ``ParametricMultiStateRegression``
      - ``"model": "ParametricMultiStateRegression"``
      - ``transitions``, ``x``, ``tl``, ``state``, ``e``, ``n``, ``i``, ``clock``, ``models``, ``Z``, ``covariate_names``
-     - --
+     - ``joint`` (a joint fit), ``tr``, ``reached`` (right truncation)
    * - ``PanelMultiState``
      - ``"model": "PanelMultiState"``
      - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``Z``, ``censored``, ``exact_entry``, ``pci``, ``covariate_names``, ``shared``, ``theta``, ``cov_theta``, ``_neg_ll``, ``n_obs``, ``scale``, ``mean``, ``sd``, ``kept``
@@ -395,6 +408,14 @@ with its own ``schema``.
      - ``"model": "PanelMultiStateRegression"``
      - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``Z``, ``censored``, ``exact_entry``, ``pci``, ``covariate_names``, ``shared``, ``theta``, ``cov_theta``, ``_neg_ll``, ``n_obs``, ``scale``, ``mean``, ``sd``, ``kept``
      - ``maximum``
+   * - ``ParametricPanelMultiState``
+     - ``"model": "ParametricPanelMultiState"``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``censored``, ``censored_codes``, ``exact_entry``, ``clock``, ``models``, ``joint``, ``max_moves``, ``truncation_tol``, ``truncation_error``, ``omitted``
+     - --
+   * - ``ParametricPanelMultiStateRegression``
+     - ``"model": "ParametricPanelMultiStateRegression"``
+     - ``transitions``, ``x``, ``s``, ``i``, ``obstype``, ``censored``, ``censored_codes``, ``exact_entry``, ``Z``, ``covariate_names``, ``clock``, ``models``, ``joint``, ``max_moves``, ``truncation_tol``, ``truncation_error``, ``omitted``, ``coarsened``
+     - --
    * - ``CompetingRisks``
      - ``"model": "CompetingRisks"``
      - ``event_idx_map``, ``n_event_types``
@@ -423,6 +444,10 @@ with its own ``schema``.
      - ``"model": "CauseSpecificProportionalIntensity"``
      - ``baseline``, ``event_types``, ``models``, ``covariances``
      - ``feature_names``
+   * - ``DiscreteGrowthModel``
+     - ``"model": "DiscreteGrowthModel"``
+     - ``growth_model``, ``params``, ``method``, ``data``, ``cov``
+     - --
    * - ``NonParametricCounting``
      - ``"model": "NonParametricCounting"``
      - ``x``, ``mcf_hat``, ``var``, ``origin``
@@ -482,7 +507,7 @@ with its own ``schema``.
    * - ``DegradationModel``
      - ``"model": "DegradationModel"``
      - ``x``, ``y``, ``i``, ``units``, ``threshold``, ``path_model``, ``path_params``, ``pseudo_failure_times``, ``c``, ``life_model``, ``measurement_var``, ``path_param_mean``, ``path_param_cov``, ``path_param_sample_cov``, ``population_method``, ``path_selection``, ``Z``, ``how``, ``links``, ``path_param_fixed``, ``path_param_fixed_names``, ``path_param_link_cov``
-     - ``extrapolated``, ``running``, ``censored_units``, ``acceleration``, ``gamma``, ``stress_ref``, ``Z_cols``
+     - ``extrapolated``, ``running``, ``censored_units``, ``censored_at``, ``acceleration``, ``gamma``, ``stress_ref``, ``Z_cols``
    * - ``InducedFailureDistribution``
      - ``"model": "InducedFailureDistribution"``
      - ``samples``, ``threshold``, ``path_name``
@@ -503,13 +528,17 @@ with its own ``schema``.
      - ``"parameterization": "copula"``
      - ``copula``, ``params``, ``how``, ``margins``, ``maximum``
      - ``rotation``, ``_neg_ll``, ``ic_n``, ``k``, ``covariance``
+   * - ``BivariateNonParametric``
+     - ``"parameterization": "bivariate-non-parametric"``
+     - ``estimator``, ``x``, ``c``, ``n``
+     - ``names``
    * - ``SurvivalTree``
      - ``"model": "SurvivalTree"``
-     - ``kind``, ``n_features_split``, ``selection``, ``alpha_split``, ``min_split_gain``, ``root``, ``n_covariates``
+     - ``kind``, ``n_features_split``, ``selection``, ``splitrule``, ``alpha_split``, ``min_split_gain``, ``root``, ``n_covariates``
      - --
    * - ``RandomSurvivalForest``
      - ``"model": "RandomSurvivalForest"``
-     - ``kind``, ``n_trees``, ``bootstrap``, ``selection``, ``alpha_split``, ``min_split_gain``, ``trees``
+     - ``kind``, ``n_trees``, ``bootstrap``, ``selection``, ``splitrule``, ``alpha_split``, ``min_split_gain``, ``trees``
      - --
    * - ``NeverOccurs``
      - ``"model": "NeverOccurs"``
@@ -530,6 +559,54 @@ with its own ``schema``.
    * - ``BayesianParametric``
      - ``"model": "BayesianParametric"``
      - ``distribution``, ``offset``, ``lfp``, ``zi``, ``fixed``, ``method``, ``priors``, ``data``, ``posterior``, ``log_evidence``, ``diagnostics``, ``exact``, ``surpyval_version``
+     - --
+   * - ``BayesianRegression``
+     - ``"model": "BayesianRegression"``
+     - ``kind``, ``mle``, ``priors``, ``default_priors``, ``posterior``, ``data``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianResult``
+     - ``"model": "BayesianResult"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianRecurrence``
+     - ``"model": "BayesianRecurrence"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianProportionalIntensity``
+     - ``"model": "BayesianProportionalIntensity"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianCauseSpecific``
+     - ``"model": "BayesianCauseSpecific"``
+     - ``event_types``, ``models``, ``surpyval_version``
+     - --
+   * - ``BayesianRenewal``
+     - ``"model": "BayesianRenewal"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianMixtureCure``
+     - ``"model": "BayesianMixtureCure"``
+     - ``kind``, ``mle``, ``priors``, ``default_priors``, ``posterior``, ``data``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianProcessModel``
+     - ``"model": "BayesianProcessModel"``
+     - ``target``, ``priors``, ``default_priors``, ``posterior``, ``diagnostics``, ``surpyval_version``
+     - --
+   * - ``BayesianCompetingRisks``
+     - ``"model": "BayesianCompetingRisks"``
+     - ``causes``, ``surpyval_version``
+     - ``models`` (each cause's fit), or ``joint`` for causes fitted together (the joint posterior, each cause's columns, distribution and priors, the engine)
+   * - ``BayesianMultiState``
+     - ``"model": "BayesianMultiState"``
+     - ``mle``, ``models``, ``draws``, ``surpyval_version``
+     - --
+   * - ``BayesianCompetingRisksRegression``
+     - ``"model": "BayesianCompetingRisksRegression"``
+     - ``causes``, ``models`` (each cause's Bayesian regression), ``surpyval_version``
+     - --
+   * - ``BayesianMultiStateRegression``
+     - ``"model": "BayesianMultiStateRegression"``
+     - ``mle``, ``models`` (each transition's Bayesian regression), ``draws``, ``surpyval_version``
      - --
 
 

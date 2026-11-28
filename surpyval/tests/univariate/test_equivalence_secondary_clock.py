@@ -51,10 +51,6 @@ def test_array_and_secondary_clock_give_the_0_28_numbers(dist):
     keyword = fitter.fit(x=hours, x2=starts, c=c, n=n)
     _same(array, clock)
     _same(array, keyword)
-    # 0.28's keyword x1 is the main clock x, with a deprecation warning
-    with pytest.warns(DeprecationWarning, match="'x1' is deprecated.*'x'"):
-        old = fitter.fit(x1=hours, x2=starts, c=c, n=n)
-    _same(array, old)
     assert array.clocks == ("x1", "x2")
 
 
@@ -81,18 +77,18 @@ def test_the_clock_name_names_the_model_clock():
 # ---------------------------------------------------------------------------
 def test_late_entry_with_secondary_clock_tl_is_the_entry_path_of_0_28():
     hours, starts, c, n, tl = _arrays()
-    with pytest.warns(DeprecationWarning, match="tl as a pair per unit"):
-        pair = WeibullEquivalence.fit(hours, starts, c, n, tl)
     clock = WeibullEquivalence.fit(
         hours, SecondaryClock(starts, tl=tl[:, 1]), c=c, n=n, tl=tl[:, 0]
     )
-    _same(pair, clock)
+    # 0.28's tl as a pair per unit was removed in v0.30
+    with pytest.raises(ValueError, match=r"removed in v0\.30"):
+        WeibullEquivalence.fit(hours, starts, c, n, tl)
     # t, the univariate window, with no upper bound
     t = np.column_stack([tl[:, 0], np.full(len(hours), np.inf)])
     windowed = WeibullEquivalence.fit(
         hours, SecondaryClock(starts, tl=tl[:, 1]), c=c, n=n, t=t
     )
-    _same(pair, windowed)
+    _same(clock, windowed)
     # the entry changes the fit
     plain = WeibullEquivalence.fit(hours, starts, c=c, n=n)
     assert not np.allclose(plain.params, clock.params)
@@ -158,7 +154,9 @@ def test_shape_mismatches_say_what_is_off():
         )
     with pytest.raises(ValueError, match="x2, the second clock's reading"):
         WeibullEquivalence.fit(hours)
-    with pytest.raises(ValueError, match="entry readings too"):
+    with pytest.raises(
+        ValueError, match=r"a pair per unit .*removed in v0\.30"
+    ):
         WeibullEquivalence.fit(
             hours, SecondaryClock(starts, tl=tl[:, 1]), tl=tl
         )
@@ -251,22 +249,6 @@ def test_fit_from_df_reads_every_column():
         tl2_col=0.0,
     )
     _same(zero, WeibullEquivalence.fit(hours, starts, c=c))
-    # 0.28's columns, deprecated
-    with pytest.warns(DeprecationWarning, match="x_cols and tl_cols"):
-        old = WeibullEquivalence.fit_from_df(
-            df,
-            x_cols=["hours", "starts"],
-            c_col="failed",
-            n_col="count",
-            tl_cols=["hours_in", "starts_in"],
-        )
-    _same(old, model)
-    assert old.clocks == ("hours", "starts")
-    with pytest.warns(DeprecationWarning):
-        positional = WeibullEquivalence.fit_from_df(
-            df, ["hours", "starts"], "failed", "count"
-        )
-    _same(positional, WeibullEquivalence.fit(hours, starts, c=c, n=n))
     with pytest.raises(ValueError, match="'nope' is not in the DataFrame"):
         WeibullEquivalence.fit_from_df(df, x_col="hours", x2_col="nope")
     with pytest.raises(ValueError, match="x2_col, the column of the second"):

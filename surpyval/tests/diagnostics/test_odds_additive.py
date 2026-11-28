@@ -563,8 +563,8 @@ def test_columns_and_alpha(crossing):
     full = model.diagnose()
     assert _row(d, "w")["statistic"] == _row(full, "w")["statistic"]
     p = _row(full, "z")["p"]
-    assert model.diagnose(alpha=p / 3).table.iloc[0]["verdict"] == "ok"
-    assert model.diagnose(alpha=p * 0.75).table.iloc[0]["verdict"] == "warn"
+    assert model.diagnose(alpha_ci=p / 3).table.iloc[0]["verdict"] == "ok"
+    assert model.diagnose(alpha_ci=p * 0.75).table.iloc[0]["verdict"] == "warn"
 
 
 def test_lin_ying_test_has_its_stated_size():

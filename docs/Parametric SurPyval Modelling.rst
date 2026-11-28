@@ -248,6 +248,28 @@ the summary statistics:
     print("mean, variance :", model.mean(), model.var())
     print("E[X^2], entropy:", model.moment(2), model.entropy())
 
+The chance of failing in the next window, given the age now, is
+``1 - cs(x, given)``. ``cs_cb(x, given, on="ff")`` puts bounds on it (and
+``on="sf"``, the default, on the conditional survival). In words: the item
+has come through the risk it met up to ``given``, so what is left is the
+cumulative hazard between ``given`` and ``given + x``; the bound is a bound on
+that hazard, :math:`\Delta H = H(given + x) - H(given)`, carried to
+:math:`1 - e^{-\Delta H}`. ``method="wald"`` (the delta method on
+:math:`\log \Delta H`) and ``method="lr"`` (its extreme over the likelihood
+region) are given; at ``given = 0`` they are ``cb``'s:
+
+.. jupyter-execute::
+
+    print("P(fail in next 5 | survived 25):", 1 - model.cs(5, given=25))
+    print("95% bounds                     :", model.cs_cb(5, 25, on="ff"))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _c = model.cs_cb(5, 25, on="ff")
+    assert _c[0] < 1 - model.cs(5, given=25) < _c[1]
+
 The model also records how it was made: the estimation method, the optimiser
 that converged (see :doc:`Parametric Estimation`), whether a maximum
 likelihood fit reached a verified maximum (``maximum``: ``'verified'``,
@@ -999,7 +1021,7 @@ The underlying caution still stands, though, and it is worth keeping in mind for
     _m = surv.Weibull.fit(_x, offset=True, how="MPS")
     assert round(_m.gamma, 1) == 49.8 and round(_m.params[1], 2) == 0.95
 
-- **An offset can also run the other way**, down towards :math:`-\infty`, when the data are skewed more to the left than any member of the family can be: the shifted family then approaches its limit -- the Normal for the LogNormal and the Gamma, the smallest extreme value distribution (``Gumbel``) for the Weibull, the ``Logistic`` for the LogLogistic -- and the likelihood rises towards the limit's without reaching it. Such a fit warns "No finite maximum" and recommends the limit itself. With one failure at -1 well below the rest (9 to 22), the offset LogNormal's ``gamma`` runs down past -100 before the search stops, and the Normal (log-likelihood -42.27) fits better than any LogNormal it reached. Maximum product of spacings is no way out here: its product of spacings rises towards the Normal's in the same way, and an ``how="MPS"`` fit warns "No finite maximum" too.
+- **An offset can also run the other way**, down towards :math:`-\infty`, when the data are skewed more to the left than any member of the family can be: the shifted family then approaches its limit -- the Normal for the LogNormal and the Gamma, the smallest extreme value distribution (``Gumbel``) for the Weibull, the ``Logistic`` for the LogLogistic -- and the likelihood rises towards the limit's without reaching it. Such a fit warns "No finite maximum" and recommends the limit itself. The fit returned is where the search stopped, not a maximum, so its standard errors and Wald bounds mean nothing; its likelihood-ratio bounds are measured from the limit's fit, the best the family can approach, which is what a likelihood-ratio region asks for. On data that are close to Normal this happens even without an outlier: there the data simply do not support an offset, and the limit is the model to fit. With one failure at -1 well below the rest (9 to 22), the offset LogNormal's ``gamma`` runs down past -100 before the search stops, and the Normal (log-likelihood -42.27) fits better than any LogNormal it reached. Maximum product of spacings is no way out here: its product of spacings rises towards the Normal's in the same way, and an ``how="MPS"`` fit warns "No finite maximum" too.
 
 .. jupyter-execute::
     :hide-code:
@@ -1380,10 +1402,13 @@ Comparing distributions
 To choose a distribution, fit the candidates to the same data and compare an
 information criterion; lower is better. ``fit_best(x, c, n, t)`` (which also
 takes ``tl``, ``tr``, ``xl`` and ``xr``, as ``fit`` does) does this by
-maximum likelihood for eleven continuous distributions -- ``Beta``,
-``Exponential``, ``ExpoWeibull``, ``Gamma``, ``Gumbel``, ``Logistic``,
-``LogLogistic``, ``LogNormal``, ``Normal``, ``Rayleigh`` and ``Weibull`` (not
-``GumbelLEV``, the discrete distributions or offset models) -- and returns the
+maximum likelihood for sixteen continuous distributions -- ``Beta``,
+``BirnbaumSaunders``, ``Exponential``, ``ExpoWeibull``, ``Gamma``,
+``GeneralizedF``, ``GeneralizedGamma``, ``Gompertz``, ``Gumbel``,
+``InverseGaussian``, ``Logistic``, ``LogLogistic``, ``LogNormal``,
+``Normal``, ``Rayleigh`` and ``Weibull`` (not ``GumbelLEV``, the discrete
+distributions or offset models; ``Beta4`` and ``Uniform`` only when named in
+``include``) -- and returns the
 winner (see :doc:`comparison_and_validation`). ``metric`` may be ``'aic'``
 (the default), ``'aic_c'``, ``'bic'`` or ``'neg_ll'``, and ``include`` or
 ``exclude`` (lists of names, not both) narrow the candidates. The data are
@@ -2986,12 +3011,130 @@ recurrent-event models, where a repaired unit can fail again and every
 failure is counted (see :doc:`Recurrent Event Modelling with SurPyval`).
 
 
+Warranty returns from a Nevada table
+------------------------------------
+
+Warranty returns are often kept as a triangle: one row per shipment (or
+sales, or build) period with the number of units shipped, and one column per
+later period with how many of that shipment came back in it. The newest
+shipment has been in service for the least time, so its row is the shortest
+and the table is a staircase, the "Nevada chart". It is lifetime data in
+disguise: a unit that came back in its third month in service failed at about
+three months, and the units of a shipment that have not come back are still
+working at their shipment's age today (right censored).
+
+:class:`~surpyval.utils.nevada.NevadaTable` does that reading. Here are three
+monthly shipments and their returns in the months that followed (the Nevada
+chart of ReliaSoft's warranty documentation):
+
+.. jupyter-execute::
+
+    import surpyval as surv
+
+    table = surv.NevadaTable(
+        shipped=[100, 140, 150],
+        returns=[[3, 3, 5],             # Jul, Aug, Sep returns of June's units
+                 [None, 2, 4],          # July's units, from August
+                 [None, None, 4]],      # August's units, in September
+        labels=["Jun", "Jul", "Aug"],
+    )
+    print(table)
+
+Each row starts one column to the right of the one before (the ``"calendar"``
+layout, as the chart is drawn). If your table has the columns as periods in
+service instead, every row starting in the first column, pass
+``layout="age"``; if the cells are returns to date rather than in the period,
+pass ``cumulative=True``. ``period=30.44`` puts the ages in days.
+
+When a return is known only by its period, the honest reading is that it
+failed somewhere in that period: :meth:`~surpyval.utils.nevada.NevadaTable.to_data`
+gives each one as interval censored, between :math:`k - 1` and :math:`k`
+periods. The warranty tools often take a return as failed at the end of its
+period instead (``ages="end"``), which adds up to a period to every age.
+On a table this small the two readings give quite different fits, so it is
+worth fitting both:
+
+.. jupyter-execute::
+
+    by_period = surv.Weibull.fit(table.to_data())
+    at_end = surv.Weibull.fit(table.to_data(ages="end"))
+    print('interval ages  :', by_period.params.round(4))
+    print('ages at the end:', at_end.params.round(4))
+
+The fit with ages at the ends of the periods matches the documented one
+(:math:`\eta = 6.6951`, :math:`\beta = 2.4928`). The table's
+:meth:`~surpyval.utils.nevada.NevadaTable.forecast` then gives the returns
+still to come from the units in service, each shipment at its own age (it is
+:func:`surpyval.forecast` with the table's ages and survivors):
+
+.. jupyter-execute::
+
+    ahead = table.forecast(at_end, horizon=[1, 2, 3], limit=12)
+    print(ahead)
+    print('next month, by shipment:', ahead.unit_expected[:, 0].round(2))
+
+The documentation forecasts 11.75, 11.04 and 5.80 returns from the three
+shipments next month, 29 in all; the small differences come from its
+probabilities rounded to three figures.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    import numpy as _np
+    assert _np.allclose(at_end.params, [6.6951, 2.4928], atol=5e-4)
+    assert _np.allclose(ahead.unit_expected[:, 0], [11.748, 11.035, 5.796],
+                        atol=0.06)
+    assert round(float(ahead.expected[0])) == 29
+
+To go the other way, from a returns database to the table,
+:meth:`~surpyval.utils.nevada.NevadaTable.from_returns` takes each return's
+shipment period (the row, from 0) and the period of service it came back in
+(from 1), with an optional count each:
+
+.. jupyter-execute::
+
+    rebuilt = surv.NevadaTable.from_returns(
+        shipped=[100, 140, 150],
+        shipment=[0, 0, 0, 1, 1, 2],
+        age=[1, 2, 3, 1, 2, 1],
+        n=[3, 3, 5, 2, 4, 4],
+    )
+    print(rebuilt.to_array())
+
+``to_returns()`` gives that list back from a table, and ``to_array()`` the
+triangle, in either layout.
+
+Two more things a warranty table may need. By default every unit of a
+shipment is taken as in service from the start of its shipment period, as the
+warranty tools do. If units go out evenly through the month, a unit shipped
+late in it is younger than its shipment's age, so every age reads a little
+old; ``shipping="spread"`` takes each unit as shipped mid-period, which
+makes every age (returns, survivors and the forecast's starting age) half a
+period younger. And when a shipment's returns are known only as a total to
+date, with no breakdown by month, give them as ``totals`` (one per
+shipment, ``None`` for the shipments whose rows hold their returns): those
+returns are failures at some age up to the shipment's age, left censored.
+
+.. jupyter-execute::
+
+    spread = surv.NevadaTable(
+        shipped=[100, 140, 150],
+        returns=[[3, 3, 5], [None, 0, 0], [None, None, 4]],
+        totals=[None, 6, None],     # July's units: 6 back, months unknown
+        shipping="spread",
+    )
+    print(spread)
+    print(surv.Weibull.fit(spread.to_data()).params.round(3))
+
+
 Creating a custom Distribution
 ------------------------------
 
 Given the implementation in SurPyval, it is possible to create a new distribution and use all the
-previously listed techniques. For example, the Gompertz distribution is not implemented in the
-surpyval API, this however can be quickly overcome. Its cumulative hazard is
+previously listed techniques. As an example, here is the Gompertz distribution built as a custom
+distribution (it is also built in, as ``surv.Gompertz``, in R's ``flexsurv`` parameterisation; see
+:doc:`univariate/gompertz`). Its cumulative hazard is
 :math:`H(x) = \nu\left(e^{b x} - 1\right)` for :math:`x \geq 0`: a hazard
 :math:`h(x) = \nu b\, e^{b x}` that grows exponentially with age, which is why
 it is a classic model of human mortality. First, we set up a random number
@@ -3165,10 +3308,15 @@ The same analysis runs in the browser in
 Recipes: more distributions from their cumulative hazard
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Several distributions that are popular in survival analysis are not built
-into SurPyval, but each is a few lines as a ``CustomDistribution``: the
-generalised gamma, the Gompertz (above), the generalised F and the inverse
-Gaussian. Each recipe below is checked against ``scipy.stats`` when the
+Several distributions that are popular in survival analysis are a few
+lines as a ``CustomDistribution``: the generalised gamma, the Gompertz
+(above), the generalised F and the inverse Gaussian. The Gompertz is built
+in as ``surv.Gompertz`` (:doc:`univariate/gompertz`), the inverse Gaussian as
+``surv.InverseGaussian`` (:doc:`univariate/inverse_gaussian`), the
+generalised F as ``surv.GeneralizedF`` (:doc:`univariate/generalized_f`), and
+the generalised gamma is built in as ``surv.GeneralizedGamma`` (:doc:`univariate/generalized_gamma`),
+with care near the lognormal that the recipe does not take; the recipe
+stays as an example of building one from the incomplete gamma function. Each recipe below is checked against ``scipy.stats`` when the
 documentation is built. Write the cumulative hazard with autograd's numpy
 (and autograd's ``scipy``), so that the hazard, the density and the
 confidence bounds can be differentiated from it.

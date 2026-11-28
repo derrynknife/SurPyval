@@ -353,6 +353,118 @@ than the full one saves as schema 5, which SurPyval 0.28 refuses rather
 than read its parameters as a full one's; a model saved before the
 choice existed reads as ``"full"``.
 
+A spread at 0: a parameter that does not vary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Sometimes a parameter named in ``varying`` does not, in these data, vary
+between items: every item's rate looks the same, say. Its spread is then
+estimated at 0, the lower edge of what a spread can be, and the model is
+the same as the one with that parameter common to all items. Two things
+follow, and SurPyval handles both.
+
+First, the search. It works on the log of each sd, so an sd of 0 sits at
+minus infinity, where the likelihood is flat: the search can wander
+towards it and stall before the other parameters reach their best
+values, ending (unverified) below the fit with the parameter common. A
+fit of the larger model should never be worse than the smaller model it
+contains. So, where a fit puts a spread at 0 (it moves no item's marker
+by as much as 1% of the readings' noise at any reading age), or ends
+unverified with a spread whose removal costs the log-likelihood less
+than 1.92 (the data cannot tell it from 0 at the 5% level), the fit is
+made again with those parameters common to all items, and then the full
+model is searched once more from there, with their spreads small (or,
+where the first answer already beats the fit on the edge, from that
+answer). If that search rises off the edge (by more than 1e-4 in
+log-likelihood, an absolute amount: round-off of the adaptive nodes is
+below it), its answer is kept. Otherwise the fit is held on the edge.
+Either way the fit reported is never worse than any candidate the
+searches reached by more than 1e-4 in log-likelihood. A verified fit with every spread clear of
+0 is not searched again, so ordinary fits cost nothing more. Ask whether
+the parameter varies by comparing it with the fit where it is common, by
+``aic()`` or ``likelihood_ratio_test`` (below).
+
+Second, what is reported. A fit held on the edge says so:
+
+- ``model.spreads_at_zero`` names the parameters, and the printout's
+  ``Fit`` line says ``with sd_rate at the lower bound, 0``.
+- ``sd_<name>`` is exactly 0, and its correlations with the other varying
+  parameters are 0. None of them has a standard error (``nan``): a Wald
+  interval needs the likelihood to curve on both sides of the estimate,
+  and at an edge there is only one side.
+- Everything else (the other parameters, their standard errors and
+  bounds, ``neg_ll()``, predictions) is that of the fit with the
+  parameter common to all items. ``aic()`` still counts the spread's
+  parameters, so it is that fit's AIC plus 2 for each.
+- ``maximum`` is that fit's, usually ``"verified"``, with no warning.
+
+To ask whether the parameter varies at all, compare the two fits:
+``aic()``, or the likelihood-ratio test, ``varying_fit.likelihood_ratio_test(common_fit)``.
+The test knows the null value is on an edge: with one parameter left
+out, its p-value is half that of chi-squared on the correlations left
+out and half on those and the sd (Self and Liang, 1987; Stram and Lee,
+1994), smaller than the plain chi-squared p-value. For a spread held at 0
+the statistic is 0 and the p-value 1.
+
+A correlation of +-1: one parameter a multiple of another
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The spread has a second edge. Two varying parameters can be perfectly
+correlated: each item's rate, say, is its level's departure from the
+fleet's mean times a fixed number, so an item that starts high rises
+slowly by exactly as much as its start predicts. Nothing of the rate's
+spread is then its own. This is common where a parameter barely varies
+in truth: on straight lines whose rates are all the same, the fit often
+estimates a small rate spread tied entirely to the level (a correlation
+of -1) rather than none at all, because that fits the readings' small
+wobbles a little better.
+
+The search meets this edge as it meets a spread of 0: the part of the
+rate's spread that the level's does not explain is, on the search's log
+scale, at minus infinity, so the search stalls short of it and ends
+unverified. So, where that part moves no item's marker by 1% of the
+noise at any reading age, or the search ends unverified and removing
+that part costs the log-likelihood less than 1.92, the fit is made on
+the edge: the level is integrated over, item by item, and the rate is
+the fitted multiple of its departure. Then the full model is searched
+from there with the rate given a small part of its own, as for a spread
+at 0, and kept if the likelihood rises off the edge by more than 1e-4.
+
+A fit held on this edge says so:
+
+- ``model.perfect_correlations`` names the correlation
+  (``["corr_a_b"]``), and the printout's ``Fit`` line says ``with
+  corr_a_b at its edge, -1 (b an exact multiple of a about their
+  means)``.
+- The correlation is exactly +1 or -1, with no standard error
+  (``nan``), for the reason a spread at 0 has none. The held parameter's
+  sd is the multiple times the other's, with its standard error; its
+  correlations with any other varying parameter are the other one's,
+  times that sign.
+- Everything else (estimates, standard errors, ``neg_ll()``,
+  predictions, ``maximum``) is the fit on the edge's, and ``aic()``
+  counts the correlation as a parameter.
+- ``likelihood_ratio_test`` refuses to test a correlation of +-1 against
+  a free one. The two fits have the same parameters, and the null value
+  is on the edge of the valid matrices, where the statistic's reference
+  is a mixture of chi-squared distributions whose weights depend on the
+  information matrix; that is not built. The held fit is the maximum of
+  the free model, so its likelihood is the free model's.
+
+Only a pair is held: one parameter a multiple of one other. A spread of
+three or more parameters can also sit on the edge without any pair at
++-1 (its correlation matrix singular in a direction mixing them all);
+such a fit is not held, and can end unverified with the warning.
+
+Within about 1e-10 of a singular spread the grid's nodes, placed by the
+inverse of the integrand's curvature, need a matrix too ill-conditioned
+to invert as it is (its smallest eigenvalue below a millionth of a
+millionth of its largest, in each parameter's own scale). There the
+curvature is taken in the prior's own coordinates instead, where it is
+well conditioned. Before, the nodes were placed too wide in the narrow
+direction and the grid overstated the likelihood at such points; only a
+fit that landed exactly on a singular spread was affected, and it ended
+unverified.
+
 The data: readings on the item records
 --------------------------------------
 
@@ -806,15 +918,102 @@ vibration says about them.
 
 A failure found at an inspection (left or interval censored) needs its
 mode too; the likelihood is then the mode's hazard times the survival of
-every mode, integrated over the interval. What is refused, each saying
-what to do: a failure with no mode (a failure of unknown mode is not
-fitted yet), a mode on an item still running, a mode with fewer failures
+every mode, integrated over the interval.
+
+A failure whose mode was not recorded (``None`` in ``e``) is a failure
+of unknown mode, and the fit takes it: the item failed by one mode or
+another, so its chance is the sum over the modes of each mode's term.
+For a failure at a known age that is the hazard of failing at all (every
+mode's hazard added) times the survival of every mode; for one found at
+an inspection, the chance of failing in the interval by any mode. Such
+failures tell the fit about the path and the total hazard, but nothing
+about which mode is which: each mode's own estimates rest on the
+failures whose mode is known. With few of a mode known, its scale and
+shape can trade against each other and against the marker's effect
+along a nearly flat ridge, and its scale's standard error is then large
+(in a fleet with 43 bearing failures known and 33 of either mode, a
+bearing scale of 21,800 with a standard error of 25,800, where every
+label known gave 4,800): read it on the log scale, as its interval is. The printout's ``Failure modes`` line
+counts them (``; 12 of unknown mode``), and ``n_events_by_cause`` holds
+only the known ones. This assumes the mode went unrecorded for reasons
+unrelated to which mode it was (missing at random); where, say, one mode
+is harder to identify than another, the modes' estimates are biased.
+
+What is refused, each saying what to do: a mode on an item still
+running, a mode with fewer failures
 than it has parameters of its own (the message gives the counts),
 ``"alpha"`` in ``shared``, the accelerated survival part (``JointAFT``)
 and the two-stage estimate. Data with one mode only, or with no event
 types, give the model of one kind of failure, exactly as before. Each
 mode adds its cumulative hazard to every item's likelihood, so a fit
 with two modes takes about twice as long.
+
+The chance of each mode for a running item
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For a pump still running, its readings so far say not only how likely it
+is to fail in the next year but by which mode: a planner wants, say,
+"bearing 34%, seal 8%" to know which job to prepare. ``predict(...).cif(x, mode)``
+gives the chance that the item fails by ``mode`` by age ``x``, given its
+readings and that it was running at the age now (the mode's cumulative
+incidence from now). The modes' chances add up to ``ff(x)``, the chance
+of failing at all, and with ``sf(x)`` to 1; ``total_cif(x)`` is that sum.
+``cb(x, on="cif", mode=...)`` bounds each mode's chance (the same delta
+method as ``cb(on="ff")``, on ``log(-log(1 - cif))``, so the bounds stay
+between 0 and 1), and ``to_dict()`` carries each mode's curve and bounds
+under ``"cif"``, so a saved prediction can be drawn without the model.
+
+.. jupyter-execute::
+
+    pump = modes.predict(markers={0: 3.4, 120: 3.9, 240: 4.3, 360: 4.8},
+                         given=400)
+    year_on = 765
+    for mode in modes.causes:
+        lower, upper = pump.cb(year_on, on="cif", mode=mode)
+        print(f"{mode}: {pump.cif(year_on, mode):.3f} ({lower:.3f} to {upper:.3f})")
+    print(f"still running: {pump.sf(year_on):.3f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    every = sum(pump.cif(year_on, m) for m in modes.causes)
+    assert abs(every + pump.sf(year_on) - 1) < 1e-10
+    assert pump.cif(year_on, "bearing") > pump.cif(year_on, "seal")
+
+A pump whose vibration is climbing is most at risk from its bearing.
+
+How it is worked out: over the item's path, given its readings and its
+survival to now, each mode's chance is the chance of failing by that
+mode before any other, the mode's hazard times the survival of every
+mode,
+
+.. math::
+
+    \mathrm{CIF}_k(x \mid T > u, y) = E\left[\int_u^x h_k(s \mid \theta)
+    \frac{S(s \mid \theta)}{S(u \mid \theta)}\, ds
+    \;\middle|\; T > u, y\right],
+
+averaged on the nodes placed at the item's distribution given its
+readings and its survival to ``u``. In practice each mode's chance is
+the chance of failing at all, ``ff(x)`` (as ``sf`` computes it), times
+the mode's share of it from that average, the integral over age by the
+15-point rule of the cumulative hazard. The share is taken at each
+node, inside the integral over age and the average over the item's path,
+so the result is that expectation; the shares add to 1, so the chances
+add to ``ff(x)`` exactly, and the time rule's error moves only the split
+between the modes: against a brute-force integral, 1e-8 or less within
+500 days of now and 1.3e-5 at 1100 days beyond it.
+With the marker effects 0 the chances are ``ParametricCompetingRisks``'
+cumulative incidences from the age now, ``(CIF_k(x) - CIF_k(u)) /
+S(u)``, to 1.1e-11 (relative). Each mode's bounds are its own, one age at a time: the
+upper bounds of the modes need not add to the upper bound on ``ff``. An
+infinite age gives ``nan`` (use a late finite one for the chance of
+ever failing by a mode). A model of one way of failing has
+``cif(x) == ff(x)`` and refuses a ``mode``.
+
+In RePyability a ``JointNode`` follows the item's overall ``sf``; a node
+for each mode is not part of this.
 
 The marker reference
 ~~~~~~~~~~~~~~~~~~~~
@@ -879,6 +1078,31 @@ each item's own:
     z = (exponential.params[-1] - 0.9) / exponential.standard_errors()[-1]
     assert abs(z) < 3
 
+A path of your own with a kink, a corner where its slope jumps (a line
+that turns at a known age, ``a + b t + c max(t - 365, 0)``), should say
+where: give the class a ``breaks`` attribute with those ages, as a
+spline's knots are given. The integrals of the hazard over age are then
+split there (and with a ``lag``, that much later). Without it a single
+Gauss-Legendre rule runs over the corner and loses its accuracy: about
+1e-4 to 1e-3 of the cumulative hazard for a modest turn, more for a
+sharper one or with a lag. On that line with a rise of 3 a year after
+day 365 the cumulative hazard to 400 days was off by 4e-4 of itself
+(1.9e-3 to two years with a 90-day lag; 9% with a rise of 30 a year),
+against 3e-15 with ``breaks = (365.0,)``. The fit checks a path of your
+own that names no ``breaks``: on the five items observed longest, it
+compares the integral by the one rule with the same rule on each half
+of the ages, an estimate of the one rule's error, and where they differ
+by more than 1e-5 of the integral it warns that the rule loses accuracy
+along the path. That comes of a corner, or of a very steep or sudden
+change in a smooth path (an exponential rising nine times over the
+ages, a logistic step over a month), where ``breaks`` through the
+steep part helps too; a gentle smooth path stays well below 1e-5. The
+check is of one-marker models only (several markers' paths are not
+probed), and a corner close to the end of the observed ages, where
+little of the integral lies past it, can be missed. A corner whose age
+varies between items or is estimated cannot be named this way, and is
+not supported.
+
 Each parameter is on its own scale by default: the rate ``b`` above is
 normal between items, so a fleet whose rates are near 0 would give some
 items a falling path. A rate that must stay positive can go on a log
@@ -909,6 +1133,267 @@ ratio of rates:
 
 ``varying=`` then names ``log(b)``. The two fits describe the same fleet
 with a different spread of rates, and predict alike where the data are.
+
+.. _joint-spline:
+
+A reading that bends: a spline path
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Many readings follow no formula: flat for years and then a knee, or a
+fall after an overhaul and then a rise. ``SplinePath`` is a smooth curve
+of joined pieces (a natural cubic spline) that bends where the readings
+do. The fleet's mean curve is the spline, and each item differs from it
+by a level and a rate of its own:
+
+.. math::
+
+    m_i(t) = \text{level}_i + \text{rate}_i\, t + \sum_k s_k N_k(t).
+
+The pieces join at *knots*. ``SplinePath.natural(df=3)`` places two
+between the first and last reading ages, at the thirds of all the reading
+ages (as R's ``ns(time, 3)`` does), and the fitted model's ``path_model``
+records them; ``SplinePath(knots=[...], boundary=(lo, hi))`` takes knots
+you choose, at an age where the reading is known to turn, say. Each
+:math:`N_k` is 0 up to its knot, so ``level`` and ``rate`` are the level
+at age 0 and the rate before the first knot, and each ``s_k`` (in the
+reading's unit) bends the curve after its knot. With no knots at all
+(``SplinePath()``, or ``df=1``) the path is the straight line, and the
+fit is ``LinearPath``'s to the last digit.
+
+A fleet of 150 pumps whose vibration stays near 3 mm/s for a year and
+then climbs, fitted with one knot at the year, where the readings are
+known to turn:
+
+.. jupyter-execute::
+
+    from surpyval.degradation import LinearPath, SplinePath
+
+
+    knee_rng = np.random.default_rng(452)
+
+
+    def knee(k):
+        level, climb = knee_rng.normal(3.0, 0.5), knee_rng.normal(0.006, 0.001)
+        t = np.linspace(0, 6000, 30001)
+        m = level + climb * np.maximum(t - 365.0, 0.0)
+        h = (2 / 800) * (t / 800) * np.exp(0.9 * (m - 4.0))
+        H = np.concatenate([[0], np.cumsum((h[1:] + h[:-1]) / 2 * np.diff(t))])
+        life = np.interp(knee_rng.exponential(), H, t)
+        end = min(life, 730.0)
+        ages = np.arange(0.0, end, 30.0)
+        y = level + climb * np.maximum(ages - 365.0, 0.0)
+        y = y + knee_rng.normal(0, 0.3, ages.size)
+        outcome = "observed" if life <= 730 else "right_censored"
+        return ItemLifetime(k, **{outcome: end}, markers=dict(zip(ages, y)))
+
+
+    bent = SurpyvalData.from_items([knee(k) for k in range(150)])
+    turn = SplinePath(knots=[365.0], boundary=(0.0, 730.0))
+    spline = JointPH(Weibull, turn, varying=("level", "rate"))
+    spline = spline.fit(bent, marker_reference=4.0)
+    line = JointPH(Weibull, LinearPath).fit(bent, marker_reference=4.0)
+    print(spline.path_model)
+    print(round(line.aic() - spline.aic(), 1))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert spline.maximum == "verified"
+    assert spline.parameter_names[:3] == ["level", "rate", "s1"]
+    assert line.aic() - spline.aic() > 50
+
+``aic()`` compares the two fits of the same data: the line is far behind.
+What it costs is in the predictions. A pump read to 450 days, 85 days
+past the turn, whose vibration has started to climb:
+
+.. jupyter-execute::
+
+    seen = np.arange(0.0, 451.0, 30.0)
+    turning = dict(zip(seen, 3.0 + 0.006 * np.maximum(seen - 365.0, 0.0)))
+    for fitted in (spline, line):
+        ahead = fitted.predict(markers=turning, given=450.0)
+        print(
+            fitted.path_model.name,
+            round(float(ahead.marker(450.0)), 2),
+            round(float(ahead.marker(630.0)), 2),
+            round(float(ahead.sf(630.0)), 3),
+        )
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    truth_450, truth_630 = 3.0 + 0.006 * 85, 3.0 + 0.006 * 265
+    by_spline = spline.predict(markers=turning, given=450.0)
+    by_line = line.predict(markers=turning, given=450.0)
+    assert abs(by_spline.marker(630.0) - truth_630) < abs(
+        by_line.marker(630.0) - truth_630
+    )
+    assert abs(by_spline.marker(450.0) - truth_450) < 0.25
+
+The pump's vibration is truly 3.51 mm/s at 450 days and 4.59 at 630.
+Both fits read the level at 450 days about right, but the line cannot
+turn with the readings: it projects 3.84 at 630, where the spline
+projects 4.5. The chances of reaching 630 days are close here (0.734
+and 0.737): each fit's baseline hazard has absorbed its own picture of
+the fleet's path, so the line's error shows first in the marker it
+forecasts.
+
+**How well it recovers the truth.** A simulation study (run on
+2026-11-25 with ``scripts/studies/joint_recovery/knee_study.py``, whose
+summary is beside it; this page does not re-run it) drew 200 fleets of
+300 pumps on a knee at 365 days: level 3 (sd 0.5), rate 0 (sd 0.3 a
+year), a common bend ``s1`` of 3, readings every 30 days to 730 with
+noise sd 0.4, and the hazard above (``alpha`` 800, ``beta`` 2, marker
+effect 0.9). Each fleet was fitted with the spline and with a line.
+
+- All 200 spline fits reached a verified maximum, and ``aic()``
+  preferred the spline in all 200.
+- The spline recovered every parameter. The largest bias was the marker
+  effect's, +1.7% (Monte Carlo se 0.8%), then ``alpha``'s, +0.5% (0.3%).
+  The 95% intervals covered the truth 93.5% to 98% of the time, and the
+  spread of the estimates was 0.91 to 1.08 times their standard errors.
+- The line is wrong about the risk itself. It takes the marker effect
+  as 0.63, not 0.9 (-30%), ``beta`` as 2.61, not 2 (+31%), and ``alpha``
+  as 750, not 800 (-6%). Its intervals cover the true values only 31%
+  to 44% of the time.
+- Predicting from the readings to 450 days, for the first 40 pumps still
+  running then (8,000 predictions), the spline's marker at 450 days was
+  off by 0.16 (root mean square) with no bias (-0.0002, se 0.002). The
+  line's was off by 0.17, and read 0.056 low on average (se 0.002).
+  Survival to 540 days (on average 0.87) was off by 0.025 with the
+  spline and 0.035 with the line, unbiased in both: the line's baseline
+  hazard absorbs its picture of the path, as above.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _s, _l = by_spline, by_line
+    assert round(float(_l.marker(630.0)), 2) == 3.84, _l.marker(630.0)
+    assert round(float(_s.marker(630.0)), 1) == 4.5, _s.marker(630.0)
+    assert round(float(_l.sf(630.0)), 3) == 0.734, _l.sf(630.0)
+    assert round(float(_s.sf(630.0)), 3) == 0.737, _s.sf(630.0)
+
+Choosing the knots: more knots follow more turns and need more readings.
+A spline with more parameters than the items' median number of readings
+is refused, saying how many knots the readings support; compare ``df``
+by ``aic()``. On the fleet above, ``SplinePath.natural(df=3)`` places
+its knots at 210 and 420 days (the readings stop at failure, so their
+ages crowd early) and fits as well as the knot at the year (AIC 3672.9
+against 3668.6), its mean curve within 0.2 mm/s of the truth at every
+age read; where a turn is known, a knot there needs fewer parameters. Beyond the last knot the curve is extended as a straight
+line, so a prediction far past the readings rests on the last piece's
+slope: place the upper boundary where the readings end (the default).
+Every link works on a spline: the slope and the area under it
+(``link="slope"``, ``"cumulative"``) are in closed form, and the
+integrals of the hazard over age are taken piece by piece between the
+knots, where the curve's third derivative jumps (one unsplit rule was
+off by up to :math:`10^{-4}` of a cumulative hazard on a bent path; the
+split one is within :math:`10^{-7}`). With a ``weight`` on the
+accumulated exposure the weighted area is by the quadrature above, not
+split at the knots: within :math:`10^{-6}` of the area on a knee. The
+bends ``s_k`` are common to all items: for a spline, ``varying``
+defaults to ``("level", "rate")``, where every other path's default is
+all of its parameters.
+
+Items that bend differently: varying bends
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Where the items turn at different paces (a sharper knee on some pumps
+than on others), the bends can vary between items too: name them in
+``varying``, ``JointPH(Weibull, SplinePath.natural(df=3),
+varying=("level", "rate", "s1", "s2"))``. The default structure is then a
+block of ``level`` and ``rate``, correlated with each other, and each
+bend on its own: a bend's spread is told from the readings after the
+knot where its piece starts, and an item's correlations with it would
+need many more items to tell apart (``random_effects="full"`` asks for
+them). Each varying parameter adds a dimension to every item's integral
+(``integration="pruned"`` is the default from four), so such a fit takes
+minutes. Compare it with the common-bend fit of the same data by
+``aic()``.
+
+A varying bend is refused where the items' median number of readings
+after the knot its piece starts at is below the number of varying
+parameters (the message gives the counts, and says to leave the bend out
+of ``varying`` or to use knots the readings reach well past): with fewer,
+the readings cannot pin down each item's own bend at all.
+
+Whether the bends really differ between items is a question for
+``aic()``. Fit the model twice, once with the bend common to all items
+and once with it in ``varying``, and compare ``common.aic()`` with
+``varying.aic()``; the lower is the better account of the data for its
+size. The common-bend model is the varying one with the bend's spread
+held at 0 (the likelihoods are then equal), so the varying fit has one
+parameter more. No warning is given where a bend's spread is estimated
+at 0: the study below shows the readings usually cannot tell a small
+spread from none, so a warning on the estimate alone misled. On such
+data the search for the larger fit could stop short of the common-bend
+fit's likelihood, with a spread run to 0 (#1334). A spread at 0 is now
+held on its edge, as for any varying parameter (`A spread at 0: a
+parameter that does not vary`_): the fit is then the common-bend fit,
+with ``sd_s1`` exactly 0 and named in ``spreads_at_zero``, so a varying
+fit reaches at least the likelihood of the common-bend fit it contains.
+
+**How well it recovers the truth.** A simulation study (run on
+2026-11-25 with ``scripts/studies/joint_recovery/shape_study.py``, whose
+summary is beside it; this page does not re-run it) drew 200 fleets of
+150 pumps. Each pump turned up at its own pace after a year: level 3
+(sd 0.5), rate 0 (sd 0.3 a year), bend ``s1`` 3 with sd 1.0, all
+independent, read every 30 days to 730 with noise sd 0.4, and the hazard
+above. Each fleet was fitted with the bend common and with it varying.
+
+- 198 of the 200 fleets were fitted both ways; in the other two a fit
+  ended with no covariance. Refitted with the current code, both fit
+  both ways. In one of them (seed 2123) the varying fit had stopped
+  short, with ``sd_rate`` run to 0 and an AIC 3.2 worse than the common
+  fit's: the stall described above (#1334). With the second search it
+  reaches a verified maximum 20.0 higher in log-likelihood than before,
+  with an AIC 37 better than the common fit's.
+- All 198 varying fits reached a verified maximum, and ``aic()``
+  preferred the varying bend in all 198 (by 48.5 at the median, 9.8 at
+  the least): here the spread is real.
+- The varying fit recovered every parameter. ``sd_s1`` averaged 0.996
+  against 1.0, with 96% coverage. The marker effect's bias was +1.5%
+  (se 1.2%), and the intervals covered 91% to 97% of the time.
+- The common-bend fit, missing the bend's spread, moves it elsewhere.
+  ``sd_rate`` comes out 44% too high and its interval never covers the
+  truth. The level-rate correlation reads -0.16, not 0 (60% coverage),
+  and the bend 4% low (71% coverage). Its survival part holds up: the
+  marker effect +2.7% (se 1.2%), 97% coverage.
+
+So where the items' knees differ, let them vary and compare by
+``aic()``.
+
+**Where the bends are alike, or nearly.** A second study
+(``scripts/studies/joint_recovery/bend_null_study.py``, its design fixed
+before it ran, run on 2026-11-26) fitted the same fleets with the bend's
+spread between pumps 0, 0.1 and 0.3 (against 1.0 above). This run is a
+reduced one, 10 fleets for each spread, so each share below is uncertain
+by about 15 points; the design has 200.
+
+- With no spread (sd 0), the spread was estimated at 0 in 4 of 10
+  fleets, and ``aic()`` preferred the varying fit in 2. A spread that is
+  truly 0 is estimated above 0 in about half of fleets, as any variance
+  at its boundary is, so an estimate of 0 is no reliable sign of it;
+  ``aic()`` preferred the common bend in 8 of 10.
+- With a small spread, the spread was estimated at 0 in 5 of 10 fleets at
+  sd 0.1 and 2 of 10 at sd 0.3, and ``aic()`` preferred the varying fit in
+  3 and 1. Spreads this small are not told from none by 150 pumps read
+  monthly for two years.
+- No varying fit fell short of the common-bend fit's likelihood (30 of
+  30, with the second search from the common-bend fit that this run
+  had, which the boundary fit above has since replaced).
+- The readings rule refused none of the fleets, even cut at 450 or 540
+  days. The bend ``s1`` of a one-knot spline acts from the start of the
+  boundary, so every reading counts (a median of 15 or 18 per pump), and
+  the rule is met.
+
+So an estimate of 0 says little either way, and SurPyval gives no
+warning on it (it did until this study: the warning fired at the rates
+above, missing most fleets with no spread and firing on many with
+some). Compare the common-bend and varying-bend fits by ``aic()``.
 
 What the hazard follows: the link
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1589,6 +2074,263 @@ pumps (100 fleets of 1200), the log-link model's biases fell to +0.4%
 (0.25%), +0.2% (0.5%) and +0.005 (0.0035), and every interval covered the
 truth between 93% and 98% of the time.
 
+.. _joint-several-markers:
+
+Several markers on one item
+---------------------------
+
+**In plain words.** An item is often read in more than one way: a pump's
+vibration *and* its bearing temperature, a patient's bilirubin *and*
+albumin. A joint model of several markers takes them all. Each marker
+follows a path of its own (a line, a curve, a spline), each has its own
+reading noise, and each has its own effect on the risk of failure. The
+items' paths are also allowed to move together: an item whose vibration
+starts high may tend to run hot too. Learning that is what lets one
+marker sharpen what the model knows about another, and it stops a model
+of one marker from crediting it with another's effect. With two
+correlated readings, a model of vibration alone credits vibration with
+part of temperature's effect, and ranks a hot but smooth pump wrongly.
+
+**The model.** Marker :math:`k` of item :math:`i` is read at ages of its
+own,
+
+.. math::
+    y_{ijk} = m_k(t_{ijk}; \theta_{ik}) + \varepsilon_{ijk}, \qquad
+    \varepsilon_{ijk} \sim N(0, \sigma_k^2),
+
+the varying parameters of every marker are one normal vector with one
+covariance :math:`D` across the markers (estimated through its Cholesky
+factor, so it is always a valid covariance), and the hazard follows each
+marker through its own links,
+
+.. math::
+    h_i(t) = h_0(t) \exp\Big(\gamma' z_i + \sum_k \sum_l \zeta_{kl}\,
+    f_l\big(m_k(\cdot; \theta_{ik})\big)(t)\Big),
+
+:math:`f_l` the marker's current value (less its reference), slope or
+area, as for one marker. Given an item's path parameters the readings of
+every marker and its lifetime are independent, so its likelihood is the
+one-marker integral over all of them together.
+
+**Fitting.** ``path_model`` is a dict, one path model a marker; ``link``,
+``varying`` and ``random_effects`` may be given by marker:
+
+.. code-block:: python
+
+    from surpyval import JointPH, Weibull
+    from surpyval.degradation import LinearPath, QuadraticPath
+
+    fitter = JointPH(
+        Weibull,
+        {"vibration": LinearPath, "temperature": QuadraticPath},
+        varying={"temperature": ["a", "b"]},  # its curvature common
+        link={"vibration": "value", "temperature": ["value", "slope"]},
+    )
+    model = fitter.fit(data)  # a SurpyvalData whose m holds both
+
+- ``link``: one link or a list for every marker, or a dict by marker. A
+  marker given ``[]`` (or left out of the dict) is read and modelled, and
+  not in the hazard: its readings still inform the others through the
+  correlations.
+- ``varying``: each marker's default (every parameter; a spline's level
+  and rate), a dict by marker, or a list of names ``"<marker>.<name>"``.
+- ``random_effects``: ``"full"`` (the default: every pair of varying
+  parameters correlated, across the markers too), ``"by_marker"`` (each
+  marker's correlated with each other and with none of another
+  marker's), ``"diagonal"``, or blocks of ``"<marker>.<name>"`` names.
+- ``marker_reference`` and ``marker_unit`` are dicts by marker.
+
+The parameters are named by marker: ``vibration.a``,
+``sd_vibration.a``, ``corr_vibration.a_temperature.a``,
+``vibration.sd_noise``, ``vibration.marker_effect``; ``alpha`` and
+``beta`` are the baseline's at every followed marker's reference (each
+marker's mean reading unless given). A model of one marker given as a
+dict is the single-marker model, with these names.
+
+**The data.** Markers are usually read at different ages, so the
+readings are in long form, one per reading: the unit, the age, the
+marker's name and the value. That is a :class:`~surpyval.Measurements` of
+named measurements (``Measurements.from_dataframe(readings, i_col=...,
+x_col=..., m_col=..., m_name_col=...)``, or ``{marker: {unit: {age:
+value}}}``), held by the data as ``data.m`` or given as ``m=`` with each
+row's unit as ``i=``; with arrays, ``markers=`` is one ``{marker: {age:
+value}}`` per row. Each marker's readings are checked against the item's
+observation as one marker's are. A long form needs no value for a marker
+not read at a visit and no padding; a wide table (a column a marker)
+would force the markers onto one timetable. Measurements the model does
+not name are not used, and a single-marker fitter refuses several,
+saying how to keep one or fit them together.
+
+**How many parameters can vary.** The integral over an item's varying
+parameters is over all the markers' together: two markers each with a
+level and a rate is four. Up to five in all it is on the adaptive grid
+(7 points a dimension: 2,401 nodes an item for four, 16,807 for five);
+beyond five it is Laplace's approximation (``integration="laplace"``),
+up to eight in all (``MAX_MARKER_VARYING``). More is refused, saying to
+name fewer in ``varying``: an item's integral costs ``q^2 + q + 1``
+evaluations by Laplace's approximation and the covariance has
+``q (q + 1) / 2`` parameters (36 for eight), too many to estimate from
+a usual fleet. ``random_effects="by_marker"`` or fewer varying
+parameters is the remedy for a fleet that cannot tell the correlations
+apart. A four-dimensional fit takes about a minute for 150 items read
+about 30 times each, and twenty minutes for the PBC trial below (312
+patients); ``integration="laplace"`` is faster at some cost in accuracy
+where items have few readings (:ref:`Laplace's approximation
+<joint-laplace>`).
+
+**Bounds and tests.** Each association has a Wald interval and test in
+``summary()``. A likelihood-ratio test of a marker's effect is the fit
+without it (``link={"temperature": []}``) against the fit with it,
+``model.likelihood_ratio_test(nested)``; the test of the correlations
+across the markers is ``random_effects="by_marker"`` against
+``"full"``. Likelihood-ratio and bootstrap intervals are not offered for
+the joint models, of one marker or several.
+
+**Prediction.** ``sf``, ``ff``, ``qf``, ``mean``, ``cb`` and ``predict``
+take every marker's readings so far, ``markers={"vibration": {...},
+"temperature": {...}}``; a marker with none so far may be left out. The
+dynamic prediction's ``marker(x, name)`` and ``marker_interval(x,
+name=...)`` give one marker's path given all of them. An
+``ItemLifetime`` holds one marker's readings, so ``sf(x, item)`` is
+refused for a model of several.
+
+**Checked by.**
+
+- A model of one marker given as a dict equals the single-marker fit
+  to 2e-15 (parameters, standard errors and log-likelihood).
+- Two markers, the second not in the hazard and uncorrelated with the
+  first (``random_effects="by_marker"``), equal the first marker's joint
+  fit (to 1e-9) plus a linear mixed model of the second: R's
+  ``nlme::lme(..., method = "ML")`` gives the same fixed effects, spread
+  and noise to 3e-10 and the same log-likelihood to 1e-9
+  (``scripts/reference/reference_r_joint_markers.R``).
+- A recovery study (``scripts/studies/joint_recovery/markers_study.py``,
+  its design and seeds fixed before it ran; run 2026-11-25): 200 fleets
+  of 200 items read for vibration every 30 days and temperature every
+  60, the four path parameters correlated across the markers (the
+  starts 0.5), both markers in the hazard (0.8 and 0.08 a unit), every
+  parameter varying and every correlation estimated on the full grid.
+  All 200 fits reached a verified maximum (55 s each, the median). The
+  95% intervals of all 20 parameters covered the truth 92.0% to 97.0% of
+  the time (Monte Carlo se 1.5%): the effects 92.5% (vibration) and
+  95.5% (temperature), the cross-correlations 92.0% to 95.0%. Biases
+  are within two Monte Carlo errors but vibration's effect, +3.3% (Monte
+  Carlo se 1.0%), and ``alpha``, +1.0% (0.5%); temperature's effect
+  -0.9% (1.5%), the noise sds and the paths' spreads within 0.3%. The
+  marker effect's small-sample bias is of the size the one-marker
+  studies found for the log-link path at 300 items (+2.0%), which
+  shrank with more items there; not run at a larger size here.
+- On the Mayo PBC trial (``pbc2``: 312 patients, 140 deaths; log
+  bilirubin and albumin, each a line in years with a level and a rate of
+  each patient's own, the four correlated; the hazard in both current
+  values), against R's multivariate joint models
+  (``scripts/studies/joint_recovery/markers_pbc.py`` and ``.R``). Neither
+  R package has the Weibull baseline: ``JMbayes2`` is Bayesian (posterior
+  means, a spline baseline) and ``joineRML`` fits a Cox baseline by Monte
+  Carlo EM, so they agree within their standard errors, not to digits.
+  Bilirubin's effect (per unit of log bilirubin) 0.950 (se 0.119),
+  against 0.947 (posterior sd 0.149) and 0.909 (0.124); albumin's (per
+  g/dl) -2.70 (0.35), against -2.85 (0.39) and -2.77 (0.34). The paths
+  agree to the second or third figure (bilirubin's level 0.490, 0.491,
+  0.484; its rate 0.195, 0.192, 0.193 a year; albumin's 3.548, 3.548,
+  3.551 and -0.111, -0.111, -0.111), as do the noise sds (0.347, 0.347,
+  0.347; 0.319, 0.320, 0.319), the spreads (within 0.004 of each other
+  but bilirubin's rate, 0.188 against 0.185 and 0.187) and the
+  correlations across the markers (the levels -0.545, against -0.526
+  and -0.544; the rates -0.836, against -0.788 and -0.838). The
+  SurPyval fit reached a verified maximum on the full grid in 20
+  minutes.
+
+Each marker can act on the hazard after a delay of its own, and weight
+its accumulated exposure its own way: ``lag`` and ``weight`` take one
+value for every marker, or a dict by marker, as ``varying`` and ``link``
+do. ``lag={"vibration": 30}`` has the hazard follow the vibration 30
+days late and the temperature at once (a marker left out has no lag),
+and ``weight={"vibration": ("window", 90)}`` counts only the last 90
+days of a vibration whose area the hazard follows (``link={"vibration":
+["value", "cumulative"]}``). As with one marker, each is fixed, not
+estimated: compare the choices you have in mind by ``aic()``.
+
+``compare_links`` asks what the hazard follows of one marker:
+``fitter.compare_links(data, marker="vibration")`` fits the vibration's
+links in turn, each with every other marker's links as the fitter has
+them, and ranks them as with one marker; ``models`` and the table are by
+the vibration's link and the ``verdict`` names it. Whether a spline
+marker's bends vary between items (``varying=("vibration.s1",)``) is,
+as with one marker, a comparison by ``aic()`` of the fits with and
+without them in ``varying``.
+
+**Failure modes with several markers.** Each marker may warn of a
+different way of failing: vibration of a bearing failure, temperature of
+a seal leak. Give each failure its mode (``e=``, ``e_col=``, or the
+records' ``event_type``), as with one marker (:ref:`failure modes
+<joint-failure-modes>`), and each mode gets a Weibull baseline, hazard
+coefficients and an effect of each marker's link of its own, named
+``"bearing: vibration.marker_effect"``, ``"seal:
+temperature.marker_effect"`` and so on; the markers' part is one for
+every mode. For mode :math:`k`,
+
+.. math::
+
+    h_{ik}(t) = \frac{\beta_k}{\alpha_k}\left(\frac{t}{\alpha_k}
+    \right)^{\beta_k - 1} \exp\Big(\gamma_k' z_i + \sum_{(j, l)}
+    \zeta_{kjl}\, g_l\big(m_j(\cdot; \theta_i)\big)(t)\Big),
+
+one effect :math:`\zeta_{kjl}` for each mode, marker :math:`j` and link
+:math:`l` (each followed marker's value measured from its reference).
+``shared=`` holds what the modes have in common: ``"beta"``, a hazard
+covariate, or one marker's link effect by its full name
+(``shared=["temperature.marker_effect"]``: the temperature warns of
+both modes alike, the vibration of each its own way); the fit with an
+effect shared is nested in the fit without, so
+``model.likelihood_ratio_test(shared_model)`` tests it. ``alpha`` is
+never shared (it depends on where the covariates are centred). Lags,
+weights, ``compare_links(..., marker=)``, predictions, bounds and saving
+work as without modes; the survival is that of every mode together.
+``JointAFT`` and the two-stage estimate do not take modes yet, as with
+one marker.
+
+The modes are not fitted one at a time. Each item's path is uncertain,
+and it is integrated over once with every mode's hazard in the
+integrand, so a fit of one mode with the others' failures treated as
+still running is not this fit's answer. It is usually close, because
+the readings, not the failures, mostly settle an item's path: on a
+seeded fleet of 150 items the censored fits' survival parameters were
+within 0.014 standard errors of the joint fit's. Where a mode follows
+no marker the likelihood does factor exactly: that mode is a plain
+Weibull.
+
+Checked by:
+
+- one mode is the model without modes, bit for bit;
+- one marker given as a dict, with modes, equals ``WeibullJointPH``
+  with modes: parameters to 3e-15, standard errors to 6e-15, the same
+  log-likelihood;
+- two modes with the same hazard are the model without modes at twice
+  the hazard, less :math:`\log 2` a failure, and a mode with every
+  effect 0 factors out as a plain Weibull (both to 1e-10 in the
+  log-likelihood);
+- a seeded fleet of 300 (``tests/univariate/joint/_multi_fleet.py``:
+  bearing failures that follow vibration with 0.8 a unit, seal failures
+  that follow temperature with 0.08) recovers every parameter but the
+  correlations within 3.5 standard errors, each marker's effect on its
+  own mode clear of 0 (p below 0.001);
+- a recovery study of 200 fleets of 250 items
+  (``calibration/test_coverage_joint_marker_causes.py``, its design and
+  seeds fixed beforehand) is committed and not yet run in full. A
+  reduced run of 12 fleets of 200 (seeds 46000 to 46011; about 76
+  bearing and 53 seal failures a fleet; two minutes a fit) reached a
+  verified maximum every time. The four effects averaged 0.865 (Monte
+  Carlo se 0.032; truth 0.8) and 0.002 (0.006; 0) for the bearing, 0.058
+  (0.042; 0) and 0.069 (0.008; 0.08) for the seal, each within two Monte
+  Carlo errors of the truth. The largest standardised departure was the
+  vibration's rate, 2.2% low (2.3 Monte Carlo errors), reported as
+  found; twelve fleets cannot say more, which is what the full study is
+  for.
+
+Not yet: a shared health index (one hidden condition behind every
+reading).
+
 Prediction: survival given the readings so far
 ----------------------------------------------
 
@@ -2047,11 +2789,16 @@ What it does and does not do
 The joint model (#891) is the standard one. It has:
 
 - one marker, following any degradation path model (a straight line by
-  default), with any number of its parameters varying between items
+  default; a spline, ``SplinePath``, where the reading bends as no
+  formula does), with any number of its parameters varying between items
   (on a grid up to five, by Laplace's approximation beyond)
   (multivariate normal on their natural scale, or on a log scale with a
   ``LinkedPathModel``; every pair correlated, none, or blocks of them,
   ``random_effects=``) and the rest common;
+- or several markers (``path_model`` a dict), each with its own path,
+  noise and effects in the hazard, their varying parameters correlated
+  across the markers (up to eight in all; see :ref:`several markers
+  <joint-several-markers>`);
 - a Weibull proportional hazards survival part (``JointPH(Weibull,
   path_model)``; ``WeibullJointPH`` is the line; other baselines are
   refused) in the path's current value, its slope, the area under it, or
@@ -2066,7 +2813,8 @@ The joint model (#891) is the standard one. It has:
   truncation;
 - competing failure modes with the proportional hazards part (the
   failures' event types): a baseline, coefficients and effects for each
-  mode, any of them shared (``shared=``), see :ref:`failure modes
+  mode (with several markers an effect of each marker's link), any of
+  them shared (``shared=``), see :ref:`failure modes
   <joint-failure-modes>`;
 - predictions for one item given its readings, with Wald (delta method)
   bounds, as arrays (``sf``, ``ff``, ``cb``) or as one item's dynamic
@@ -2078,9 +2826,10 @@ The joint model (#891) is the standard one. It has:
 - the quick, approximate two-stage fit (``how="two-stage"``) for a first
   look and for comparison.
 
-Not yet (see #891's roadmap): spline paths; other baselines (a
+Not yet (see #891's roadmap): other baselines (a
 log-normal or log-logistic one for the accelerated part, whose risk can
-rise and then fall, and spline baselines); several markers. The
+rise and then fall, and spline baselines); a shared health index of
+several markers (see :ref:`several markers <joint-several-markers>`). The
 accelerated part has not yet been compared with R's ``JM``
 (``method = "weibull-AFT-aGH"``, the same model) on reference data, nor
 had its prediction band put through a calibration study. The two-stage fit
@@ -2104,6 +2853,12 @@ References
   longitudinal data measured with error. *Biometrics*, 53, 330--339.
 - Tsiatis, A. A. and Davidian, M. (2004). Joint modeling of longitudinal and
   time-to-event data: an overview. *Statistica Sinica*, 14, 809--834.
+- Self, S. G. and Liang, K.-Y. (1987). Asymptotic properties of maximum
+  likelihood estimators and likelihood ratio tests under nonstandard
+  conditions. *Journal of the American Statistical Association*, 82,
+  605--610.
+- Stram, D. O. and Lee, J. W. (1994). Variance components testing in the
+  longitudinal mixed effects model. *Biometrics*, 50, 1171--1177.
 
 API reference
 -------------

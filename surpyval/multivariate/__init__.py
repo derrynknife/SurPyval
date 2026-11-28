@@ -18,6 +18,7 @@ Accessed as a package, mirroring ``surpyval.recurrent``::
     model.random(1000)
 """
 
+from .nonparametric import BivariateNonParametric, Dabrowska
 from .parametric import (
     AMH,
     Clayton,
@@ -46,4 +47,6 @@ __all__ = [
     "AMH",
     "StudentT",
     "Vine",
+    "Dabrowska",
+    "BivariateNonParametric",
 ]

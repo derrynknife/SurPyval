@@ -215,6 +215,8 @@ class BandsMixin:
         data: dict[str, Any]
         _band_n: float | None
 
+        def _scale_name(self, method: str, bound_type: Any) -> Any: ...
+
         def _bounds_within_support(
             self,
             x: npt.ArrayLike,
@@ -355,11 +357,13 @@ class BandsMixin:
             the observed values.
         method : ('hall-wellner', 'nair'), str, optional
             The type of band. Defaults to 'hall-wellner'.
-        bound_type : ('arcsine', 'exp', 'normal'), str, optional
+        bound_type : ('arcsine', 'log-log', 'plain'), str, optional
             The scale the band is applied on: 'arcsine' the
-            arcsine-square-root of the survival function, 'exp' its
-            log(-log), as the pointwise ``cb()`` default, and 'normal' the
-            survival function itself. 'arcsine' and 'exp' keep the band
+            arcsine-square-root of the survival function, 'log-log' its
+            log(-log), as the pointwise ``cb()`` default, and 'plain' the
+            survival function itself ('exp' and 'normal' until v0.30,
+            still accepted with a warning). 'arcsine' and 'log-log' keep
+            the band
             within [0, 1]. Defaults to 'arcsine', the one that holds its
             level from the first event on (see above).
         alpha_ci : scalar, optional
@@ -430,7 +434,8 @@ class BandsMixin:
             )
         check_alpha_ci(alpha_ci)
         check_option("method", method, ("hall-wellner", "nair"))
-        check_option("bound_type", bound_type, ("arcsine", "exp", "normal"))
+        bound_type = self._scale_name("band", bound_type)
+        check_option("bound_type", bound_type, ("arcsine", "log-log", "plain"))
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
                 "Model has no variance estimate so confidence bands "
@@ -501,14 +506,14 @@ class BandsMixin:
                 # a few failures is far from normal (#390).
                 lower = survival_bound("arcsine", self.R, -half_width)
                 upper = survival_bound("arcsine", self.R, half_width)
-            elif bound_type == "exp":
+            elif bound_type == "log-log":
                 # Band applied on the log(-log) scale, as the pointwise
                 # exponential Greenwood bounds are.
-                lower = survival_bound("exp", self.R, -half_width)
-                upper = survival_bound("exp", self.R, half_width)
+                lower = survival_bound("log-log", self.R, -half_width)
+                upper = survival_bound("log-log", self.R, half_width)
             else:
-                lower = survival_bound("normal", self.R, -half_width)
-                upper = survival_bound("normal", self.R, half_width)
+                lower = survival_bound("plain", self.R, -half_width)
+                upper = survival_bound("plain", self.R, half_width)
 
             lower = np.where(valid, lower, np.nan)
             upper = np.where(valid, upper, np.nan)

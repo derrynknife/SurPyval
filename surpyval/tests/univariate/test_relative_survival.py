@@ -294,7 +294,7 @@ def test_bounds():
     )
     S = np.exp(-H)
     np.testing.assert_allclose(
-        model.cb(t, bound_type="normal"),
+        model.cb(t, bound_type="plain"),
         np.c_[S - z * S * se, S + z * S * se],
         rtol=1e-12,
     )

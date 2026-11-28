@@ -16,6 +16,8 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+_LN2 = float(np.log(2.0))
+
 
 class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
     r"""
@@ -221,11 +223,22 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
         # -inf where they underflowed (1e-400 at shape 1) and lost digits
         # where they agreed (#458). No mass below k = 1.
         log_before, step, _ = self._steps(x, q, beta)
-        hazard = -np.expm1(step)
+        # log(1 - e^step) from whichever of expm1 and log1p keeps its
+        # digits: log(-expm1(step)) lost 2.9e-11 of a log hazard of -1e-6
+        # at q = 1e-6, where 1 - q was rounded (#1300). Each branch at a
+        # safe argument, for the gradient.
+        near = step > -_LN2
+        far_step = np.where(near, -1.0, step)
+        near_step = np.where(near, step, -1.0)
+        log_hazard = np.where(
+            near,
+            np.log(-np.expm1(near_step)),
+            np.log1p(-np.exp(far_step)),
+        )
         return np.where(
             x < 1.0,
             -np.inf,
-            log_before + np.log(np.where(x < 1.0, 1.0, hazard)),
+            log_before + np.where(x < 1.0, 0.0, log_hazard),
         )
 
 

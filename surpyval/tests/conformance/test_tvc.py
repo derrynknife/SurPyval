@@ -449,6 +449,43 @@ def test_bounds_keep_the_query_shape(case):
 
 
 @pytest.mark.parametrize("case", TVC_CASES)
+def test_qf_tvc_inverts_hf_tvc_from_an_age(case):
+    # qf_tvc is the age at which Hf_tvc from ``start`` reaches -log(1 - p),
+    # along a constant path and a ramp; Hf_tvc from ``start`` is
+    # -log sf_tvc(given=start).
+    model = fitted(case)
+    if not _has(case, model, "qf_tvc"):
+        return
+    kw = case.call_kwargs
+    if kw:
+        return
+    z = np.asarray(_rows(case)[1], dtype=float)
+    start = float(np.median(case.x))
+    if _real_line(model):
+        start = max(start, 0.0)
+    ramp = CovariatePath.from_points([0.0, 2 * start + 1], [z, 0.5 * z])
+    p = np.array([0.05, 0.5, 0.95])
+    with warnings.catch_warnings():
+        # An additive hazard negative somewhere warns (#376).
+        warnings.simplefilter("ignore")
+        for path in (_constant_path(z), ramp):
+            q = model.qf_tvc(p, path, start=start)
+            H = model.Hf_tvc(q, path, start=start)
+            ok = np.isfinite(q)
+            np.testing.assert_allclose(
+                H[ok], -np.log1p(-p[ok]), rtol=1e-8, atol=0
+            )
+            assert np.all(q[ok] > start)
+            x = np.asarray(case.x, dtype=float)
+            sf = model.sf_tvc(x, path, given=start)
+            Hs = model.Hf_tvc(x, path, start=start)
+            fine = np.isfinite(sf) & (sf > 0)
+            np.testing.assert_allclose(
+                Hs[fine], -np.log(sf[fine]), rtol=1e-12, atol=1e-15
+            )
+
+
+@pytest.mark.parametrize("case", TVC_CASES)
 def test_constant_path_mean_is_the_integral_of_sf(case):
     from scipy.integrate import quad
 

@@ -38,7 +38,6 @@ from surpyval.univariate.parametric.fitters.runaway import (  # noqa: F401
 )
 from surpyval.univariate.parametric.parametric_fitter import Boxable, Numeric
 from surpyval.utils import (
-    _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
 )
@@ -52,7 +51,7 @@ from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._aliasing import (
     aliased_columns,
@@ -399,7 +398,8 @@ class HazardIdentitiesMixin:
 #
 # - PH, H(x | Z) = exp(beta'Z) H0(x): H0 at Z = 0 is exp(-s) times H0 at
 #   the centre -- a scale change for Weibull, Rayleigh and Exponential, a
-#   location shift for Gumbel (H0 = exp((x - mu) / sigma)).
+#   change of rate for Gompertz, a location shift for Gumbel (H0 =
+#   exp((x - mu) / sigma)).
 # - AFT, H(x | Z) = H0(exp(beta'Z) x): time at Z = 0 is time at the
 #   centre scaled by exp(s), so any scale family maps (a scale parameter
 #   times exp(s), a rate times exp(-s), a log-time location plus s, and
@@ -418,6 +418,21 @@ class HazardIdentitiesMixin:
 # covariates as given, as are the additive hazards models, whose term
 # beta'Z has no exp to overflow. On covariates far from 0 such a fit may
 # fail; ``center=True`` is the way round it.
+
+
+def origin_entry(kind: str | None, dist: Any) -> Any:
+    """The :data:`ORIGIN_MAPS` entry of ``kind`` with the built-in
+    distribution ``dist``, or ``None``. A ``CustomDistribution`` has none,
+    whatever its name: the maps read the built-in's parameters in the
+    built-in's order, which a custom one named ``"Gompertz"`` (H = nu
+    (e^{bx} - 1), parameters ``nu, b``) does not share."""
+    from surpyval.univariate.parametric.distributions.custom_distribution import (  # noqa: E501
+        CustomDistribution,
+    )
+
+    if isinstance(dist, CustomDistribution):
+        return None
+    return ORIGIN_MAPS.get((kind or "", canonical_name(dist) or ""))
 
 
 def _ph_weibull(p: Any, s: Any) -> list:
@@ -443,6 +458,10 @@ ORIGIN_MAPS: "dict[tuple[str, str], tuple[tuple[int, ...], Callable]]" = {
         (0,),
         lambda p, s: [p[0] * np.exp(s / 2.0)],
     ),
+    (PROPORTIONAL_HAZARD, "Gompertz"): (
+        (1,),
+        lambda p, s: [p[0], p[1] * np.exp(-s)],
+    ),
     (PROPORTIONAL_HAZARD, "Gumbel"): (
         (0,),
         lambda p, s: [p[0] + p[1] * s, p[1]],
@@ -459,6 +478,23 @@ ORIGIN_MAPS: "dict[tuple[str, str], tuple[tuple[int, ...], Callable]]" = {
     (ACCELERATED_FAILURE_TIME, "LogNormal"): (
         (0,),
         lambda p, s: [p[0] + s, p[1]],
+    ),
+    (ACCELERATED_FAILURE_TIME, "Gompertz"): (
+        (0, 1),
+        lambda p, s: [p[0] * np.exp(-s), p[1] * np.exp(-s)],
+    ),
+    (ACCELERATED_FAILURE_TIME, "InverseGaussian"): ((0, 1), _both_scale_up),
+    (ACCELERATED_FAILURE_TIME, "BirnbaumSaunders"): (
+        (1,),
+        lambda p, s: [p[0], p[1] * np.exp(s)],
+    ),
+    (ACCELERATED_FAILURE_TIME, "GeneralizedF"): (
+        (0,),
+        lambda p, s: [p[0] + s, *p[1:]],
+    ),
+    (ACCELERATED_FAILURE_TIME, "GeneralizedGamma"): (
+        (0,),
+        lambda p, s: [p[0] + s, *p[1:]],
     ),
     (ACCELERATED_FAILURE_TIME, "Normal"): ((0, 1), _both_scale_up),
     (ACCELERATED_FAILURE_TIME, "Logistic"): ((0, 1), _both_scale_up),
@@ -686,9 +722,7 @@ class Centring:
             return None
         if center:
             return cls(covariate_center(Z, n), fitter.k_dist)
-        entry = ORIGIN_MAPS.get(
-            (kind or "", canonical_name(fitter.dist) or "")
-        )
+        entry = origin_entry(kind, fitter.dist)
         if entry is None:
             return None
         moved, move = entry
@@ -913,7 +947,7 @@ def alias_coefficients(
         return fixed
     n = np.asarray(n, dtype=float).reshape(-1)
     Zf = Z[:, free]
-    intercept = (kind or "", canonical_name(fitter.dist) or "") in ORIGIN_MAPS
+    intercept = origin_entry(kind, fitter.dist) is not None
     if intercept:
         Zf = Zf - covariate_center(Zf, n)
         constant = constant_columns(Z[:, free])
@@ -1204,7 +1238,7 @@ def finite_start(
                     "The log-likelihood is not finite at the supplied "
                     "`init`, so the fit cannot start there; starting from "
                     "the default initial values instead.",
-                    stacklevel=_caller_stacklevel(),
+                    stacklevel=caller_stacklevel(),
                 )
                 return alt
     raise ValueError(

@@ -25,7 +25,7 @@ hold the rest. ``help(surpyval.Weibull)`` and the other classes document
 each model, with examples.
 """
 
-__version__ = "0.29"
+__version__ = "0.30"
 
 # First: autograd's special functions without scipy.stats (#470)
 from surpyval import _autograd_special  # noqa: F401  # isort: skip
@@ -66,6 +66,7 @@ from surpyval.univariate.parametric import (
     Beta4,
     BetaGeometric,
     Binomial,
+    BirnbaumSaunders,
     CustomDistribution,
     DiscreteWeibull,
     Discretize,
@@ -76,11 +77,15 @@ from surpyval.univariate.parametric import (
     Galton,
     Gamma,
     Gauss,
+    GeneralizedF,
+    GeneralizedGamma,
     Geometric,
+    Gompertz,
     Gumbel,
     GumbelLEV,
     Hypoexponential,
     InstantlyOccurs,
+    InverseGaussian,
     LikelihoodContour,
     Logistic,
     LogLogistic,
@@ -112,6 +117,7 @@ from surpyval.utils.event_history_data import (  # isort: skip
 )
 
 from surpyval.utils.surpyval_data import SurpyvalData  # isort: skip
+from surpyval.utils.nevada import NevadaTable  # isort: skip
 from surpyval.utils.measurements import Measurements  # isort: skip
 from surpyval.utils.item_history import ItemHistory  # isort: skip
 from surpyval.utils.item_lifetime import ItemLifetime  # isort: skip
@@ -157,6 +163,7 @@ _LAZY = {
             "CovariatePath",
             "CoxFrailty",
             "CoxMixedEffects",
+            "CoxAalen",
             "CoxPH",
             "ExponentialAFT",
             "ExponentialAH",
@@ -193,6 +200,7 @@ _LAZY = {
             "ProportionalHazardsFitter",
             "ProportionalOdds",
             "QuantileRegression",
+            "RankAFT",
             "RandomEffect",
             "RoystonParmarPH",
             "RoystonParmarPO",
@@ -226,6 +234,12 @@ _LAZY = {
             "LogNormalMixtureCure",
             "MixtureCure",
             "WeibullMixtureCure",
+            "ExponentialPromotionTimeCure",
+            "GammaPromotionTimeCure",
+            "LogLogisticPromotionTimeCure",
+            "LogNormalPromotionTimeCure",
+            "PromotionTimeCure",
+            "WeibullPromotionTimeCure",
             "ExponentialZeroInflated",
             "GammaZeroInflated",
             "LogLogisticZeroInflated",
@@ -294,6 +308,8 @@ _LAZY = {
             "PanelMultiStateRegression",
             "ParametricMultiState",
             "ParametricMultiStateRegression",
+            "ParametricPanelMultiState",
+            "ParametricPanelMultiStateRegression",
             "TransitionMatrix",
         ),
         "surpyval.multistate",
@@ -365,12 +381,17 @@ _LAZY = {
             "brier_score",
             "compare_concordance",
             "concordance_index",
+            "conformal_lower_bound",
+            "ConformalLowerBound",
+            "d_calibration",
+            "DCalibration",
             "dynamic_auc",
             "dynamic_brier",
             "dynamic_calibration",
             "DynamicAccuracy",
             "DynamicCalibration",
             "integrated_brier_score",
+            "pit_values",
             "PredictionScores",
             "score_predictions",
             "survival_probability",
@@ -416,6 +437,7 @@ __all__ = [
     "Beta",
     "Beta4",
     "BetaGeometric",
+    "BirnbaumSaunders",
     "Binomial",
     "CustomDistribution",
     "DiscreteWeibull",
@@ -427,11 +449,15 @@ __all__ = [
     "Galton",
     "Gamma",
     "Gauss",
+    "GeneralizedF",
+    "GeneralizedGamma",
     "Geometric",
+    "Gompertz",
     "Gumbel",
     "GumbelLEV",
     "Hypoexponential",
     "InstantlyOccurs",
+    "InverseGaussian",
     "Logistic",
     "LogLogistic",
     "LogNormal",
@@ -468,6 +494,7 @@ __all__ = [
     "ItemLifetime",
     "Measurements",
     "SurpyvalData",
+    "NevadaTable",
     "handle_xicn",
     # Model selection, forecasting and serialisation
     "fit_best",
@@ -497,6 +524,8 @@ if TYPE_CHECKING:
         WienerProcess,
     )
     from surpyval.metrics import (
+        ConformalLowerBound,
+        DCalibration,
         DynamicAccuracy,
         DynamicCalibration,
         PredictionScores,
@@ -504,10 +533,13 @@ if TYPE_CHECKING:
         brier_score,
         compare_concordance,
         concordance_index,
+        conformal_lower_bound,
+        d_calibration,
         dynamic_auc,
         dynamic_brier,
         dynamic_calibration,
         integrated_brier_score,
+        pit_values,
         score_predictions,
         survival_probability,
     )
@@ -518,6 +550,8 @@ if TYPE_CHECKING:
         PanelMultiStateRegression,
         ParametricMultiState,
         ParametricMultiStateRegression,
+        ParametricPanelMultiState,
+        ParametricPanelMultiStateRegression,
         TransitionMatrix,
     )
     from surpyval.recurrent import (
@@ -601,22 +635,28 @@ if TYPE_CHECKING:
         Distributional,
         ExponentialDistributional,
         ExponentialMixtureCure,
+        ExponentialPromotionTimeCure,
         ExponentialZeroInflated,
         GammaDistributional,
         GammaMixtureCure,
+        GammaPromotionTimeCure,
         GammaZeroInflated,
         GumbelDistributional,
         LogisticDistributional,
         LogLogisticDistributional,
         LogLogisticMixtureCure,
+        LogLogisticPromotionTimeCure,
         LogLogisticZeroInflated,
         LogNormalDistributional,
         LogNormalMixtureCure,
+        LogNormalPromotionTimeCure,
         LogNormalZeroInflated,
         MixtureCure,
         NormalDistributional,
+        PromotionTimeCure,
         WeibullDistributional,
         WeibullMixtureCure,
+        WeibullPromotionTimeCure,
         WeibullZeroInflated,
         ZeroInflated,
     )
@@ -672,11 +712,12 @@ _ELSEWHERE = {
 }
 
 # Base fitters, fitted models, results and plots, which a call returns
-# rather than a user types: deprecated at the top level in v0.29 (a
-# FutureWarning naming the subpackage; removed in v0.30), they stay in
-# their subpackages for type hints and ``isinstance``. The base fitters a
-# user builds a model with (``ProportionalHazardsFitter``) and
-# ``MixtureModel``, which a user constructs, stay here.
+# rather than a user types: deprecated at the top level in v0.29 and
+# removed in v0.30, they live in their subpackages for type hints and
+# ``isinstance``; ``surpyval.<name>`` raises an error naming the
+# subpackage. The base fitters a user builds a model with
+# (``ProportionalHazardsFitter``) and ``MixtureModel``, which a user
+# constructs, stay here.
 _MOVED = {
     **dict.fromkeys(
         ("JointModel",),
@@ -756,21 +797,15 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
         if name in DATED_DATA_FUNCTIONS:
             return dated_data_function(name)
         if name in _MOVED:
-            from surpyval.utils.deprecation import REMOVED_IN, renamed_name
-
-            home = _MOVED[name]
-            return renamed_name(
-                "surpyval",
-                name,
-                f"{home}.{name}",
-                getattr(import_module(home), name),
-                REMOVED_IN,
-                FutureWarning,
+            message = _removed_message(
+                f"module 'surpyval' has no attribute {name!r}",
+                (
+                    f"import it from {_MOVED[name]} (from {_MOVED[name]} "
+                    f"import {name})",
+                    "0.30",
+                ),
             )
-        if name == "concordance_estimate":
-            # Deprecated in v0.29: surpyval.metrics warns as it hands it.
-            return getattr(import_module("surpyval.metrics"), name)
-        if name in _REMOVED_TOP_LEVEL:
+        elif name in _REMOVED_TOP_LEVEL:
             message = _removed_message(
                 f"module 'surpyval' has no attribute {name!r}",
                 _REMOVED_TOP_LEVEL[name],

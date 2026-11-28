@@ -6,6 +6,7 @@ from .concordance import (
     compare_concordance,
     concordance_index,
 )
+from .conformal import ConformalLowerBound, conformal_lower_bound
 from .dynamic import (
     DynamicAccuracy,
     DynamicCalibration,
@@ -13,6 +14,7 @@ from .dynamic import (
     dynamic_brier,
     dynamic_calibration,
 )
+from .pit import DCalibration, d_calibration, pit_values
 from .validation import (
     PredictionScores,
     Score,
@@ -27,6 +29,8 @@ from .validation import (
 __all__ = [
     "ConcordanceComparison",
     "ConcordanceResult",
+    "ConformalLowerBound",
+    "DCalibration",
     "DynamicAccuracy",
     "DynamicCalibration",
     "PredictionScores",
@@ -36,10 +40,13 @@ __all__ = [
     "brier_score",
     "compare_concordance",
     "concordance_index",
+    "conformal_lower_bound",
+    "d_calibration",
     "dynamic_auc",
     "dynamic_brier",
     "dynamic_calibration",
     "integrated_brier_score",
+    "pit_values",
     "score_predictions",
     "survival_probability",
 ]
@@ -47,19 +54,26 @@ __all__ = [
 
 def __getattr__(name: str) -> Any:
     if name == "concordance_estimate":
-        from surpyval.utils.deprecation import REMOVED_IN, renamed_name
-
-        from .concordance import concordance_with_se
-
-        return renamed_name(
-            "surpyval.metrics",
-            name,
-            "concordance_index(x, c, risk, weighting=..., tau=..., "
-            "alpha_ci=...)",
-            concordance_with_se,
-            REMOVED_IN,
-            FutureWarning,
+        from surpyval.utils.removed_names import (
+            CONCORDANCE_ESTIMATE_REMOVED,
+            from_import,
+            removed_message,
         )
+
+        message = removed_message(
+            f"module 'surpyval.metrics' has no attribute {name!r}",
+            CONCORDANCE_ESTIMATE_REMOVED,
+        )
+        if from_import():
+            raise ImportError(
+                message.replace(
+                    "module 'surpyval.metrics' has no attribute",
+                    "cannot import name",
+                    1,
+                ),
+                name="surpyval.metrics",
+            )
+        raise AttributeError(message)
     raise AttributeError(
         f"module 'surpyval.metrics' has no attribute {name!r}"
     )

@@ -100,6 +100,104 @@ EXPONENTIAL = Family(
     log_ff=lambda torch, x, rate: log1mexp(torch, -rate * x),
 )
 
+
+# Gompertz: shape a, rate b; H = (b / a) expm1(a x), and b x times the
+# series of expm1(y) / y below |a x| = 1e-3 (as surpyval's own)
+def _gompertz_h(torch: Any, x: Any, a: Any, b: Any) -> Any:
+    y = a * x
+    small = torch.abs(y) < 1e-3
+    ys = torch.where(small, y, 0.0)
+    series = 1.0 + ys * (
+        1.0 / 2 + ys * (1.0 / 6 + ys * (1.0 / 24 + ys * (1.0 / 120)))
+    )
+    a_l = torch.where(small, 1.0, a)
+    x_l = torch.where(small, 0.0, x)
+    return torch.where(small, b * x * series, b / a_l * torch.expm1(a_l * x_l))
+
+
+GOMPERTZ = Family(
+    log_df=lambda torch, x, a, b: (
+        torch.log(b) + a * x - _gompertz_h(torch, x, a, b)
+    ),
+    log_sf=lambda torch, x, a, b: -_gompertz_h(torch, x, a, b),
+    log_ff=lambda torch, x, a, b: log1mexp(
+        torch, -_gompertz_h(torch, x, a, b)
+    ),
+)
+
+
+# InverseGaussian: mu (mean), lam (shape); a, b = sqrt(lam / x) (x / mu -+ 1).
+# F = Phi(a) + e^{2 lam / mu} Phi(-b), added in logs; above the mean
+# S = phi(a) (M(a) - M(b)), M Mills' ratio, as surpyval's own
+def _ig_ab(torch: Any, x: Any, mu: Any, lam: Any) -> Any:
+    # x = inf, where both are +inf, from a stand-in (0 * inf is NaN)
+    top = torch.isinf(x)
+    x_in = torch.where(top, 1.0, x)
+    r = torch.sqrt(lam / x_in)
+    a = torch.where(top, math.inf, r * (x_in / mu - 1.0))
+    return a, torch.where(top, math.inf, r * (x_in / mu + 1.0))
+
+
+def _ig_log_ff(torch: Any, x: Any, mu: Any, lam: Any) -> Any:
+    a, b = _ig_ab(torch, x, mu, lam)
+    return torch.logaddexp(
+        _log_ndtr(torch, a), 2.0 * lam / mu + _log_ndtr(torch, -b)
+    )
+
+
+def _ig_log_sf(torch: Any, x: Any, mu: Any, lam: Any) -> Any:
+    a, b = _ig_ab(torch, x, mu, lam)
+    above = a > 0
+    a_up = torch.where(above, a, 1.0)
+    b_up = torch.where(above, b, 2.0)
+    mills = math.sqrt(math.pi / 2.0)
+    up = (
+        -(a_up**2) / 2.0
+        - _HALF_LOG_2PI
+        + torch.log(
+            mills * torch.special.erfcx(a_up / _SQRT2)
+            - mills * torch.special.erfcx(b_up / _SQRT2)
+        )
+    )
+    x_dn = torch.where(above, 0.5 * mu + 0.0 * x, x)
+    down = log1mexp(torch, _ig_log_ff(torch, x_dn, mu, lam))
+    return torch.where(above, up, down)
+
+
+INVERSE_GAUSSIAN = Family(
+    log_df=lambda torch, x, mu, lam: (
+        0.5 * (torch.log(lam) - math.log(2.0 * math.pi))
+        - 1.5 * torch.log(x)
+        - lam * (x - mu) ** 2 / (2.0 * mu**2 * x)
+    ),
+    log_sf=_ig_log_sf,
+    log_ff=_ig_log_ff,
+)
+
+
+# BirnbaumSaunders: alpha (shape), beta (scale, the median); F = Phi(xi),
+# xi = (x - beta) / (alpha sqrt(x) sqrt(beta)), as surpyval's own; at
+# x = inf, where that is inf / inf, from a stand-in
+def _bs_xi(torch: Any, x: Any, a: Any, b: Any) -> Any:
+    top = torch.isinf(x)
+    x_in = torch.where(top, 1.0, x)
+    xi = (x_in - b) / (a * torch.sqrt(x_in) * torch.sqrt(b))
+    return torch.where(top, math.inf, xi)
+
+
+BIRNBAUM_SAUNDERS = Family(
+    log_df=lambda torch, x, a, b: (
+        -(_bs_xi(torch, x, a, b) ** 2) / 2.0
+        - _HALF_LOG_2PI
+        + torch.log(x + b)
+        - torch.log(2.0 * a)
+        - 0.5 * torch.log(b)
+        - 1.5 * torch.log(x)
+    ),
+    log_sf=lambda torch, x, a, b: _log_ndtr(torch, -_bs_xi(torch, x, a, b)),
+    log_ff=lambda torch, x, a, b: _log_ndtr(torch, _bs_xi(torch, x, a, b)),
+)
+
 # Rayleigh: sigma; H = x ** 2 / (2 sigma ** 2)
 RAYLEIGH = Family(
     log_df=lambda torch, x, sigma: (
@@ -335,6 +433,120 @@ LOGISTIC = Family(
     log_ff=lambda torch, x, mu, sigma: -softplus(torch, -(x - mu) / sigma),
 )
 
+# GeneralizedGamma: mu, sigma (of the log time) and Q, Prentice's form;
+# w = (ln x - mu) / sigma, q = 1 / Q^2 and the gamma variable u = q e^{Qw}.
+# As surpyval's own (``generalized_gamma.py``) and the PyMC family: near
+# the lognormal (|Q| < 0.1, |eta| <= 1) the tails from Temme's uniform
+# expansion, written in (w, Q) so that it is exact through Q = 0, where
+# the incomplete gamma functions at shapes of 100 and more lose their
+# digits; elsewhere from the incomplete gamma at shape q (``_gamma_pq``,
+# with its derivatives in both arguments).
+_STIRLING = (
+    1.0 / 12.0,
+    -1.0 / 360.0,
+    1.0 / 1260.0,
+    -1.0 / 1680.0,
+    1.0 / 1188.0,
+    -691.0 / 360360.0,
+    1.0 / 156.0,
+)
+_H_SERIES = tuple(1.0 / math.factorial(n + 2) for n in range(14))
+
+
+def _gg_stirlerr(torch: Any, z: Any) -> Any:
+    """``ln Gamma(q) - (q - 1/2) ln q + q - ln sqrt(2 pi)`` at ``q = 1/z``,
+    0 at ``z = 0``: Stirling's series for ``q >= 10``."""
+    small = z <= 0.1
+    zs = torch.where(small, z, 0.0)
+    z2 = zs * zs
+    series: Any = _STIRLING[-1]
+    for c in reversed(_STIRLING[:-1]):
+        series = series * z2 + c
+    q = 1.0 / torch.where(small, 1.0, z)
+    direct = torch.lgamma(q) - (q - 0.5) * torch.log(q) + q - _HALF_LOG_2PI
+    return torch.where(small, series * zs, direct)
+
+
+def _gg_h(torch: Any, y: Any) -> Any:
+    """``(e^y - 1 - y) / y^2``, 1/2 at 0."""
+    small = torch.abs(y) < 0.1
+    ys = torch.where(small, y, 0.0)
+    yl = torch.where(small, 1.0, y)
+    series: Any = _H_SERIES[-1]
+    for c in reversed(_H_SERIES[:-1]):
+        series = series * ys + c
+    return torch.where(small, series, (torch.expm1(yl) - yl) / yl**2)
+
+
+def _gg_log_df(torch: Any, x: Any, mu: Any, sigma: Any, Q: Any) -> Any:
+    w = (torch.log(x) - mu) / sigma
+    return (
+        -_HALF_LOG_2PI
+        - _gg_stirlerr(torch, Q * Q)
+        - (w * w) * _gg_h(torch, Q * w)
+        - torch.log(sigma)
+        - torch.log(x)
+    )
+
+
+def _gg_temme_sum(eta: Any, Q: Any) -> Any:
+    from surpyval.univariate.parametric.distributions._temme import TEMME
+
+    q2 = Q * Q
+    total: Any = 0.0
+    for row in reversed(TEMME):
+        ck: Any = float(row[-1])
+        for c in reversed(row[:-1]):
+            ck = ck * eta + float(c)
+        total = total * q2 + ck
+    return total
+
+
+def _gg_tails(torch: Any, x: Any, mu: Any, sigma: Any, Q: Any) -> Any:
+    """``(ln S, ln F)``."""
+    from surpyval.univariate.parametric.distributions._temme import (
+        ETA_MAX,
+        Q_MAX,
+    )
+
+    w = (torch.log(x) - mu) / sigma
+    w, Q = torch.broadcast_tensors(w, Q)
+    y = Q * w
+    eta = y * torch.sqrt(_gg_h(torch, y)) * _SQRT2
+    temme = (torch.abs(Q) < Q_MAX) & (torch.abs(eta) <= ETA_MAX)
+    # Temme's expansion on its own points
+    w_t = torch.where(temme, w, 0.0)
+    Q_t = torch.where(temme, Q, 0.0)
+    y_t = Q_t * w_t
+    h_t = _gg_h(torch, y_t)
+    r_t = torch.sqrt(h_t)
+    zeta = w_t * r_t
+    upper = zeta >= 0
+    sign = torch.where(upper, 1.0, -1.0)
+    bracket = 0.5 * torch.special.erfcx(torch.abs(zeta)) + sign * Q_t * (
+        _gg_temme_sum(y_t * r_t * _SQRT2, Q_t) / math.sqrt(2.0 * math.pi)
+    )
+    small_t = -(w_t * w_t) * h_t + torch.log(bracket)
+    big_t = log1mexp(torch, small_t)
+    s_t = torch.where(upper, small_t, big_t)
+    f_t = torch.where(upper, big_t, small_t)
+    # the incomplete gamma at shape q elsewhere
+    Q_c = torch.where(temme, 0.5, Q)
+    w_c = torch.where(temme, 0.0, w)
+    q = 1.0 / (Q_c * Q_c)
+    p_c, c_c = _gamma_pq(torch, q, q * torch.exp(Q_c * w_c))
+    positive = Q_c > 0
+    s_c = torch.log(torch.where(positive, c_c, p_c))
+    f_c = torch.log(torch.where(positive, p_c, c_c))
+    return torch.where(temme, s_t, s_c), torch.where(temme, f_t, f_c)
+
+
+GENERALIZED_GAMMA = Family(
+    log_df=_gg_log_df,
+    log_sf=lambda torch, x, mu, sigma, Q: _gg_tails(torch, x, mu, sigma, Q)[0],
+    log_ff=lambda torch, x, mu, sigma, Q: _gg_tails(torch, x, mu, sigma, Q)[1],
+)
+
 # By SurPyval's distribution name (``dist.name``), in the order of
 # ``surpyval.pymc.SUPPORTED``.
 FAMILIES: dict[str, Family] = {
@@ -347,4 +559,8 @@ FAMILIES: dict[str, Family] = {
     "Gumbel": GUMBEL,
     "Logistic": LOGISTIC,
     "Rayleigh": RAYLEIGH,
+    "Gompertz": GOMPERTZ,
+    "InverseGaussian": INVERSE_GAUSSIAN,
+    "GeneralizedGamma": GENERALIZED_GAMMA,
+    "BirnbaumSaunders": BIRNBAUM_SAUNDERS,
 }

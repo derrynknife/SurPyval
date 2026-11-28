@@ -1717,6 +1717,9 @@ class PanelMultiState(_PanelMultiStateBase):
         >>> model.parameter_names
         ['ok -> worn: intensity', 'worn -> failed: intensity']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import frame_column
 
         return cls.fit(
@@ -1879,7 +1882,7 @@ class PanelMultiState(_PanelMultiStateBase):
         from_state: Any = None,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
     ) -> npt.NDArray:
         """
         Pointwise confidence bounds on :meth:`occupancy`, from the
@@ -1895,10 +1898,11 @@ class PanelMultiState(_PanelMultiStateBase):
             One minus the confidence level (default 0.05).
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Which bounds.
-        bound_type : ('exp', 'normal'), str, optional
-            ``'exp'`` (the default) works on the log(-log) scale and
-            keeps the bounds in (0, 1); ``'normal'`` is the estimate plus
-            and minus ``z`` standard errors.
+        bound_type : ('log-log', 'plain'), str, optional
+            ``'log-log'`` (the default) works on the log(-log) scale and
+            keeps the bounds in (0, 1); ``'plain'`` is the estimate plus
+            and minus ``z`` standard errors. (``'exp'`` and ``'normal'``
+            until v0.30, still accepted with a warning.)
 
         Examples
         --------
@@ -1913,7 +1917,7 @@ class PanelMultiState(_PanelMultiStateBase):
         >>> model.cb(2.0, "failed").round(3)
         array([0.041, 0.639])
         """
-        check_bound_args(alpha_ci, bound, bound_type)
+        bound_type = check_bound_args(alpha_ci, bound, bound_type, self)
         p = self.occupancy(x, state, s, from_state)
         se = self.occupancy_se(x, state, s, from_state)
         return self._cb(p, se, alpha_ci, bound, bound_type)
@@ -2120,6 +2124,9 @@ class PanelMultiStateRegression(_PanelMultiStateBase):
         >>> model.covariate_names
         ['heavy']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         import pandas as pd
 
         from surpyval.utils.dataframe import frame_column
@@ -2315,13 +2322,13 @@ class PanelMultiStateRegression(_PanelMultiStateBase):
         from_state: Any = None,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
     ) -> npt.NDArray:
         """
         Pointwise confidence bounds on :meth:`occupancy` (as
         :meth:`PanelMultiState.cb`).
         """
-        check_bound_args(alpha_ci, bound, bound_type)
+        bound_type = check_bound_args(alpha_ci, bound, bound_type, self)
         p = self.occupancy(x, Z, state, s, from_state)
         se = self.occupancy_se(x, Z, state, s, from_state)
         return self._cb(p, se, alpha_ci, bound, bound_type)

@@ -195,9 +195,9 @@ class PredictiveCriterion:
     n : numpy.ndarray
         Each row's count.
     method : str
-        ``"closed form"`` (a conjugate fit), ``"quadrature"`` (a grid or
-        Laplace fit), ``"psis"`` (LOO from draws) or ``"draws"`` (WAIC
-        from draws).
+        ``"closed form"`` (a conjugate fit), ``"quadrature"`` (a grid
+        fit), ``"psis"`` (LOO from draws, including a Laplace fit's) or
+        ``"draws"`` (WAIC from draws).
     pareto_k : numpy.ndarray or None
         LOO from draws: each row's Pareto ``k``; above ``good_k`` the row's
         estimate is unreliable.
@@ -327,9 +327,32 @@ def _points(model: Any) -> tuple[npt.NDArray, npt.NDArray]:
     return post.points[keep], np.log(post.weights[keep])
 
 
+def _counts(model: Any) -> npt.NDArray:
+    """How many units each of the model's rows (a life distribution's
+    data rows; another family's units) stands for."""
+    if hasattr(model, "_unit_counts"):
+        return np.asarray(model._unit_counts(), dtype=float)
+    return np.asarray(model.data.n, dtype=float)
+
+
+def _closed_form(model: Any) -> bool:
+    """Whether the criteria have closed forms for the model: a life
+    distribution's conjugate fit."""
+    return bool(
+        model.method == "conjugate"
+        and model.posterior.exact is not None
+        and not hasattr(model, "_unit_blocks")
+    )
+
+
 def _row_blocks(model: Any, points: npt.NDArray) -> Any:
     """``(rows, ll)`` for blocks of the data's rows: their indices and
-    the log-likelihood of each at every point, ``(points, rows)``."""
+    the log-likelihood of each at every point, ``(points, rows)``. A
+    family other than a life distribution gives its own units (a
+    system's whole history, for a recurrent-event process)."""
+    if hasattr(model, "_unit_blocks"):
+        yield from model._unit_blocks(points)
+        return
     ll = LogLikelihood(
         model.dist, model.data, model.offset, model.lfp, model.zi
     )
@@ -408,8 +431,8 @@ def _log_normal(x: npt.NDArray, mean: Any, var: Any) -> npt.NDArray:
 def waic(model: Any) -> PredictiveCriterion:
     """WAIC of a Bayesian fit; see ``BayesianParametric.waic``."""
     _require_data(model, "waic()")
-    n = np.asarray(model.data.n, dtype=float)
-    if model.method == "conjugate" and model.posterior.exact is not None:
+    n = _counts(model)
+    if _closed_form(model):
         lppd, var, _ = _conjugate(model)
         method = "closed form"
     else:
@@ -420,7 +443,11 @@ def waic(model: Any) -> PredictiveCriterion:
         for rows, ll in _row_blocks(model, points):
             lppd[rows] = logsumexp(log_w[:, None] + ll, axis=0)
             var[rows] = _weighted_moments(ll, w)[1]
-        method = "draws" if model.posterior.kind == "draws" else "quadrature"
+        method = (
+            "draws"
+            if model.posterior.kind in ("draws", "laplace")
+            else "quadrature"
+        )
     res = PredictiveCriterion(
         "waic", lppd - var, lppd, n, method, p_pointwise=var
     )
@@ -439,15 +466,15 @@ def loo(model: Any) -> PredictiveCriterion:
     """Leave-one-out cross-validation of a Bayesian fit; see
     ``BayesianParametric.loo``."""
     _require_data(model, "loo()")
-    n = np.asarray(model.data.n, dtype=float)
+    n = _counts(model)
     post = model.posterior
-    if model.method == "conjugate" and post.exact is not None:
+    if _closed_form(model):
         lppd, _, elpd = _conjugate(model)
         return PredictiveCriterion("loo", elpd, lppd, n, "closed form")
     points, log_w = _points(model)
     lppd = np.empty(len(n))
     elpd = np.empty(len(n))
-    if post.kind != "draws":
+    if post.kind not in ("draws", "laplace"):
         faces = _faces(post)
         edge = None if faces is None else np.empty(len(n))
         for rows, ll in _row_blocks(model, points):
@@ -611,6 +638,15 @@ def _same_data(a: Any, b: Any) -> bool:
     return True
 
 
+def _same_fitted_data(a: Any, b: Any) -> bool:
+    """Whether two fits are to the same data (a family other than a life
+    distribution says so itself; fits of different families' kinds of
+    data are not)."""
+    if hasattr(a, "_same_data") or hasattr(b, "_same_data"):
+        return bool(hasattr(a, "_same_data") and a._same_data(b))
+    return _same_data(a.data, b.data)
+
+
 def compare(models: Any, criterion: str = "loo") -> PredictiveComparison:
     """
     Bayesian fits to the same data, ranked by how well each predicts an
@@ -626,8 +662,9 @@ def compare(models: Any, criterion: str = "loo") -> PredictiveComparison:
     Parameters
     ----------
     models : dict or list
-        The fits (``BayesianParametric``), by name; a list is named by
-        each fit's distribution (numbered where two share one).
+        The fits (``BayesianParametric``, or another family's Bayesian
+        fit), by name; a list is named by each fit's distribution or
+        family (numbered where two share one).
     criterion : str, optional
         ``"loo"`` (the default) or ``"waic"``.
 
@@ -651,6 +688,7 @@ def compare(models: Any, criterion: str = "loo") -> PredictiveComparison:
     Exponential     -312.58     2.72    0.19     -17.55     3.25
     """
     from surpyval.bayes.model import BayesianParametric
+    from surpyval.bayes.result import BayesianResult
 
     if criterion not in ("loo", "waic"):
         raise ValueError(
@@ -661,7 +699,14 @@ def compare(models: Any, criterion: str = "loo") -> PredictiveComparison:
     else:
         named = {}
         fits = list(models)
-        names = [getattr(m.dist, "name", type(m).__name__) for m in fits]
+        names = [
+            (
+                m.target.family
+                if isinstance(m, BayesianResult)
+                else getattr(m.dist, "name", type(m).__name__)
+            )
+            for m in fits
+        ]
         for i, (name, m) in enumerate(zip(names, fits)):
             if names.count(name) > 1:
                 name = f"{name} {names[: i + 1].count(name)}"
@@ -672,7 +717,7 @@ def compare(models: Any, criterion: str = "loo") -> PredictiveComparison:
             f"{criterion}()."
         )
     for name, m in named.items():
-        if not isinstance(m, BayesianParametric):
+        if not isinstance(m, (BayesianParametric, BayesianResult)):
             raise ValueError(
                 f"{name!r} is a {type(m).__name__}, not a Bayesian fit: "
                 "WAIC and LOO average over a posterior. Compare "
@@ -681,7 +726,7 @@ def compare(models: Any, criterion: str = "loo") -> PredictiveComparison:
         _require_data(m, "compare")
     first_name, first = next(iter(named.items()))
     for name, m in named.items():
-        if not _same_data(first.data, m.data):
+        if not _same_fitted_data(first, m):
             raise ValueError(
                 f"{name!r} and {first_name!r} were fitted to different "
                 "data; their predictive densities are of different "

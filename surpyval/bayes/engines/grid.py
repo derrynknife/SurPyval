@@ -60,11 +60,11 @@ REPLACE_AT = 15.0
 STRETCH = 3.0
 
 
-def _z_of(u: npt.NDArray) -> npt.NDArray:
+def grid_z_of(u: npt.NDArray) -> npt.NDArray:
     return STRETCH * np.sinh(u / STRETCH)
 
 
-def _u_of(z: float) -> float:
+def grid_u_of(z: float) -> float:
     return float(STRETCH * np.arcsinh(z / STRETCH))
 
 
@@ -334,12 +334,90 @@ def hessian(f: LogPost, x: npt.NDArray, h: npt.NDArray) -> npt.NDArray:
     return H
 
 
+def start_scales(log_post: LogPost, x: npt.NDArray) -> npt.NDArray:
+    """A typical size for each coordinate of ``log_post`` at ``x``, for
+    :func:`find_mode`'s ``scale`` where nothing better is known: one
+    over the square root of minus the diagonal of its Hessian there, by
+    central differences with a step relative to the coordinate (``1e-2``
+    to ``1e-4`` of it, or of 1 at 0), the first that gives a positive
+    curvature. 1 where none does.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.bayes.engines.grid import start_scales
+    >>> sd = np.array([2e-6, 0.5])
+    >>> def log_post(x):
+    ...     z = (np.atleast_2d(x) - [1e-5, 0.0]) / sd
+    ...     return -0.5 * np.sum(z**2, axis=1)
+    >>> np.round(start_scales(log_post, np.array([1.2e-5, 0.3])) / sd, 6)
+    array([1., 1.])
+    """
+    x = np.asarray(x, dtype=float)
+    d = x.size
+    out = np.ones(d)
+    with np.errstate(all="ignore"):
+        f0 = float(np.asarray(log_post(x[None, :]))[0])
+        if not np.isfinite(f0):
+            return out
+        for j in range(d):
+            size = abs(x[j]) if x[j] != 0 else 1.0
+            for rel in (1e-2, 1e-3, 1e-4):
+                h = rel * size
+                e = np.zeros(d)
+                e[j] = h
+                v = np.asarray(log_post(np.vstack([x + e, x - e])), float)
+                c = -(v[0] - 2.0 * f0 + v[1]) / h**2
+                if np.isfinite(c) and c > 0:
+                    out[j] = 1.0 / np.sqrt(c)
+                    break
+    return out
+
+
 def find_mode(
-    log_post: LogPost, starts: list[npt.NDArray]
+    log_post: LogPost,
+    starts: list[npt.NDArray],
+    scale: npt.ArrayLike | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, float]:
     """The peak of ``log_post`` from the best of ``starts``, with the
     covariance of the normal approximation there (the inverse of minus
-    the Hessian, made positive definite where it is not)."""
+    the Hessian, made positive definite where it is not).
+
+    ``scale`` is the typical size of each coordinate (by default 1 for
+    every one). The search, its convergence test and its
+    finite-difference steps work in the coordinates divided by it, so
+    that a coordinate on a scale of millions (the coefficient of a
+    covariate in micro-units) is searched as one of order 1: the
+    gradient and step tolerances below are absolute, and in the
+    coordinates' own units such a coordinate's gradient is below them
+    long before its peak. The peak and the covariance are returned in
+    the coordinates' own units.
+
+    Examples
+    --------
+    A normal log density whose second coordinate is a million times the
+    first's spread: with ``scale`` its peak is found from a start 0.5
+    standard deviations away.
+
+    >>> import numpy as np
+    >>> from surpyval.bayes.engines.grid import find_mode
+    >>> sd = np.array([1.0, 1e6])
+    >>> def log_post(x):
+    ...     return -0.5 * np.sum((np.atleast_2d(x) / sd) ** 2, axis=1)
+    >>> mode, cov, _ = find_mode(log_post, [np.array([0.5, 5e5])], sd)
+    >>> bool(np.all(np.abs(mode / sd) < 1e-6))
+    True
+    >>> np.round(np.sqrt(np.diag(cov)) / sd, 6)
+    array([1., 1.])
+    """
+    unit = None if scale is None else np.asarray(scale, dtype=float).ravel()
+    if unit is not None:
+        u_mode, u_cov, value = find_mode(
+            lambda u: log_post(np.atleast_2d(u) * unit),
+            [np.asarray(s, dtype=float) / unit for s in starts],
+        )
+        cov_out: npt.NDArray = u_cov * unit[:, None] * unit[None, :]
+        return u_mode * unit, cov_out, value
 
     def neg(x: npt.NDArray) -> float:
         v = float(log_post(x[None, :])[0])
@@ -387,7 +465,7 @@ def find_mode(
         if not np.all(np.isfinite(H)):
             H = np.eye(d)
         vals, vecs = np.linalg.eigh(H)
-        vals = np.where(vals > 1e-8, vals, 1.0 / 16.0)
+        vals = np.where(vals > 0, vals, 1.0 / 16.0)
         cov = (vecs / vals) @ vecs.T
         h = np.clip(0.2 * np.sqrt(np.diag(cov)), 1e-5, 1.0)
     return x, cov, -best[0]
@@ -450,9 +528,9 @@ def run_grid(
         tol = TOLERANCE[d]
     L = np.linalg.cholesky(cov)
     log_det_l = float(np.sum(np.log(np.diag(L))))
-    lo = np.full(d, -_u_of(START_HALF_WIDTH))
-    hi = np.full(d, _u_of(START_HALF_WIDTH))
-    u_max = _u_of(MAX_HALF_WIDTH)
+    lo = np.full(d, -grid_u_of(START_HALF_WIDTH))
+    hi = np.full(d, grid_u_of(START_HALF_WIDTH))
+    u_max = grid_u_of(MAX_HALF_WIDTH)
     m0 = int(points) if points is not None else START_POINTS[d]
     m_max = max(MAX_POINTS[d], m0)
     m = np.full(d, m0)
@@ -463,7 +541,7 @@ def run_grid(
 
     def evaluate(shift: bool) -> tuple:
         u, step = _lattice(lo, hi, m, shift)
-        phi = centre + _z_of(u) @ L.T
+        phi = centre + grid_z_of(u) @ L.T
         with np.errstate(all="ignore"):
             lp = np.asarray(log_post(phi), dtype=float)
         lp = np.where(np.isfinite(lp), lp, -np.inf)
@@ -490,7 +568,9 @@ def run_grid(
         if not grow:
             break
         widened += 1
-        if not replaced and max(np.max(-lo), np.max(hi)) > _u_of(REPLACE_AT):
+        if not replaced and max(np.max(-lo), np.max(hi)) > grid_u_of(
+            REPLACE_AT
+        ):
             # The curvature at the peak understates the posterior's
             # spread (a long or curved ridge): lay the grid again along
             # the spread the grid has found so far, once.
@@ -506,12 +586,12 @@ def run_grid(
                 centre = mean
                 L = np.linalg.cholesky(spread)
                 log_det_l = float(np.sum(np.log(np.diag(L))))
-                lo = np.full(d, -_u_of(START_HALF_WIDTH))
-                hi = np.full(d, _u_of(START_HALF_WIDTH))
+                lo = np.full(d, -grid_u_of(START_HALF_WIDTH))
+                hi = np.full(d, grid_u_of(START_HALF_WIDTH))
                 m = np.full(d, m0)
                 continue
         if max(np.max(-lo), np.max(hi)) > u_max:
-            raise GridError(_improper_message(flat_names))
+            raise GridError(improper_posterior_message(flat_names))
         # each dimension keeps its cells' size as it widens
         m = np.minimum(
             m_max, np.maximum(m, np.ceil((hi - lo) / target) + 1)
@@ -573,13 +653,13 @@ def run_grid(
         refinements=refinements,
         mode=mode,
         cov=cov,
-        half_widths=_z_of(np.maximum(-lo, hi)),
+        half_widths=grid_z_of(np.maximum(-lo, hi)),
         checks={**checks, "widened": widened},
         shape=(2,) + tuple(int(v) for v in m),
     )
 
 
-def _improper_message(flat_names: list[str] | None) -> str:
+def improper_posterior_message(flat_names: list[str] | None) -> str:
     if flat_names:
         names = ", ".join(flat_names)
         which = "which has" if len(flat_names) == 1 else "which have"
@@ -596,33 +676,9 @@ def _improper_message(flat_names: list[str] | None) -> str:
     )
 
 
-def laplace_grid(
-    mode: npt.NDArray,
-    cov: npt.NDArray,
-    points: int | None = None,
-) -> GridResult:
-    """The normal approximation at the peak (Laplace), laid on a grid so
-    that every summary is computed as the grid's are."""
-    d = mode.size
-    m = int(points) if points is not None else START_POINTS.get(d, 25)
-    L = np.linalg.cholesky(cov)
-    lo = np.full(d, -START_HALF_WIDTH)
-    hi = np.full(d, START_HALF_WIDTH)
-    za, step = _lattice(lo, hi, m, False)
-    zb, _ = _lattice(lo, hi, m, True)
-    z = np.vstack([za, zb])
-    lp = -0.5 * np.sum(z**2, axis=1)
-    log_w = lp - logsumexp(lp)
-    return GridResult(
-        phi=mode + z @ L.T,
-        log_w=log_w,
-        log_z=float("nan"),
-        error=float("nan"),
-        points_per_dim=[m] * d,
-        cell=np.repeat((L * step[None, :])[None], len(z), axis=0),
-        refinements=0,
-        mode=mode,
-        cov=cov,
-        half_widths=hi.copy(),
-        shape=(2,) + (m,) * d,
-    )
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_improper_message = improper_posterior_message
+_u_of = grid_u_of
+_z_of = grid_z_of

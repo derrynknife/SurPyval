@@ -30,8 +30,11 @@ from surpyval.univariate.nonparametric import (
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.utils import (
-    _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
     validate_coxph,
@@ -43,6 +46,7 @@ from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
+from surpyval.utils.warnings import caller_stacklevel
 
 from .._aliasing import (
     aliased_columns,
@@ -455,7 +459,7 @@ def _diverged_columns(
 
 
 #: The fix the monotone-likelihood warning names for a fit that
-#: ``CoxPH.fit_firth`` does not take (Fine-Gray, weights).
+#: ``CoxPH.fit(..., firth=True)`` does not take (Fine-Gray, weights).
 PENALISED_ADVICE = (
     "consider removing or coarsening the covariate, or a penalised fit"
 )
@@ -471,8 +475,8 @@ def warn_monotone(
     shared with the Fine-Gray fit, a weighted partial likelihood (#392).
     With ``proportion``, they run off together, in that proportion to
     each other, and no one of them does alone (#728). ``advice`` is the
-    fix named: ``CoxPH.fit_firth`` by default, ``PENALISED_ADVICE`` for a
-    fit it does not take."""
+    fix named: ``CoxPH.fit(..., firth=True)`` by default,
+    ``PENALISED_ADVICE`` for a fit it does not take."""
     if proportion is None:
         what = (
             "the partial likelihood keeps increasing as coefficient(s) {} "
@@ -556,7 +560,7 @@ def _stratified_rows(
                 int(missing.sum()), missing.shape[0]
             ),
             UserWarning,
-            stacklevel=_caller_stacklevel(),
+            stacklevel=caller_stacklevel(),
         )
         obs = [_sub(a, ~missing) for a in obs]
         labels_arr = labels_arr[~missing]
@@ -810,6 +814,106 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                     h0[t] = np.exp(-log_r[t]) * np.sum(1.0 / steps)
         return unique_x, r, d, h0
 
+    def fit_bayes(self, *args: Any, **kwargs: Any) -> Any:
+        """Refuses: a Bayesian fit needs a parametric baseline. Use a
+        parametric proportional hazards fitter (``WeibullPH.fit_bayes``,
+        ``ExponentialPH.fit_bayes``, ...), whose coefficients mean what
+        Cox's do."""
+        raise ValueError(
+            "CoxPH has no fit_bayes: its baseline hazard is semi-parametric "
+            "(a step at every failure), which the Bayesian regressions do "
+            "not cover. Use a parametric proportional hazards fitter, such "
+            "as WeibullPH.fit_bayes(x, Z, ...), whose coefficients are log "
+            "hazard ratios as Cox's are; or the accelerated failure time "
+            "and accelerated life fitters' fit_bayes."
+        )
+
+    @dataframe_covariates
+    def fit_case_cohort(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        subcohort: npt.ArrayLike,
+        cohort_size: Any,
+        c: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        method: str = "prentice",
+        sampling_strata: npt.ArrayLike | None = None,
+        robust: bool = False,
+        tie_method: str = "efron",
+        tol: float = 1e-10,
+    ) -> Any:
+        """Fits the Cox model to a case-cohort sample: a random subcohort
+        of the cohort plus every case from outside it, with the
+        estimators of R's ``survival::cch`` (Prentice, Self-Prentice,
+        Lin-Ying, Borgan I and II) and Barlow's weighting, each with its
+        design-based variance. See
+        :func:`~surpyval.univariate.regression.proportional_hazards.case_cohort.fit_case_cohort`
+        for the estimators, their variances and the arguments.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import CoxPH
+        >>> rng = np.random.default_rng(1)
+        >>> z = rng.normal(size=2000)
+        >>> t = rng.exponential(1 / (0.02 * np.exp(0.7 * z)))
+        >>> x, c = np.minimum(t, 10.0), (t > 10.0).astype(int)
+        >>> sub = rng.random(2000) < 0.15
+        >>> keep = sub | (c == 0)
+        >>> model = CoxPH.fit_case_cohort(
+        ...     x[keep], z[keep], subcohort=sub[keep], cohort_size=2000,
+        ...     c=c[keep],
+        ... )
+        >>> model.params.round(3), model.standard_errors().round(3)
+        (array([0.71]), array([0.089]))
+        """
+        from .case_cohort import fit_case_cohort
+
+        return fit_case_cohort(
+            x,
+            Z,
+            subcohort,
+            cohort_size,
+            c=c,
+            tl=tl,
+            method=method,
+            sampling_strata=sampling_strata,
+            robust=robust,
+            tie_method=tie_method,
+            tol=tol,
+        )
+
+    @dataframe_covariates
+    def fit_nested_case_control(
+        self,
+        Z: npt.ArrayLike,
+        case: npt.ArrayLike,
+        sets: npt.ArrayLike,
+        tie_method: str = "exact",
+        tol: float = 1e-10,
+    ) -> Any:
+        """Fits the Cox model to a nested case-control sample, each case
+        with the controls drawn from its risk set (a matched set), by the
+        conditional logistic likelihood, as R's ``survival::clogit``. See
+        :func:`~surpyval.univariate.regression.proportional_hazards.case_cohort.fit_nested_case_control`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import CoxPH
+        >>> Z = np.array([1.2, 0.1, -0.4, 0.8, 0.3, -1.0, 0.0, 0.5, -0.2])
+        >>> case = np.array([1, 0, 0, 1, 0, 0, 1, 0, 0])
+        >>> sets = np.repeat([1, 2, 3], 3)
+        >>> model = CoxPH.fit_nested_case_control(Z, case, sets)
+        >>> model.params.round(3)
+        array([2.146])
+        """
+        from .case_cohort import fit_nested_case_control
+
+        return fit_nested_case_control(self, Z, case, sets, tie_method, tol)
+
+    @penalty_argument("_fit_penalised", firth="_fit_firth")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -1371,10 +1475,15 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         return model
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -1500,7 +1609,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> df = load_rossi_static()
         >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> Z = df[["fin", "age", "race", "wexp", "mar", "paro", "prio"]]
-        >>> lasso = CoxPH.fit_penalised(
+        >>> lasso = CoxPH.fit(
         ...     x, Z.values, c=c, penalizer=0.05, l1_ratio=1.0
         ... )
         >>> lasso.params.round(4)
@@ -1527,10 +1636,15 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             t,
         )
 
+    fit_firth = penalised_entry(
+        "_fit_firth",
+        "call fit(..., firth=True)",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_firth(
+    def _fit_firth(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -1642,7 +1756,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> Z = np.array([[1, 0.5], [1, -1.2], [0, 0.3], [1, 0.8],
         ...               [0, -0.4], [1, 1.1], [1, -0.6], [0, 0.9],
         ...               [0, 0.2], [1, -0.1]])
-        >>> model = CoxPH.fit_firth(x, Z, c=c)
+        >>> model = CoxPH.fit(x, Z, c=c, firth=True)
         >>> model.params.round(3)
         array([ 1.924, -0.246])
         >>> model.firth.lower.round(3), model.firth.upper.round(3)
@@ -1744,6 +1858,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         model: SemiParametricRegressionModel
             The fitted model.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         if (
             xl_col is not None
             or xr_col is not None
@@ -1827,6 +1944,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         masked: str,
     ) -> Any:
         """``fit_from_df`` with intervals, right truncation or causes."""
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.utils.dataframe import check_columns
 
         from ..regression_data import FrameDesign
@@ -1896,6 +2016,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             time_interaction=time_interaction,
         )
 
+    @penalty_argument("_fit_tvc_penalised")
     def fit_tvc(
         self,
         i: npt.ArrayLike,
@@ -2054,6 +2175,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         column of each row's stratum, for a stratified fit, and ``w_col``
         that of each row's weight (``w`` of :meth:`fit_tvc`).
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         columns = {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col}
         if strata_col is not None:
             columns["strata"] = strata_col
@@ -2070,6 +2194,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             center=center,
         )
 
+    @penalty_argument("_fit_tvc_timeline_penalised")
     def fit_tvc_timeline(
         self,
         i: npt.ArrayLike,
@@ -2138,7 +2263,12 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
             center=center,
         )
 
-    def fit_tvc_penalised(
+    fit_tvc_penalised = penalised_entry(
+        "_fit_tvc_penalised",
+        "call fit_tvc(..., penalizer=...); its default was penalizer=0.1",
+    )
+
+    def _fit_tvc_penalised(
         self,
         i: npt.ArrayLike,
         xl: npt.ArrayLike,
@@ -2207,7 +2337,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         >>> xr = [2, 5, 3, 1, 4, 6, 3, 7, 2, 8]
         >>> c  = [1, 0, 0, 1, 0, 1, 1, 0, 0, 1]
         >>> Z  = [0, 1, 0, 0, 1, 0, 0, 1, 1, 0]
-        >>> model = CoxPH.fit_tvc_penalised(i, xl, xr, c, Z, penalizer=0.1)
+        >>> model = CoxPH.fit_tvc(i, xl, xr, c, Z, penalizer=0.1)
         >>> model.beta.round(4)
         array([1.5068])
         """
@@ -2236,7 +2366,13 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         )
         return _as_tvc(model, ident, row_order)
 
-    def fit_tvc_timeline_penalised(
+    fit_tvc_timeline_penalised = penalised_entry(
+        "_fit_tvc_timeline_penalised",
+        "call fit_tvc_timeline(..., penalizer=...); its default was "
+        "penalizer=0.1",
+    )
+
+    def _fit_tvc_timeline_penalised(
         self,
         i: npt.ArrayLike,
         x: npt.ArrayLike,
@@ -2276,7 +2412,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
 
         refuse_weights(w)
         i_ss, xl, xr, c_ss, Z_ss, n_ss = handle_tvc_timeline(i, x, Z, c, n)
-        return self.fit_tvc_penalised(
+        return self._fit_tvc_penalised(
             i_ss,
             xl,
             xr,
@@ -2313,6 +2449,9 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
         ``Z_cols`` (pass ``None``), ``formula`` gives the covariates as a
         ``formulaic`` formula, as in :meth:`fit_from_df`.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return fit_tvc_df(
             self.fit_tvc_timeline,
             df,

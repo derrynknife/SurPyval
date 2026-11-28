@@ -27,6 +27,7 @@ from surpyval.univariate.regression._penalised import PenalisedModelMixin
 from surpyval.univariate.regression.regression_data import named_covariates
 from surpyval.utils.covariates import coefficient_names
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
+from surpyval.utils.model_data import event_data
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.recurrent_data import notes_text
 from surpyval.utils.shapes import keeps_query_shape
@@ -396,7 +397,7 @@ class ProportionalIntensityModel(
         # ``exp(Z'beta)`` factor. The covariates are per item (static), so the
         # item's Z is taken from its first row. Returns ``{item: cif(x)}`` for
         # the recurrence diagnostics.
-        data = self.data
+        data = event_data(self)
         cif_map = {}
         for item in np.unique(data.i):
             Z_item = np.asarray(data.Z[data.i == item][0], dtype=float)
@@ -449,7 +450,7 @@ class ProportionalIntensityModel(
         )
         self._check_has_data("residuals")
         cif_map = self._item_cif_map()
-        return diagnostics.intensity_residuals(self.data, cif_map, kind)
+        return diagnostics.intensity_residuals(event_data(self), cif_map, kind)
 
     def trend_test(
         self,
@@ -496,7 +497,10 @@ class ProportionalIntensityModel(
         )
         self._check_has_data("trend_test")
         return diagnostics.trend_test(
-            self.data, test=test, alternative=alternative, alpha_ci=alpha_ci
+            event_data(self),
+            test=test,
+            alternative=alternative,
+            alpha_ci=alpha_ci,
         )
 
     def cramer_von_mises(
@@ -714,14 +718,14 @@ class ProportionalIntensityModel(
             "against time instead.",
         )
         self._check_has_data("plot")
-        x, r, d = self.data.to_xrd()
+        x, r, d = event_data(self).to_xrd()
         if ax is None:
             import matplotlib.pyplot as plt
 
             ax = plt.gcf().gca()
 
-        x_plot = np.linspace(0, self.data.x.max(), 1000)
-        Z_0 = self.data.Z.mean(axis=0)
+        x_plot = np.linspace(0, event_data(self).x.max(), 1000)
+        Z_0 = event_data(self).Z.mean(axis=0)
 
         band = None
         if plot_bounds and hasattr(self, "_neg_ll"):

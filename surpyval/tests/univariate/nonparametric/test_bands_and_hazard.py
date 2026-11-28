@@ -34,7 +34,7 @@ def test_band_contains_pointwise_bounds():
     for method in ["hall-wellner", "nair"]:
         # On the pointwise bounds' (log(-log)) scale: the default arcsine
         # band (#390) is on another, so it need not contain them.
-        band = model.band(method=method, bound_type="exp")
+        band = model.band(method=method, bound_type="log-log")
         finite = np.isfinite(band[:, 0]) & np.isfinite(pw[:, 0])
         assert np.all(band[finite, 0] <= pw[finite, 0] + 1e-9)
         assert np.all(band[finite, 1] >= pw[finite, 1] - 1e-9)
@@ -47,7 +47,7 @@ def test_band_reproducible_with_fixed_seed():
 
 def test_band_normal_bound_type_shape():
     model = _censored_model()
-    band = model.band(bound_type="normal")
+    band = model.band(bound_type="plain")
     assert band.shape == (model.x.size, 2)
 
 
@@ -175,7 +175,7 @@ def test_equal_precision_band_covers_a_from_a_tenth_to_nine_tenths():
         valid = np.isfinite(a) & (a > 0) & (model.R > 0) & (model.R < 1)
     inside = valid & (a >= 0.1) & (a <= 0.9)
     assert inside.any() and (valid & ~inside).any()
-    for bound_type in ("arcsine", "exp", "normal"):
+    for bound_type in ("arcsine", "log-log", "plain"):
         nair = model.band(method="nair", bound_type=bound_type)
         assert np.isfinite(nair[inside]).all()
         assert np.isnan(nair[~inside]).all()
@@ -188,7 +188,7 @@ def test_equal_precision_band_covers_a_from_a_tenth_to_nine_tenths():
     half = crit * np.sqrt(model.greenwood[inside])
     R = model.R[inside]
     np.testing.assert_allclose(
-        model.band(method="nair", bound_type="normal")[inside],
+        model.band(method="nair", bound_type="plain")[inside],
         np.c_[R - half * R, R + half * R],
         rtol=1e-12,
     )
@@ -240,7 +240,7 @@ def test_equal_precision_band_old_default_missed_the_first_event():
     true, model = _censored_weibull(21, 50)
     first = model.x[0]
     full = (first, model.x[-1])
-    old = model.band(first, method="nair", bound_type="exp", x_range=full)
+    old = model.band(first, method="nair", bound_type="log-log", x_range=full)
     assert true.sf(first) > old[1]
     lower, upper = model.band(first, method="nair", x_range=full)
     assert lower <= true.sf(first) <= upper
@@ -294,7 +294,7 @@ def test_band_over_a_single_time_is_the_pointwise_arcsine_interval():
         )
 
 
-@pytest.mark.parametrize("bound_type", ["arcsine", "exp"])
+@pytest.mark.parametrize("bound_type", ["arcsine", "log-log"])
 def test_band_over_a_single_time_is_the_pointwise_bound_on_its_scale(
     bound_type,
 ):
@@ -310,7 +310,7 @@ def test_band_over_a_single_time_is_the_pointwise_bound_on_its_scale(
 
 def test_band_refuses_an_unknown_bound_type_naming_the_choices():
     model = sp.KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8])
-    with pytest.raises(ValueError, match="'arcsine', 'exp' or 'normal'"):
+    with pytest.raises(ValueError, match="'arcsine', 'log-log' or 'plain'"):
         model.band(bound_type="log")
 
 
@@ -439,13 +439,13 @@ def test_590_band_critical_value_is_found_once_per_model(monkeypatch):
     assert len(searches) == 1
     # Other scales and times share the critical value: no new search
     again = model.band()
-    model.band(bound_type="exp")
-    model.band([2.0, 6.0], bound_type="normal")
+    model.band(bound_type="log-log")
+    model.band([2.0, 6.0], bound_type="plain")
     assert len(searches) == 1
     np.testing.assert_array_equal(first, again)
     # The equal precision band's own value is one more search
     model.band(method="nair", x_range=(2.0, 8.0))
-    model.band(method="nair", x_range=(2.0, 8.0), bound_type="exp")
+    model.band(method="nair", x_range=(2.0, 8.0), bound_type="log-log")
     assert len(searches) == 2
 
 

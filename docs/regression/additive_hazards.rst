@@ -20,7 +20,7 @@ its running maximum (most of the time for a covariate row inside the data)
 the prediction is the estimate itself; the fitted baseline ``H0`` is the raw
 estimate at :math:`Z = 0`, as R's ``timereg`` reports it.
 
-``AdditiveHazards.fit_penalised`` adds a ridge, lasso or elastic-net
+``AdditiveHazards.fit(..., penalizer=...)`` adds a ridge, lasso or elastic-net
 penalty: Lin and Ying's estimating equation is the gradient of a quadratic
 loss, which takes the place of the negative log-likelihood of the other
 penalised fits (see the penalised regression section of

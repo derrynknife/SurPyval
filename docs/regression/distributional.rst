@@ -20,4 +20,4 @@ Pre-built instances: ``WeibullDistributional``,
     :members: fit, fit_from_df, sf, ff, df, hf, Hf, random
 
 .. autoclass:: surpyval.univariate.regression.distributional.model.DistributionalRegressionModel
-    :members: coefficient_signs, parameters_at, parameter_cb, plot_parameter, distribution_at, qf, mean, likelihood_ratio_test, covariance, aliased, phi, to_dict, from_dict
+    :members: coefficient_signs, parameters_at, param_cb, plot_parameter, distribution_at, qf, mean, likelihood_ratio_test, covariance, aliased, phi, to_dict, from_dict

@@ -24,7 +24,6 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils import _caller_stacklevel
 from surpyval.utils.covariates import (
     coefficient_floor,
     coefficient_names,
@@ -33,7 +32,7 @@ from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 from surpyval.utils.weights import SMALL_EFFECTIVE_SIZE, effective_sample_size
 
 from .._aliasing import (
@@ -596,7 +595,7 @@ class ParameterSubstitutionFitter(HazardIdentitiesMixin, RegressionFitter):
                         life_model.name,
                     ),
                     UserWarning,
-                    stacklevel=_caller_stacklevel(),
+                    stacklevel=caller_stacklevel(),
                 )
 
     def _aliased_stresses(
@@ -1022,7 +1021,7 @@ class ParameterSubstitutionFitter(HazardIdentitiesMixin, RegressionFitter):
                     ", ".join(free_phi),
                     n_levels,
                 ),
-                stacklevel=_caller_stacklevel(),
+                stacklevel=caller_stacklevel(),
             )
         # Store the full merged fixed dict (baseline-derived + fitter-level
         # + user-supplied), not just the fitter's own -- otherwise standard

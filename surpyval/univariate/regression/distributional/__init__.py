@@ -15,6 +15,11 @@ from surpyval.univariate.parametric import (
 from .fitter import Distributional, DistributionalFitter
 from .mixture_cure import MixtureCure, MixtureCureFitter, MixtureCureModel
 from .model import DistributionalRegressionModel
+from .promotion_time import (
+    PromotionTimeCure,
+    PromotionTimeCureFitter,
+    PromotionTimeCureModel,
+)
 from .zero_inflated import (
     ZeroInflated,
     ZeroInflatedFitter,
@@ -38,6 +43,13 @@ LogLogisticMixtureCure = MixtureCure(LogLogistic)
 GammaMixtureCure = MixtureCure(Gamma)
 ExponentialMixtureCure = MixtureCure(Exponential)
 
+# Promotion-time cure regression, one fitter per common F0
+WeibullPromotionTimeCure = PromotionTimeCure(Weibull)
+LogNormalPromotionTimeCure = PromotionTimeCure(LogNormal)
+LogLogisticPromotionTimeCure = PromotionTimeCure(LogLogistic)
+GammaPromotionTimeCure = PromotionTimeCure(Gamma)
+ExponentialPromotionTimeCure = PromotionTimeCure(Exponential)
+
 # Zero-inflated regression, one fitter per common latency distribution
 WeibullZeroInflated = ZeroInflated(Weibull)
 LogNormalZeroInflated = ZeroInflated(LogNormal)
@@ -58,6 +70,14 @@ __all__ = [
     "MixtureCureFitter",
     "MixtureCureModel",
     "WeibullMixtureCure",
+    "ExponentialPromotionTimeCure",
+    "GammaPromotionTimeCure",
+    "LogLogisticPromotionTimeCure",
+    "LogNormalPromotionTimeCure",
+    "WeibullPromotionTimeCure",
+    "PromotionTimeCure",
+    "PromotionTimeCureFitter",
+    "PromotionTimeCureModel",
     "GammaDistributional",
     "GumbelDistributional",
     "LogisticDistributional",

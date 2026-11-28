@@ -1577,6 +1577,169 @@ def multistate_panel(seed):
     }
 
 
+def multistate_inspected(seed):
+    """A progressive illness-death model (1 healthy, 2 ill, 3 dead; the
+    moves 1->2, 1->3 and 2->3) seen at visits, with Weibull hazards on the
+    time since the start (a non-homogeneous Markov model): 1->2 scale 6
+    shape 1.5, 1->3 scale 25 shape 1.2, 2->3 scale 8 shape 2. 300 units,
+    all healthy at time 0, visited then and every uniform (0.5, 1.5) time
+    units until a uniform (5, 10) end of follow-up. A death is recorded at
+    its exact time (state 3); a unit alive at the end has a last visit
+    there. Times are rounded to three decimals."""
+    from scipy.optimize import brentq
+
+    rng = np.random.default_rng(seed)
+    hazards = {(1, 2): (6.0, 1.5), (1, 3): (25.0, 1.2), (2, 3): (8.0, 2.0)}
+
+    def H(t, a, b):
+        return (t / a) ** b
+
+    rows = []
+    for unit in range(1, 301):
+        end = round(float(rng.uniform(5, 10)), 3)
+        visits = [0.0]
+        while True:
+            nxt = round(visits[-1] + float(rng.uniform(0.5, 1.5)), 3)
+            if nxt >= end:
+                break
+            visits.append(nxt)
+        visits.append(end)
+        state, t, path = 1, 0.0, [(0.0, 1)]
+        while state != 3:
+            out = [(b, ab) for (a, b), ab in hazards.items() if a == state]
+            e = float(rng.exponential())
+
+            def total(u, t0=t, out=out):
+                return sum(H(u, *ab) - H(t0, *ab) for _, ab in out)
+
+            if total(end) <= e:
+                break
+            t_new = brentq(lambda u: total(u) - e, t, end, xtol=1e-12)
+            rates = [b_ / a_ * (t_new / a_) ** (b_ - 1) for _, (a_, b_) in out]
+            k = rng.choice(len(out), p=np.array(rates) / sum(rates))
+            state, t = out[k][0], t_new
+            path.append((t, state))
+        death = round(path[-1][0], 3) if path[-1][1] == 3 else None
+
+        def at(time):
+            return [s for u, s in path if u <= time][-1]
+
+        for v in visits:
+            if death is not None and v >= death:
+                rows.append((unit, death, 3, 1))
+                break
+            rows.append((unit, v, at(v), 0))
+    columns = list(zip(*rows))
+    return {
+        "source": "seeded synthetic, make_fixtures.multistate_inspected "
+        "(rng {}): a progressive illness-death model seen at visits "
+        "(state 1 healthy, 2 ill, 3 dead; Weibull hazards on the time since "
+        "the start: 1->2 scale 6 shape 1.5, 1->3 scale 25 shape 1.2, 2->3 "
+        "scale 8 shape 2); exact 1 marks an exactly timed death".format(seed),
+        "columns": {
+            "id": _native(columns[0]),
+            "time": _native(columns[1]),
+            "state": _native(columns[2]),
+            "exact": _native(columns[3]),
+        },
+    }
+
+
+def multistate_inspected_covariates(seed):
+    """``multistate_inspected`` with covariates: a progressive
+    illness-death model (1 healthy, 2 ill, 3 dead) with Weibull
+    proportional hazards on the time since the start, baselines 1->2
+    scale 6 shape 1.5, 1->3 scale 25 shape 1.2, 2->3 scale 8 shape 2.
+    ``male`` (0 or 1, half the units) multiplies the three hazards by
+    exp(0.5), exp(0.3) and exp(-0.4); ``w`` (0 or 1, drawn afresh at each
+    visit) multiplies the 1->2 hazard by exp(0.6) until the next visit
+    (a row's covariates hold over the gap that starts at it). 300 units,
+    all healthy at 0, visited then and every uniform (0.5, 1.5) until a
+    uniform (5, 10) end; a death is recorded at its exact time (exact 1),
+    with the covariates of the visit before it. Times rounded to three
+    decimals."""
+    from scipy.optimize import brentq
+
+    rng = np.random.default_rng(seed)
+    base = {(1, 2): (6.0, 1.5), (1, 3): (25.0, 1.2), (2, 3): (8.0, 2.0)}
+    b_male = {(1, 2): 0.5, (1, 3): 0.3, (2, 3): -0.4}
+    b_w = {(1, 2): 0.6, (1, 3): 0.0, (2, 3): 0.0}
+
+    def H(t, a, b):
+        return (t / a) ** b
+
+    rows = []
+    for unit in range(1, 301):
+        male = int(rng.uniform() < 0.5)
+        end = round(float(rng.uniform(5, 10)), 3)
+        visits = [0.0]
+        while True:
+            nxt = round(visits[-1] + float(rng.uniform(0.5, 1.5)), 3)
+            if nxt >= end:
+                break
+            visits.append(nxt)
+        visits.append(end)
+        w = [int(rng.uniform() < 0.5) for _ in visits]
+        state, t, path = 1, 0.0, [(0.0, 1)]
+        gap = 0
+        e = float(rng.exponential())
+        # (the path through the gaps, each with its own multipliers)
+        while state != 3 and gap < len(visits) - 1:
+            hi = visits[gap + 1]
+            out = [
+                (b, ab, math.exp(b_male[(a, b)] * male + b_w[(a, b)] * w[gap]))
+                for (a, b), ab in base.items()
+                if a == state
+            ]
+
+            def total(u, t0=t, out=out):
+                return sum(m * (H(u, *ab) - H(t0, *ab)) for _, ab, m in out)
+
+            if total(hi) <= e:
+                e -= total(hi)
+                t = hi
+                gap += 1
+                continue
+            t_new = brentq(lambda u: total(u) - e, t, hi, xtol=1e-12)
+            rates = [
+                m * b_ / a_ * (t_new / a_) ** (b_ - 1)
+                for _, (a_, b_), m in out
+            ]
+            k = rng.choice(len(out), p=np.array(rates) / sum(rates))
+            state, t = out[k][0], t_new
+            path.append((t, state))
+            e = float(rng.exponential())
+        death = round(path[-1][0], 3) if path[-1][1] == 3 else None
+
+        def at(time):
+            return [s for u, s in path if u <= time][-1]
+
+        for j, v in enumerate(visits):
+            if death is not None and v >= death:
+                rows.append((unit, death, 3, 1, male, w[j - 1]))
+                break
+            rows.append((unit, v, at(v), 0, male, w[j]))
+    columns = list(zip(*rows))
+    return {
+        "source": "seeded synthetic, "
+        "make_fixtures.multistate_inspected_covariates (rng {}): a "
+        "progressive illness-death model seen at visits (state 1 healthy, "
+        "2 ill, 3 dead; Weibull proportional hazards on the time since the "
+        "start: baselines 1->2 scale 6 shape 1.5, 1->3 scale 25 shape 1.2, "
+        "2->3 scale 8 shape 2; male's effects 0.5, 0.3, -0.4; w, drawn at "
+        "each visit and holding until the next, 0.6 on 1->2 only); exact 1 "
+        "marks an exactly timed death".format(seed),
+        "columns": {
+            "id": _native(columns[0]),
+            "time": _native(columns[1]),
+            "state": _native(columns[2]),
+            "exact": _native(columns[3]),
+            "male": _native(columns[4]),
+            "w": _native(columns[5]),
+        },
+    }
+
+
 def build():
     return {
         "_about": "Shared fixtures for surpyval/tests/reference; written "
@@ -1635,6 +1798,10 @@ def build():
         "clustered": clustered(3851),
         "rank_regression": rank_regression(),
         "multistate_panel": multistate_panel(3801),
+        "multistate_inspected": multistate_inspected(3802),
+        "multistate_inspected_covariates": multistate_inspected_covariates(
+            3803
+        ),
         "no_data": {
             "source": "none: a design calculation (a sample size or a "
             "power) from the arguments in its call alone",

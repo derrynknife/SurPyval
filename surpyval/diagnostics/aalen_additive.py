@@ -60,6 +60,8 @@ from typing import Any
 
 import numpy as np
 
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
+
 from ._shared import _fmt
 from .registry import AdviceRule, Check, Context, Family, Panel, register
 
@@ -201,11 +203,12 @@ def _drawdown(H: np.ndarray) -> np.ndarray:
     return (peak - H).max(axis=-2)
 
 
+@renamed_arguments(REMOVED_IN, FutureWarning, alpha="alpha_ci")
 def falls(
     model: Any,
     n_sim: int = 1000,
     random_state: Any = None,
-    alpha: float = 0.05,
+    alpha_ci: float = 0.05,
 ) -> dict:
     """
     Whether the cumulative hazard an Aalen additive model estimates for
@@ -232,7 +235,7 @@ def falls(
         The number of resampled processes. Default 1000.
     random_state : None, int or numpy.random.Generator, optional
         The seed of the draws.
-    alpha : float, optional
+    alpha_ci : float, optional
         The level a row's own p-value is judged at for ``unit_share``.
         Default 0.05.
 
@@ -241,7 +244,7 @@ def falls(
     dict
         ``statistic`` and ``p`` (the test over every row), ``unit_share``
         (the share of units, by count, whose own fall has a p-value below
-        ``alpha``), ``any_share`` (the share whose estimate falls at all),
+        ``alpha_ci``), ``any_share`` (the share whose estimate falls at all),
         ``largest`` (the largest fall, in units of cumulative hazard),
         ``rows`` (the distinct covariate rows), ``row_p`` (each one's
         p-value), ``H`` (the estimates, one column per row) and
@@ -318,7 +321,7 @@ def falls(
     out.update(
         statistic=statistic,
         p=float(np.mean(largest >= statistic - 1e-12)),
-        unit_share=float(weight @ (fell & (exceed < alpha))) / total,
+        unit_share=float(weight @ (fell & (exceed < alpha_ci))) / total,
         row_p=exceed,
     )
     return out

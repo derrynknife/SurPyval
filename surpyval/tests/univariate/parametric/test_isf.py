@@ -59,6 +59,11 @@ def test_isf_inverts_sf(case):
     assert np.all(err <= allowed), (err, allowed)
 
 
+# The round trip below also carries the error of ``sf``, which it assumes
+# is a few ulps. The gamma survival function at shape 1e3 was SciPy's
+# ``gammaincc``, 5.5e3 ulps (1.2e-12) from the 50-digit value at s = 1e-30,
+# and isf(sf(t)) was 10 ulps from t there; it is now the saddle-point
+# prefactor with Temme's expansion, and isf is polished on it (#1300).
 @pytest.mark.parametrize("case", CONTINUOUS, ids=_id)
 def test_isf_of_sf_gives_back_the_time(case):
     """isf(sf(t)) == t deep in the upper tail, to the conditioning of
@@ -71,6 +76,29 @@ def test_isf_of_sf_gives_back_the_time(case):
     h = dist.hf(t, *params)
     allowed = 8 * EPS * np.abs(t) * np.maximum(1.0, 1.0 / (np.abs(t) * h))
     assert np.all(np.abs(back - t) <= allowed)
+
+
+# t with Q(1000, 1e-6 t) = s for each s of S, by mpmath at 50 digits
+# (findroot on log Q, the regularised upper incomplete gamma).
+GAMMA_LARGE_SHAPE_ISF = [
+    959693932.72883330741,
+    999666686.42696518206,
+    1100578098.2933146098,
+    1187748813.4679806072,
+    1282626549.5836436893,
+    1407188640.1575391091,
+    1830846962.0466365579,
+    2280126849.3444182829,
+    2666752073.3019953148,
+]
+
+
+def test_gamma_isf_at_a_large_shape_against_mpmath():
+    """Gamma.isf at shape 1e3 is within 8 ulps of the 50-digit inverse
+    down to s = 1e-300 (6.2 at most, at s = 1e-30)."""
+    t = sp.Gamma.isf(S, 1e3, 1e-6)
+    true = np.array(GAMMA_LARGE_SHAPE_ISF)
+    assert np.all(np.abs(t - true) <= 8 * EPS * true), (t - true) / true / EPS
 
 
 @pytest.mark.parametrize("case", CONTINUOUS, ids=_id)

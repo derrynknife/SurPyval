@@ -344,6 +344,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.JointAFT": _FACTORY,
     # data, schedules and result records
     "surpyval.SurpyvalData": _DATA,
+    "surpyval.NevadaTable": _DATA,
     "surpyval.EventHistoryData": _DATA,
     "surpyval.ItemHistory": _DATA,
     "surpyval.ItemLifetime": _DATA,
@@ -372,6 +373,8 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.PredictionScores": _RESULT,
     "surpyval.DynamicAccuracy": _RESULT,
     "surpyval.DynamicCalibration": _RESULT,
+    "surpyval.DCalibration": _RESULT,
+    "surpyval.ConformalLowerBound": _RESULT,
     "surpyval.PersonYears": (
         "what person_years tabulated (an exposure table), not a model"
     ),
@@ -442,6 +445,13 @@ for _path in (
     OUT_OF_SCOPE[f"surpyval.degradation.{_path}"] = (
         _COMPONENT + ": a DegradationAnalysis path shape"
     )
+# The spline path is made with its knots (a class, where the other
+# shapes are instances): the joint model on it is registered
+# (WeibullJointPH[spline]), and its own tests are in
+# tests/degradation/test_spline_path.py.
+OUT_OF_SCOPE["surpyval.degradation.SplinePath"] = (
+    _COMPONENT + ": a DegradationAnalysis and joint model path shape"
+)
 # The top-level data-format functions (fs_to_xcnt, ...) are deprecated by
 # date and skipped by the completeness scan (DATED_DATA_FUNCTIONS).
 for _fn in (
@@ -479,6 +489,9 @@ for _fn in (
     "dynamic_auc",
     "dynamic_brier",
     "dynamic_calibration",
+    "d_calibration",
+    "pit_values",
+    "conformal_lower_bound",
     "integrated_brier_score",
     "score_predictions",
     "survival_probability",
@@ -514,6 +527,40 @@ for _name in ("EffortTable", "WeibullEffort"):
     OUT_OF_SCOPE[f"surpyval.recurrent.{_name}"] = _DATA + (
         ": the testing effort over time that EffortClock takes"
     )
+# Growth models of success/fail counts by stage: they fit successes and
+# trials per stage, not xcnt data, so the battery (sf, hazard, censoring,
+# truncation) has nothing to run; their fits, both bounds and refusals are
+# in tests/recurrent/test_discrete_growth.py, and the bounds' coverage in
+# calibration/test_coverage_discrete_growth.py.
+for _name in (
+    "CrowAMSAADiscrete",
+    "LloydLipow",
+    "GompertzGrowth",
+    "ModifiedGompertzGrowth",
+):
+    OUT_OF_SCOPE[f"surpyval.recurrent.{_name}"] = (
+        "a growth model of successes and trials by stage, not of xcnt "
+        "data (tests/recurrent/test_discrete_growth.py)"
+    )
+OUT_OF_SCOPE["surpyval.recurrent.DiscreteGrowthModel"] = (
+    _RESULT + ": the fitted discrete growth models"
+)
+# Maturity projections: estimates from failure modes' counts and first
+# occurrences with fix-effectiveness factors, not fits of xcnt data; tested
+# in tests/recurrent/test_maturity_projection.py.
+for _fn in (
+    "ampm_projection",
+    "ampm_stein_projection",
+    "adpm_stein_projection",
+):
+    OUT_OF_SCOPE[f"surpyval.recurrent.{_fn}"] = (
+        _FUNCTION + ": a maturity projection from failure modes and fix "
+        "effectiveness (tests/recurrent/test_maturity_projection.py)"
+    )
+for _name in ("AMPMProjection", "SteinProjection", "DiscreteSteinProjection"):
+    OUT_OF_SCOPE[f"surpyval.recurrent.{_name}"] = (
+        _RESULT + ": a maturity projection"
+    )
 OUT_OF_SCOPE["surpyval.recurrent.phases_to_data"] = (
     _FUNCTION + ": lays out counts by phase as an intensity fit's rows"
 )
@@ -540,6 +587,9 @@ for _fn in (
 for _result in (
     "AcceleratedTestPlan",
     "DemonstrationPlan",
+    "IdealisedGrowthCurve",
+    "PM2ContinuousPlan",
+    "PM2DiscretePlan",
     "GroupSequentialDesign",
     "LifeTestPlan",
     "LogrankGroupSequentialDesign",
@@ -564,6 +614,9 @@ for _fn in (
     "demonstration_test_multiple",
     "demonstration_test_time",
     "group_sequential_design",
+    "growth_demonstration_probability",
+    "growth_test_time",
+    "idealised_growth_curve",
     "life_test_length",
     "life_test_precision",
     "life_test_sample_size",
@@ -574,6 +627,8 @@ for _fn in (
     "mtbf_pass_probability",
     "mtbf_test_time",
     "noninferiority_design",
+    "pm2_continuous",
+    "pm2_discrete",
     "rate_ratio_design",
     "rmst_design",
     "sequential_demonstration_test",
@@ -599,6 +654,33 @@ OUT_OF_SCOPE["surpyval.bayes.compare"] = (
 )
 OUT_OF_SCOPE["surpyval.bayes.PredictiveCriterion"] = _RESULT
 OUT_OF_SCOPE["surpyval.bayes.PredictiveComparison"] = _RESULT
+# The layer every family's Bayesian fit shares (checked on a family small
+# enough to work by hand in surpyval/tests/bayes/test_shared_layer.py; the
+# families' own fits are registered)
+OUT_OF_SCOPE["surpyval.bayes.BayesianResult"] = (
+    "the base of every family's Bayesian fit, built by fit_bayes "
+    "(checked in surpyval/tests/bayes/test_shared_layer.py); the "
+    "families' own results are registered"
+)
+# The Bayesian Wiener and gamma processes: the shared layer's result on
+# the processes' own likelihood (checked against the closed form and the
+# fitted models in surpyval/tests/bayes/test_process_bayes.py).
+OUT_OF_SCOPE["surpyval.degradation.bayes.BayesianProcessModel"] = (
+    "built by WienerProcess.fit_bayes and GammaProcess.fit_bayes (checked "
+    "in surpyval/tests/bayes/test_process_bayes.py and "
+    "surpyval/tests/calibration/test_sbc_process_bayes.py; no "
+    "conformance case yet)"
+)
+OUT_OF_SCOPE["surpyval.degradation.bayes.BayesianProcessRUL"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.degradation.bayes.ProcessLife"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.degradation.bayes.ProcessTarget"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.bayes.Target"] = _COMPONENT
+OUT_OF_SCOPE["surpyval.bayes.fit_target"] = (
+    _FUNCTION + " (the engine rule behind every family's fit_bayes; "
+    "checked in surpyval/tests/bayes/test_shared_layer.py)"
+)
+OUT_OF_SCOPE["surpyval.bayes.PredictiveCheck"] = _RESULT
+OUT_OF_SCOPE["surpyval.bayes.BayesianDiagnosis"] = _RESULT
 for _name in (
     "Prior",
     "JointPrior",
@@ -608,8 +690,12 @@ for _name in (
     "Fixed",
     "MultivariateNormal",
     "PowerPrior",
+    "FitPowerPrior",
     "OnQuantities",
+    "FunctionStatement",
     "PriorSpec",
+    "from_fit",
+    "on_function",
     "around",
     "between",
     "uniform",

@@ -19,8 +19,10 @@ FILES = sorted(
 
 
 def test_every_distribution_with_parameters_states_them_once():
-    # 18 distributions, about nine methods each, keep a copy.
-    assert len(FILES) == 18
+    # 23 distributions, about nine methods each, keep a copy (the
+    # generalised gamma, generalised F, Gompertz and inverse Gaussian
+    # joined the 18 on 25 Nov 2026, and the Birnbaum-Saunders after).
+    assert len(FILES) == 23
     assert sum(len(copies(p)) for p in FILES) >= 150
 
 

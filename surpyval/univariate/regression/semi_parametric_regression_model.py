@@ -28,7 +28,7 @@ from surpyval.utils.shapes import (
 )
 from surpyval.utils.validation import check_alpha_ci, no_covariance_error
 
-from ._concordance import ConcordanceMixin, ConcordanceResult
+from ._concordance import ConcordanceMixin
 from ._fit_skeleton import draws_by_row
 from ._partial_effects import PartialEffectsMixin
 from ._penalised import PenalisedModelMixin
@@ -487,37 +487,6 @@ class SemiParametricRegressionModel(
         "surpyval.metrics.concordance_index."
     )
 
-    def concordance_estimate(
-        self,
-        x: npt.ArrayLike | None = None,
-        c: npt.ArrayLike | None = None,
-        Z: Any = None,
-        *,
-        weighting: str = "harrell",
-        tau: float | None = None,
-        alpha: float = 0.05,
-        tie_tol: float = 1e-8,
-        ties: str = "therneau",
-        ci_method: str = "normal",
-    ) -> ConcordanceResult:
-        """Deprecated, removed in v0.30: :meth:`concordance` gives the
-        standard error and interval. The concordance index with its
-        standard error and confidence interval; see
-        :meth:`ConcordanceMixin.concordance_estimate
-        <surpyval.univariate.regression._concordance.ConcordanceMixin.concordance_estimate>`.
-        Not available for a stratified model (it raises ``ValueError``).
-        """
-        from surpyval.univariate.regression._concordance import (
-            _warn_estimate,
-        )
-
-        _warn_estimate(type(self).__name__)
-        if self.is_stratified:
-            raise ValueError(self._STRATIFIED_ESTIMATE)
-        return self._estimate_with_se(
-            x, c, Z, weighting, tau, alpha, tie_tol, ties, ci_method
-        )
-
     def _stratified_concordance(
         self,
         x: npt.ArrayLike | None,
@@ -736,7 +705,8 @@ class SemiParametricRegressionModel(
                 raise ValueError(
                     "This Firth fit's intervals are at alpha_ci={:g}; the "
                     "profile penalised-likelihood bounds at another level "
-                    "need a refit: CoxPH.fit_firth(..., alpha_ci={:g})."
+                    "need a refit: CoxPH.fit(..., firth=True, "
+                    "alpha_ci={:g})."
                     "".format(firth.alpha_ci, alpha_ci)
                 )
             return firth_table(names, beta, self.standard_errors(), firth)
@@ -1347,13 +1317,15 @@ class SemiParametricRegressionModel(
         - ``"log-log"`` (the default): on :math:`\log H`, :math:`H
           e^{\pm z\,\mathrm{se} / H}`, which keeps both bounds inside
           (0, 1). It is the scale of the Kaplan-Meier, Nelson-Aalen and
-          Aalen bounds (their ``bound_type="exp"``, also accepted), so
+          Aalen bounds (``bound_type="exp"`` until v0.30, still
+          accepted with a warning), so
           curves drawn together get bounds by the same rule;
         - ``"log"`` (R's default ``conf.type``, to match R's
           ``survfit`` printout): on :math:`\log S = -H`,
           :math:`S e^{\pm z\,\mathrm{se}}`, the upper bound at most 1;
         - ``"plain"``: on :math:`S` itself, :math:`S \pm z S\,
-          \mathrm{se}`, cut to [0, 1] (``"normal"`` is also accepted).
+          \mathrm{se}`, cut to [0, 1] (``"normal"`` until v0.30,
+          still accepted with a warning).
 
         The bounds on ``ff`` are one minus those on ``sf``, and those on
         ``Hf`` are minus their logarithm. Before the first event time the
@@ -1429,14 +1401,10 @@ class SemiParametricRegressionModel(
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         on = {"R": "sf", "F": "ff"}.get(on, on)
         check_option("bound", bound, ("two-sided", "lower", "upper"))
-        check_option(
-            "bound_type",
-            bound_type,
-            ("log", "log-log", "plain", "exp", "normal"),
-        )
-        bound_type = {"exp": "log-log", "normal": "plain"}.get(
-            bound_type, bound_type
-        )
+        from surpyval.univariate.nonparametric._scales import scale_name
+
+        bound_type = scale_name(f"{type(self).__name__}.cb", bound_type)
+        check_option("bound_type", bound_type, ("log", "log-log", "plain"))
         if method != "wald":
             raise ValueError(
                 "The Cox model's predicted curves have Wald bounds only "

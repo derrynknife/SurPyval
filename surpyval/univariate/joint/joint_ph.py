@@ -5,7 +5,9 @@ it, or more than one (``link``)."""
 
 from __future__ import annotations
 
+import copy
 import warnings
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -29,16 +31,17 @@ from surpyval.utils.units import normalise_unit, takes_unit
 from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import (
     caller_stacklevel,
+    collecting_warnings,
     ignoring_warnings,
     warn_no_covariance,
 )
 
 from ._likelihood import (
-    EFFECTS,
     LINKS,
     MAX_VARYING,
     JointArrays,
     Layout,
+    MarkerPaths,
     Model,
     PathFunction,
     block_labels,
@@ -47,7 +50,10 @@ from ._likelihood import (
     check_random_effects,
     check_weight,
     neg_ll,
+    path_jacobian,
     place,
+    several_markers,
+    varying_jacobian,
 )
 from ._markers import (
     marker_start,
@@ -60,6 +66,7 @@ from .joint_model import (
     HOWS,
     JointModel,
     covariate_parts,
+    effect_name,
     parameter_names,
     path_formula,
     reported_params,
@@ -128,6 +135,25 @@ def _check_lag_at_zero(path_model: Any, links: Any, lag: float) -> None:
             "Use lag=0, or a path that is finite at age 0, such as "
             "LinearPath, ExponentialPath or PowerPath."
         )
+
+
+def _marker_lag_lines(lag: Any, weight: Any) -> list:
+    """The fitter printout's lines of the lags and weights of several
+    markers (one for all, or by marker)."""
+    out = []
+    if isinstance(lag, Mapping):
+        said = [f"{m} {v:g}" for m, v in lag.items() if v > 0]
+        if said:
+            out.append("lag: " + ", ".join(said))
+    elif lag > 0:
+        out.append(f"lag: {lag:g}")
+    if isinstance(weight, Mapping):
+        said = [f"{m} {w[0]} {w[1]:g}" for m, w in weight.items() if w]
+        if said:
+            out.append("weight: " + ", ".join(said))
+    elif weight is not None:
+        out.append("weight: {} {:g}".format(*weight))
+    return out
 
 
 def _check_start_at_zero(fitter: Any, mu: npt.NDArray) -> None:
@@ -219,6 +245,17 @@ class JointPHFitter(FitterRepr):
     #: A start for the path part (``mu``, ``Delta``, ``L``, ``sigma``)
     #: from another link's fit of the same data (``compare_links``).
     _path_start: dict | None = None
+    #: The markers' names, for a model of several markers (``path_model``
+    #: a dict of their path models); ``None`` for one marker.
+    markers: list | None = None
+    path_model: Any
+    link: Any
+
+    @property
+    def takes_several_markers(self) -> bool:
+        """Whether the fitter fits several markers (a SurpyvalData's
+        named measurements are its markers)."""
+        return self.markers is not None
 
     def __init__(
         self,
@@ -228,7 +265,7 @@ class JointPHFitter(FitterRepr):
         link: Any = "value",
         lag: float = 0.0,
         weight: Any = None,
-        random_effects: Any = "full",
+        random_effects: Any = None,
     ) -> None:
         from surpyval import Weibull
         from surpyval.degradation.path_models import LinearPath, PathModel
@@ -240,6 +277,17 @@ class JointPHFitter(FitterRepr):
                 f"Joint{self.survival}(Weibull, path_model), or "
                 f"WeibullJoint{self.survival}; got {name}."
             )
+        if isinstance(path_model, Mapping):
+            self._set_markers(
+                distribution,
+                path_model,
+                varying,
+                link,
+                lag,
+                weight,
+                random_effects,
+            )
+            return
         if not isinstance(path_model, PathModel):
             raise ValueError(
                 "path_model is a degradation path model, such as "
@@ -247,6 +295,10 @@ class JointPHFitter(FitterRepr):
                 f"PathModel of your own; got {path_model!r}."
             )
         names = list(path_model.parameter_names)
+        if varying is None and hasattr(path_model, "default_varying"):
+            # a path that says which of its parameters differ between
+            # items (a spline: its level and rate, the bends common)
+            varying = tuple(path_model.default_varying)
         if varying is None:
             varying = tuple(names)
         if isinstance(varying, str):
@@ -314,6 +366,13 @@ class JointPHFitter(FitterRepr):
         self.path_model = path_model
         # in the path's order
         self.varying = tuple(n for n in names if n in varying)
+        if random_effects is None:
+            # the path's own default (a spline: its level and rate
+            # correlated, each varying bend on its own), else every pair
+            chooser = getattr(path_model, "default_random_effects", None)
+            random_effects = (
+                chooser(self.varying) if chooser is not None else "full"
+            )
         self.random_effects = check_random_effects(
             random_effects, self.varying
         )
@@ -324,7 +383,78 @@ class JointPHFitter(FitterRepr):
             else f"{distribution.name}{plain}Joint{self.survival}"
         )
 
+    def _set_markers(
+        self,
+        distribution: Any,
+        path_models: Mapping,
+        varying: Any,
+        link: Any,
+        lag: float,
+        weight: Any,
+        random_effects: Any,
+    ) -> None:
+        """The fitter of several markers (``path_model`` a dict
+        ``{marker: path model}``)."""
+        from ._multi import (
+            MarkerSet,
+            check_marker_dimension,
+            check_markers,
+            lag_of,
+            marker_lags,
+            marker_links,
+            marker_random_effects,
+            marker_varying,
+            marker_weights,
+        )
+
+        names, models = check_markers(path_models)
+        self.markers = names
+        self.path_model = MarkerSet(names, models)
+        self.varying = marker_varying(names, models, varying)
+        check_marker_dimension(self.varying)
+        self.link = marker_links(names, link)
+        self.lag = marker_lags(names, lag)
+        self.weight = marker_weights(names, weight, self.link)
+        for name, model in zip(names, models):
+            own = tuple(k for m, k in self.link if m == name)
+            reasons = cannot_follow(model, own)
+            if reasons:
+                refused = [k for k in own if cannot_follow(model, (k,))]
+                said = "; ".join(reasons)
+                if "slope" in refused:
+                    said += " " + _infinite_near_zero(self.survival)
+                raise ValueError(
+                    f"Marker {name!r}: "
+                    + said
+                    + ". "
+                    + _instead(model, self.survival, refused)
+                )
+            _check_lag_at_zero(model, own, lag_of(self.lag, name))
+        self.dist = distribution
+        if random_effects is None:
+            random_effects = "full"
+        self.random_effects = check_random_effects(
+            marker_random_effects(random_effects, self.varying), self.varying
+        )
+        self.name = f"{distribution.name}Joint{self.survival}"
+
     def _repr_details(self) -> list[str]:
+        if self.markers is not None:
+            out = [f"{self.dist.name} baseline"]
+            for name, model in zip(self.markers, self.path_model.models):
+                out.append(
+                    "{}: {} path, {}".format(
+                        name, model.name, path_formula(model)
+                    )
+                )
+            out.append("varying: " + ", ".join(self.varying))
+            if self.random_effects != "full":
+                out.append(
+                    "random effects: " + structure_words(self.random_effects)
+                )
+            out.append("link: " + ", ".join(f"{m} {k}" for m, k in self.link))
+            out += _marker_lag_lines(self.lag, self.weight)
+            return out
         names = list(self.path_model.parameter_names)
         out = [
             f"{self.dist.name} baseline",
@@ -525,17 +655,22 @@ class JointPHFitter(FitterRepr):
             for all. The model's ``sf`` is the survival of every mode
             together. An item found failed (left or interval censored)
             needs its mode too. With one mode, or none given, the model
-            is that of one kind of failure. Proportional hazards and
-            ``how="MLE"`` only: a ``JointAFT`` fitter and the two-stage
-            estimate refuse event types.
+            is that of one kind of failure. With several markers each
+            mode has an effect of each marker's link of its own
+            (``"<mode>: vibration.marker_effect"``, ...), so one marker
+            may warn of a mode and another marker of another.
+            Proportional hazards and ``how="MLE"`` only: a ``JointAFT``
+            fitter and the two-stage estimate refuse event types.
         shared : list of str, optional
             With failure modes: the survival parameters the modes have
             in common, one parameter each under its plain name:
             ``"beta"`` (the baselines' shape), a hazard covariate, or a
             link's effect (``"marker_effect"``, ``"slope_effect"``,
-            ``"cumulative_effect"``). Default none: every mode has its
-            own. The fit with an effect shared is nested in the fit
-            without, so the likelihood-ratio test of the two
+            ``"cumulative_effect"``; with several markers a marker's
+            link's, ``"vibration.marker_effect"``, one marker's at a
+            time). Default none: every mode has its own. The fit with
+            an effect shared is nested in the fit without, so the
+            likelihood-ratio test of the two
             (``model.likelihood_ratio_test(shared_model)``) asks whether
             the reading speaks to the modes differently.
 
@@ -608,6 +743,26 @@ class JointPHFitter(FitterRepr):
             "approximate estimate.",
         )
         integration = check_integration(integration, len(self.varying))
+        if self.markers is not None:
+            return self._fit_markers(
+                x,
+                c,
+                n,
+                t,
+                Z,
+                markers,
+                tl,
+                tr,
+                marker_reference,
+                path_covariates,
+                hazard_covariates,
+                i,
+                marker_unit,
+                how,
+                integration,
+                e,
+                shared,
+            )
         reference = None
         if marker_reference is not None:
             try:
@@ -652,11 +807,94 @@ class JointPHFitter(FitterRepr):
         model.marker_unit = marker_unit
         return model
 
+    def _fit_markers(
+        self,
+        x: Any,
+        c: Any,
+        n: Any,
+        t: Any,
+        Z: Any,
+        markers: Any,
+        tl: Any,
+        tr: Any,
+        marker_reference: Any,
+        path_covariates: Any,
+        hazard_covariates: Any,
+        i: Any,
+        marker_unit: Any,
+        how: str,
+        integration: str,
+        e: Any,
+        shared: Any,
+    ) -> JointModel:
+        """:meth:`fit` of several markers."""
+        from ._multi import checked_readings, rows_by_marker
+
+        names = list(self.markers or [])
+        valued = [m for m, k in self.link if k == "value"]
+        references = {}
+        if marker_reference is not None:
+            if not isinstance(marker_reference, Mapping):
+                raise ValueError(
+                    "With several markers 'marker_reference' is a dict "
+                    "{marker: value}, the value of each marker whose value "
+                    f"the hazard follows ({valued!r}) at which alpha is "
+                    f"reported; got {marker_reference!r}."
+                )
+            for name, value in marker_reference.items():
+                if name not in valued:
+                    raise ValueError(
+                        f"'marker_reference' names {name!r}; it takes the "
+                        "markers whose value the hazard follows, "
+                        f"{valued!r}."
+                    )
+                try:
+                    number = float(value)
+                except (TypeError, ValueError):
+                    number = np.nan
+                if np.ndim(value) or not np.isfinite(number):
+                    raise ValueError(
+                        f"'marker_reference'[{name!r}] is one finite "
+                        f"number; got {value!r}."
+                    )
+                references[name] = number
+        units = marker_units(marker_unit, names, markers, x)
+        rows = rows_by_marker(markers_by_row(markers, i, x, names), names)
+        records, counts, covariates = _records(
+            x, c, n, t, tl, tr, Z, [{}] * len(rows)
+        )
+        readings = [
+            checked_readings(r, rows[int(r.id)], names) for r in records
+        ]
+        parts = covariate_parts(
+            list(self.path_model.parameter_names),
+            covariates,
+            path_covariates,
+            hazard_covariates,
+        )
+        causes = _causes(self, e, records, counts, how)
+        model = _fit(
+            self,
+            records,
+            counts,
+            covariates,
+            references,
+            parts,
+            integration,
+            how,
+            causes,
+            _check_shared(shared, causes, parts[1], self.link),
+            readings=readings,
+        )
+        model.marker_unit = units
+        return model
+
     def compare_links(
         self,
         *args: Any,
         links: Any = None,
         metric: str = "aic",
+        marker: str | None = None,
         **kwargs: Any,
     ) -> LinkComparison:
         """
@@ -716,6 +954,15 @@ class JointPHFitter(FitterRepr):
         metric : str, optional
             The criterion the links are ranked by: ``"aic"`` (default),
             ``"aic_c"`` or ``"bic"``.
+        marker : str, optional
+            With several markers, the one whose links are compared
+            (needed): each candidate gives that marker the link compared
+            and every other marker the links of this fitter, so the
+            comparison asks what the hazard follows of that marker with
+            the others' parts as they are. ``models`` and the table are
+            by that marker's link, and ``verdict`` names it. A weight
+            on the marker's exposure goes to the candidates that follow
+            its area.
 
         Returns
         -------
@@ -770,7 +1017,21 @@ class JointPHFitter(FitterRepr):
                 "by the accuracy of their predictions "
                 "(surpyval.metrics.score_predictions)."
             )
-        return compare_links(self, args, kwargs, links=links, metric=metric)
+        if self.markers is not None and marker not in self.markers:
+            raise ValueError(
+                "compare_links compares the links of one marker; this fitter "
+                f"has several, {list(self.markers)!r}: name the one with "
+                f"marker= (marker={self.markers[0]!r}); every other keeps "
+                f"its links. Got marker={marker!r}."
+            )
+        if self.markers is None and marker is not None:
+            raise ValueError(
+                "'marker' names which of several markers' links to compare; "
+                "this fitter has one marker: leave marker out."
+            )
+        return compare_links(
+            self, args, kwargs, links=links, metric=metric, marker=marker
+        )
 
     @takes_unit
     def fit_from_df(
@@ -848,6 +1109,9 @@ class JointPHFitter(FitterRepr):
         >>> model.parameter_names[:4]
         ['a', 'a_site', 'b', 'b_site']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         from surpyval.univariate.regression._aliasing import (
             covariate_columns,
         )
@@ -926,7 +1190,7 @@ def JointPH(
     link: Any = "value",
     lag: float = 0.0,
     weight: Any = None,
-    random_effects: Any = "full",
+    random_effects: Any = None,
 ) -> JointPHFitter:
     """
     A joint model fitter of a marker and a lifetime: the marker follows
@@ -941,14 +1205,25 @@ def JointPH(
     ----------
     distribution : ParametricFitter
         ``surpyval.Weibull``.
-    path_model : PathModel, optional
-        The marker's path. Default ``LinearPath``.
+    path_model : PathModel or dict, optional
+        The marker's path. Default ``LinearPath``. A dict ``{name: path
+        model}`` is a model of several markers read on each item, each
+        with its own path, varying parameters, noise and effects, their
+        varying parameters correlated across the markers; ``varying``,
+        ``link`` and ``random_effects`` may then be given by marker (a
+        dict, or names ``"<marker>.<parameter>"``), ``random_effects``
+        may be ``"by_marker"`` (correlated within each marker only), and
+        the fit takes each row's readings as ``{name: {age: value}}`` (a
+        ``Measurements`` of named measurements). Up to eight varying
+        parameters over the markers: see "Several markers on one item"
+        in the joint models' guide.
     varying : sequence of str, optional
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
-        items. Default all of them. Up to five, each item's integral
-        is on a grid by default; beyond five it is Laplace's
-        approximation (``integration`` of :meth:`JointPHFitter.fit`).
+        items. Default all of them; for a ``SplinePath``, its ``level``
+        and ``rate``. Up to five, each item's integral is on a grid by
+        default; beyond five it is Laplace's approximation
+        (``integration`` of :meth:`JointPHFitter.fit`).
     link : str or sequence of str, optional
         What of the marker's path the hazard follows: ``"value"`` (the
         default: its current value, so risk follows the level),
@@ -957,7 +1232,7 @@ def JointPH(
         risk follows the accumulated exposure), or a list of them, each
         with an effect of its own (``marker_effect``, ``slope_effect``,
         ``cumulative_effect``).
-    lag : float, optional
+    lag : float or dict, optional
         How long after the marker the hazard follows it, in the
         lifetimes' unit of time (default 0: at once). With ``lag=200``
         the hazard at age ``t`` follows the path at ``t - 200``, so a
@@ -967,8 +1242,11 @@ def JointPH(
         link at ``max(t - lag, 0)``, the slope 0 before the lag). The lag
         is fixed, not estimated: the likelihood is not smooth in it. To
         choose one, fit each lag you have in mind and compare them by
-        ``aic()`` (the same data, the same number of parameters).
-    weight : tuple, optional
+        ``aic()`` (the same data, the same number of parameters). With
+        several markers one number applies to every marker, and a dict
+        ``{marker: lag}`` gives each its own (a marker left out at once,
+        0).
+    weight : tuple or dict, optional
         How much of the accumulated exposure (the ``"cumulative"`` link,
         which it needs) still counts, by how long ago it was. The
         default, ``None``, counts all of it equally: an hour of exposure
@@ -982,12 +1260,16 @@ def JointPH(
         or width is in the lifetimes' unit of time and, like the lag, is
         fixed, not estimated: fit each one you have in mind and compare
         them by ``aic()``. With a ``lag`` the weighted exposure acts
-        ``lag`` later (the weighted area at ``max(t - lag, 0)``).
+        ``lag`` later (the weighted area at ``max(t - lag, 0)``). With
+        several markers one weight applies to every marker with the
+        ``"cumulative"`` link, and a dict ``{marker: weight}`` gives
+        each its own (a marker left out unweighted).
         ``cumulative_effect`` is still per unit of the marker times a
         unit of age.
     random_effects : str or sequence, optional
         Which of the varying path parameters are correlated between
-        items. ``"full"`` (the default): every pair, a correlation each
+        items. ``"full"`` (the default, but for a spline's bends, below):
+        every pair, a correlation each
         (``corr_a_b``, ...; three for three varying parameters, ten for
         five); ``"diagonal"``: none, each varying independently of the
         others; or blocks of names, such as ``[("a", "b"), ("c",)]``:
@@ -998,7 +1280,12 @@ def JointPH(
         the parameters estimated. With many varying parameters and a
         fleet too small to tell their correlations apart, fewer can be
         what makes the fit identifiable; nested structures compare by
-        ``aic()`` or the likelihood ratio of the same data.
+        ``aic()`` or the likelihood ratio of the same data. For a
+        ``SplinePath`` whose bends vary (``varying=("level", "rate",
+        "s1")``), the default is a block of ``level`` and ``rate`` and
+        each bend on its own: a bend's spread is told from few items'
+        readings past its knot, too few to estimate its correlations
+        with the rest as well.
 
     Returns
     -------
@@ -1027,6 +1314,17 @@ def JointPH(
     >>> JointPH(Weibull, link="cumulative", weight=("exponential", 0.5))
     ... # doctest: +ELLIPSIS
     WeibullJointPH: joint model fitter (..., weight: exponential 0.5)
+
+    Two markers, the hazard following the value of each:
+
+    >>> from surpyval.degradation import LinearPath
+    >>> two = JointPH(
+    ...     Weibull, {"vibration": LinearPath, "temperature": LinearPath}
+    ... )
+    >>> two.varying
+    ('vibration.a', 'vibration.b', 'temperature.a', 'temperature.b')
+    >>> two.link
+    (('vibration', 'value'), ('temperature', 'value'))
     """
     if path_model is None:
         from surpyval.degradation.path_models import LinearPath
@@ -1176,6 +1474,50 @@ def _records(
     return records, np.array(counts, dtype=float), names
 
 
+def marker_units(given: Any, names: list, markers: Any, x: Any) -> Any:
+    """The unit each of several markers is read in, ``{marker: unit}``
+    (``None`` where no marker has one): ``given`` (a dict) and the
+    readings' own units (a Measurements, given or held by the data),
+    which must agree."""
+    from surpyval.utils.measurements import Measurements
+    from surpyval.utils.surpyval_data import SurpyvalData
+    from surpyval.utils.units import same_unit
+
+    if isinstance(given, str) and len(names) == 1:
+        given = {names[0]: given}
+    if given is not None and not isinstance(given, Mapping):
+        raise ValueError(
+            "With several markers 'marker_unit' is a dict {marker: unit}, "
+            f"the unit each is read in; got {given!r}."
+        )
+    out: dict = {name: None for name in names}
+    for name, unit in (given or {}).items():
+        if name not in names:
+            raise ValueError(
+                f"'marker_unit' names {name!r}, which is not a marker; the "
+                f"markers are {names!r}."
+            )
+        out[name] = normalise_unit(unit)
+    held = None
+    if isinstance(markers, Measurements):
+        held = markers
+    elif isinstance(x, SurpyvalData) and x.m is not None:
+        held = x.m
+    if held is not None:
+        for name, unit in held.units.items():
+            if name not in out or unit is None:
+                continue
+            if out[name] is None:
+                out[name] = unit
+            elif not same_unit(out[name], unit):
+                raise ValueError(
+                    f"Marker {name!r}'s readings are in {unit!r}, but "
+                    f"marker_unit gives {out[name]!r}: a model is in the "
+                    "unit of its readings (no conversion is made)."
+                )
+    return out if any(v is not None for v in out.values()) else None
+
+
 def _labels(e: Any) -> npt.NDArray:
     """``e`` as an object array of labels, a missing one (``None``,
     ``nan``, pandas' ``NA``) as ``None``; a tuple label kept whole."""
@@ -1198,9 +1540,11 @@ def _causes(
     """``(causes, index)``: the failure modes of ``e``, in order, and
     each record's (its index among them, -1 for an item still running);
     ``None`` where no event types are given, or one mode only (the model
-    of one kind of failure). What the fit of several modes cannot take
-    is refused: a failure with no mode, a mode on an item still running,
-    the accelerated survival part and the two-stage estimate."""
+    of one kind of failure); a failure with no mode (``None``) is of
+    unknown mode, -1 too (its event flag tells it from a running item).
+    What the fit of several modes cannot take is refused: a mode on an
+    item still running, the accelerated survival part and the two-stage
+    estimate."""
     from surpyval.univariate.competing_risks.labels import ordered_labels
 
     if e is None:
@@ -1220,6 +1564,20 @@ def _causes(
     mine = [labels[int(r.id)] for r in records]
     causes = ordered_labels(mine)
     if len(causes) < 2:
+        unlabelled = sum(
+            w
+            for w, label, r in zip(counts, mine, records)
+            if label is None and r.outcome != "right_censored"
+        )
+        if causes and unlabelled:
+            warnings.warn(
+                f"'e' names one failure mode ({causes[0]!r}) and "
+                f"{unlabelled:g} failure(s) have none: with one mode there "
+                "is nothing to tell apart, so every failure, labelled or "
+                "not, is fitted as one kind of failure (the model without "
+                "modes). Give the other failures' modes to fit modes.",
+                stacklevel=caller_stacklevel(),
+            )
         return None
     running = [r.outcome == "right_censored" for r in records]
     labelled = sum(
@@ -1233,18 +1591,12 @@ def _causes(
             "failure mode in 'e'. An item that has not failed has none: "
             "set their 'e' to None."
         )
-    unknown = sum(
-        w
-        for w, label, r in zip(counts, mine, running)
-        if not r and label is None
-    )
-    if unknown:
-        raise ValueError(
-            f"{unknown:g} failure(s) have no failure mode in 'e' "
-            f"(the others are {causes!r}). A failure of unknown mode is "
-            "not fitted yet: give each failure's mode, or leave 'e' out "
-            "to fit every failure as one kind."
-        )
+    # A failure with no mode in 'e' (None) is a failure of unknown mode:
+    # its likelihood is the sum over the modes of each mode's term, the
+    # hazard of failing at all times the survival of every mode (exact),
+    # or the chance of failing in its interval by any mode (inspected);
+    # the index -1 says so (:func:`._likelihood.log_event_of`,
+    # :func:`._likelihood.log_cause_fails_between`).
     if fitter.survival == "AFT":
         raise ValueError(
             "An accelerated joint model (JointAFT) takes no failure modes "
@@ -1401,6 +1753,139 @@ def _arrays(
     return T, d, L, Z, ages, values, U, Rt
 
 
+def _marker_arrays(
+    fitter: JointPHFitter,
+    records: list,
+    readings: list,
+    counts: Any,
+    p: int,
+) -> tuple:
+    """``(T, d, L, Z, U, Rt)`` of the records, and the checks of what a
+    model of several markers needs: each marker's readings inside its
+    path's domain, and read at as many ages as its path has parameters
+    on enough items to see how they differ."""
+    T, d, U, L, Rt = _lifetimes(records)
+    point = ~np.isfinite(U)
+    if np.any(L < 0) or np.any(T[point] <= 0) or np.any(U[~point] <= 0):
+        raise ValueError(
+            "The joint model's ages start at 0 (a Weibull baseline): every "
+            "item fails or is censored after 0 and comes under observation "
+            "at 0 or later (left_truncation)."
+        )
+    Z = (
+        np.array([r.covariates for r in records], dtype=float).reshape(-1, p)
+        if p
+        else np.zeros((len(records), 0))
+    )
+    if not (d.any() or np.isfinite(U).any()):
+        raise ValueError(
+            "The joint model needs at least one failure (observed, or "
+            "found failed: left or interval censored): every item is still "
+            "running."
+        )
+    for k, (name, model) in enumerate(
+        zip(fitter.markers or [], fitter.path_model.models)
+    ):
+        ages = [item[k][0] for item in readings]
+        for item in readings:
+            a, v = item[k]
+            if len(a):
+                try:
+                    model.check_data(a, v)
+                except ValueError as error:
+                    raise ValueError(f"Marker {name!r}: {error}") from None
+        P = len(model.parameter_names)
+        q = sum(1 for v in fitter.varying if v.split(".", 1)[0] == name)
+        fitted = sum(1 for a in ages if len(np.unique(a)) >= P)
+        if fitted < q + 2:
+            raise ValueError(
+                f"The joint model needs readings of marker {name!r} at {P} "
+                f"or more ages (its {model.name} path's parameters) on at "
+                f"least {q + 2} items, to see how their paths differ; "
+                f"{fitted} item(s) have them."
+            )
+    return T, d, L, Z, U, Rt
+
+
+def _marker_refs(
+    markers: list, links: tuple, centres: list, zbar: Any, reference: dict
+) -> tuple:
+    """``refs`` (:func:`~.joint_model.reported_params`) of several
+    markers: the centre and the reference of each link's term (a value's
+    its marker's, 0 for a slope or an area)."""
+    c = np.array(
+        [centres[markers.index(m)] if k == "value" else 0.0 for m, k in links]
+    )
+    r = np.array(
+        [reference[m] if k == "value" else 0.0 for m, k in links],
+        dtype=float,
+    )
+    return (c, zbar, r)
+
+
+def _with_placed_paths(fitter: JointPHFitter, readings: list) -> Any:
+    """:func:`_with_placed_path` for several markers: each marker's path
+    of joined pieces placed from its own readings' ages."""
+    from ._multi import MarkerSet
+
+    models = []
+    changed = False
+    for k, model in enumerate(fitter.path_model.models):
+        base = getattr(model, "base", model)
+        if not hasattr(base, "placed"):
+            models.append(model)
+            continue
+        ages = [list(item[k][0]) for item in readings]
+        pooled = np.array([a for item in ages for a in item], dtype=float)
+        placed = base.placed(pooled)
+        placed.check_readings([len(item) for item in ages])
+        name = fitter.path_model.names[k]
+        own = [
+            v.split(".", 1)[1]
+            for v in fitter.varying
+            if v.split(".", 1)[0] == name
+        ]
+        placed.check_varying(ages, tuple(own))
+        if placed is not base:
+            changed = True
+            model = (
+                placed
+                if base is model
+                else type(model)(placed, dict(model.links))
+            )
+        models.append(model)
+    if not changed:
+        return fitter
+    out = copy.copy(fitter)
+    out.path_model = MarkerSet(fitter.path_model.names, models)
+    return out
+
+
+def _check_markers(
+    fitter: JointPHFitter, mu: npt.NDArray, found_by: str
+) -> None:
+    """:func:`_check_power` and :func:`_check_start_at_zero` of the path,
+    or of each marker's."""
+    if fitter.markers is None:
+        _check_power(fitter, mu, found_by)
+        _check_start_at_zero(fitter, mu)
+        return
+    mu = np.asarray(mu, dtype=float)
+    for name, model, piece in zip(
+        fitter.markers, fitter.path_model.models, fitter.path_model.slices
+    ):
+        one = copy.copy(fitter)
+        one.markers = None
+        one.path_model = model
+        one.link = tuple(k for m, k in fitter.link if m == name)
+        from ._multi import lag_of, weight_of
+
+        one.lag = lag_of(fitter.lag, name)
+        one.weight = weight_of(fitter.weight, name)
+        _check_power(one, mu[piece], found_by)
+        _check_start_at_zero(one, mu[piece])
+
+
 def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     """The covariate columns the data cannot determine: constant (the
     path means and the Weibull scale are intercepts), or combinations of
@@ -1413,24 +1898,154 @@ def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return aliased_columns(gram, len(Z), constant)
 
 
+#: A path of one's own whose hazard integral over age, split at its
+#: half, differs from the one rule over it by more than this (relative)
+#: on the probe items gets the warning (:func:`_check_kinks`). The split
+#: rule is far more accurate than the one, so the difference estimates
+#: the one rule's error: a corner gives 1e-4 or more (7e-4 for a line
+#: turning to rise 3 a year), as does a smooth but very steep or sudden
+#: path (7.6e-3 for an exponential rising 8.9 times; 3.9e-3 for a
+#: logistic step of 3 over 30 days); gentle smooth paths stay below it
+#: (a quadratic rising steeply, 1.5e-6 at two years).
+_KINK_TOL = 1e-5
+
+
+def _own_paths(path: Any) -> list:
+    """The path model of ``path`` (a :class:`PathFunction`) where it is a
+    user's own, not the package's, with no ``breaks``: one whose kinks
+    the fit cannot know of (a list, empty otherwise)."""
+    out = []
+    for part in [path.model]:
+        base = getattr(part, "base", part)
+        own = not type(base).__module__.startswith("surpyval.degradation")
+        if own and not tuple(getattr(base, "breaks", ()) or ()):
+            out.append(base)
+    return out
+
+
+def _check_kinks(model: Model, arrays: JointArrays, theta: dict) -> None:
+    """Warn where a path of one's own (with no ``breaks``) seems to have
+    a kink: on up to five items (those observed longest), each one's
+    cumulative hazard to its age along its mean path, by the one rule
+    and by the same rule on each half of the ages, differs by more than
+    :data:`_KINK_TOL`. A corner in the path is where the rule loses its
+    accuracy; naming it in ``breaks`` splits the integral there."""
+    if model.layout.n_markers != 1 or not _own_paths(model.path):
+        return
+    from ._likelihood import log_cumhaz, log_cumhaz_between
+
+    T = np.asarray(arrays.T, dtype=float)
+    order = np.argsort(-T)[:5]
+    order = order[T[order] > 0]
+    if not order.size:
+        return
+    probe = arrays.take(order)
+    layout = model.layout
+    mu = np.asarray(theta["mu"], dtype=float)
+    Delta = np.asarray(theta["Delta"], dtype=float)
+    start: dict[str, Any] = dict(
+        mu=mu,
+        Delta=Delta,
+        L=np.asarray(theta["L"], dtype=float),
+        sigma=float(np.ravel(theta["sigma"])[0]),
+        alpha=float(np.ravel(theta.get("alpha", 1.0))[0]),
+        beta=float(np.ravel(theta.get("beta", 1.0))[0]),
+        gamma=np.zeros(layout.p),
+        zeta=np.zeros(layout.n_links) + 0.5,
+    )
+    if "alpha" not in theta:
+        start["alpha"] = float(np.median(T[T > 0]))
+    means = mu[None, :] + probe.Z @ Delta.T
+    params = means[:, None, :]
+    t = T[order]
+    with np.errstate(all="ignore"), ignoring_warnings():
+        try:
+            whole = np.exp(
+                log_cumhaz(start, model.path, params, probe, t, model.centre)
+            )[:, 0]
+            first = np.exp(
+                log_cumhaz(
+                    start, model.path, params, probe, t / 2, model.centre
+                )
+            )[:, 0]
+            second = np.exp(
+                log_cumhaz_between(
+                    start, model.path, params, probe, t / 2, t, model.centre
+                )
+            )[:, 0]
+        except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+            return
+    off = np.abs((first + second) / whole - 1.0)
+    off = off[np.isfinite(off)]
+    if off.size and float(off.max()) > _KINK_TOL:
+        name = _own_paths(model.path)[0].name
+        warnings.warn(
+            f"The rule that integrates the hazard over age loses accuracy "
+            f"along the {name} path: on the items observed longest the "
+            f"integral changes by {float(off.max()):.1g} of itself when "
+            "split at half the age (an estimate of the rule's error; a "
+            f"smooth, gentle path's is below {_KINK_TOL:g}). This comes "
+            "of a corner in the path (its slope jumps) or a very steep or "
+            "sudden change. Give the path's class a 'breaks' attribute "
+            "with the ages of its corners, or ages through its steep part "
+            "(breaks = (365.0,)): the integrals are then split there.",
+            stacklevel=caller_stacklevel(),
+        )
+
+
+def _with_placed_path(fitter: JointPHFitter, records: list) -> JointPHFitter:
+    """``fitter``, or a copy of it whose path has its knots placed from
+    the records' reading ages: for a path made of joined pieces (a
+    ``SplinePath``), which also refuses more knots than the items'
+    readings support, and varying bends whose spread they cannot
+    tell."""
+    path: Any = fitter.path_model
+    base = getattr(path, "base", path)
+    if not hasattr(base, "placed"):
+        return fitter
+    ages = [list((r.markers or {}).keys()) for r in records]
+    pooled = np.array([a for item in ages for a in item], dtype=float)
+    placed = base.placed(pooled)
+    placed.check_readings([len(item) for item in ages])
+    placed.check_varying(ages, fitter.varying)
+    if placed is base:
+        return fitter
+    out = copy.copy(fitter)
+    if base is path:
+        out.path_model = placed
+    else:
+        out.path_model = type(path)(placed, dict(path.links))
+    return out
+
+
 def _fit(
     fitter: JointPHFitter,
     records: list,
     counts: npt.NDArray,
     names: list,
-    reference: float | None,
+    reference: Any,
     parts: tuple,
     integration: str = "grid",
     how: str = "MLE",
     causes: tuple | None = None,
     shared: tuple = (),
+    readings: Any = None,
 ) -> JointModel:
     """The joint fit of ``records`` (``counts`` of each), by ``how``
     (:data:`HOWS`); ``parts`` is ``(shifts, hazard)``, which covariates
     enter which part
     (:func:`~surpyval.univariate.joint.joint_model.covariate_parts`);
     ``causes`` is :func:`_causes`' (the failure modes and each record's)
-    and ``shared`` the survival parameters they have in common."""
+    and ``shared`` the survival parameters they have in common. With
+    several markers, ``readings`` holds each record's readings by marker
+    (``_multi.checked_readings``) and ``reference`` is ``{marker:
+    value}``."""
+    several = fitter.markers is not None
+    markers: list = list(fitter.markers or [])
+    if several:
+        fitter = _with_placed_paths(fitter, readings)
+    else:
+        fitter = _with_placed_path(fitter, records)
     path_model = fitter.path_model
     path_names = list(path_model.parameter_names)
     shifts, hazard = parts
@@ -1446,6 +2061,7 @@ def _fit(
         fitter.random_effects,
         cause_names,
         shared,
+        fitter.markers,
     )
     clash = sorted({a for a in names if every.count(a) > 1})
     clash += sorted(
@@ -1457,9 +2073,21 @@ def _fit(
             f"Covariates named {clash!r} would share a parameter's name in "
             "the joint model; rename them."
         )
-    T, d, L, Z_all, ages, values, U, Rt = _arrays(
-        fitter, records, counts, p_all
-    )
+    channels = None
+    if several:
+        from ._multi import joined, marker_centres
+
+        T, d, L, Z_all, U, Rt = _marker_arrays(
+            fitter, records, readings, counts, p_all
+        )
+        each = [joined(item) for item in readings]
+        ages = [a for a, _, _ in each]
+        values = [v for _, v, _ in each]
+        channels = [ch for _, _, ch in each]
+    else:
+        T, d, L, Z_all, ages, values, U, Rt = _arrays(
+            fitter, records, counts, p_all
+        )
     aliased = _aliased(Z_all, counts)
     if aliased.size:
         warn_aliased(
@@ -1473,10 +2101,21 @@ def _fit(
     read_w = np.concatenate(
         [np.full(len(v), w) for v, w in zip(values, counts)]
     )
-    centre = float(np.average(np.concatenate(values), weights=read_w))
     zbar = np.average(Z, axis=0, weights=counts) if p else np.zeros(0)
-    reference = centre if reference is None else reference
-    refs = (centre, zbar, reference)
+    if several:
+        centres = marker_centres(readings, counts, len(markers))
+        given: dict = dict(reference or {})
+        reference = {
+            name: given.get(name, centres[k])
+            for k, name in enumerate(markers)
+            if (name, "value") in fitter.link
+        }
+        refs = _marker_refs(markers, fitter.link, centres, zbar, reference)
+        centre: Any = 0.0
+    else:
+        centre = float(np.average(np.concatenate(values), weights=read_w))
+        reference = centre if reference is None else reference
+        refs = (centre, zbar, reference)
     arrays = JointArrays.build(
         counts,
         T,
@@ -1488,6 +2127,8 @@ def _fit(
         U=U,
         Rt=Rt,
         e=None if causes is None else causes[1],
+        channels=channels,
+        n_markers=len(markers) if several else 1,
     )
     if integration == "laplace" and how == "MLE":
         _check_laplace(arrays, len(fitter.varying))
@@ -1506,7 +2147,7 @@ def _fit(
             "n_causes": len(cause_names),
             "shared_beta": "beta" in shared,
             "shared_hazard": [cov in shared for cov in kept_names],
-            "shared_links": [EFFECTS[k] in shared for k in fitter.link],
+            "shared_links": [effect_name(k) in shared for k in fitter.link],
         }
     layout = Layout(
         len(path_names),
@@ -1521,18 +2162,25 @@ def _fit(
         fitter.survival,
         block_labels(fitter.random_effects, fitter.varying),
         **cause_layout,
+        n_markers=len(markers) if several else 1,
     )
-    model = Model(
-        layout,
-        PathFunction(path_model, fitter.link, fitter.lag, fitter.weight),
-        centre,
-        integration,
-    )
+    path: Any
+    if several:
+        path = MarkerPaths(
+            path_model, fitter.link, fitter.lag, fitter.weight, centres
+        )
+    else:
+        path = PathFunction(path_model, fitter.link, fitter.lag, fitter.weight)
+    model = Model(layout, path, centre, integration)
     # Starting values: each item's path alone, their spread (or, where
     # given, another link's fit of the same data: compare_links), then
     # the survival part on each item's predicted path
     theta = _given_path_start(fitter._path_start, layout)
     given_start = theta is not None
+    if theta is None and several:
+        from ._multi import marker_part_start
+
+        theta = marker_part_start(model, arrays, readings, Z - zbar, counts)
     if theta is None and layout.q > MAX_VARYING:
         # many parameters an item: the items' own fits are too wild for
         # their mean and covariance to start from
@@ -1540,34 +2188,63 @@ def _fit(
         given_start = True
     if theta is None:
         theta = marker_start(model, ages, values, Z - zbar, counts)
-    _check_power(fitter, theta["mu"], "the readings put")
-    _check_start_at_zero(fitter, theta["mu"])
+    _check_markers(fitter, theta["mu"], "the readings put")
+    _check_kinks(model, arrays, theta)
     total = float(np.sum(counts))
+    fit_model, path_u = model, None
     if how == "two-stage":
         u, value, cov_u, maximum = _two_stage(model, arrays, theta)
     else:
-        try:
-            u, value, cov_u, maximum = _maximise(
-                model, arrays, survival_start(model, arrays, theta)
+        with collecting_warnings() as first_warnings:
+            try:
+                u, value, cov_u, maximum = _maximise(
+                    model, arrays, survival_start(model, arrays, theta)
+                )
+            except _NoStart:
+                if given_start:
+                    raise
+                # the likelihood is not finite at the start from the
+                # items' own fits: one more, from the settled start
+                if several:
+                    from ._multi import marker_part_start
+
+                    theta = marker_part_start(
+                        model,
+                        arrays,
+                        readings,
+                        Z - zbar,
+                        counts,
+                        settled=True,
+                    )
+                else:
+                    theta = settled_marker_start(model, arrays, ages, values)
+                u, value, cov_u, maximum = _maximise(
+                    model, arrays, survival_start(model, arrays, theta)
+                )
+        kept_warnings = list(first_warnings)
+        # a spread at 0, or a correlation at +-1, held on its edge
+        fit_model, (u, value, cov_u, maximum), kept_warnings, path_u = (
+            _on_an_edge(
+                model, arrays, (u, value, cov_u, maximum), kept_warnings
             )
-        except _NoStart:
-            if given_start:
-                raise
-            # the likelihood is not finite at the start from the items'
-            # own fits: one more, from the settled start
-            theta = settled_marker_start(model, arrays, ages, values)
-            u, value, cov_u, maximum = _maximise(
-                model, arrays, survival_start(model, arrays, theta)
+        )
+        for caught in kept_warnings:
+            warnings.warn_explicit(
+                caught.message,
+                caught.category,
+                caught.filename,
+                caught.lineno,
             )
-        _check_power(fitter, layout.unpack(u)["mu"], "the fit puts")
+        _check_markers(
+            fitter, fit_model.layout.unpack(u)["mu"], "the fit puts"
+        )
+    at = fit_model.layout
     estimated = np.asarray(
-        reported_params(layout.unpack(u), layout, refs), dtype=float
+        reported_params(at.unpack(u), at, refs), dtype=float
     )
     covariance = None
     if cov_u is not None:
-        J = jacobian(
-            lambda v: reported_params(layout.unpack(v), layout, refs)
-        )(u)
+        J = jacobian(lambda v: reported_params(at.unpack(v), at, refs))(u)
         covariance = J @ cov_u @ J.T
         covariance = 0.5 * (covariance + covariance.T)
         if how == "two-stage":
@@ -1577,6 +2254,7 @@ def _fit(
             covariance[:, :n_marker] = np.nan
     else:
         warn_no_covariance()
+    kept_covariates = list(kept_names)
     # every parameter, nan for an aliased covariate's
     full_names = parameter_names(
         path_names,
@@ -1588,6 +2266,7 @@ def _fit(
         fitter.random_effects,
         cause_names,
         shared,
+        fitter.markers,
     )
     kept_names = parameter_names(
         path_names,
@@ -1599,7 +2278,41 @@ def _fit(
         fitter.random_effects,
         cause_names,
         shared,
+        fitter.markers,
     )
+    if fit_model is not model:
+        # held on the boundary: the fit with the spreads at 0 common to
+        # all items, its parameters in their places and those spreads
+        # (and their correlations) 0, with no standard errors
+        held = [path_names[j] for j in fit_model.layout.full_varying]
+        fit_names = parameter_names(
+            path_names,
+            held,
+            kept_covariates,
+            {
+                n: [c for c in shifts[n] if c in kept_covariates]
+                for n in path_names
+            },
+            [c for c in hazard if c in kept_covariates],
+            fitter.link,
+            fitter.random_effects,
+            cause_names,
+            shared,
+            fitter.markers,
+        )
+        estimated, covariance = _held_on_the_boundary(
+            kept_names, fit_names, estimated, covariance
+        )
+    proportional = None
+    if fit_model.layout.loaded is not None:
+        proportional = _held_on_the_edge(
+            fit_model.layout,
+            path_names,
+            list(fitter.varying),
+            kept_names,
+            estimated,
+            covariance,
+        )
     where = [full_names.index(name) for name in kept_names]
     params = np.full(len(full_names), np.nan)
     params[where] = estimated
@@ -1620,6 +2333,7 @@ def _fit(
     )
     out.hazard_covariates = None if every_one else list(hazard)
     out.parameter_names = full_names
+    out.markers = None if not several else list(markers)
     out.link = tuple(fitter.link)
     out.lag = fitter.lag
     out.weight = fitter.weight
@@ -1627,16 +2341,24 @@ def _fit(
     out.causes = cause_names
     out.shared = tuple(shared)
     out.n_events_by_cause = by_cause
-    out.marker_reference = float(reference) if "value" in fitter.link else None
-    out._centre = centre
+    if several:
+        out.marker_reference = dict(reference) or None
+        out._centre = list(centres)
+    else:
+        out.marker_reference = (
+            float(reference) if "value" in fitter.link else None
+        )
+        out._centre = centre
     out._zbar = zbar
     if covariance is not None:
         full_cov = np.full((len(full_names),) * 2, np.nan)
         full_cov[np.ix_(where, where)] = covariance
         out._covariance = full_cov
     out._neg_ll = float(value)
+    out._proportional = proportional
     # the path part where it was found, a start for another link's fit
-    found = layout.unpack(u)
+    # (on the boundary, the search off it: the spreads at 0 small)
+    found = layout.unpack(u if path_u is None else path_u)
     out._path_start = {
         key: np.array(found[key], dtype=float)
         for key in ("mu", "Delta", "L", "sigma")
@@ -1649,6 +2371,590 @@ def _fit(
     out.n_events = float(np.sum(np.maximum(d, np.isfinite(U)) * counts))
     out.n_readings = float(np.sum([len(a) * w for a, w in zip(ages, counts)]))
     return out
+
+
+#: A varying parameter whose spread between items moves no item's marker
+#: by this fraction of the readings' noise sd, at any reading age, is
+#: taken as at its lower bound, 0 (:func:`_spreads_at_zero`): so small a
+#: spread is invisible in the readings.
+_NO_SPREAD = 0.01
+
+#: The spread of a parameter at 0 when the search starts off the
+#: boundary (:func:`_on_the_boundary`): it moves an item's marker by at
+#: most this fraction of the noise sd, above the 1% at which it is taken
+#: as 0.
+_OFF_START = 0.05
+
+#: A spread whose own part moves no item's marker by this much of the
+#: noise is at its edge in effect: the likelihood there is within about
+#: (number of readings) * this^2 / 2 of the edge's, far below
+#: :data:`_RISE_TOL` (:func:`_held_or_off`).
+_AT_THE_EDGE = 1e-6
+
+#: A search off the boundary must beat the fit on it by this much in
+#: log-likelihood to be kept: less is round-off of the adaptive nodes,
+#: and the fit on the boundary, with every other parameter's standard
+#: error, is reported. Absolute, not relative to the log-likelihood: a
+#: relative one is 0.1 at a log-likelihood of 1e5, a rise that would be
+#: real.
+_RISE_TOL = 1e-4
+
+
+def _spread_reach(model: Model, arrays: JointArrays, theta: dict) -> Any:
+    """How far one unit of each varying parameter moves an item's
+    marker, in the noise sds of its readings, at most over the readings
+    ``(q,)``: the path's derivative in it at each item's mean path
+    (``mu`` and ``Delta`` of ``theta``), over the noise sd. 0 for a
+    parameter no reading depends on."""
+    layout = model.layout
+    V = list(layout.varying)
+    mu = np.asarray(theta["mu"], dtype=float)
+    Delta = np.asarray(theta["Delta"], dtype=float)
+    params = mu[None, :] + np.asarray(arrays.Z, dtype=float) @ Delta.T
+    with np.errstate(all="ignore"):
+        if several_markers(model.path):
+            _, J = model.path.reading_jacobians(params, arrays)
+            noise = np.asarray(
+                model.path.noise(theta["sigma"], arrays), dtype=float
+            )
+        else:
+            ages = np.where(arrays.mask, arrays.ages, 0.0)
+            P = np.broadcast_to(params[:, None, :], ages.shape + (layout.P,))
+            J = path_jacobian(model.path.model, ages, np.array(P))
+            noise = np.full(ages.shape[1], float(np.ravel(theta["sigma"])[0]))
+        moved = np.abs(
+            varying_jacobian(np.asarray(J, dtype=float), layout, theta)
+        ) / np.reshape(noise, (1, -1, 1))
+    moved = np.where(arrays.mask[..., None] & np.isfinite(moved), moved, 0.0)
+    if moved.size == 0:
+        return np.zeros(len(V))
+    return np.max(moved, axis=(0, 1))
+
+
+def _spreads_at_zero(model: Model, arrays: JointArrays, u: Any) -> list:
+    """The varying parameters (their places in ``model.layout.varying``)
+    whose spread between items at the internal parameters ``u`` moves no
+    item's marker by :data:`_NO_SPREAD` of the noise sd at any reading
+    age: at their lower bound, 0. A parameter no reading depends on is
+    not judged here."""
+    theta = model.layout.unpack(np.asarray(u, dtype=float))
+    L = np.asarray(theta["L"], dtype=float)
+    sd = np.sqrt(np.sum(L**2, axis=1))
+    reach = _spread_reach(model, arrays, theta)
+    return [
+        k
+        for k in range(model.layout.q)
+        if reach[k] > 0 and not sd[k] * reach[k] >= _NO_SPREAD
+    ]
+
+
+#: A spread whose loss (with its correlations) costs the log-likelihood
+#: less than this is not told from 0 by the data at the 5% level (half
+#: the 95% point of chi-squared on one degree of freedom): where a search
+#: ends unverified, such spreads are tried at 0 (:func:`_on_the_boundary`).
+_NOT_TOLD = 1.92
+
+
+def _spreads_not_told_from_zero(
+    model: Model, arrays: JointArrays, u: Any, value: float
+) -> list:
+    """The varying parameters (places in ``model.layout.varying``) whose
+    spread, taken to (nearly) 0 with its correlations and every other
+    parameter where it is at ``u`` (its negative log-likelihood
+    ``value``), costs the log-likelihood less than :data:`_NOT_TOLD`:
+    one likelihood a varying parameter, by the nodes placed there."""
+    layout = model.layout
+    theta = _theta_of(layout, u)
+    L = np.asarray(theta["L"], dtype=float)
+    D = L @ L.T
+    out = []
+    for k in range(layout.q):
+        small = D.copy()
+        small[k, :] = small[:, k] = 0.0
+        small[k, k] = 1e-6 * D[k, k]
+        try:
+            trial = dict(theta, L=np.linalg.cholesky(small))
+            v = layout.pack(trial)
+            with np.errstate(all="ignore"), ignoring_warnings():
+                placed, _ = place(v, model, arrays, (None, None))
+                lost = float(neg_ll(v, model, arrays, placed)) - value
+        except (np.linalg.LinAlgError, ValueError, FloatingPointError):
+            continue
+        if np.isfinite(lost) and lost < _NOT_TOLD:
+            out.append(k)
+    return out
+
+
+def _at_a_spread_of_zero(
+    model: Model, arrays: JointArrays, u: Any, value: float, maximum: str
+) -> tuple | None:
+    """:func:`_on_the_boundary`'s answer where a spread is at 0 at the
+    search's answer ``u`` (:func:`_spreads_at_zero`), or, the search
+    unverified, is not told from 0 (:func:`_spreads_not_told_from_zero`);
+    ``None`` where none is, or the answer stands."""
+    if not model.layout.q:
+        return None
+    at_zero = _spreads_at_zero(model, arrays, u)
+    if not at_zero and maximum != "verified":
+        # a search stalled on its way to 0 stops short of it
+        at_zero = _spreads_not_told_from_zero(model, arrays, u, value)
+    if not at_zero:
+        return None
+    return _on_the_boundary(model, arrays, (u, value), at_zero)
+
+
+def _with_varying(model: Model, keep: list) -> Model:
+    """``model`` with only the varying parameters at the places ``keep``
+    of its layout's varying ones: the others common to all items."""
+    import dataclasses
+
+    layout = model.layout
+    nested = dataclasses.replace(
+        layout,
+        varying=tuple(layout.varying[k] for k in keep),
+        blocks=tuple(layout.blocks[k] for k in keep),
+    )
+    return dataclasses.replace(model, layout=nested)
+
+
+def _theta_of(layout: Layout, u: Any) -> dict:
+    return {
+        key: np.array(value, dtype=float)
+        for key, value in layout.unpack(np.asarray(u, dtype=float)).items()
+    }
+
+
+def _project(theta: dict, keep: list) -> dict:
+    """``theta`` with only the spread of the varying parameters at the
+    places ``keep``: their covariance kept, the others' dropped."""
+    out = dict(theta)
+    L = np.asarray(theta["L"], dtype=float)
+    D = (L @ L.T)[np.ix_(keep, keep)]
+    out["L"] = np.linalg.cholesky(0.5 * (D + D.T)) if keep else D
+    return out
+
+
+def _embed(theta: dict, keep: list, q: int, sds: Any) -> dict:
+    """``theta`` (of the varying parameters at the places ``keep``) with
+    all ``q``: those not kept uncorrelated with every other, their sds
+    ``sds`` (by place)."""
+    out = dict(theta)
+    L = np.zeros((q, q))
+    L[np.ix_(keep, keep)] = np.asarray(theta["L"], dtype=float)
+    for k in range(q):
+        if k not in keep:
+            L[k, k] = sds[k]
+    out["L"] = L
+    return out
+
+
+def _maximised(model: Model, arrays: JointArrays, theta: dict) -> Any:
+    """:func:`_maximise`'s answer from ``theta`` with the warnings it
+    gave, ``(answer, warnings)``; ``None`` where it cannot start."""
+    with collecting_warnings() as caught:
+        try:
+            answer = _maximise(model, arrays, theta, on_an_edge=True)
+        except (_NoStart, np.linalg.LinAlgError, ValueError):
+            return None
+    return answer, list(caught)
+
+
+def _on_the_boundary(
+    model: Model, arrays: JointArrays, first: tuple, at_zero: list
+) -> tuple | None:
+    """The fit where the spreads of the varying parameters ``at_zero``
+    (places in ``model.layout.varying``) are at their lower bound, 0, at
+    the first search's answer ``first`` ``(u, value)``.
+
+    The search's scale for a spread is its log sd, so 0 is at minus
+    infinity, where the likelihood is flat along it: a search can stall
+    there short of the fit with that parameter common to all items, which
+    is this model with the spread 0 (#1334). So: (1) the fit with those
+    parameters common to all items (the nested model), from the first
+    answer's other parameters, again while it puts another spread at 0;
+    (2) a search of the whole model from that fit, those spreads small
+    (:data:`_OFF_START`), which finds where the likelihood rises off the
+    boundary. Where (2), or the first answer, beats (1) by more than
+    :data:`_RISE_TOL`, the better of them is the fit (off the boundary);
+    otherwise the fit is held on it: (1).
+
+    Returns ``(fit_model, (u, value, cov_u, maximum), warnings,
+    path_u)``: the model searched (the nested one where held on the
+    boundary) with its answer and warnings, and ``path_u`` the whole
+    model's internal parameters off the boundary (a start for another
+    link's fit), or ``None`` where the nested fit cannot be made (the
+    first answer then stands)."""
+    layout = model.layout
+    q = layout.q
+    u1, v1 = first
+    dropped = sorted(set(at_zero))
+    theta = _theta_of(layout, u1)
+    keep = [k for k in range(q) if k not in dropped]
+    start = _project(theta, keep)
+    while True:
+        if not keep:
+            return None
+        nested = _with_varying(model, keep)
+        got = _maximised(nested, arrays, start)
+        if got is None:
+            return None
+        (u_n, v_n, cov_n, max_n), warned_n = got
+        more = _spreads_at_zero(nested, arrays, u_n)
+        if not more:
+            break
+        theta_n = _theta_of(nested.layout, u_n)
+        start = _project(
+            theta_n, [j for j in range(len(keep)) if j not in more]
+        )
+        keep = [k for j, k in enumerate(keep) if j not in more]
+    # (2) off the boundary: the spreads at 0 small
+    theta_n = _theta_of(nested.layout, u_n)
+    reach = _spread_reach(model, arrays, theta_n)
+    sds = np.where(reach > 0, _OFF_START / np.where(reach > 0, reach, 1.0), 0)
+    off_start = _embed(theta_n, keep, q, sds)
+    # the first answer's spreads at 0 in effect, by the noise they move
+    theta_1 = _theta_of(layout, first[0])
+    sd_1 = np.sqrt(np.sum(np.asarray(theta_1["L"], dtype=float) ** 2, axis=1))
+    reach_1 = _spread_reach(model, arrays, theta_1)
+    tiny = any(
+        reach_1[k] > 0 and sd_1[k] * reach_1[k] < _AT_THE_EDGE for k in dropped
+    )
+    return _held_or_off(
+        model,
+        arrays,
+        first,
+        nested,
+        got,
+        layout.pack(off_start),
+        "a spread of 0" if tiny else "",
+    )
+
+
+def _held_or_off(
+    model: Model,
+    arrays: JointArrays,
+    first: tuple,
+    nested: Model,
+    got: tuple,
+    off_u: npt.NDArray,
+    at_the_edge: str = "",
+) -> tuple | None:
+    """:func:`_on_the_boundary`'s and :func:`_on_the_edge`'s choice
+    between the fit on the boundary ``got`` (:func:`_maximised`'s answer
+    for ``nested``) and the whole model off it: its search from the
+    first answer ``first`` ``(u, value)`` where that already beats the
+    fit on the boundary by :data:`_RISE_TOL` (it is off the boundary
+    already), else from ``off_u`` (the fit on the boundary, stepped just
+    off it). The best of the whole model's answers is kept where it beats
+    the boundary's by :data:`_RISE_TOL`; otherwise the fit is held on the
+    boundary. So the fit returned is never worse than any answer reached
+    by more than :data:`_RISE_TOL`.
+
+    ``at_the_edge`` names what of the first answer is in effect on the
+    boundary (a spread moving no item's marker by :data:`_AT_THE_EDGE`
+    of the noise; empty where nothing is). The likelihood is continuous
+    there, so such an answer cannot beat the fit on the boundary by
+    more than round-off: where it does, by more than
+    :data:`_RISE_TOL`, it is an artefact of the arithmetic (as a spread
+    below :func:`_resolved_spreads`), and the fit on the boundary is
+    kept, with a warning."""
+    u1, v1 = first
+    (u_n, v_n, cov_n, max_n), warned_n = got
+    above = v1 < v_n - _RISE_TOL
+    if above and at_the_edge:
+        warned = list(warned_n)
+        with collecting_warnings() as caught:
+            warnings.warn(
+                f"The joint fit's search reached {at_the_edge} in effect at "
+                f"its edge with a log-likelihood {v_n - v1:.3g} above the "
+                "fit held on that edge, which cannot be: the likelihood is "
+                "continuous there, so the gain is an artefact of the "
+                "arithmetic (a spread too small for the integration to "
+                "resolve). The fit held on the edge is reported.",
+                stacklevel=2,
+            )
+        warned += list(caught)
+        return nested, (u_n, v_n, cov_n, max_n), warned, off_u
+    start = (
+        _theta_of(model.layout, u1) if above else model.layout.unpack(off_u)
+    )
+    path_u = u1 if above else off_u
+    off = _maximised(model, arrays, start)
+    best = None
+    if off is not None:
+        (u_o, v_o, cov_o, max_o), warned_o = off
+        path_u = u_o
+        if np.isfinite(v_o):
+            best = (v_o, (model, (u_o, v_o, cov_o, max_o), warned_o, None))
+    if best is not None and best[0] < v_n - _RISE_TOL and best[0] <= v1:
+        return best[1]
+    if above:
+        # the first answer is above the boundary: it stands
+        return None
+    return nested, (u_n, v_n, cov_n, max_n), warned_n, path_u
+
+
+def _on_an_edge(
+    model: Model, arrays: JointArrays, answer: tuple, kept: list
+) -> tuple:
+    """The fit from the search's ``answer`` ``(u, value, cov_u,
+    maximum)`` (with its warnings ``kept``) once the edges of the items'
+    spread are handled: ``(fit_model, answer, warnings, path_u)``.
+
+    A spread between items whose sd is (nearly) 0 sits where the
+    search's log-Cholesky scale puts it at minus infinity: the
+    likelihood is flat along it there, the search can stall short of the
+    fit with that parameter common to all items (#1334), and the spread
+    has no Wald standard error. Such a fit is held on that boundary, or
+    kept off it where the likelihood rises off it
+    (:func:`_on_the_boundary`). Likewise a correlation of +-1 between two
+    varying parameters, where the part of one's spread that the other's
+    does not explain is at 0 on the same log scale: held on that edge of
+    the valid covariance matrices, or kept off it
+    (:func:`_on_the_edge`). A verified fit with every spread clear of
+    both edges is left as it is. ``path_u`` is the whole model's
+    internal parameters off the edges (``None``: ``u``'s)."""
+    u, value, _, maximum = answer
+    fit_model, path_u = model, None
+    held_fit = _at_a_spread_of_zero(model, arrays, u, value, maximum)
+    if held_fit is not None:
+        fit_model, answer, kept, path_u = held_fit
+        u, value, _, maximum = answer
+    on_edge = _at_a_correlation_edge(fit_model, arrays, u, value, maximum)
+    if on_edge is not None:
+        edge_model, answer, kept, edge_u = on_edge
+        if fit_model is model:
+            path_u = edge_u
+        fit_model = edge_model
+    return fit_model, answer, kept, path_u
+
+
+def _closest_pair(model: Model, arrays: JointArrays, theta: dict) -> Any:
+    """``(moved, k, j)``: of the correlated pairs of varying parameters
+    (places in ``model.layout.varying``), the one where the part of
+    ``k``'s spread between items that ``j``'s does not explain moves an
+    item's marker the least, ``moved`` in the noise sds of its readings
+    (``sd_k sqrt(1 - corr^2)`` times :func:`_spread_reach`'s reach of
+    ``k``); of the two of a pair, ``k`` is the one whose spread moves
+    the marker less. ``None`` where no pair is correlated."""
+    layout = model.layout
+    L = np.asarray(theta["L"], dtype=float)
+    D = L @ L.T
+    sd = np.sqrt(np.diag(D))
+    reach = _spread_reach(model, arrays, theta)
+    best = None
+    for a, b in layout.lower:
+        if not (sd[a] > 0 and sd[b] > 0) or reach[a] <= 0 or reach[b] <= 0:
+            continue
+        r = float(np.clip(D[a, b] / (sd[a] * sd[b]), -1.0, 1.0))
+        if r == 0.0:
+            continue
+        k, j = (a, b) if sd[a] * reach[a] <= sd[b] * reach[b] else (b, a)
+        moved = sd[k] * np.sqrt(max(0.0, 1.0 - r * r)) * reach[k]
+        if best is None or moved < best[0]:
+            best = (moved, k, j)
+    return best
+
+
+def _proportional_theta(theta: dict, k: int, j: int, small: float) -> dict:
+    """``theta`` with the varying parameter at place ``k`` an exact
+    multiple of the one at ``j`` about their means, but for a part of
+    its own of sd ``small`` uncorrelated with every other: ``k``'s
+    covariances those of ``j`` times ``D_kj / D_jj``."""
+    L = np.asarray(theta["L"], dtype=float)
+    D = L @ L.T
+    lam = D[k, j] / D[j, j]
+    out = D.copy()
+    out[k, :] = out[:, k] = lam * D[j, :]
+    out[k, k] = lam * lam * D[j, j] + small**2
+    return dict(theta, L=np.linalg.cholesky(0.5 * (out + out.T)))
+
+
+def _with_proportional(model: Model, k: int, j: int, sign: float) -> Model:
+    """``model`` with the varying parameter at place ``k`` (of its
+    layout's varying ones) an exact multiple of the one at ``j``
+    (:attr:`Layout.loaded`)."""
+    import dataclasses
+
+    layout = model.layout
+    keep = [i for i in range(layout.q) if i != k]
+    nested = dataclasses.replace(
+        layout,
+        varying=tuple(layout.varying[i] for i in keep),
+        blocks=tuple(layout.blocks[i] for i in keep),
+        loaded=(layout.varying[k], keep.index(j), k, sign),
+    )
+    return dataclasses.replace(model, layout=nested)
+
+
+def _at_a_correlation_edge(
+    model: Model, arrays: JointArrays, u: Any, value: float, maximum: str
+) -> tuple | None:
+    """:func:`_on_the_edge`'s answer where a correlated pair of varying
+    parameters is at a correlation of +-1 at the search's answer ``u``
+    (``value``): the part of one's spread the other's does not explain
+    moves no item's marker by :data:`_NO_SPREAD` of the noise sd
+    (:func:`_closest_pair`); or, the search unverified, taking that part
+    to (nearly) 0 costs the log-likelihood less than :data:`_NOT_TOLD`.
+    ``None`` where no pair is, or the answer stands; and for a layout
+    that already holds a pair."""
+    layout = model.layout
+    if layout.loaded is not None or not layout.lower:
+        return None
+    theta = _theta_of(layout, u)
+    pair = _closest_pair(model, arrays, theta)
+    if pair is None:
+        return None
+    moved, k, j = pair
+    if not moved < _NO_SPREAD:
+        if maximum == "verified":
+            return None
+        # a search stalled on its way to the edge stops short of it
+        L = np.asarray(theta["L"], dtype=float)
+        sd_k = float(np.sqrt(np.sum(L[k] ** 2)))
+        try:
+            v = layout.pack(_proportional_theta(theta, k, j, 1e-3 * sd_k))
+            with np.errstate(all="ignore"), ignoring_warnings():
+                placed, _ = place(v, model, arrays, (None, None))
+                lost = float(neg_ll(v, model, arrays, placed)) - value
+        except (np.linalg.LinAlgError, ValueError, FloatingPointError):
+            return None
+        if not (np.isfinite(lost) and lost < _NOT_TOLD):
+            return None
+    return _on_the_edge(model, arrays, (u, value), k, j, moved < _AT_THE_EDGE)
+
+
+def _on_the_edge(
+    model: Model,
+    arrays: JointArrays,
+    first: tuple,
+    k: int,
+    j: int,
+    on_it: bool = False,
+) -> tuple | None:
+    """The fit where the varying parameters at places ``k`` and ``j`` of
+    ``model.layout.varying`` are perfectly correlated, at the first
+    search's answer ``first`` ``(u, value)``: ``k`` an exact multiple of
+    ``j`` about their means, the edge of the valid covariance matrices.
+
+    The search's scale for the part of ``k``'s spread that ``j``'s does
+    not explain is its log (the log of the Cholesky factor's diagonal),
+    so the edge is at minus infinity, where the likelihood is flat along
+    it: as at a spread of 0 (:func:`_on_the_boundary`), a search stalls
+    there short of the fit on the edge. So: (1) the fit on the edge
+    (:func:`_with_proportional`: ``k`` integrated with ``j``, not over),
+    from the first answer's parameters; (2) a search of the whole model,
+    from the first answer where that beats (1), else from (1) with that
+    part small (:data:`_OFF_START`), which finds where the likelihood
+    rises off the edge (:func:`_held_or_off`).
+
+    Returns as :func:`_on_the_boundary`; ``None`` where the fit on the
+    edge cannot be made, or the answer stands."""
+    layout = model.layout
+    u1, _ = first
+    theta = _theta_of(layout, u1)
+    L = np.asarray(theta["L"], dtype=float)
+    D = L @ L.T
+    keep = [i for i in range(layout.q) if i != k]
+    lam = float(D[k, j] / D[j, j])
+    if not (np.isfinite(lam) and lam != 0.0):
+        return None
+    nested = _with_proportional(model, k, j, float(np.sign(lam)))
+    start = dict(_project(theta, keep), lam=lam)
+    got = _maximised(nested, arrays, start)
+    if got is None:
+        return None
+    from .joint_model import _loaded_spread
+
+    # (2) off the edge: k with a small part of its own, uncorrelated
+    theta_n = _theta_of(nested.layout, got[0][0])
+    reach = _spread_reach(model, arrays, theta_n)[k]
+    D = np.asarray(_loaded_spread(theta_n, nested.layout), dtype=float)
+    D[k, k] += (_OFF_START / reach) ** 2
+    off = {key: v for key, v in theta_n.items() if key != "lam"}
+    try:
+        off["L"] = np.linalg.cholesky(0.5 * (D + D.T))
+    except np.linalg.LinAlgError:
+        return None
+    return _held_or_off(
+        model,
+        arrays,
+        first,
+        nested,
+        got,
+        layout.pack(off),
+        "a correlation of +-1" if on_it else "",
+    )
+
+
+def _held_on_the_edge(
+    layout: Layout,
+    path_names: list,
+    varying: list,
+    names: list,
+    estimated: npt.NDArray,
+    covariance: npt.NDArray | None,
+) -> tuple:
+    """``(k, j)``, the names of the parameter held as a multiple of
+    another (:attr:`Layout.loaded`) and of that one, with the reported
+    ``estimated`` (named ``names``) and their ``covariance`` made exact
+    in place: the correlation of the two exactly the multiple's sign,
+    with no standard error (``nan``), and the held one's correlations
+    with the others that sign times the other one's (as the fit on the
+    edge has them, to rounding)."""
+    j_path, place, _, _ = layout.loaded
+    k_name = path_names[j_path]
+    j_name = path_names[layout.varying[place]]
+    sign = None
+    for i, name in enumerate(names):
+        pair = _pair_of(name, varying)
+        if set(pair) == {k_name, j_name}:
+            sign = float(np.sign(estimated[i]))
+            estimated[i] = sign
+            if covariance is not None:
+                covariance[i, :] = covariance[:, i] = np.nan
+    for i, name in enumerate(names):
+        pair = _pair_of(name, varying)
+        if k_name in pair and j_name not in pair and sign is not None:
+            other = pair[0] if pair[1] == k_name else pair[1]
+            twin = names.index(_corr_name(j_name, other, varying))
+            estimated[i] = sign * estimated[twin]
+    return (k_name, j_name)
+
+
+def _pair_of(name: str, varying: list) -> tuple:
+    """The two varying parameters of the correlation ``name``; empty
+    where it is not one."""
+    for i, a in enumerate(varying):
+        for b in varying[i + 1 :]:
+            if name == f"corr_{a}_{b}":
+                return (a, b)
+    return ()
+
+
+def _corr_name(a: str, b: str, varying: list) -> str:
+    first, second = sorted((a, b), key=varying.index)
+    return f"corr_{first}_{second}"
+
+
+def _held_on_the_boundary(
+    names: list,
+    fit_names: list,
+    estimated: npt.NDArray,
+    covariance: npt.NDArray | None,
+) -> tuple:
+    """The reported parameters ``estimated`` (named ``fit_names``, of the
+    fit with some spreads at 0) and their ``covariance`` in the places of
+    the whole model's ``names``: those spreads and their correlations 0,
+    with no standard errors (``nan`` in the covariance)."""
+    where = [names.index(name) for name in fit_names]
+    out = np.zeros(len(names))
+    out[where] = estimated
+    cov = None
+    if covariance is not None:
+        cov = np.full((len(names),) * 2, np.nan)
+        cov[np.ix_(where, where)] = covariance
+    return out, cov
 
 
 #: An item with at most this many readings has few for Laplace's
@@ -1704,12 +3010,58 @@ class _NoStart(ValueError):
     """The likelihood is not finite at a fit's starting values."""
 
 
-def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
+#: The smallest own spread (Cholesky diagonal) of a varying parameter a
+#: search may step to, relative to its value (the items' mean of it) and
+#: to the spread that moves an item's marker by 1% of the noise
+#: (:func:`_resolved_spreads`).
+_RESOLVED_TO_VALUE = 1e-9
+_RESOLVED_TO_REACH = 1e-8
+
+
+def _resolved_spreads(
+    model: Model, arrays: JointArrays, theta: dict
+) -> npt.NDArray:
+    """Each varying parameter's smallest own spread (its Cholesky
+    diagonal) that the adaptive nodes resolve, ``(q,)``: 1e-9 of its
+    mean value (``mu``, at the covariates' means: the scale a saved
+    model is checked on, ``JointModel._check_resolved``), and 1e-8 of the
+    spread that
+    moves an item's marker by 1% of the noise (:data:`_NO_SPREAD` over
+    its reach, :func:`_spread_reach`), whichever is larger. Below the
+    first, the nodes' offsets from the mode fall to a few units of the
+    last place of the parameter's value, the prior's term at them is
+    lost to rounding, and the change of variables no longer cancels it:
+    on a two-mode spline fixture a bend's spread of 1e-14 moved the
+    log-likelihood by 0.003, 1e-16 by 2.3 and 1e-18 by 107. A search
+    does not step there; a spread so small is at 0 (held there by
+    :func:`_on_the_boundary`)."""
+    layout = model.layout
+    if not layout.q:
+        return np.zeros(0)
+    V = list(layout.varying)
+    value = np.abs(np.asarray(theta["mu"], dtype=float)[V])
+    try:
+        reach = np.asarray(_spread_reach(model, arrays, theta), dtype=float)
+    except (ValueError, FloatingPointError, np.linalg.LinAlgError):
+        reach = np.zeros(len(V))
+    by_reach = np.where(
+        reach > 0,
+        _RESOLVED_TO_REACH * _NO_SPREAD / np.where(reach > 0, reach, 1.0),
+        0.0,
+    )
+    return np.maximum(_RESOLVED_TO_VALUE * value, by_reach)
+
+
+def _maximise(
+    model: Model, arrays: JointArrays, theta: dict, on_an_edge: bool = False
+) -> tuple:
     """The joint likelihood's maximum from the start ``theta``:
     ``(u, value, cov_u, maximum)``, the internal parameters, the negative
     log-likelihood there, their covariance (``None`` where the Hessian is
     not positive definite) and what the search reached (``"verified"`` or
-    ``"unverified"``, with a warning)."""
+    ``"unverified"``, with a warning). ``on_an_edge``: a search made in
+    handling an edge of the spread (:func:`_maximised`), whose rounds may
+    take the fallback step (:func:`_descend`)."""
     layout = model.layout
     u = layout.pack(theta)
 
@@ -1719,9 +3071,19 @@ def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
     search = value_and_grad(objective)
     curvature = hessian(objective)
 
+    diagonal = layout.P + layout.n_shifts + np.arange(layout.q)
+    # (a start below them is let be: the search only does not step down)
+    floors = np.minimum(
+        _resolved_spreads(model, arrays, theta), np.exp(u[diagonal])
+    )
+
     def evaluated(v: npt.NDArray, starts: tuple) -> tuple:
         """The likelihood at ``v`` by the nodes placed there (``inf``
-        where they cannot be placed), with the nodes and the modes."""
+        where they cannot be placed, or a varying parameter's own spread
+        is below what they resolve, :func:`_resolved_spreads`), with the
+        nodes and the modes."""
+        if np.any(np.exp(np.asarray(v, dtype=float)[diagonal]) < floors):
+            return np.inf, None, starts
         try:
             with np.errstate(all="ignore"):
                 placed, starts = place(v, model, arrays, starts)
@@ -1737,7 +3099,7 @@ def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
             "its starting values (check the readings and the path model)."
         )
     u, value, placed, starts, converged = _descend(
-        u, value, placed, starts, search, curvature, evaluated
+        u, value, placed, starts, search, curvature, evaluated, on_an_edge
     )
 
     # the Hessian a maximum is checked by, and the covariance taken from
@@ -1775,6 +3137,7 @@ def _maximise(model: Model, arrays: JointArrays, theta: dict) -> tuple:
                 search,
                 curvature,
                 evaluated,
+                on_an_edge,
             )
             checked = _check_maximum(
                 retry[0], retry[2], search, checked_curvature
@@ -1876,6 +3239,7 @@ def _descend(
     search: Any,
     curvature: Any,
     evaluated: Any,
+    on_an_edge: bool = False,
 ) -> tuple:
     """Rounds of search from ``u`` (its likelihood ``value`` by the
     nodes ``placed``): ``(u, value, placed, starts, converged)``.
@@ -1906,17 +3270,21 @@ def _descend(
                 options={"gtol": 1e-7, "maxiter": 5000},
             )
         step = result.x if np.all(np.isfinite(result.x)) else 0 * result.x
-        size = 1.0
-        while True:
-            trial = u + S @ (size * step)
-            new_value, new_placed, new_starts = evaluated(trial, starts)
-            if new_value <= value + 1e-12 * max(1.0, abs(value)):
-                break
-            size /= 4.0
-            if size < 1e-6:
-                trial, new_value, new_placed = u, value, placed
-                new_starts = starts
-                break
+        trial, new_value, new_placed, new_starts, size, ok = _backtracked(
+            u, value, placed, starts, S @ step, evaluated
+        )
+        if not ok and on_an_edge:
+            # The search with the nodes held runs off to where they are
+            # far from the integrand (near the edge of the valid spreads,
+            # where it is flat along a log sd), and no part of its step
+            # improves the likelihood with the nodes placed again
+            # (:func:`_descent`). (Going on also from a round that has
+            # settled, while the gradient is not zero, was tried and
+            # dropped: on a two-mode spline fixture it drove a bend's sd
+            # to 8e-20, where the nodes give a likelihood 107 too high.)
+            tried = _descent(u, value, placed, starts, S, search, evaluated)
+            if tried is not None:
+                trial, new_value, new_placed, new_starts, size, _, step = tried
         moved = float(np.max(np.abs(size * step), initial=0.0))
         settled = abs(value - new_value) <= _ROUND_TOL * max(1.0, abs(value))
         u, value, placed, starts = trial, new_value, new_placed, new_starts
@@ -1924,6 +3292,66 @@ def _descend(
             converged = True
             break
     return u, value, placed, starts, converged
+
+
+def _descent(
+    u: npt.NDArray,
+    value: float,
+    placed: tuple,
+    starts: tuple,
+    S: npt.NDArray,
+    search: Any,
+    evaluated: Any,
+) -> tuple | None:
+    """Where the gradient at ``u`` is not zero by the verification rule
+    (above :data:`_GTOL` standard errors, the whitening ``S`` giving them:
+    ``S S' = H^-1``), the step of minus the whitened gradient, ``-S S'
+    g``, taken as far as it improves (:func:`_backtracked`):
+    ``(u, value, placed, starts, size, ok, step)``, ``step`` in the
+    whitened coordinates; ``None`` where the gradient is zero or no part
+    of the step improves. With ``S' H S = I`` the step is ``-H^-1 g``,
+    the Newton step of the held nodes' Hessian ``H`` (where ``H`` is not
+    positive definite ``S`` is a diagonal scaling, and it is a scaled
+    gradient step). Taken only in the searches made in handling an edge
+    of the spread (``on_an_edge``), where the flat log scale stalls them;
+    the first search ends as it always has."""
+    with np.errstate(all="ignore"):
+        _, grad = search(u, placed)
+    grad = np.asarray(grad, dtype=float)
+    se = np.sqrt(np.sum(S**2, axis=1))
+    if not np.all(np.isfinite(grad)) or not (
+        np.max(np.abs(grad) * se, initial=0.0) >= _GTOL
+    ):
+        return None
+    descent = -(S.T @ grad)
+    tried = _backtracked(u, value, placed, starts, S @ descent, evaluated)
+    if not tried[5]:
+        return None
+    return (*tried, descent)
+
+
+def _backtracked(
+    u: npt.NDArray,
+    value: float,
+    placed: tuple,
+    starts: tuple,
+    delta: npt.NDArray,
+    evaluated: Any,
+) -> tuple:
+    """The step ``delta`` from ``u`` taken as far as the likelihood by
+    nodes placed at the new point improves on ``value`` (quartered until
+    it does): ``(u, value, placed, starts, size, ok)``; where no step
+    down to a millionth does, ``u`` itself (``ok`` false, ``size`` the
+    last tried)."""
+    size = 1.0
+    while True:
+        trial = u + size * delta
+        new_value, new_placed, new_starts = evaluated(trial, starts)
+        if new_value <= value + 1e-12 * max(1.0, abs(value)):
+            return trial, new_value, new_placed, new_starts, size, True
+        size /= 4.0
+        if size < 1e-6:
+            return u, value, placed, starts, size, False
 
 
 def _runaway_hazard_coefficients(
@@ -2068,6 +3496,8 @@ def likelihood_parts(model: JointModel, **data: Any) -> tuple:
     factory = JointAFT if model.survival == "AFT" else JointPH
     # (an accelerated model has no accumulated exposure to weight)
     weighted = {} if model.weight is None else {"weight": model.weight}
+    if model.markers is not None:
+        return _marker_likelihood_parts(model, factory, weighted, data)
     fitter = factory(
         model.dist,
         model.path_model,
@@ -2104,6 +3534,65 @@ def likelihood_parts(model: JointModel, **data: Any) -> tuple:
         U=U,
         Rt=Rt,
         e=None if causes is None else causes[1],
+    )
+    layout = model._layout
+    lik = model._likelihood_model()
+    theta = model._theta()
+    u = layout.pack({k: np.asarray(v, dtype=float) for k, v in theta.items()})
+    return lik, arrays, u
+
+
+def _marker_likelihood_parts(
+    model: JointModel, factory: Any, weighted: dict, data: dict
+) -> tuple:
+    """:func:`likelihood_parts` of a model of several markers."""
+    from ._multi import checked_readings, joined, rows_by_marker
+
+    names = list(model.markers or [])
+    links: dict = {name: [] for name in names}
+    for name, link in model.link:
+        links[name].append(link)
+    fitter = factory(
+        model.dist,
+        dict(zip(names, model.path_model.models)),
+        list(model.varying),
+        links,
+        model.lag,
+        **weighted,
+        random_effects=model.random_effects_structure,
+    )
+    rows = rows_by_marker(data["markers"], names)
+    records, counts, _ = _records(
+        data["x"],
+        data.get("c"),
+        data.get("n"),
+        data.get("t"),
+        data.get("tl"),
+        data.get("tr"),
+        data.get("Z"),
+        [{}] * len(rows),
+    )
+    readings = [checked_readings(r, rows[int(r.id)], names) for r in records]
+    p = len(model.feature_names)
+    T, d, L, Z_all, U, Rt = _marker_arrays(
+        fitter, records, readings, counts, p
+    )
+    Z = Z_all[:, model._kept] - model._zbar
+    each = [joined(item) for item in readings]
+    causes = _causes(fitter, data.get("e"), records, counts, "MLE")
+    arrays = JointArrays.build(
+        counts,
+        T,
+        d,
+        L,
+        Z,
+        [a for a, _, _ in each],
+        [v for _, v, _ in each],
+        U=U,
+        Rt=Rt,
+        e=None if causes is None else causes[1],
+        channels=[ch for _, _, ch in each],
+        n_markers=len(names),
     )
     layout = model._layout
     lik = model._likelihood_model()

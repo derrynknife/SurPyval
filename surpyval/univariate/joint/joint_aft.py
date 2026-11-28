@@ -10,6 +10,7 @@ hazards model; the likelihood's lifetime terms are :mod:`._aft`'s."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from .joint_ph import JointPHFitter
@@ -37,10 +38,18 @@ class JointAFTFitter(JointPHFitter):
         varying: Any = None,
         link: Any = "value",
         lag: float = 0.0,
-        random_effects: Any = "full",
+        random_effects: Any = None,
     ) -> None:
         try:
-            named = [link] if isinstance(link, str) else list(link)
+            if isinstance(link, Mapping):
+                # several markers: each marker's links
+                named = [
+                    k
+                    for v in link.values()
+                    for k in ([v] if isinstance(v, str) else list(v or []))
+                ]
+            else:
+                named = [link] if isinstance(link, str) else list(link)
         except TypeError:
             named = []
         if "cumulative" in named:
@@ -72,7 +81,7 @@ def JointAFT(
     varying: Any = None,
     link: Any = "value",
     lag: float = 0.0,
-    random_effects: Any = "full",
+    random_effects: Any = None,
 ) -> JointAFTFitter:
     """
     An accelerated joint model fitter of a marker and a lifetime: the
@@ -107,8 +116,9 @@ def JointAFT(
     varying : sequence of str, optional
         The path parameters that vary between items (their random
         effects, multivariate normal); the others are common to all
-        items. Default all of them. Beyond five, each item's integral
-        is Laplace's approximation (``integration`` of ``fit``).
+        items. Default all of them; for a ``SplinePath``, its ``level``
+        and ``rate``. Beyond five, each item's integral is Laplace's
+        approximation (``integration`` of ``fit``).
     link : str or sequence of str, optional
         What of the marker's path sets the ageing rate: ``"value"`` (the
         default: its current value) or ``"slope"`` (its rate of change),
@@ -123,7 +133,9 @@ def JointAFT(
         Fixed, not estimated; compare lags by ``aic()``.
     random_effects : str or sequence, optional
         Which of the varying path parameters are correlated between
-        items: ``"full"`` (the default, every pair), ``"diagonal"``
+        items: ``"full"`` (the default, every pair; for a spline's
+        varying bends, a block of ``level`` and ``rate`` and each bend on
+        its own), ``"diagonal"``
         (none) or blocks of names, such as ``[("a", "b"), ("c",)]``, as
         for :func:`~surpyval.univariate.joint.joint_ph.JointPH`.
 

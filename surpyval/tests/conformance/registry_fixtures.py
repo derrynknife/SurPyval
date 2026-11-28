@@ -33,6 +33,63 @@ def uni_data():
     return {"x": x, "c": c, "n": n}
 
 
+def genf_data():
+    """40 rows with a heavy upper tail, the quantiles of a generalised F
+    (mu 1, sigma 0.6, Q 0.3, P 3) at (i - 1/2) / 40, two right censored
+    and two with counts above 1. On ``uni_data`` the generalised F's
+    likelihood is largest at P = 0, the edge of its range where it is the
+    generalised gamma; here its maximum is inside (P about 0.73)."""
+    x = np.array(
+        [
+            0.111,
+            0.276,
+            0.421,
+            0.557,
+            0.687,
+            0.812,
+            0.933,
+            1.051,
+            1.168,
+            1.283,
+            1.396,
+            1.509,
+            1.622,
+            1.735,
+            1.849,
+            1.964,
+            2.081,
+            2.2,
+            2.322,
+            2.448,
+            2.58,
+            2.717,
+            2.861,
+            3.015,
+            3.179,
+            3.356,
+            3.549,
+            3.763,
+            4.001,
+            4.271,
+            4.582,
+            4.947,
+            5.386,
+            5.927,
+            6.622,
+            7.557,
+            8.909,
+            11.095,
+            15.472,
+            31.615,
+        ]
+    )
+    c = np.zeros(40, int)
+    c[[13, 26]] = 1
+    n = np.ones(40, int)
+    n[[2, 7]] = [2, 3]
+    return {"x": x, "c": c, "n": n}
+
+
 def uni_exact_data():
     """``uni_data`` with every value exactly observed: the Uniform's MLE
     refuses censored values (#460)."""
@@ -170,6 +227,18 @@ def reg_data():
     n = np.ones(N_REG, int)
     n[[3, 11]] = 2
     return {"x": x, "Z": np.column_stack([z0, z1]), "c": c, "n": n}
+
+
+def tail_censored_reg_data():
+    """``reg_data`` with follow-up ending at 13.6: the 5 units still at
+    risk then are censored. A model whose additive part is a
+    least-squares fit at each event time (Aalen's, the Cox-Aalen model)
+    cannot estimate an increment where so few units are at risk, as at
+    ``reg_data``'s last five times, and its predictions are nan after
+    where it stops."""
+    d = reg_data()
+    d["c"] = np.where(d["x"] > 13.6, 1, d["c"])
+    return d
 
 
 def ic_reg_data():
@@ -512,6 +581,67 @@ def joint_data():
     }
 
 
+def joint_markers_data():
+    """:func:`joint_data`'s items read with a second marker: a
+    temperature with a level of each item's own (from quantiles in an
+    order tied to the vibration's level, so the two are correlated across
+    the items) and a common rate, read every 90 days, its noise from a
+    cosine; the lifetimes are :func:`joint_data`'s (the hazard follows
+    the vibration only). Each row's readings are ``{marker: {age:
+    value}}``."""
+    from scipy.special import ndtri
+
+    d = joint_data()
+    size = len(d["x"])
+    u = (scramble(size) + 0.5) / size
+    w = np.argsort(np.argsort(u + 0.3 * np.sin(5.1 * np.arange(size)))) + 0.5
+    level = 60.0 + 4.0 * ndtri(w / size)
+    markers = []
+    for k, (end, vibration) in enumerate(zip(d["x"], d["markers"])):
+        ages = np.arange(0.0, end, 90.0)
+        y = level[k] + 0.01 * ages + 1.5 * np.cos(0.9 * k + 0.4 * ages)
+        markers.append(
+            {
+                "vibration": dict(vibration),
+                "temperature": dict(
+                    zip(ages.tolist(), np.round(y, 3).tolist())
+                ),
+            }
+        )
+    return dict(d, markers=markers)
+
+
+def _with_temperature(d):
+    """``d``'s items read with :func:`joint_markers_data`'s second marker
+    as well (a temperature with a level of each item's own, read every
+    90 days); each row's readings ``{marker: {age: value}}``."""
+    from scipy.special import ndtri
+
+    size = len(d["x"])
+    u = (scramble(size) + 0.5) / size
+    w = np.argsort(np.argsort(u + 0.3 * np.sin(5.1 * np.arange(size)))) + 0.5
+    level = 60.0 + 4.0 * ndtri(w / size)
+    markers = []
+    for k, (end, vibration) in enumerate(zip(d["x"], d["markers"])):
+        ages = np.arange(0.0, end, 90.0)
+        y = level[k] + 0.01 * ages + 1.5 * np.cos(0.9 * k + 0.4 * ages)
+        markers.append(
+            {
+                "vibration": dict(vibration),
+                "temperature": dict(
+                    zip(ages.tolist(), np.round(y, 3).tolist())
+                ),
+            }
+        )
+    return dict(d, markers=markers)
+
+
+def joint_marker_causes_data():
+    """:func:`joint_causes_data`'s items (two failure modes, ``e``) read
+    with the temperature of :func:`joint_markers_data` as well."""
+    return _with_temperature(joint_causes_data())
+
+
 def joint_causes_data():
     """80 items of a joint model with two failure modes: the marker and
     covariate of :func:`joint_data`'s items, each failing by the first of
@@ -570,6 +700,15 @@ def joint_causes_data():
 X_JOINT = np.array([100.0, 300.0, 450.0, 600.0, 900.0, 1200.0])
 JOINT_ITEM = {
     "markers": {0.0: 3.1, 120.0: 3.4, 240.0: 3.6, 360.0: 3.9},
+    "given": 400.0,
+}
+
+
+JOINT_MARKERS_ITEM = {
+    "markers": {
+        "vibration": {0.0: 3.1, 120.0: 3.4, 240.0: 3.6, 360.0: 3.9},
+        "temperature": {0.0: 61.0, 180.0: 63.0, 360.0: 64.5},
+    },
     "given": 400.0,
 }
 
@@ -663,6 +802,47 @@ def ms_data(with_Z=False):
     }
     if with_Z:
         d["Z"] = np.array([[r[5]] for r in rows], dtype=float)
+    return d
+
+
+# The rows of ``ms_data`` whose move is interval censored in
+# ``ms_interval_data``, each known only to lie in (x - 1, x].
+_MS_INTERVAL_ROWS = (0, 7, 9, 12, 15)
+
+
+def ms_interval_data(with_Z=False):
+    """``ms_data`` with five moves known only to lie in a window of one
+    time unit before their recorded time (``x`` as two columns
+    ``[xl, xr]``); without unit ids, each spell's ``tl`` is taken as
+    known."""
+    d = ms_data(with_Z)
+    x = np.column_stack([d["x"], d["x"]])
+    rows = list(_MS_INTERVAL_ROWS)
+    assert all(d["e"][k] is not None for k in rows)
+    x[rows, 0] -= 1.0
+    assert np.all(x[:, 0] >= d["tl"])
+    d["x"] = x
+    return d
+
+
+def ms_truncated_data():
+    """``ms_data`` with its units (``i``) and right truncation: units 0
+    and 5, which died, came from a register of deaths closing at 15, so
+    were seen only because they were dead by then (``tr``, the state
+    ``reached`` the absorbing "dead"); the others not truncated (``tr =
+    inf``). (With every unit that died truncated, the deaths carry little
+    information on the level of their hazards, only through their
+    timing, and the units seen alive push those hazards to 0, where the
+    truncated likelihood keeps a finite limit: the fit then warns that it
+    has no finite maximum, tested in test_parametric_truncation.py.)"""
+    d = ms_data()
+    i, tr = [], []
+    for u, (spells, _, _) in enumerate(_MS_UNITS):
+        assert u not in (0, 5) or spells[-1][3] == "dead"
+        i += [u] * len(spells)
+        tr += [15.0 if u in (0, 5) else np.inf] * len(spells)
+    d["i"] = np.array(i)
+    d["tr"] = np.array(tr, dtype=float)
     return d
 
 

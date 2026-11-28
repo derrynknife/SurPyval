@@ -321,7 +321,7 @@ def test_lr_quantile_bound_is_infinite_past_the_cure_fraction():
     )
     row = [0.0]
     pi_hat = float(model.susceptible_probability(row))
-    pi_lo = float(model.parameter_cb("lfp_p", row, method="lr")[0, 0])
+    pi_lo = float(model.param_cb("lfp_p", Z=row, method="lr")[0, 0])
     assert 0 < pi_lo < pi_hat
     between, below = 0.5 * (pi_lo + pi_hat), 0.5 * pi_lo
     cb = model.quantile_cb([between, below], row, method="lr")
@@ -345,7 +345,7 @@ def test_bounds_and_serialisation(fitted):
     w_lower, w_upper = model.param_cb("lfp_p_coef_0")
     assert lower < model.params[5] < upper
     assert_allclose([lower, upper], [w_lower, w_upper], rtol=0.05)
-    cb = model.parameter_cb("lfp_p", [row])
+    cb = model.param_cb("lfp_p", Z=[row])
     assert cb[0, 0] < model.susceptible_probability(row) < cb[0, 1]
     assert 0 < cb[0, 0] and cb[0, 1] < 1
 

@@ -16,10 +16,10 @@ Kurowicka and Joe 2009), each on Fisher's z scale, and the exchangeable
 A row's likelihood is the copula density of its observed coordinates
 times the probability, given them, that the censored coordinates lie in
 their rectangle (a conditional normal, or t, vector), from
-``_rectangle.py``: closed forms for one or two censored coordinates and a
-deterministic quadrature for three. Rows with more censored coordinates
-are refused (the integral is then not accurate enough to fit with), as is
-truncation.
+``_rectangle.py``: closed forms for one or two censored coordinates, a
+deterministic quadrature for three, and a fixed lattice rule for four or
+more (whose integration order is read from the data, so that the
+likelihood is smooth in the parameters). Truncation is refused.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
 
-from ._rectangle import MAX_LIKELIHOOD_AXES, rectangle
+from ._rectangle import MAX_AXES, rectangle
 from .copula import _LOG_FLOOR, _U_CLIP, Copula, _check_margins
 from .elliptical import StudentT, StudentTCopula
 
@@ -389,7 +389,7 @@ class EllipticalCopulaND(Copula):
         for p, pattern in enumerate(patterns):
             rows = onp.flatnonzero(which == p)
             O, C = onp.flatnonzero(pattern), onp.flatnonzero(~pattern)
-            if C.size > MAX_LIKELIHOOD_AXES:
+            if C.size > _most_censored(self):
                 raise ValueError(_too_censored(self, rows.size, C.size))
             z = self._z(U[onp.ix_(rows, O)], nu)
             out = self._log_density(z, R[onp.ix_(O, O)], nu)
@@ -403,11 +403,49 @@ class EllipticalCopulaND(Copula):
                 hi = onp.where(c == 1, onp.inf, self._z(hi_u, nu))
                 mean, scale, corr, df = self._conditional(z, R, nu, O, C)
                 mass = rectangle(
-                    (lo - mean) / scale, (hi - mean) / scale, corr, df
+                    (lo - mean) / scale,
+                    (hi - mean) / scale,
+                    corr,
+                    df,
                 )
                 out = out + onp.log(onp.clip(mass, _LOG_FLOOR, None))
             ll[rows] = out
+        if any(d["has_trunc"] for d in dims):
+            ll = ll - self._truncation_logmass(R, nu, dims)
         return ll
+
+    def _truncation_logmass(self, R: Any, nu: float | None, dims: list) -> Any:
+        """Each row's log copula mass over its truncation window: the
+        probability that the series truncated in the row lie in their
+        windows (the others are free, so their coordinates integrate
+        out and the window is a rectangle of the truncated ones, with
+        their correlations)."""
+        ul = onp.column_stack([d["ul"] for d in dims])
+        ur = onp.column_stack([d["ur"] for d in dims])
+        cut = (ul > 0.0) | (ur < 1.0)
+        out = onp.zeros(ul.shape[0])
+        patterns, which = onp.unique(cut, axis=0, return_inverse=True)
+        which = onp.ravel(which)
+        for p, pattern in enumerate(patterns):
+            T = onp.flatnonzero(pattern)
+            if not T.size:
+                continue
+            if T.size > _most_censored(self):
+                raise ValueError(_too_truncated(self, T.size))
+            rows = onp.flatnonzero(which == p)
+            a, b = ul[onp.ix_(rows, T)], ur[onp.ix_(rows, T)]
+            with onp.errstate(divide="ignore"):
+                lo = onp.where(
+                    a > 0.0, self._z(onp.clip(a, _U_CLIP, 1.0), nu), -onp.inf
+                )
+                hi = onp.where(
+                    b < 1.0,
+                    self._z(onp.clip(b, 0.0, 1 - _U_CLIP), nu),
+                    onp.inf,
+                )
+            mass = rectangle(lo, hi, R[onp.ix_(T, T)], nu)
+            out[rows] = onp.log(onp.clip(mass, _LOG_FLOOR, None))
+        return out
 
     def neg_ll(self, params: Any, dims: list, weights: npt.NDArray) -> float:
         """The negative log-likelihood; ``inf`` where the parameters are
@@ -684,33 +722,40 @@ def _where_complete(z: Any, f: Any) -> npt.NDArray:
     return out
 
 
+def _most_censored(copula: Any) -> int:
+    return MAX_AXES - copula.student
+
+
 def _too_censored(copula: Any, rows: int, censored: int) -> str:
+    most = _most_censored(copula)
     return (
         f"A {copula.name} copula of {copula.n_axes} series is fitted to "
-        f"rows with up to {MAX_LIKELIHOOD_AXES} censored series; {rows} "
-        f"row(s) have {censored}. Their likelihood is an integral over "
-        "the censored series that is not computed accurately enough to "
-        f"fit with beyond {MAX_LIKELIHOOD_AXES}. Fit the copula to "
-        f"{MAX_LIKELIHOOD_AXES} of the series at a time, or leave those "
-        "rows out and say so with the result."
+        f"rows with up to {most} censored series; {rows} row(s) have "
+        f"{censored}. Their likelihood is an integral over the censored "
+        f"series that is not computed beyond {most}. Fit the copula to "
+        f"{most} of the series at a time, or leave those rows out and "
+        "say so with the result."
+    )
+
+
+def _too_truncated(copula: Any, series: int) -> str:
+    most = _most_censored(copula)
+    return (
+        f"A {copula.name} copula's truncated likelihood divides each row "
+        "by the copula's mass over the row's truncation window, which is "
+        f"computed for up to {most} truncated series; a row has {series}. "
+        f"Fit the copula to {most} of the series at a time."
     )
 
 
 def _check_rows(copula: Any, data: Any) -> None:
-    """Refuse what the fit of more than two series does not take:
-    truncation, and rows with too many censored series."""
-    if onp.isfinite(data.t).any():
-        rows = int(onp.sum(onp.isfinite(data.t).any(axis=(1, 2))))
-        raise ValueError(
-            f"A {copula.name} copula of {copula.n_axes} series does not "
-            f"take truncated data (t; {rows} row(s) have a truncation "
-            "window): the truncated likelihood divides by the copula's "
-            "mass over the window, which is not computed for more than "
-            "two series. A copula of two series takes truncation: fit "
-            "the series in pairs."
-        )
+    """Refuse what the fit of more than two series does not take: rows
+    with more censored, or truncated, series than the rule computes."""
+    truncated = onp.sum(onp.isfinite(data.t).any(axis=2), axis=1)
+    if truncated.max(initial=0) > _most_censored(copula):
+        raise ValueError(_too_truncated(copula, int(truncated.max())))
     censored = onp.sum(data.c != 0, axis=1)
-    over = censored > MAX_LIKELIHOOD_AXES
+    over = censored > _most_censored(copula)
     if over.any():
         raise ValueError(
             _too_censored(copula, int(over.sum()), int(censored.max()))

@@ -594,20 +594,32 @@ compares with the unstructured matrix:
 
 What a fit of more than two series takes:
 
-- **Censoring.** Right, left and interval censoring per series, in rows
-  with up to three censored series. A row's likelihood is the density of its
-  observed values times the probability, given them, that the censored ones
-  lie in their ranges: a closed form for one or two censored series, and a
-  deterministic numerical integral (accurate to about :math:`10^{-9}`) for
-  three. Rows with four or more censored series are refused, with their
-  count: that integral is not computed accurately enough to fit with.
-- **Truncation** is refused for more than two series (fit the series in
-  pairs).
+- **Censoring.** Right, left and interval censoring per series, in any
+  number of the series of a row (up to 15 for the Gaussian copula, 14 for
+  the Student-t). A row's likelihood is the density of its observed values
+  times the probability, given them, that the censored ones lie in their
+  ranges: a closed form for one or two censored series, a deterministic
+  numerical integral for three (within :math:`10^{-9}` of R's
+  ``mvtnorm``, or of the reference's own error where that is larger, also
+  for nearly singular correlation matrices), and
+  for four or more Genz's method of conditioning one series at a time,
+  integrated on a fixed lattice of 65,521 points. That rule is the same
+  on every call, so the likelihood is a smooth function of the
+  correlations that a search and its Hessian can use, and it is accurate
+  to about :math:`3 \times 10^{-6}` (checked against R's ``mvtnorm`` and
+  exact one-factor integrals).
+- **Truncation.** Each series of a row may have its own truncation window
+  (``t``; late entry is left truncation). A truncated row's likelihood is
+  divided by the copula's mass over its window: the probability, under
+  the copula, that the series truncated in that row lie in their windows
+  (the others are free, so the mass is that of the truncated series
+  alone), from the same rules as the censored series (closed forms for
+  one or two, the lattice rule for four or more).
 - **Bounds.** Standard errors, ``param_cb`` (Wald, on Fisher's z scale for a
   correlation) and ``cb`` on the joint survival and CDF, as for two series.
-- **Joint probabilities** of four to eight series (seven for the Student-t)
-  are integrated on a fixed lattice, the same on every call, to about
-  :math:`10^{-4}`.
+- **Joint probabilities** of four or more series (up to 15, 14 for the
+  Student-t) use the same lattice rule, to about :math:`3 \times
+  10^{-6}`.
 
 The other families (Clayton, Frank, Gumbel, Joe, AMH) take two series.
 
@@ -659,12 +671,40 @@ the pair-copulas instead (one family for every pair, or a list per tree),
 ``k`` trees and makes the rest independence copulas.
 
 A vine's density, draws (``random``), ``aic``, standard errors and
-``param_cb`` are as for any copula model. What it does not have:
+``param_cb`` are as for any copula model. Rows may be censored in two of
+the series, which the vine then has at its ends:
 
-- **Censoring and truncation.** A vine is fitted to fully observed rows: a
-  censored row's likelihood is an integral of the vine's density, which is
-  not computed. Censored rows are refused with their count; fit a Gaussian
-  or Student-t copula to them.
+.. jupyter-execute::
+
+    limit = np.array([pump.qf(0.7), np.inf, seal.qf(0.7)])
+    c_vine = (complete > limit).astype(int)   # pump and seal censored
+    censored_vine = Vine.fit(
+        np.minimum(complete, limit), c=c_vine, margins=three
+    )
+    print(censored_vine.copula, "ends", censored_vine.copula.ends)
+    print(np.round(censored_vine.params, 2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert set(censored_vine.copula.ends) == {0, 2}
+
+What a vine does not have:
+
+- **Censoring in more than two series, and truncation.** A censored row's
+  likelihood is the vine's density integrated over its censored series.
+  That integral is in closed form when the censored series are the *ends*
+  of the vine: a D-vine's first and last series, a C-vine's last two.
+  Given the series between them, those two are joined by the last tree's
+  pair-copula alone, so a censored end's earlier pair-copulas integrate
+  out and the last one gives the chance that the end lies in its range
+  (through the h-functions, as for a bivariate copula). So a vine takes
+  right, left and interval censoring in up to two series, and the fit
+  puts the censored series at the ends of its order (or checks that a
+  given ``order`` does). Censoring in more series is refused, saying to
+  fit a Gaussian or Student-t copula, which takes it in any series;
+  truncation is refused.
 - **The joint sf and CDF**, and so ``cb``: the vine has them only as
   integrals of its density. They refuse, saying to estimate them from
   draws (the proportion of ``model.random(n)`` in the region).
@@ -1383,3 +1423,204 @@ built-in families start from the value matching the data's Kendall's tau; pass
 And a model of a custom family cannot be restored with ``from_dict``, which
 rebuilds a copula from its name and so only knows the built-in families.
 
+
+Joint survival without a copula: Dabrowska's estimator
+------------------------------------------------------
+
+A copula answers "how likely are both lifetimes to last past their times?" by
+choosing a family for the dependence. When you do not want to choose one, or
+want to check the one you chose, :class:`~surpyval.multivariate.Dabrowska`
+estimates the joint survival :math:`S(s, t) = P(T_1 > s, T_2 > t)` directly
+from right-censored pairs, as Kaplan-Meier does for one lifetime.
+
+In plain words: it starts from the two Kaplan-Meier curves, whose product is
+the answer if the two lifetimes were unrelated, and corrects it at every pair
+of failure times by how much more (or less) often the two series failed
+together there than they would have by chance. With no censoring it is
+exactly the fraction of units that outlived both times, and at
+:math:`t = 0` (or :math:`s = 0`) it is exactly the other series' Kaplan-Meier
+curve.
+
+The formula: of the :math:`Y` units at risk in both series at a pair of
+failure times :math:`(u, v)`, :math:`a` fail in the first at :math:`u`,
+:math:`b` in the second at :math:`v`, :math:`c` in both and :math:`m = Y - a -
+b + c` in neither, and
+
+.. math::
+    \hat S(s, t) = \hat S_1(s)\, \hat S_2(t) \prod_{u \le s,\ v \le t}
+    \frac{Y m}{(Y - a)(Y - b)}
+
+(Dabrowska, 1988). Here two series are drawn from a Clayton copula (so the
+truth is known), each censored by its own random time:
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import Clayton, Dabrowska
+
+    truth = Clayton.from_params(
+        [2.0], [surv.Weibull.from_params([10, 2]),
+                surv.Weibull.from_params([5, 1.5])]
+    )
+    T = truth.random(1000, random_state=11)
+    C = np.random.default_rng(12).exponential([30.0, 14.0], (1000, 2))
+    x, c = np.minimum(T, C), (T > C).astype(int)
+    print("censored in each series:", c.mean(axis=0).round(2))
+
+    joint = Dabrowska.fit(x, c=c)
+    print(joint)
+    pts = np.array([[4.0, 2.0], [8.0, 4.0], [12.0, 7.0]])
+    print("estimate:", joint.sf(pts).round(3))
+    print("truth   :", truth.sf(pts).round(3))
+    print("95% bound:\n", joint.cb(pts).round(3))
+
+The bound uses the estimator's influence function (the infinitesimal
+jackknife: how much each unit moves the estimate), on the logit scale so it
+stays between 0 and 1; ``cb(pts, method="bootstrap")`` resamples the pairs
+instead. Both cover as they say: in a simulation study (pairs from a
+Clayton copula with Weibull margins, each series about 30% censored, 100
+and 400 pairs), the 95% bounds on the joint survival covered the truth in
+94% to 96% of data sets and the 90% bounds in 86.5% to 92%
+(``surpyval/tests/calibration/test_coverage_dabrowska.py``). ``sf_grid(t1, t2)`` gives the estimate on a grid, and ``plot()`` a
+contour map of it:
+
+.. jupyter-execute::
+
+    ax = joint.plot(levels=[0.1, 0.25, 0.5, 0.75, 0.9])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _err = joint.sf(pts) - truth.sf(pts)
+    assert np.all(np.abs(_err) < 3.5 * joint.standard_errors(pts)), _err
+    _km = [m.sf(pts[:, d]) for d, m in enumerate(joint.margins)]
+    assert np.all(joint.sf(pts) > _km[0] * _km[1])
+
+Like every non-parametric estimate of a joint survival function, it can put a
+little negative probability on some rectangles in small or heavily censored
+samples; that is a known property of the estimator and fades as the sample
+grows. Where no unit is at risk in both series (past the data in both
+directions) the estimate is 0, as in R's ``mhazard``, with which it agrees to
+1e-15 (``scripts/reference/reference_r_mhazard_dabrowska.R``). It takes right
+censoring only, and two series: for left or interval censoring or truncation
+use a copula with parametric margins, and for three or more series a Gaussian
+or Student-t copula or a vine.
+
+Two other estimators: Prentice-Cai and Lin-Ying
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Dabrowska.fit(..., estimator=...)`` offers two more estimates of the same
+joint survival. All three are the fraction of units that outlived both times
+when nothing is censored, and all three agree closely in large samples; they
+differ in how they fill in what censoring hides.
+
+``estimator="prentice-cai"`` (Prentice and Cai, 1992; R's ``mhazard`` calls
+it "volterra"). In plain words: it also starts from the two Kaplan-Meier
+curves, but corrects their product by how the two series' failures *co-vary*
+over time, step by step from the origin, each step using the estimate built
+so far. It takes the same data as Dabrowska's (each lifetime its own
+censoring time). The formula: with :math:`\Lambda_1, \Lambda_2` the margins'
+cumulative hazards and :math:`\Lambda_{10}(du, v^-)`,
+:math:`\Lambda_{01}(u^-, dv)`, :math:`\Lambda_{11}(du, dv)` the hazards of a
+failure in the first series, the second, and both, among the units at risk in
+both,
+
+.. math::
+    S(s, t) = S_1(s) S_2(t) \Big[1 + \int_0^s\!\!\int_0^t
+    \frac{S(u^-, v^-)}{S_1(u) S_2(v)} \big(\Lambda_{11}(du, dv)
+    - \Lambda_{10}(du, v^-) \Lambda_2(dv) - \Lambda_1(du) \Lambda_{01}(u^-, dv)
+    + \Lambda_1(du) \Lambda_2(dv)\big)\Big],
+
+a Volterra integral equation (the unknown :math:`S` is inside the integral),
+solved on the grid of failure times with each hazard replaced by its count
+ratio. Its margins are the Kaplan-Meier curves.
+
+``estimator="lin-ying"`` (Lin and Ying, 1993) is for **common censoring**:
+both lifetimes of a unit followed until the same time (both eyes until the
+patient's last visit, both parts of a machine until it is retired), so one
+censoring time stops both. In plain words: the fraction of units *seen* past
+both times is the fraction that lasted past them, times the chance the
+follow-up lasted past the later one; divide that chance back out. The
+formula:
+
+.. math::
+    \hat S(s, t) = \frac{\hat H(s, t)}{\hat G(\max(s, t))},
+
+with :math:`\hat H(s, t)` the fraction of units whose two observed times (failed
+or censored) are past :math:`s` and :math:`t`, and :math:`\hat G` the
+Kaplan-Meier curve of the follow-up time (each unit's later time, an end of
+follow-up when either lifetime is censored). It is simple and fast, but wrong
+when each lifetime has its own censoring time, and the data cannot show which
+kind of censoring they had (two failures say nothing about the follow-up). So
+it must be declared, ``common_censoring=True``; without it Lin-Ying's
+estimator is refused, and data that contradict it (a pair censored at two
+different times, or one lifetime censored before the other's failure) are
+refused, pointing to Dabrowska's. Its margins are not quite the Kaplan-Meier
+curves: the first is :math:`\#\{X_1 > s\} / (N \hat G(s))`, which is
+Kaplan-Meier's up to the first censoring and close to it after.
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(13)
+    T = truth.random(1000, random_state=14)
+    follow_up = rng.uniform(0, 45, 1000)  # one per unit
+    x = np.minimum(T, follow_up[:, None])
+    c = (T > follow_up[:, None]).astype(int)
+    pts = np.array([[4.0, 2.0], [8.0, 4.0], [12.0, 7.0]])
+    for estimator in ["dabrowska", "prentice-cai", "lin-ying"]:
+        est = Dabrowska.fit(
+            x, c=c, estimator=estimator, common_censoring=True
+        )
+        print(f"{estimator:13s}", est.sf(pts).round(3))
+    print("truth        ", truth.sf(pts).round(3))
+
+The bounds of the two are the case bootstrap (``cb`` uses it by default for
+them); the influence-function (Wald) bound is worked out only for Dabrowska's
+and is refused for the others, naming the bootstrap. Like Dabrowska's, both
+can put a little negative probability on some rectangles in small or heavily
+censored samples;
+it is a known property of the estimators, left as it is, and fades as the
+sample grows. In a seeded simulation (pairs from a Clayton copula with
+Kendall's tau 0.5 and Weibull(10, 2) and Weibull(20, 3) margins, 200 pairs,
+100 data sets) every estimator's mean error at two points was
+within Monte Carlo error of 0 under its assumptions (at most 0.0056, against
+standard errors of 0.003 to 0.004), while Lin-Ying's formula forced on data
+with each lifetime censored separately was off by 0.05 and 0.13
+(``surpyval/tests/multivariate/test_bivariate_estimators.py``).
+
+How dependent? Kendall's tau from the estimate
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``kendall_tau()`` on any of the three estimates summarises the dependence in
+one number with no family assumed: the chance two units fail in the same
+order in both series, less the chance they fail in opposite orders (0 when
+the lifetimes are unrelated, towards 1 when they rise and fall together).
+
+Censoring hides the joint distribution past the last failures, so the
+estimate is the tau of the lifetimes *given both fail by* a corner, by default
+each series' last failure time (``kendall_tau(t1_max, t2_max)`` sets it): the
+estimate's probability on the grid points in that rectangle, normalised, and
+
+.. math::
+    \hat\tau = \frac{\hat n}{\hat n - 1} \sum_{a} \sum_{b} q_a q_b\,
+    \operatorname{sign}(u_a - u_b)\, \operatorname{sign}(v_a - v_b),
+
+with :math:`q_a` the normalised mass at grid point :math:`(u_a, v_a)` and
+:math:`\hat n` the estimated number of units in the rectangle. With no
+censoring this is exactly the sample's Kendall's tau-a (pairs tied in either
+series count as neither concordant nor discordant), and so scipy's
+``kendalltau`` when there are no ties. It is not the whole population's tau,
+which the data do not reach; a copula's ``kendall_tau()`` gives that by
+assuming a family. ``kendall_tau_cb()`` gives the case-bootstrap bound.
+
+.. jupyter-execute::
+
+    est = Dabrowska.fit(x, c=c)
+    print("tau given both fail by (12, 8):", round(est.kendall_tau(12, 8), 3))
+    print("95% bound:", est.kendall_tau_cb(t1_max=12, t2_max=8,
+                                          n_boot=100, random_state=1).round(3))
+    print("the copula's tau (whole population):", truth.kendall_tau())
+
+In that simulation, the mean of each estimator's tau given both fail by
+(12, 25) was 0.493 to 0.500 against a true 0.500. The cross-ratio surface
+(another local measure of dependence, which needs smoothing) is not offered.

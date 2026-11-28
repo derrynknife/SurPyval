@@ -35,6 +35,10 @@ PARAMS = {
     "Gumbel": [14.0, 5.0],
     "Logistic": [11.0, 3.5],
     "Rayleigh": [9.0],
+    "Gompertz": [0.1, 0.02],
+    "InverseGaussian": [12.0, 20.0],
+    "BirnbaumSaunders": [0.6, 12.0],
+    "GeneralizedGamma": [2.2, 0.6, 0.5],
 }
 
 # Each row type alone, then mixed with counts. Interval [22, 27] sits in
@@ -295,6 +299,10 @@ TAILS = {
     "Gumbel": dict(x=[60.0, -4000.0, -4000.0, 60.0], c=[0, 0, 1, -1]),
     "Logistic": dict(x=[5e3, -5e3, -5e3, 5e3], c=[0, 0, 1, -1]),
     "Rayleigh": dict(x=[300.0, 1e-200, 1e-200, 300.0], c=[0, 0, 1, -1]),
+    "Gompertz": dict(x=[400.0, 1e-300, 1e-300, 400.0], c=[0, 0, 1, -1]),
+    "InverseGaussian": dict(x=[5e3, 1e-2, 1e-2, 5e3], c=[0, 0, 1, -1]),
+    "BirnbaumSaunders": dict(x=[5e3, 1e-2, 1e-2, 5e3], c=[0, 0, 1, -1]),
+    "GeneralizedGamma": dict(x=[3e3, 1e-30, 1e-30, 3e3], c=[0, 0, 1, -1]),
 }
 
 
@@ -718,3 +726,29 @@ def test_data_given_twice_is_refused():
         spt.targets(data, c=[0, 1])
     with pytest.raises(TypeError, match="dtype must be a floating type"):
         spt.targets(data, dtype=torch.int64)
+
+
+@pytest.mark.parametrize("Q", [0.0, 1e-4, 0.03, -0.05, -0.5, 2.0])
+def test_generalized_gamma_through_the_lognormal(Q):
+    # Near Q = 0 (Temme's expansion), at it and away from it (the
+    # incomplete gamma at shape 1 / Q^2): the loss and its gradient in
+    # every parameter against SurPyval's own, which a central difference
+    # of its likelihood gives.
+    dist = sp.GeneralizedGamma
+    params = np.array([2.2, 0.6, Q])
+    arrays = _arrays("mixed", "both")
+    kw = _kw(dist, params, requires_grad=True)
+    loss = _nll(dist, arrays, kw)
+    loss.backward()
+    assert loss.item() == pytest.approx(
+        -_surpyval_ll(dist, arrays, params), rel=1e-10, abs=1e-10
+    )
+    for i, name in enumerate(dist.parameter_names):
+        h = 1e-6
+        up, down = params.copy(), params.copy()
+        up[i] += h
+        down[i] -= h
+        fd = -(
+            _surpyval_ll(dist, arrays, up) - _surpyval_ll(dist, arrays, down)
+        ) / (2 * h)
+        assert float(kw[name].grad) == pytest.approx(fd, rel=1e-5, abs=1e-6)

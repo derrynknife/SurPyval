@@ -1230,6 +1230,90 @@ class ParametricCompetingRisksRegression(
 
     @classmethod
     @takes_unit
+    def fit_bayes(
+        cls,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        e: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | float | None = None,
+        model: Any = WeibullPH,
+        *,
+        priors: Any = None,
+        method: str = "auto",
+        importance: bool = False,
+    ) -> Any:
+        """
+        Fit each cause's regression by Bayes' rule: priors on its
+        coefficients and baseline parameters times the cause-specific
+        likelihood :meth:`fit` maximises.
+
+        The likelihood factorises over the causes, so with priors stated
+        a cause at a time each cause has its own posterior, computed
+        exactly as its fitter's ``fit_bayes`` computes it with the other
+        causes' failures right censored (the Laplace engine, checked
+        against the exact posterior; see ``WeibullPH.fit_bayes``).
+        Nothing else is fitted: the result combines the causes' fits,
+        for one covariate row at a time.
+
+        Parameters
+        ----------
+        x, Z, e, c, n, tl, model
+            The data and the regressions, as for :meth:`fit`.
+        priors : optional
+            One set of priors for every cause (as the fitter's
+            ``fit_bayes`` takes them: ``{"coef_0": ..., "beta": ...}``),
+            or a set a cause, ``{cause: {...}}`` (a cause left out has
+            the fitter's defaults: a coefficient ``Normal(0, 2.5 / sd)``,
+            any other parameter flat on its unconstrained scale).
+        method, importance
+            As for the fitter's ``fit_bayes``.
+
+        Returns
+        -------
+        surpyval.univariate.competing_risks.regression.bayes.BayesianCompetingRisksRegression
+            ``models`` (each cause's
+            :class:`~surpyval.bayes.BayesianRegression`); ``at(Z)``, the
+            life of a unit with the covariate row ``Z``, with the
+            predictive ``sf``, ``ff``, ``cif``, ``qf`` and the credible
+            intervals ``cri`` and ``quantile_cri``; and the same
+            functions taking ``Z`` on the model itself.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import ParametricCompetingRisksRegression
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.binomial(1, 0.5, (200, 1)).astype(float)
+        >>> t_a = rng.weibull(2.0, 200) * 10 * np.exp(-0.4 * Z[:, 0])
+        >>> t_b = rng.exponential(20, 200)
+        >>> x = np.minimum(t_a, t_b).round(3)
+        >>> e = np.where(t_a < t_b, "a", "b")
+        >>> model = ParametricCompetingRisksRegression.fit_bayes(x, Z, e)
+        >>> unit = model.at([1.0])     # a unit with Z = 1
+        >>> lo, hi = unit.cri(10.0, "a")
+        >>> bool(lo < unit.cif(10.0, "a") < hi)
+        True
+        """
+        from surpyval.univariate.competing_risks.regression import bayes
+
+        return bayes.fit(
+            cls,
+            x,
+            Z,
+            e,
+            c,
+            n,
+            tl,
+            model,
+            priors=priors,
+            method=method,
+            importance=importance,
+        )
+
+    @classmethod
+    @takes_unit
     def fit_from_df(
         cls,
         df: Any,
@@ -1298,6 +1382,9 @@ class ParametricCompetingRisksRegression(
         >>> model.cif(np.full(3, 5.0), new, "wear").round(4)
         array([0.2844, 0.5163, 0.1903])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         design = FrameDesign(df, Z_cols, formula, drop_missing=True)
         return design.fit(
             cls.fit,
@@ -1309,4 +1396,69 @@ class ParametricCompetingRisksRegression(
             tl=design.column(tl_col),
             model=model,
             init=init,
+        )
+
+    @classmethod
+    @takes_unit
+    def fit_bayes_from_df(
+        cls,
+        df: Any,
+        x_col: str,
+        e_col: str,
+        Z_cols: str | list[str] | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        formula: str | None = None,
+        *,
+        model: Any = WeibullPH,
+        priors: Any = None,
+        method: str = "auto",
+        importance: bool = False,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on the columns of a :class:`pandas.DataFrame`,
+        named as :meth:`fit_from_df` names them (``Z_cols`` or
+        ``formula`` for the covariates; a row with a missing covariate
+        is left out, with a warning). ``model``, ``priors``, ``method``
+        and ``importance`` are :meth:`fit_bayes`'s, passed to it
+        unchanged; a coefficient is named in ``priors`` by its column
+        (``{"load": ...}``), as :meth:`fit_from_df` names it.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisksRegression,
+        ... )
+        >>> rng = np.random.default_rng(3)
+        >>> df = pd.DataFrame({
+        ...     "hours": rng.weibull(1.5, 40) * 10,
+        ...     "cause": rng.choice(["a", "b"], 40).astype(object),
+        ...     "load": rng.normal(size=40),
+        ... })
+        >>> model = ParametricCompetingRisksRegression.fit_bayes_from_df(
+        ...     df, "hours", "cause", Z_cols=["load"])
+        >>> model.causes
+        ['a', 'b']
+        >>> model.models["a"].parameter_names
+        ['alpha', 'beta', 'load']
+        """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
+        design = FrameDesign(df, Z_cols, formula, drop_missing=True)
+        return design.fit(
+            cls.fit_bayes,
+            design.column(x_col),
+            design.Z,
+            design.causes(e_col),
+            c=design.column(c_col),
+            n=design.column(n_col),
+            tl=design.column(tl_col),
+            model=model,
+            priors=priors,
+            method=method,
+            importance=importance,
         )

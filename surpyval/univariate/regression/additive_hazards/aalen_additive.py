@@ -74,6 +74,7 @@ from surpyval.utils.weights import (
 
 from .._aliasing import aliased_columns, constant_columns, warn_aliased
 from .._concordance import ConcordanceMixin
+from .._early_stop import beyond, warn_if_stopped
 from .._fit_skeleton import draws_by_row
 from .._prediction import (
     ConditionalSurvivalMixin,
@@ -158,7 +159,7 @@ def _check_penalty(penalizer: Any) -> float:
     return value
 
 
-def _risk_set_sums(
+def risk_set_sums(
     x: npt.NDArray,
     tl: npt.NDArray,
     values: npt.NDArray,
@@ -201,7 +202,7 @@ def _estimate(
     if w is not None:
         n = n * w
     XX = n[:, None, None] * X[:, :, None] * X[:, None, :]
-    S2 = _risk_set_sums(x, tl, XX, times)
+    S2 = risk_set_sums(x, tl, XX, times)
     bucket = np.searchsorted(times, x[events])
     E1 = np.zeros((times.size, q))
     np.add.at(E1, bucket, (n[events])[:, None] * X[events])
@@ -347,6 +348,10 @@ class AalenAdditiveModel(
     #: The rows fitted ``(x, c, n, tl, Z)``, for ``concordance`` and the
     #: resampling tests; not saved.
     _fit_data: tuple | None = None
+    #: Where the fit stopped before the last event time (``X'YX``
+    #: singular beyond it: too few units at risk to separate the
+    #: covariates), else ``nan``; every prediction beyond it is ``nan``.
+    stopped_at: float = float("nan")
     #: Aalen's estimator is a least-squares fit at each event time, not
     #: the maximum of a likelihood.
     maximum: str = "not applicable"
@@ -425,6 +430,11 @@ class AalenAdditiveModel(
                 "\nWeights             : effective sample size "
                 f"{self.effective_n:.4g}; robust covariance"
             )
+        if np.isfinite(self.stopped_at):
+            out += (
+                f"\nStopped at          : t = {self.stopped_at:g} (too few "
+                "at risk after it; predictions there are nan)"
+            )
         if self.x.size:
             out += f"\nCumulative effects at t = {self.x[-1]:g}:\n"
             for name, b in zip(self.term_names, self.B[-1]):
@@ -432,6 +442,11 @@ class AalenAdditiveModel(
         return out
 
     # -- the cumulative regression functions ------------------------------
+
+    def _beyond(self, t: npt.NDArray) -> npt.NDArray:
+        """Whether each time is after the fit stopped short of the data
+        (see :attr:`stopped_at`)."""
+        return beyond(t, self.stopped_at)
 
     def _index(self, x: npt.NDArray) -> npt.NDArray:
         """The row of ``B`` in force at each time (right-continuous), -1
@@ -489,20 +504,24 @@ class AalenAdditiveModel(
 
     def _B_at(self, t: npt.NDArray) -> npt.NDArray:
         idx = self._index(t)
-        out = np.where((idx >= 0)[:, None], self.B[np.clip(idx, 0, None)], 0.0)
         if self.B.shape[0] == 0:
             out = np.zeros((t.size, self.B.shape[1]))
-        out[np.isnan(t)] = np.nan
+        else:
+            out = np.where(
+                (idx >= 0)[:, None], self.B[np.clip(idx, 0, None)], 0.0
+            )
+        out[np.isnan(t) | self._beyond(t)] = np.nan
         return out
 
     def _B_var_at(self, t: npt.NDArray) -> npt.NDArray:
         idx = self._index(t)
         if self.B.shape[0] == 0:
-            return np.zeros((t.size, self.B.shape[1]))
-        out = np.where(
-            (idx >= 0)[:, None], self.B_var[np.clip(idx, 0, None)], 0.0
-        )
-        out[np.isnan(t)] = np.nan
+            out = np.zeros((t.size, self.B.shape[1]))
+        else:
+            out = np.where(
+                (idx >= 0)[:, None], self.B_var[np.clip(idx, 0, None)], 0.0
+            )
+        out[np.isnan(t) | self._beyond(t)] = np.nan
         return out
 
     def cumulative_coefficients_cb(
@@ -641,14 +660,14 @@ class AalenAdditiveModel(
         idx = self._index(x)
         uniq, which = unique_rows(rows)
         if B.shape[0] == 0 or x.size == 0:
-            zero = np.where(np.isnan(x), np.nan, 0.0)
+            zero = np.where(np.isnan(x) | self._beyond(x), np.nan, 0.0)
             return zero, zero, rows, x
         grid = B @ uniq.T  # (k, distinct rows)
         peaks = np.maximum.accumulate(np.maximum(grid, 0.0), axis=0)
         at = np.clip(idx, 0, None)
         H = np.where(idx >= 0, grid[at, which], 0.0)
         H_star = np.where(idx >= 0, peaks[at, which], 0.0)
-        bad = np.isnan(x) | np.isnan(rows).any(axis=1)
+        bad = np.isnan(x) | np.isnan(rows).any(axis=1) | self._beyond(x)
         H = np.where(bad, np.nan, H)
         H_star = np.where(bad, np.nan, H_star)
         # Nothing happens at or before time 0.
@@ -716,6 +735,7 @@ class AalenAdditiveModel(
         with np.errstate(invalid="ignore"):
             rate = np.where((rate < 0) | (H < H_star), 0.0, rate)
         rate = np.where((x > self.x[-1]) | (x <= 0), 0.0, rate)
+        rate = np.where(self._beyond(x), np.nan, rate)
         return np.where(np.isnan(H_star), np.nan, rate)
 
     @keeps_query_shape
@@ -755,9 +775,12 @@ class AalenAdditiveModel(
         The estimate stops at the last event time, where the curve is
         above 0 when the data end censored; a draw beyond it is ``inf``
         (the unit outlives the data), as often as ``sf`` at the last
-        time says. A missing covariate gives ``nan`` draws.
-        ``random_state`` seeds the draw: ``None`` (the default) draws from
-        numpy's global generator, so ``np.random.seed`` reproduces it; an
+        time says. Where the fit stopped short of the data
+        (:attr:`stopped_at`), a draw beyond the stop is ``nan``: what
+        happens after it is unknown. A missing covariate gives ``nan``
+        draws. ``random_state`` seeds the draw: ``None`` (the default)
+        draws from numpy's global generator, so ``np.random.seed``
+        reproduces it; an
         int or a ``numpy.random.Generator`` gives a stream of its own.
 
         Returns the draws and a 2-D array of the covariate row each was
@@ -786,7 +809,11 @@ class AalenAdditiveModel(
 
         def invert(U: npt.NDArray, row: npt.NDArray) -> npt.NDArray:
             H = self.Hf(self.x, row) if self.x.size else np.zeros(0)
-            return step_draws(H, self.x, U)
+            out = step_draws(H, self.x, U)
+            # A draw past where the fit stopped is unknown, not "outlived".
+            if np.isfinite(self.stopped_at):
+                out = np.where(np.isinf(out), np.nan, out)
+            return out
 
         return draws_by_row(size, rows, random_state, invert)
 
@@ -1192,6 +1219,9 @@ class AalenAdditiveModel(
             "n_terms": int(self.B.shape[1]),
             "penalizer": float(self.penalizer),
             "aliased": self.aliased.tolist(),
+            "stopped_at": (
+                None if np.isnan(self.stopped_at) else float(self.stopped_at)
+            ),
         }
         if self.weighted:
             # Schema 4: a reader without weights would take the robust
@@ -1227,6 +1257,8 @@ class AalenAdditiveModel(
             model_dict.get("penalizer", model_dict.get("coef_penalty", 0.0))
         )
         out._aliased = np.array(model_dict["aliased"], dtype=int)
+        stop = model_dict.get("stopped_at")
+        out.stopped_at = float("nan") if stop is None else float(stop)
         if model_dict.get("weighted") is True:
             out.weighted = True
             out.effective_n = model_dict.get("effective_n")
@@ -1462,6 +1494,16 @@ class AalenAdditive_(FitterRepr):
         model.penalizer = penalty_value
         model._aliased = aliased
         model._fit_data = (x, c, n, tl, Z)
+        model.stopped_at = warn_if_stopped(
+            "AalenAdditive",
+            x,
+            c,
+            n,
+            tl,
+            times,
+            "Use fewer covariates, a ridge penalty (penalizer=), or end "
+            "the analysis at that time.",
+        )
         if w_arr is not None:
             model.weighted = True
             model.effective_n = effective_sample_size(n, w_arr)
@@ -1490,6 +1532,9 @@ class AalenAdditive_(FitterRepr):
         entry times, if any, as ``tl_col``, and sampling weights, if any,
         as ``w_col`` (the ``w`` of :meth:`fit`).
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         check_columns(
             df,
             x_col=x_col,

@@ -239,6 +239,9 @@ With six items the data are consistent with a median anywhere from 1 upwards: th
 survival never falls below 0.5, so the upper end is ``nan`` (open). Six items is simply too few to
 pin a median down.
 
+``median_cb()`` is the same interval for the median alone, ``quantile_cb(0.5)``; both take
+``bound="lower"`` or ``"upper"`` for a one-sided bound.
+
 .. jupyter-execute::
     :hide-code:
     :hide-output:
@@ -270,7 +273,7 @@ The options are:
 - ``on``: the function to bound, ``'sf'`` (default), ``'ff'`` or ``'Hf'``. The rows are always ``[lower, upper]`` for the function you asked about;
 - ``bound``: ``'two-sided'`` (default), ``'lower'`` or ``'upper'``;
 - ``alpha_ci``: the significance level, 0.05 by default;
-- ``bound_type``: how the interval is formed. ``'exp'`` (default) is the log(-log) interval, which always stays within [0, 1]; ``'normal'`` the plain symmetric interval. The others match the choices other software offers: ``'log'`` (the default of R's ``survfit``), ``'logit'`` and ``'arcsine'`` form the interval on the log, log-odds or arcsine-square-root scale and map it back (all within [0, 1]); ``'peto'`` is the plain interval with Peto's variance, which uses the number still at risk and is cautious late in follow-up; ``'rothman'`` is Rothman's Wilson-type interval, within [0, 1]. They are listed with their formulas in the ``cb`` reference;
+- ``bound_type``: how the interval is formed. ``'log-log'`` (default) is the log(-log) interval, which always stays within [0, 1]; ``'plain'`` the plain symmetric interval. The others match the choices other software offers: ``'log'`` (the default of R's ``survfit``), ``'logit'`` and ``'arcsine'`` form the interval on the log, log-odds or arcsine-square-root scale and map it back (all within [0, 1]); ``'peto'`` is the plain interval with Peto's variance, which uses the number still at risk and is cautious late in follow-up; ``'rothman'`` is Rothman's Wilson-type interval, within [0, 1]. They are listed with their formulas in the ``cb`` reference;
 - ``interp``: as for ``sf``.
 
 .. jupyter-execute::
@@ -278,13 +281,13 @@ The options are:
     print('on ff:        ', model.cb(3, on='ff').round(4))
     print('on Hf:        ', model.cb(3, on='Hf').round(4))
     print('90% lower sf: ', model.cb(3, bound='lower', alpha_ci=0.1).round(4))
-    print("'normal' type:", model.cb(6, bound_type='normal').round(4))
+    print("'plain' type: ", model.cb(6, bound_type='plain').round(4))
     print("'logit' type: ", model.cb(6, bound_type='logit').round(4))
     print('at last value:', model.cb(8).round(4))
     print('before first: ', model.cb(0.5))
 
 The bounds on ``ff`` are one minus those on ``sf`` (swapped so the lower is still first), and those
-on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below zero, which is impossible for a probability and the reason ``'exp'`` is the default. At 8, the last value, the survival estimate is 0 and Greenwood's variance is undefined, so the lower bound is set to 0 and the upper bound to the last finite one (the upper bound at 5). Before the first value the step estimate is exactly its start, and so are both bounds: ``[1, 1]`` on ``sf``, ``[0, 0]`` on ``ff`` and ``Hf`` (the interpolated forms, ``interp='linear'`` or ``'cubic'``, are ``nan`` there, as their ``sf`` is). Past the last value the bounds are ``nan``, with a warning naming the values: the step ``sf`` only holds its last value there, and the data say nothing about it (unless the model has bounds from ``set_support``, above):
+on ``Hf`` are :math:`-\ln` of them. The ``'plain'`` interval at 6 runs below zero, which is impossible for a probability and the reason ``'log-log'`` is the default. At 8, the last value, the survival estimate is 0 and Greenwood's variance is undefined, so the lower bound is set to 0 and the upper bound to the last finite one (the upper bound at 5). Before the first value the step estimate is exactly its start, and so are both bounds: ``[1, 1]`` on ``sf``, ``[0, 0]`` on ``ff`` and ``Hf`` (the interpolated forms, ``interp='linear'`` or ``'cubic'``, are ``nan`` there, as their ``sf`` is). Past the last value the bounds are ``nan``, with a warning naming the values: the step ``sf`` only holds its last value there, and the data say nothing about it (unless the model has bounds from ``set_support``, above):
 
 .. jupyter-execute::
     :stderr:
@@ -300,7 +303,7 @@ The formulas are in the section *From a variance to confidence bounds* of :doc:`
     _sf = model.cb(3)
     assert np.allclose(model.cb(3, on='ff'), 1 - _sf[::-1])
     assert np.allclose(model.cb(3, on='Hf'), -np.log(_sf[::-1]))
-    assert model.cb(6, bound_type='normal')[0] < 0
+    assert model.cb(6, bound_type='plain')[0] < 0
     assert 0 < model.cb(6, bound_type='logit')[0] < model.sf(6)
     assert np.allclose(model.cb(8), [0, model.cb(5)[1]])
     assert np.all(model.cb(0.5) == 1) and np.all(model.cb(0.5, on='ff') == 0)
@@ -554,7 +557,7 @@ The band is wider than the pointwise bounds, as it must be, and the bootstrap in
 to the pointwise one here, a sign that the asymptotic formula is adequate for this sample. ``band()`` takes
 ``method='hall-wellner'`` (default) or ``method='nair'`` (the equal-precision band), ``alpha_ci``,
 and ``bound_type``: the scale the band is applied on, ``'arcsine'`` (the arcsine-square-root of
-the survival function, the default), ``'exp'`` (its log(-log), as ``cb()``) or ``'normal'``. Its
+the survival function, the default), ``'log-log'`` (its log(-log), as ``cb()``) or ``'plain'``. Its
 critical value, that of the limiting Brownian bridge over the range the band covers, is computed
 numerically rather than simulated, so results are accurate and reproducible. ``x_range=(t_L, t_U)``
 sets the times a band covers; it is ``nan`` outside them. The Hall-Wellner band covers the first to
@@ -579,7 +582,7 @@ outside the range of the data unless the model has a support (``set_support``).
 .. jupyter-execute::
 
     print('Nair band:\n', km.band(t, method='nair').round(3))
-    print('Hall-Wellner, normal type:\n', km.band(t, bound_type='normal').round(3))
+    print('Hall-Wellner, plain type:\n', km.band(t, bound_type='plain').round(3))
     print('bootstrap 95% lower:', km.bootstrap_cb(t, bound='lower', n_boot=200, random_state=1).round(3))
 
 .. jupyter-execute::
@@ -589,13 +592,13 @@ outside the range of the data unless the model has a support (``set_support``).
     _w = lambda b: b[:, 1] - b[:, 0]
     _nair, _hw = km.band(t, method='nair'), km.band(t)
     assert _w(_nair)[1] > _w(_hw)[1] and _w(_nair)[2] < _w(_hw)[2]
-    _normal = km.band(t, bound_type='normal')
+    _normal = km.band(t, bound_type='plain')
     assert _normal[2, 0] < 0 and np.all(_normal[:2, 0] >= 0)
 
 The Nair band follows the shape of the pointwise interval (it is the same formula with a larger
 critical value), while the Hall-Wellner band's width follows :math:`1 + N\hat{\sigma}^2`, so the two
 distribute their width differently: here the Nair band is a little wider at 10 and narrower at 15.
-Neither is uniformly better. The ``'normal'`` band, like the ``'normal'`` pointwise interval, can
+Neither is uniformly better. The ``'plain'`` band, like the ``'plain'`` pointwise interval, can
 spill below zero (it does at 15); the arcsine and log(-log) bands stay within [0, 1]. With the band we can check a
 parametric fit against the data:
 
@@ -1981,7 +1984,7 @@ To compare the two groups' survival at one time instead -- "is the chance of las
 units different?" -- use ``surpyval.sf_diff``. It compares the two estimates at that time, with
 each one's variance (Greenwood's for the Kaplan-Meier), on the log(-log) scale by default, which
 Klein et al. (2007) found holds its stated error rate better in small samples than the plain
-difference (``transform='linear'``; ``'log'``, ``'arcsine-sqrt'`` and ``'logit'`` are the others):
+difference (``transform='plain'``; ``'log'``, ``'arcsine'`` and ``'logit'`` are the others):
 
 .. jupyter-execute::
 

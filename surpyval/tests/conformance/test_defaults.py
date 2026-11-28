@@ -36,9 +36,21 @@ FITTERS = sorted({f for case in CASES for f in case.fitters})
 
 def _entry_points(fitter):
     """name -> signature of each public ``fit*`` method of ``fitter``."""
+    from surpyval.utils.deprecation import RenamedAttribute
+    from surpyval.utils.removed_names import RemovedName
+
+    owner = fitter if isinstance(fitter, type) else type(fitter)
     out = {}
     for name in dir(fitter):
         if not name.startswith("fit"):
+            continue
+        if isinstance(
+            inspect.getattr_static(owner, name, None),
+            (RenamedAttribute, RemovedName),
+        ):
+            # a deprecated old name (fit_penalised, v0.30), whose defaults
+            # are its own until it goes, or a removed one's hint
+            # (fit_from_surpyval_data, removed in v0.30)
             continue
         method = getattr(fitter, name)
         if not callable(method):
@@ -61,11 +73,25 @@ def _same(a, b):
         return repr(a) == repr(b)
 
 
+#: Entry points whose default differs on purpose, ``(fitter, method,
+#: argument)``, each with why. A nested case-control fit's exact ties are
+#: the design's own likelihood (the conditional likelihood of each matched
+#: set, R's ``clogit``), not an approximation chosen for speed as Efron's
+#: is for a cohort.
+DIFFERENT_ON_PURPOSE = {
+    ("surpyval.CoxPH", "fit_nested_case_control", "tie_method"): (
+        "exact is the conditional likelihood of a matched set (R's clogit)"
+    ),
+}
+
+
 @pytest.mark.parametrize("dotted", FITTERS)
 def test_entry_points_share_defaults(dotted):
     defaults = {}  # argument -> {entry point: default}
     for method, sig in _entry_points(_resolve(dotted)).items():
         for p in sig.parameters.values():
+            if (dotted, method, p.name) in DIFFERENT_ON_PURPOSE:
+                continue
             if p.default is not inspect.Parameter.empty:
                 defaults.setdefault(p.name, {})[method] = p.default
     differing = {

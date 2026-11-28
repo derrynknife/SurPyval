@@ -781,10 +781,72 @@ def _search_multistate_cox(model, data):
     return _search_cox(model.cox, None)
 
 
+def _search_multistate_joint(model, lik, n_obs, units=None):
+    """The likelihood ``lik`` of a jointly fitted parametric multi-state
+    model, over every transition's parameters on the scale the fit
+    searches (the log of positive parameters), with the gradient and
+    Hessian by central differences (the likelihood is a product integral
+    on a fixed grid, or tanh-sinh integrals, both smooth in the
+    parameters), each step of a component's own size: ``max(|x|,
+    unit)``, a regression coefficient's unit its covariate's (where
+    ``units`` gives them; else 1)."""
+    from surpyval.multistate._joint import Packer, coefficient_units
+    from surpyval.utils.linalg import numerical_hessian
+
+    pack = Packer.of(model._models())
+    floor = np.ones(pack.k)
+    if units is not None:
+        got = coefficient_units(model._models(), units)
+        floor = floor if got is None else got
+
+    def fun(theta):
+        return lik.neg_ll(pack.rebuild(pack.from_search(theta)))
+
+    step = np.finfo(float).eps ** (1 / 3)
+
+    def jac(theta):
+        out = np.empty(theta.size)
+        for j in range(theta.size):
+            e = np.zeros(theta.size)
+            e[j] = step * max(abs(theta[j]), floor[j])
+            out[j] = (fun(theta + e) - fun(theta - e)) / (2 * e[j])
+        return out
+
+    def hess(theta):
+        h = np.finfo(float).eps ** 0.25 * np.maximum(np.abs(theta), floor)
+        return numerical_hessian(fun, theta, h)
+
+    return [
+        Search(
+            fun,
+            pack.to_search(pack.est),
+            float(n_obs),
+            floor=floor,
+            jac=jac,
+            hess=hess,
+        )
+    ]
+
+
+def _search_interval_multistate(model):
+    """A fit to interval-censored moves: the joint likelihood (the
+    transitions share the factors of the moves whose times are
+    unknown), each regression coefficient in its covariate's units."""
+    return _search_multistate_joint(
+        model,
+        model._interval_likelihood(),
+        float(np.sum(model._data.n)),
+        units=model._Z if model._regression else None,
+    )
+
+
 def _search_parametric_multistate(model, data):
     """Each transition's own fit (it keeps its data: the spells in its
     'from' state, the others censored, each left truncated at its
-    start)."""
+    start); the joint likelihood where some moves are interval
+    censored."""
+    if model._interval_likelihood() is not None:
+        return _search_interval_multistate(model)
     out = []
     for pair, m in model.models.items():
         out += _search_parametric(m, None, name=f"transition {pair!r}")
@@ -793,7 +855,10 @@ def _search_parametric_multistate(model, data):
 
 def _search_parametric_multistate_regression(model, data):
     """Each transition's own regression search (its fit keeps its
-    data)."""
+    data); the joint likelihood where some moves are interval
+    censored."""
+    if model._interval_likelihood() is not None:
+        return _search_interval_multistate(model)
     out = []
     for m in model.models.values():
         out += _search_regression(m, None)
@@ -889,6 +954,19 @@ def _search_panel_multistate(model, data):
     ]
 
 
+def _search_parametric_panel_multistate(model, data):
+    """The joint panel likelihood of every transition's parameters (see
+    :func:`_search_multistate_joint`), each coefficient in its
+    covariate's units."""
+    panel = model._panel
+    return _search_multistate_joint(
+        model,
+        model._panel_likelihood(),
+        float(model.n_obs),
+        units=panel.Z[panel.intervals() - 1] if model._regression else None,
+    )
+
+
 def _columns(kept):
     """``(position, column)`` of coefficients that are all searched, in
     the order of ``kept``'s columns (of a ``Z`` restricted to them)."""
@@ -909,6 +987,8 @@ def _search_cox_frailty(model, data):
     fit = {k: data[k] for k in ("x", "Z", "c", "n", "groups")}
     n_obs = float(np.sum(data["n"]))
     tie_method = model.tie_method
+    # (refitted in the model's own family, whose likelihood it reports)
+    fit["family"] = model.family
     if model.theta == 0:
         cox = sp.CoxPH.fit(
             data["x"], data["Z"], data["c"], data["n"], tie_method=tie_method
@@ -1471,6 +1551,7 @@ SEARCHES: dict[str, Callable] = {
     "ParametricRegressionModel": _search_regression,
     "DistributionalRegressionModel": _search_regression,
     "MixtureCureModel": _search_regression,
+    "PromotionTimeCureModel": _search_regression,
     "ZeroInflatedModel": _search_regression,
     "FrailtyModel": _search_frailty,
     "CoxFrailtyModel": _search_cox_frailty,
@@ -1489,6 +1570,10 @@ SEARCHES: dict[str, Callable] = {
         _search_parametric_multistate_regression
     ),
     "PanelMultiState": _search_panel_multistate,
+    "ParametricPanelMultiState": _search_parametric_panel_multistate,
+    "ParametricPanelMultiStateRegression": (
+        _search_parametric_panel_multistate
+    ),
     "PanelMultiStateRegression": _search_panel_multistate,
     "ParametricCompetingRisks": _search_parametric_competing_risks,
     "ParametricCompetingRisksRegression": (

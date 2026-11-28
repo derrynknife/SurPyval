@@ -76,6 +76,8 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         max_iter: int = 1000,
         turnbull_algorithm: str = "auto",
         w: npt.ArrayLike | Number | None = None,
+        *,
+        hr: float | None = None,
     ) -> NonParametric:
         r"""
 
@@ -238,6 +240,12 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
             the bounds built on the variance refuse, and its bounds are
             ``bootstrap_cb``'s, the weighted case bootstrap (see
             :doc:`/Weighted Data`).
+        hr : float, optional
+            Refused unless 1 (keyword only): a hazard ratio is an option of
+            a parametric model, not of an estimate from the data. The
+            curve with one is ``model.sf(t) ** hr``; to fit data with a
+            known hazard ratio, fit a parametric model,
+            ``Dist.fit(..., hr=hr)``.
 
         Returns
         -------
@@ -290,6 +298,17 @@ class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         Curve            : Kaplan-Meier on Turnbull's expected counts
         Data             : 6 units: 6 events at 5 unique times
         """
+        from surpyval.univariate.parametric._hazard_ratio import (
+            refuse_unless_one,
+        )
+
+        refuse_unless_one(
+            hr,
+            f"A {self.how} fit",
+            "a hazard ratio is an option of a parametric model; the curve "
+            "with one is model.sf(t) ** hr, and data with a known hazard "
+            "ratio are fitted by a parametric model, Dist.fit(..., hr=hr).",
+        )
         if w is not None and self.how == "Turnbull":
             return self._fit_weighted_turnbull(
                 x,

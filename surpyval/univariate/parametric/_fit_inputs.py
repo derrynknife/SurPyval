@@ -38,12 +38,15 @@ _POINT_MASS_FAMILIES = frozenset(
         "LogNormal",
         "LogLogistic",
         "ExpoWeibull",
+        "GeneralizedF",
+        "GeneralizedGamma",
         "Normal",
         "Gumbel",
         "GumbelLEV",
         "Logistic",
         "Beta",
         "Beta4",
+        "BirnbaumSaunders",
         "Uniform",
     }
 )

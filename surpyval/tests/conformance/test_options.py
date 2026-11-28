@@ -72,6 +72,16 @@ _GROWTH_ANSWERS = (
 )
 
 NOT_SWEPT = {
+    "cure_cri": "a Bayesian mixture-cure fit's credible interval of the "
+    "cured fraction at one covariate row (the posterior's quantiles of "
+    "MixtureCureModel.cure_probability, not a function of time); checked "
+    "against the draws' own values in tests/bayes/test_mixture_cure_bayes.py",
+    "next_failure_cri": "a Bayesian renewal fit's credible interval of "
+    "each unit's next-failure survival function (a units-by-times "
+    "matrix, from each unit's own history, not a function of the case's "
+    "times alone): the posterior's quantiles of RenewalModel."
+    "next_failure_sf, checked point by point against the model's own in "
+    "tests/bayes/test_renewal_bayes.py",
     "next_failure_sf_cb": "the reliability over a mission from each unit's "
     "age, " + _GROWTH_ANSWERS,
     "expected_events_cb": "the events expected in a stretch of time (two "
@@ -99,8 +109,13 @@ NOT_SWEPT = {
     "plot_partial_effects": "draws the bounds of cb, a swept method (#876)",
     "plot_parameter": "draws the bounds of parameter_cb, a swept method",
     "get_plot_data": "collects the bounds of a swept method for plot",
-    "R_cb": "the survival bounds behind cb in [upper, lower] order "
-    "(documented); cb(on='sf') is the method to call",
+    "R_cb": "deprecated in v0.30 for cb(on='sf') (swept), which it calls "
+    "with the columns in [upper, lower] order",
+    "bootstrap_ci": "deprecated in v0.30 for param_cb (swept), which it "
+    "calls",
+    "diagnose": "checks of the model's assumptions: alpha_ci is the level "
+    "each check's test is judged at, not an interval's; checked in "
+    "tests/diagnostics",
     "life_parameter_covariance": "a covariance, not an interval",
     "frailties": "a table of each cluster's predicted frailty with the "
     "interval of its distribution given the cluster's history (not a "
@@ -109,6 +124,9 @@ NOT_SWEPT = {
     "variance_cb": "a table of the variance components' profile-likelihood "
     "intervals of a mixed-effects Cox model (no point method to sweep; "
     "checked in regression/test_cox_mixed_effects.py)",
+    "function_cri": "the credible interval of a function of the model that "
+    "the caller gives, on every family's Bayesian fit (checked against "
+    "closed forms in tests/bayes/test_shared_layer.py)",
     "summary": "a table of the parameters' Wald intervals (param_cb's for "
     "the baseline; checked in regression/test_summary.py, #484)",
     "trend_test": "a hypothesis test: alpha_ci is the level its trend is "
@@ -215,6 +233,23 @@ def _level(spec, alpha):
 
 def _parameters(model):
     """(names, estimates, supports) of the parameters ``param_cb`` takes."""
+    if type(model).__name__ in ("BayesianRegression", "BayesianMixtureCure"):
+        # the posterior medians of the distribution's parameters, then of
+        # the coefficients
+        names = list(model.parameter_names)
+        k = len(model.dist.parameter_names)
+        supports = list(model.dist.bounds) + [(None, None)] * (len(names) - k)
+        return names, np.asarray(model.params, float), supports
+    if type(model).__name__ in (
+        "BayesianRecurrence",
+        "BayesianProportionalIntensity",
+        "BayesianRenewal",
+    ):
+        # the posterior medians of the process's parameters (then of the
+        # coefficients), each in its target's range
+        names = list(model.parameter_names)
+        supports = [tuple(b) for b in model.target.bounds]
+        return names, np.asarray(model.params, float), supports
     if hasattr(model, "_parameter_bounds"):
         names = list(model.parameter_names)
         values = getattr(model, "_mle", None)
@@ -304,8 +339,10 @@ def _call(case, spec, model, side, alpha, fname, event, k):
         args = [x if k is None else x[k]]
         if case.interface in WITH_COVARIATES:
             if case.z_style != "paired":
-                # one covariate vector a call (a joint model's item)
-                args.append(case.Z[0] if k is None else case.Z[k])
+                # one covariate vector a call (a joint model's item): the
+                # first, for every point and for a single point alike, as
+                # the estimate is taken
+                args.append(case.Z[0])
             else:
                 args.append(case.Z[: x.size] if k is None else case.Z[k])
         if spec.per_cause:
@@ -355,7 +392,15 @@ def _estimate(case, spec, fname, event):
         extra = {k: v for k, v in spec.kwargs.items() if k == "interp"}
         c = replace(case, call_kwargs={**case.call_kwargs, **extra})
         x = _query(case, spec)
-        Z = case.Z[: x.size] if case.interface in WITH_COVARIATES else None
+        Z = None
+        if case.interface in WITH_COVARIATES:
+            # the covariate rows the bounds are taken at: one a point,
+            # or (one covariate vector a call) the first at every point
+            Z = (
+                case.Z[: x.size]
+                if case.z_style == "paired"
+                else np.repeat(np.asarray(case.Z)[:1], x.size, axis=0)
+            )
         return np.asarray(call(c, model, fname, x, Z, event), float)
     if spec.kind == "param":
         return _parameters(model)[1]
@@ -379,6 +424,8 @@ def _estimate(case, spec, fname, event):
                 out.append(model.mean(tau=args[0]))
             else:
                 out.append(model.rmst(*args)["rmst"])
+        elif spec.method == "cs_cb":
+            out.append(model.cs(*args))
         elif spec.method == "cb_at_usage":
             out.append(model.sf_at_usage(*args))
         elif spec.method == "quantile_cb_at_usage":
@@ -396,6 +443,16 @@ def _estimate(case, spec, fname, event):
             out.append(getattr(model, spec.method.removesuffix("_cb"))())
         elif spec.method == "mtbf_cb":
             out.append(model.mtbf())
+        elif spec.method == "mtbf_cri":
+            # (a Bayesian fit's instantaneous MTBF, its posterior median:
+            # now, at the latest time observed, or at a later time; for
+            # one covariate set first where the model has covariates)
+            out.append(_bayes_mtbf(model, args))
+        elif spec.method == "param_cri":
+            # (one cause's parameter, by its name: its posterior median)
+            event, name = args
+            fit = model.models[event]
+            out.append(fit.params[fit.parameter_names.index(name)])
         elif spec.method == "parameter_cb":
             name, row = args
             k = list(model.distribution.parameter_names).index(name)
@@ -404,6 +461,13 @@ def _estimate(case, spec, fname, event):
             # (a regression's mean_cb is at the covariates of its query)
             out.append(model.mean(*args))
     return np.asarray(out, float)
+
+
+def _bayes_mtbf(model, args):
+    if type(model).__name__ == "BayesianProportionalIntensity":
+        Z, *at = args
+        return float(model.mtbf(at[0] if at else model.end, Z))
+    return float(model.mtbf(args[0] if args else model.end))
 
 
 def value_range(case, spec, fname):
@@ -502,12 +566,28 @@ def _percentile(spec):
     return "n_boot" in spec.kwargs
 
 
+def _of_a_skewed_mean(case, spec):
+    # A Bayesian regression's sf is the predictive, the mean of the
+    # draws' sf, and its credible interval's ends are their quantiles: in
+    # the far tail, where a few draws carry most of the mean, the mean is
+    # above the upper quantile (on this case's last query time, 2.3e-5
+    # against an 80% interval's upper end of 3.8e-6). Its ordering, levels
+    # and transforms are checked by the other sweeps.
+    # (a mixture-cure regression's Bayesian fit is one too)
+    return case.model_class.endswith(
+        ("BayesianRegression", "BayesianMixtureCure")
+    ) and (spec.method == "cri")
+
+
 # A percentile bootstrap interval need not contain the estimate (its ends
 # are quantiles of the refits, which a biased estimator shifts), so the
 # bootstraps are left out of containment and closure.
 @pytest.mark.parametrize(
     "case, spec",
-    _bound_params("cb_contains", where=lambda c, s: not _percentile(s)),
+    _bound_params(
+        "cb_contains",
+        where=lambda c, s: not _percentile(s) and not _of_a_skewed_mean(c, s),
+    ),
 )
 def test_bounds_contain_the_estimate(case, spec):
     skip_without_finite_maximum(case)
@@ -1204,6 +1284,14 @@ CONVENTIONS = {
                 # bounds along a schedule are on the expected count.
                 "ProportionalIntensityModel": "cif",
                 "CauseSpecificProportionalIntensity": "cif",
+                # The Bayesian fits of the same models, for the same
+                # reasons: a process's cri takes 'cif', 'iif' or 'mtbf'
+                # only, and a competing-risks regression's natural
+                # quantity is the incidence.
+                "BayesianRecurrence": "cif",
+                "BayesianProportionalIntensity": "cif",
+                "BayesianCauseSpecific": "cif",
+                "BayesianCompetingRisksRegression": "cif",
             },
         ),
     ),
@@ -1295,6 +1383,17 @@ def test_option_convention(key):
             s
             for s in sigs
             if s[0] in ("CoxPH", "CompetingRisksProportionalHazards")
+        ]
+        # A Cox entry point that takes tie_method as well uses "method"
+        # for something else: CoxPH.fit_case_cohort's estimator
+        # (method="prentice", "self-prentice" or "barlow", as R's cch).
+        sigs = [
+            (
+                (o, m, [p for p in ps if p.name != "method"])
+                if any(p.name == "tie_method" for p in ps)
+                else (o, m, ps)
+            )
+            for o, m, ps in sigs
         ]
     if key == "cause":
         sigs = [s for s in sigs if s[1] in _TIME_FUNCTIONS + ("mcf_cb",)]

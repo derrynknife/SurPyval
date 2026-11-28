@@ -1,6 +1,6 @@
 """Uno's C, the jackknife standard error of Harrell's and Uno's C, and the
-comparison of two scores' C (``concordance_estimate``,
-``compare_concordance``).
+comparison of two scores' C (``concordance_index``, whose body is
+``concordance_with_se``, and ``compare_concordance``).
 
 The values R gives are checked in
 ``surpyval/tests/reference/test_concordance_references.py``. Here the fast
@@ -262,7 +262,7 @@ def test_refusals_and_missing_values():
         concordance_estimate(x, c, s, ci_method="wald")
     with pytest.raises(ValueError, match="'tau' must be a positive"):
         concordance_estimate(x, c, s, tau=0.0)
-    with pytest.raises(ValueError, match="'alpha'"):
+    with pytest.raises(ValueError, match="'alpha_ci'"):
         concordance_estimate(x, c, s, alpha=1.5)
     with pytest.raises(ValueError, match="same length"):
         concordance_estimate(x, c, s[:2])
@@ -316,16 +316,13 @@ def test_model_estimate_is_that_of_its_linear_predictor(fitter):
         beta = np.asarray(model.params)[model.k_dist :]
     for kwargs in ({}, {"weighting": "uno", "tau": 12.0}):
         expected = concordance_estimate(x, c, z @ beta, **kwargs)
-        res = model.concordance_estimate(**kwargs)
-        assert res.estimate == pytest.approx(expected.estimate, abs=1e-12)
+        res = model.concordance(**kwargs)
+        assert float(res) == pytest.approx(expected.estimate, abs=1e-12)
         assert res.se == pytest.approx(expected.se, abs=1e-12)
-        assert model.concordance(**kwargs) == pytest.approx(
-            expected.estimate, abs=1e-12
-        )
     x2, c2, z2 = _data(60, seed=9)
-    res = model.concordance_estimate(x2, c2, z2, weighting="uno")
+    res = model.concordance(x2, c2, z2, weighting="uno")
     expected = concordance_estimate(x2, c2, z2 @ beta, weighting="uno")
-    assert res.estimate == pytest.approx(expected.estimate)
+    assert float(res) == pytest.approx(expected.estimate)
 
 
 def test_model_estimate_refusals():
@@ -333,16 +330,10 @@ def test_model_estimate_refusals():
     strata = np.tile(["a", "b"], x.size // 2)
     model = sp.CoxPH.fit(x, z, c, strata=strata)
     with pytest.raises(ValueError, match="stratified"):
-        model.concordance_estimate()
-    with pytest.raises(ValueError, match="stratified"):
         model.concordance(weighting="uno")
     plain = sp.CoxPH.fit(x, z, c)
     with pytest.raises(ValueError, match="together"):
-        plain.concordance_estimate(x, c)
-    z_missing = z.copy()
-    z_missing[0, 0] = np.nan
-    with pytest.raises(ValueError, match="covariate is missing"):
-        plain.concordance_estimate(x, c, z_missing)
+        plain.concordance(x, c)
 
 
 # --- One concordance: the index carries its standard error ----------------
@@ -387,30 +378,3 @@ def test_the_index_is_used_as_a_number():
     assert "Std. error" in res.summary()
     missing = concordance_index([1.0, np.nan, 3.0], [0, 0, 1], [3, 2, 1])
     assert np.isnan(missing) and np.isnan(missing.se)
-
-
-def test_concordance_estimate_is_deprecated_for_concordance_index():
-    import warnings
-
-    import surpyval.metrics as metrics
-
-    x, c, z = _data(60, seed=5)
-    for namespace in (metrics, sp):
-        with pytest.warns(FutureWarning, match="concordance_index") as w:
-            old = getattr(namespace, "concordance_estimate")
-        assert "v0.30" in str(w[0].message)
-        with warnings.catch_warnings():
-            warnings.simplefilter("error")
-            res = old(x, c, z[:, 0], weighting="uno", alpha=0.1)
-        new = concordance_index(x, c, z[:, 0], weighting="uno", alpha_ci=0.1)
-        assert (res.estimate, res.se, res.ci) == (new.estimate, new.se, new.ci)
-    model = sp.CoxPH.fit(x, z, c)
-    with pytest.warns(FutureWarning, match="use 'concordance'"):
-        old = model.concordance_estimate(alpha=0.1)
-    new = model.concordance(alpha_ci=0.1)
-    assert (old.se, old.ci) == (new.se, new.ci)
-    assert old.estimate == pytest.approx(float(new), abs=1e-12)
-    strata = np.tile(["a", "b"], x.size // 2)
-    stratified = sp.CoxPH.fit(x, z, c, strata=strata)
-    with pytest.raises(ValueError, match="stratified"):
-        stratified.concordance(alpha_ci=0.1)

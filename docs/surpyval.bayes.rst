@@ -25,6 +25,150 @@ The model
 .. autoclass:: surpyval.bayes.Posterior
    :members:
 
+Every family's fit
+------------------
+
+The regressions' and the other families' Bayesian fits share one layer:
+a family gives a :class:`~surpyval.bayes.Target` (its likelihood, names,
+ranges, units and simulation), and ``fit_target`` chooses the engine
+(closed form where conjugate, the grid for one to three free parameters,
+the Laplace approximation beyond) and returns a
+:class:`~surpyval.bayes.BayesianResult`.
+
+.. autoclass:: surpyval.bayes.BayesianResult
+   :members:
+
+.. autoclass:: surpyval.bayes.PredictiveCheck
+   :members:
+
+.. autoclass:: surpyval.bayes.BayesianDiagnosis
+   :members:
+
+.. autofunction:: surpyval.bayes.fit_target
+
+.. autoclass:: surpyval.bayes.Target
+   :members:
+
+Mixture-cure regression
+-----------------------
+
+``MixtureCure(dist).fit_bayes``; see "Cured fractions and mixtures" in
+:doc:`Bayesian Fitting with SurPyval`. ``MixtureModel.fit_bayes``
+refuses, pointing to :func:`surpyval.pymc.mixture_likelihood`.
+
+.. automethod:: surpyval.univariate.regression.MixtureCureFitter.fit_bayes
+
+.. automethod:: surpyval.univariate.regression.MixtureCureFitter.fit_bayes_from_df
+
+.. autoclass:: surpyval.bayes.regression.BayesianMixtureCure
+   :members: cure_probability, cure_cri
+
+Recurrent-event processes
+-------------------------
+
+``CrowAMSAA.fit_bayes`` and ``HPP.fit_bayes``; see "Reliability growth
+and repairable systems" in :doc:`Bayesian Fitting with SurPyval`. The
+results, ``BayesianRecurrence``, ``BayesianProportionalIntensity`` and
+``BayesianCauseSpecific``, are importable from ``surpyval.recurrent``
+(for ``isinstance`` checks and loading saved fits); they are made by
+``fit_bayes``, not built directly.
+
+.. automethod:: surpyval.recurrent.parametric._bayes_fit.BayesFitMixin.fit_bayes
+
+.. autoclass:: surpyval.recurrent.BayesianRecurrence
+   :members:
+
+.. autoclass:: surpyval.recurrent.bayes.CountPrediction
+   :members:
+
+Every NHPP intensity (``Duane``, ``CoxLewis``, the software reliability
+growth models) has the same ``fit_bayes``. With covariates, and by
+failure cause:
+
+.. automethod:: surpyval.recurrent.ProportionalIntensityNHPP.fit_bayes
+
+.. automethod:: surpyval.recurrent.ProportionalIntensityHPP.fit_bayes
+
+.. autoclass:: surpyval.recurrent.BayesianProportionalIntensity
+   :members:
+
+.. automethod:: surpyval.recurrent.CauseSpecificNHPP.fit_bayes
+
+.. autoclass:: surpyval.recurrent.BayesianCauseSpecific
+   :members:
+
+Renewal and imperfect-repair processes
+--------------------------------------
+
+``GeneralizedRenewal.fit_bayes``, ``ARA.fit_bayes`` and
+``ARI.fit_bayes``; see "Repairable systems: how good is a repair?" in
+:doc:`Bayesian Fitting with SurPyval`. The posterior of the repair
+parameter and a two-parameter life is computed on a grid sliced along
+the repair parameter (:func:`~surpyval.recurrent.renewal.bayes.sliced_grid`).
+
+.. automethod:: surpyval.recurrent.renewal._bayes_fit.RenewalBayesMixin.fit_bayes
+
+.. autoclass:: surpyval.recurrent.renewal.bayes.BayesianRenewal
+   :members:
+
+.. autoclass:: surpyval.recurrent.renewal.bayes.SimulatedCount
+   :members:
+
+.. autofunction:: surpyval.recurrent.renewal.bayes.sliced_grid
+
+Degradation processes
+---------------------
+
+The Wiener and gamma processes' fits; see "Degradation processes" in
+:doc:`Bayesian Fitting with SurPyval`.
+
+.. automethod:: surpyval.degradation.WienerProcess.fit_bayes
+
+.. automethod:: surpyval.degradation.GammaProcess.fit_bayes
+
+.. autoclass:: surpyval.degradation.bayes.BayesianProcessModel
+   :members:
+
+.. autoclass:: surpyval.degradation.bayes.BayesianProcessRUL
+   :members:
+
+.. autoclass:: surpyval.degradation.bayes.PointClocks
+   :members:
+
+Competing risks and multi-state models
+--------------------------------------
+
+Each cause's (or transition's) likelihood is a factor of its own, so
+these are compositions of the distributions' (or the regressions') fits,
+except for competing risks with failures found in a window, where the
+causes are fitted together; see "Competing risks and multi-state models"
+in :doc:`Bayesian Fitting with SurPyval`.
+
+.. automethod:: surpyval.univariate.competing_risks.ParametricCompetingRisks.fit_bayes
+
+.. autoclass:: surpyval.univariate.competing_risks.parametric.bayes.BayesianCompetingRisks
+   :members:
+
+.. automethod:: surpyval.multistate.ParametricMultiState.fit_bayes
+   :no-index:
+
+.. autoclass:: surpyval.multistate.bayes.BayesianMultiState
+   :members:
+
+.. automethod:: surpyval.univariate.competing_risks.ParametricCompetingRisksRegression.fit_bayes
+
+.. autoclass:: surpyval.univariate.competing_risks.regression.bayes.BayesianCompetingRisksRegression
+   :members:
+
+.. autoclass:: surpyval.univariate.competing_risks.regression.bayes.BayesianCompetingRisksAt
+   :members:
+
+.. automethod:: surpyval.multistate.ParametricMultiStateRegression.fit_bayes
+   :no-index:
+
+.. autoclass:: surpyval.multistate.bayes.BayesianMultiStateRegression
+   :members:
+
 Comparing fits
 --------------
 
@@ -55,9 +199,13 @@ Priors
 
 .. autofunction:: surpyval.bayes.prior.on_quantities
 
+.. autofunction:: surpyval.bayes.prior.on_function
+
 .. autofunction:: surpyval.bayes.prior.from_model
 
 .. autofunction:: surpyval.bayes.prior.from_data
+
+.. autofunction:: surpyval.bayes.prior.from_fit
 
 .. autofunction:: surpyval.bayes.prior.from_params
 

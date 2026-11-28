@@ -33,6 +33,7 @@ from scipy.stats import chi2, norm
 
 from surpyval import plotting
 from surpyval.recurrent.inference import check_alpha_ci
+from surpyval.utils.model_data import event_data
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes, same_unit
 from surpyval.utils.validation import BOUNDS, check_option
@@ -423,7 +424,7 @@ def _group_data(model: Any, name: str) -> EventHistoryData:
             "result of NonParametricCounting.fit on one group's data); "
             "got {!r}.".format(name, type(model).__name__)
         )
-    data = getattr(model, "data", None)
+    data = event_data(model)
     if data is None or model.var is None:
         raise ValueError(
             "'{}' carries no per-item data (it was built by from_xrd, "

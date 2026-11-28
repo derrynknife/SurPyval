@@ -41,6 +41,7 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.model_data import event_data
 from surpyval.utils.validation import check_alpha_ci
 from surpyval.utils.warnings import caller_stacklevel
 
@@ -368,7 +369,10 @@ def forecast(
     Examples
     --------
     A warranty: three monthly shipment cohorts, in service for 3, 2 and 1
-    months, with 12-month cover:
+    months, with 12-month cover (a warranty table of shipments by return
+    period gives the fit's data and the cohorts' ages and survivors:
+    :class:`~surpyval.utils.nevada.NevadaTable`, whose ``forecast`` calls
+    this):
 
     >>> import surpyval as surv
     >>> model = surv.Weibull.from_params([60.0, 1.5])
@@ -630,7 +634,7 @@ def _intensity_forecast(
         model = model._superposed()
     units = None
     if age is None:
-        data = getattr(model, "data", None)
+        data = event_data(model)
         if data is None or getattr(data, "window_map", None) is not None:
             raise ValueError(
                 "age is required: this model carries no data to take the "
@@ -801,7 +805,7 @@ def _frailty_forecast(
         }
     units = None
     if age is None:
-        data = getattr(model, "data", None)
+        data = event_data(model)
         if data is None or getattr(data, "window_map", None) is not None:
             raise ValueError(
                 "age is required: this model carries no data to take the "

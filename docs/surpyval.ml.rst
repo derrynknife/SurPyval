@@ -47,6 +47,35 @@ type.
 For a narrative introduction see the survival-forest section of
 :doc:`Regression Modelling with SurPyval`.
 
+Extremely randomised trees
+--------------------------
+
+By default a node tries every value of each feature it considers as a cut
+and keeps the best. With ``splitrule="random"`` it draws one cut for each
+feature instead, uniformly between the smallest and largest value the
+feature takes at that node, and keeps the best of those few by the same
+split statistic (the extremely randomised trees of Geurts, Ernst and
+Wehenkel, 2006). The cut is chosen without looking at the outcome, so a
+node costs one score for each feature rather than one for each distinct
+value, and the trees of a forest differ more from each other. The kind,
+``selection``, leaf models and minimum leaf sizes are unchanged, and the
+draws come from ``random_state`` like the feature draws.
+
+A forest keeps its bootstrap resampling under this rule (so its
+out-of-bag scores exist); pass ``bootstrap=False`` for the original
+Extra-Trees, in which every tree sees the whole sample. On the Rossi
+recidivism data (432 rows) and the lung data (168 complete rows), forests
+of 100 Weibull trees over 10 seeds had a mean out-of-bag log-likelihood
+per observation of -1.604 searched and -1.604 random (the seed-to-seed
+standard deviations were 0.005 and 0.003), and -2.169 searched and -2.155
+random (0.009 and 0.006), with the random forests fitting in 0.55 of the
+time (``scripts/studies/extra_trees_oob.py``).
+
+.. code-block:: python
+
+    forest = RandomSurvivalForest.fit(x, Z, c=c, splitrule="random",
+                                      random_state=0)
+
 A few things worth knowing:
 
 - Fitted from a DataFrame (``fit_from_df`` with ``Z_cols`` or a
@@ -146,6 +175,65 @@ tree then gives it zero incidence).
   event=k)`` is its concordance with the failures from ``k``, a failure
   from another cause counting as later than all of them (Wolbers et al.).
 
+Reading a fitted forest
+-----------------------
+
+A forest predicts well but has no coefficients to read. Three read-outs
+say what it has learnt, all from the fitted model, without refitting:
+
+- **How the prediction moves with one covariate**:
+  ``forest.partial_dependence(covariate, values, x)``. Each unit keeps its
+  other covariates, the chosen one is set to each of ``values``, and its
+  survival at the times ``x`` is predicted: one curve per unit, its
+  *individual conditional expectation* (ICE). Their average is the
+  *partial dependence*: the forest's average prediction for each value.
+  Parallel ICE curves mean the covariate acts the same way for everyone;
+  curves that cross or fan out point to an interaction the average hides.
+  ``result.plot(at=t)`` draws both at one time (``centred=True`` starts
+  every curve at 0 to compare shapes), and ``result.to_frame()`` gives the
+  average as a table. Setting a covariate to a value rarely seen with a
+  unit's other covariates asks the forest about a region it has little
+  data in, so read the ends of the range with care.
+- **Which covariates the trees split on first**: ``forest.minimal_depth()``.
+  A covariate that matters is usually split on near the root, where a split
+  divides the most units. Its *minimal depth* in a tree is the depth of its
+  first split (the root is 0; a tree that never uses it gives it the tree's
+  depth). The table gives the mean over the trees (smaller is more
+  important) and the share of trees that use it at all. It needs no
+  out-of-bag data, so it also works on a forest restored with
+  ``from_dict``.
+
+  *Which covariates to keep.* A covariate with no effect is still split on
+  by chance, and the more nodes a tree has near the root, the sooner chance
+  alone reaches it. ``forest.minimal_depth_threshold()`` (also
+  ``result.attrs["threshold"]``) is the mean minimal depth you would expect
+  from a covariate with no effect in these trees, and the table's
+  ``selected`` column is true for a covariate whose mean minimal depth is
+  below it: it is split on earlier than chance explains. With ``p``
+  covariates, ``l_d`` the number of split nodes at depth ``d`` of a tree,
+  ``D`` its depth and ``L_d = l_0 + ... + l_(d-1)``, such a covariate's
+  minimal depth ``D_v`` has
+  ``P(D_v = d) = (1 - 1/p)^L_d (1 - (1 - 1/p)^l_d)`` for
+  ``d = 0, ..., D - 1``, and the rest of the probability at ``D`` (a tree
+  that never splits on it, counted at ``D`` as in the table); the
+  threshold is the mean of this, worked out tree by tree and averaged over
+  the trees. ``1/p`` is the chance a given covariate is the one split on
+  at a node, whatever ``n_features_split`` is. It is a guide rather than a
+  test: it assumes the covariates are interchangeable, which correlated
+  covariates are not. Ishwaran, Kogalur, Gorodeski, Minn and Lauer (2010),
+  "High-dimensional variable selection for survival data", *Journal of the
+  American Statistical Association* 105(489), 205-217.
+- **How much each covariate matters, at each horizon**:
+  ``forest.feature_importances(times=[1, 5, 10])``. Each covariate is
+  shuffled among each tree's out-of-bag units, which breaks its link with
+  the outcome, and the out-of-bag Brier score at each time is computed
+  again; the importance is how much it gets worse. A covariate can matter
+  for early failures and not late ones. ``metric="auc"`` uses the
+  time-dependent AUC instead. Without ``times`` the importance is the
+  out-of-bag log-likelihood one, a single number per covariate.
+
+``SurvivalTree`` has ``partial_dependence`` and ``minimal_depth`` too.
+
 Random Survival Forest
 ----------------------
 
@@ -177,6 +265,12 @@ leaf's fitted distribution is reached.
 
 .. autoclass:: surpyval.ml.forest.node.CompetingRisksLeaf
    :members:
+
+Read-outs
+---------
+
+.. automodule:: surpyval.ml.forest.readouts
+   :members: PartialDependence
 
 Cause-aware splits
 ------------------

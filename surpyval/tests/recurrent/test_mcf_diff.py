@@ -11,6 +11,18 @@ from numpy.testing import assert_allclose
 
 from surpyval.recurrent import MCFDiffResult, NonParametricCounting, mcf_diff
 
+# These tests check the EventHistoryData the fits work on, reading its
+# ids and tl as they are there (before model.data becomes a SurpyvalData).
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.ids changes meaning:FutureWarning"
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.tl changes meaning:FutureWarning"
+    ),
+]
+
+
 A = dict(x=[2, 5, 9, 10, 4, 10], i=[1, 1, 1, 1, 2, 2], c=[0, 0, 0, 1, 0, 1])
 B = dict(x=[6, 10, 3, 8, 10], i=[1, 1, 2, 2, 2], c=[0, 1, 0, 0, 1])
 

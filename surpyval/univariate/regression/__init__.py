@@ -44,6 +44,7 @@ from .additive_hazards import (
     WeibullAH,
 )
 from .buckley_james import BuckleyJames, BuckleyJamesModel
+from .cox_aalen import CoxAalen, CoxAalenModel
 from .frailty import (
     CoxFrailty,
     CoxFrailtyFitter,
@@ -93,6 +94,7 @@ from .proportional_odds import (
     WeibullPO,
 )
 from .quantile import QuantileRegression, QuantileRegressionModel
+from .rank_aft import RankAFT, RankAFTModel
 from .royston_parmar_regression import (
     RoystonParmarPH,
     RoystonParmarPO,
@@ -115,6 +117,8 @@ _ON_FIRST_USE = {
             "DistributionalRegressionModel",
             "MixtureCureFitter",
             "MixtureCureModel",
+            "PromotionTimeCureFitter",
+            "PromotionTimeCureModel",
             "ZeroInflatedFitter",
             "ZeroInflatedModel",
         ),
@@ -177,6 +181,12 @@ __all__ = [
     # Buckley-James semi-parametric AFT
     "BuckleyJames",
     "BuckleyJamesModel",
+    # The Cox-Aalen model (multiplicative terms on an additive baseline)
+    "CoxAalen",
+    "CoxAalenModel",
+    # Rank-based (Gehan and log-rank) semi-parametric AFT
+    "RankAFT",
+    "RankAFTModel",
     # Censored quantile regression (Peng-Huang, Portnoy)
     "QuantileRegression",
     "QuantileRegressionModel",

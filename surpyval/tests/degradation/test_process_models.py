@@ -701,3 +701,85 @@ def test_746_Hf_at_time_zero_is_plus_zero(process):
         m = GammaProcess.fit(x, y, i, threshold=10.0)
     H = m.Hf(np.array([0.0]))
     assert np.all(H == 0) and not np.any(np.signbit(H))
+
+
+# --------------------------------------------------------------------------
+# A Wiener process with a drift at or below zero: its mean life is infinite
+# --------------------------------------------------------------------------
+# At zero drift the first passage over D is the Levy law (scale D**2 /
+# sigma**2): every unit crosses, but the mean is infinite. Below zero a
+# unit crosses only with probability exp(2 mu D / sigma**2), and given that
+# it crosses its time is the Inverse-Gaussian of drift |mu|. ``mean`` used
+# to return D / mu (negative, or a ZeroDivisionError at zero, where every
+# method failed).
+
+
+@pytest.mark.parametrize("mu", [0.0, -0.2, -1e-9])
+def test_wiener_mean_is_infinite_without_positive_drift(mu):
+    model = WienerProcessModel(mu=mu, sigma=1.0, threshold=10.0)
+    assert model.mean() == np.inf
+    assert model.mean(y0=4.0) == np.inf
+    assert "inf" in repr(model)
+
+
+def test_wiener_mean_is_infinite_without_positive_drift_under_stress():
+    model = WienerProcessModel(
+        mu=-0.2, sigma=1.0, threshold=10.0, gamma=[0.5], stress_ref=[1.0]
+    )
+    assert model.mean([2.0]) == np.inf
+
+
+def test_wiener_zero_drift_is_the_levy_law():
+    D, sigma = 10.0, 2.0
+    model = WienerProcessModel(mu=0.0, sigma=sigma, threshold=D)
+    levy = stats.levy(scale=D**2 / sigma**2)
+    t = np.array([1.0, 10.0, 100.0, 1e4])
+    np.testing.assert_allclose(model.ff(t), levy.cdf(t), rtol=1e-12)
+    np.testing.assert_allclose(
+        model.ff(t), 2 * stats.norm.cdf(-D / (sigma * np.sqrt(t))), rtol=1e-12
+    )
+    np.testing.assert_allclose(model.df(t), levy.pdf(t), rtol=1e-10)
+    assert model.ff(np.inf) == 1.0
+    p = np.array([0.1, 0.5, 0.9])
+    np.testing.assert_allclose(model.qf(p), levy.ppf(p), rtol=1e-8)
+    # the remaining life from a level of 6: the Levy law over 4
+    rul = model.predict_rul(6.0, alpha_ci=0.1)
+    rest = stats.levy(scale=4.0**2 / sigma**2)
+    np.testing.assert_allclose(rul.rul, rest.ppf(0.5), rtol=1e-8)
+    np.testing.assert_allclose(
+        rul.rul_interval, rest.ppf([0.05, 0.95]), rtol=1e-8
+    )
+    draws = model.random(4000, random_state=3)
+    assert stats.kstest(draws, levy.cdf).pvalue > 0.01
+
+
+def test_wiener_negative_drift_is_a_defective_inverse_gaussian():
+    mu, sigma, D = -0.05, 1.0, 10.0
+    model = WienerProcessModel(mu=mu, sigma=sigma, threshold=D)
+    up = WienerProcessModel(mu=-mu, sigma=sigma, threshold=D)
+    ever = np.exp(2 * mu * D / sigma**2)  # 0.3679
+    assert model.ff(np.inf) == pytest.approx(ever, rel=1e-14)
+    t = np.array([5.0, 50.0, 500.0])
+    np.testing.assert_allclose(model.ff(t), ever * up.ff(t), rtol=1e-10)
+    np.testing.assert_allclose(model.df(t), ever * up.df(t), rtol=1e-10)
+    # a B-life below the passage probability is the |mu| quantile at
+    # p / ever; past it the life is never reached: inf
+    np.testing.assert_allclose(
+        model.qf([0.1, 0.3]), up.qf(np.array([0.1, 0.3]) / ever), rtol=1e-8
+    )
+    assert np.all(model.qf([0.5, 0.9]) == np.inf)
+    rul = model.predict_rul(0.0)
+    assert rul.rul == np.inf and rul.rul_interval[1] == np.inf
+    np.testing.assert_allclose(
+        rul.rul_interval[0], up.qf(0.025 / ever), rtol=1e-8
+    )
+    draws = model.random(20000, random_state=5)
+    finite = np.isfinite(draws)
+    assert finite.mean() == pytest.approx(ever, abs=0.015)
+    assert stats.kstest(draws[finite], up.ff).pvalue > 0.01
+
+
+def test_wiener_positive_drift_mean_unchanged():
+    model = WienerProcessModel(mu=0.5, sigma=1.0, threshold=100.0)
+    assert model.mean() == 200.0
+    assert model.mean(y0=10.0) == 180.0

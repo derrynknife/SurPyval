@@ -20,7 +20,7 @@ Pre-built instances: ``WeibullZeroInflated``, ``LogNormalZeroInflated``,
 .. autofunction:: surpyval.univariate.regression.distributional.zero_inflated.ZeroInflated
 
 .. autoclass:: surpyval.univariate.regression.distributional.zero_inflated.ZeroInflatedFitter
-    :members: fit, fit_from_df, fit_penalised, random
+    :members: fit, fit_from_df, random
 
 .. autoclass:: surpyval.univariate.regression.distributional.zero_inflated.ZeroInflatedModel
-    :members: doa_probability, sf, ff, df, hf, Hf, qf, mean, distribution_at, parameters_at, parameter_cb, to_dict
+    :members: doa_probability, sf, ff, df, hf, Hf, qf, mean, distribution_at, parameters_at, param_cb, to_dict

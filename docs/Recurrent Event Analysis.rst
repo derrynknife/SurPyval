@@ -170,7 +170,7 @@ variance is zero.
 
 By default the confidence bounds are computed on the log scale,
 :math:`\hat{M} \exp(\pm z \sqrt{\widehat{\text{Var}}} / \hat{M})`, so that
-the bounds cannot go below zero; ``bound_type="normal"`` gives the plain
+the bounds cannot go below zero; ``bound_type="plain"`` gives the plain
 :math:`\hat{M} \pm z \sqrt{\widehat{\text{Var}}}`. These are *pointwise*
 bounds: each one covers the MCF at a single time, not the whole curve at once.
 

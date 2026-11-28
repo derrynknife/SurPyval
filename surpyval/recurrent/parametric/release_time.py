@@ -25,6 +25,7 @@ from scipy.optimize import brentq
 
 from surpyval.recurrent.inference import check_alpha_ci
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
+from surpyval.utils.model_data import event_data
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import BOUNDS, check_option
 from surpyval.utils.warnings import ignoring_warnings
@@ -463,7 +464,7 @@ class ReleaseTimeMixin:
         self._check_has_data("A bootstrap bound on the release time")
         self._check_fitted()
         diagnostics.validate_diagnostic_data(
-            self.data, "A bootstrap bound on the release time"
+            event_data(self), "A bootstrap bound on the release time"
         )
         if not (isinstance(n_boot, (int, np.integer)) and n_boot >= 20):
             raise ValueError(
@@ -471,7 +472,7 @@ class ReleaseTimeMixin:
                 f"number of at least 20; got {n_boot!r}"
             )
         rng = as_generator(random_state)
-        windows = diagnostics._per_item_windows(self.data)
+        windows = diagnostics._per_item_windows(event_data(self))
         params = np.asarray(self.params, dtype=float)
 
         def mass(item: Any, entry: float, close: float) -> tuple:

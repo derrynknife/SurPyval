@@ -53,7 +53,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
     normalise_how,
 )
-from surpyval.utils.deprecation import fit_entry
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.surpyval_data import (
     SurpyvalData,
     accepts_surpyval_data,
@@ -718,7 +718,8 @@ heuristic, init, rr, on_d_is_0, turnbull_estimator, w, hr
             stages=stages,
         )
 
-    fit_from_surpyval_data = fit_entry("_fit_from_surpyval_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_surpyval_data = RemovedName("call fit(data)", "0.30")
 
     @refuses_what_fit_cannot_take
     def _fit_from_surpyval_data(

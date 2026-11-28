@@ -44,82 +44,29 @@ import numpy.typing as npt
 if TYPE_CHECKING:
     import pandas as pd
 
-from surpyval.diagnostics.mixin import DiagnoseMixin
-from surpyval.serialisation import (
-    SerialisableMixin,
-    require_model_tag,
-    stamp_schema,
-)
+from surpyval.serialisation import require_model_tag, stamp_schema
 from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import check_columns
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.rng import as_generator
-from surpyval.utils.shapes import covariate_rows, keeps_query_shape
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
-from surpyval.utils.validation import check_alpha_ci
+from surpyval.utils.validation import BOUNDS, check_alpha_ci, check_option
 
 from .._aliasing import aliased_columns, constant_columns, expand, warn_aliased
-from .._concordance import ConcordanceMixin
-from .._prediction import (
-    ConditionalSurvivalMixin,
-    paired_probabilities,
-    step_quantiles,
-)
-from .._summary import coefficient_names, coefficient_table
+from .._residual_aft import RESID_ROUNDING  # noqa: F401 (kept importable)
+from .._residual_aft import ResidualAFTModel
+from .._residual_aft import residual_km as _residual_km
+from .._summary import coefficient_table
 from ..regression_data import (
     FrameDesign,
-    LinearPredictorMixin,
-    NoLikelihoodMixin,
     canonical_rows,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
 )
-
-# How far below a residual Kaplan-Meier step a query's residual may round
-# and still be at the step, relative to max(|r|, 1) (see ``_resid_sf``).
-RESID_ROUNDING = 1e-12
-
-
-def _residual_km(
-    e: npt.NDArray, delta: npt.NDArray, w: npt.NDArray
-) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-    """
-    Weighted Kaplan-Meier of the residuals with an Efron tail-correction.
-
-    Returns the sorted unique residual values, the (right-continuous) survival
-    at each, and the probability mass (jump) the estimator places at each.
-    Forcing the largest residual to be an event makes the estimator proper, so
-    the jumps sum to one and conditional expectations above any point are
-    finite.
-    """
-    order = np.argsort(e, kind="mergesort")
-    e = e[order]
-    delta = delta[order].astype(float).copy()
-    w = w[order].astype(float)
-
-    # Efron tail-correction: the largest residual(s) act as an event.
-    delta[e == e[-1]] = 1.0
-
-    uniq, first_idx = np.unique(e, return_index=True)
-    w_cum = np.concatenate([[0.0], np.cumsum(w)])
-    total = w_cum[-1]
-    # At-risk weight for each unique time (residuals >= that time).
-    r = total - w_cum[first_idx]
-
-    d = np.zeros(uniq.shape[0])
-    grp = np.searchsorted(uniq, e)
-    np.add.at(d, grp, np.where(delta == 1.0, w, 0.0))
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        surv = np.cumprod(1.0 - d / r)
-    surv = np.clip(surv, 0.0, 1.0)
-    s_prev = np.concatenate([[1.0], surv[:-1]])
-    jumps = s_prev - surv
-    return uniq, surv, jumps
 
 
 def _impute(
@@ -163,7 +110,7 @@ def _wls_slope(Z: npt.NDArray, Y: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return np.linalg.solve(A, b.ravel())
 
 
-def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
+def aliased_design_columns(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     """The columns whose coefficients the least-squares step cannot
     determine (#476), to be aliased (see
     :mod:`surpyval.univariate.regression._aliasing`).
@@ -212,14 +159,7 @@ def _fit_beta(
     return beta, it, converged
 
 
-class BuckleyJamesModel(
-    ConditionalSurvivalMixin,
-    NoLikelihoodMixin,
-    LinearPredictorMixin,
-    ConcordanceMixin,
-    DiagnoseMixin,
-    SerialisableMixin,
-):
+class BuckleyJamesModel(ResidualAFTModel):
     """
     A fitted Buckley-James accelerated-failure-time model.
 
@@ -271,17 +211,9 @@ class BuckleyJamesModel(
     #: applicable"`` (one of ``MAXIMUM_STATES``,
     #: ``surpyval.utils.no_maximum``); ``converged`` says how it ended.
     maximum: str = "not applicable"
-    #: The fitted ``(Y, delta, Z, w)``, for ``bootstrap_ci`` and
+    #: The fitted ``(Y, delta, Z, w)``, for ``param_cb`` and
     #: ``concordance``; ``None`` when not kept.
     _data: tuple | None
-
-    @property
-    def parameter_names(self) -> list[str]:
-        """The names of ``params``, entry by entry: each covariate's
-        column (a formula, ``fit_from_df`` or a DataFrame ``Z``), else
-        ``coef_0``, ``coef_1``, ... (#614), as in the parametric
-        regression models."""
-        return coefficient_names(self, len(self.params))
 
     def __init__(
         self,
@@ -311,34 +243,6 @@ class BuckleyJamesModel(
         "there is no likelihood to maximise"
     )
 
-    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
-        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
-        return -(Z_arr.reshape(x.size, -1) @ self._coef())
-
-    def _concordance_data(self) -> tuple | None:
-        if self._data is None:
-            return None
-        Y, delta, Z, w = self._data
-        return np.exp(Y), (delta == 0).astype(int), w, Z
-
-    def _resid_sf(self, r: npt.NDArray) -> npt.NDArray:
-        # Right-continuous residual survival at query points ``r``. A
-        # residual within RESID_ROUNDING of a step is at the step: a time
-        # is mapped to its residual by ``log t + beta'Z``, and ``qf``'s time
-        # ``exp(r_k - beta'Z)`` mapped back lands an ulp either side of
-        # ``r_k``, depending on how numpy's exp and log round (its AVX2 and
-        # AVX-512 kernels differ). Landing below it, ``ff(qf(p))`` was the
-        # step before p for one random query in ten, and on CI's runners
-        # in #662's test. 1e-12 on the log scale is 1e-12 relative in time.
-        tol = RESID_ROUNDING * np.maximum(np.abs(r), 1.0)
-        idx = np.searchsorted(self._resid, r + tol, side="right") - 1
-        out = np.where(
-            idx < 0,
-            1.0,
-            self._resid_surv[np.clip(idx, 0, len(self._resid_surv) - 1)],
-        )
-        return out
-
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self) -> dict:
@@ -350,7 +254,7 @@ class BuckleyJamesModel(
         S_eps(log t + beta'Z)``, so what is stored is the coefficients ``beta``
         and the residual survival step arrays (``_resid`` and ``_resid_surv``).
         The fit data ``(Y, delta, Z, w)`` is stored too, so the restored model
-        can still run :meth:`bootstrap_ci`.
+        can still run :meth:`param_cb`.
 
         See Also
         --------
@@ -407,109 +311,6 @@ class BuckleyJamesModel(
         restore_covariate_meta(out, model_dict)
         return out
 
-    def _linear_predictor(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
-        """``beta'Z`` for each time in ``x``: ``Z`` is one covariate vector
-        (used at every time) or one row per time, paired in the order
-        given, as for the other regression models (#426)."""
-        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
-        p = self.beta.size
-        if Z_arr.ndim == 0:
-            Z_arr = Z_arr.reshape(1)
-        if Z_arr.ndim == 1:
-            Z_arr = Z_arr.reshape(1, -1)
-        if Z_arr.ndim != 2 or Z_arr.shape[1] != p:
-            raise ValueError(
-                "Z must be one covariate vector of length {} or one such "
-                "row per time; got an array of shape {}.".format(
-                    p, np.shape(Z)
-                )
-            )
-        if Z_arr.shape[0] not in (1, x.size):
-            raise ValueError(
-                "Z has {} covariate rows but there are {} times; give one "
-                "covariate vector, or one row per time.".format(
-                    Z_arr.shape[0], x.size
-                )
-            )
-        # An aliased coefficient (nan, #476) is predicted with as 0.
-        return Z_arr @ np.where(np.isnan(self.beta), 0.0, self.beta)
-
-    @keeps_query_shape
-    def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Survival ``P(T > x | Z) = S_eps(log x + beta'Z)``; ``Z`` is one
-        covariate vector (used at every time) or one row per time in
-        ``x``, paired in the order given."""
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        # beta is the accelerated-failure (negated) slope, so the residual
-        # r = log t - gamma'Z = log t + beta'Z. At and below time 0 nothing
-        # has failed: survival 1 (log(0) = -inf gives that already, but
-        # warned, and a negative time gave nan).
-        positive = x > 0
-        with np.errstate(divide="ignore"):
-            r = np.log(np.where(positive, x, 1.0)) + self._linear_predictor(
-                x, Z
-            )
-        # A missing covariate (a DataFrame row with a nan) gives nan, as in
-        # the other families; the residual lookup read it as the last step
-        # (survival 0). So does a missing time, which ``positive`` read as
-        # "not after time 0" (survival 1).
-        out = np.where(positive, self._resid_sf(r), 1.0)
-        return np.where(np.isnan(r) | np.isnan(x), np.nan, out)
-
-    @keeps_query_shape
-    def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Failure probability ``1 - sf(x, Z)``; ``Z`` as for
-        :meth:`sf`."""
-        return 1.0 - self.sf(x, Z)
-
-    @keeps_query_shape
-    def Hf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Cumulative hazard ``-log sf(x, Z)``; ``Z`` as for
-        :meth:`sf`."""
-        with np.errstate(divide="ignore"):
-            # 0.0 - log: where sf is 1, -log(1) is -0.0 (#746).
-            return 0.0 - np.log(self.sf(x, Z))
-
-    @keeps_query_shape
-    def qf(self, p: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """
-        The quantile function: the first time at which the predicted
-        failure probability ``ff(x, Z)`` reaches ``p`` (#662), ``nan``
-        where it never does -- the residual Kaplan-Meier stops at the
-        last residual, above ``1 - p`` where the data end censored. It is
-        :math:`e^{q_\\epsilon(p) - \\beta' Z}`, :math:`q_\\epsilon` the
-        residual Kaplan-Meier's quantile, taken as the non-parametric
-        ``qf`` takes it (a curve within ``1e-9`` of ``p`` reaches it).
-        ``Z`` is paired with ``p`` as :meth:`sf` pairs it with ``x``. A
-        probability outside [0, 1] gives ``nan``, with a warning.
-
-        Examples
-        --------
-        >>> from surpyval import BuckleyJames
-        >>> from surpyval.datasets import load_rossi_static
-        >>> df = load_rossi_static()
-        >>> x, c = df["week"].values, 1 - df["arrest"].values
-        >>> model = BuckleyJames.fit(x, df[["fin", "age", "prio"]].values, c=c)
-        >>> rows = [[0, 25, 3], [1, 25, 3], [0, 25, 10]]
-        >>> b10 = model.qf(0.1, rows)
-        >>> b10.round(2)
-        array([21.71, 28.33, 14.38])
-        >>> model.ff(b10, rows).round(3)
-        array([0.102, 0.102, 0.102])
-        """
-        rows = covariate_rows(
-            np.asarray(self._prepare_Z(Z), dtype=float), self.beta.size
-        )
-        u, rows, _ = paired_probabilities(p, rows)
-        lp = self._linear_predictor(np.empty(u.size), rows)
-        resid = step_quantiles(
-            (1.0 - np.asarray(self._resid_surv, dtype=float))[None, :],
-            self._resid,
-            u,
-        )
-        with np.errstate(over="ignore", invalid="ignore"):
-            return np.exp(resid - lp)
-
     def summary(
         self,
         alpha_ci: float = 0.05,
@@ -523,7 +324,7 @@ class BuckleyJamesModel(
         which a unit of the covariate shortens the life. Buckley-James has
         no closed-form standard error, so ``se(coef)``, ``z`` and ``p``
         are ``nan``; with ``n_boot`` the intervals are the percentile
-        bootstrap intervals of :meth:`bootstrap_ci` (``n_boot`` refits,
+        bootstrap intervals of :meth:`param_cb` (``n_boot`` refits,
         seeded by ``random_state``), else ``nan``.
 
         Parameters
@@ -561,7 +362,9 @@ class BuckleyJamesModel(
             self.parameter_names, beta, nan, alpha_ci, p=nan
         )
         if n_boot is not None:
-            bounds = self.bootstrap_ci(alpha_ci, n_boot, random_state)
+            bounds = self.param_cb(
+                None, alpha_ci, n_boot=n_boot, random_state=random_state
+            )
             level = f"{100 * (1 - alpha_ci):g}%"
             lower, upper = bounds[:, 0], bounds[:, 1]
             table["coef lower " + level] = lower
@@ -570,26 +373,35 @@ class BuckleyJamesModel(
             table["exp(coef) upper " + level] = np.exp(upper)
         return table
 
-    def bootstrap_ci(
+    def param_cb(
         self,
+        name: str | None = None,
         alpha_ci: float = 0.05,
+        bound: str = "two-sided",
         n_boot: int = 200,
         random_state: Any = None,
     ) -> npt.NDArray:
         """
-        Percentile bootstrap confidence intervals for the coefficients.
+        Percentile bootstrap confidence bounds on the coefficients.
 
-        Buckley-James has no simple closed-form standard error, so uncertainty
-        is obtained by resampling observations with replacement, refitting, and
-        taking percentiles of the coefficient distribution. Counts ``n`` are
-        frequency weights, so the observations resampled are the rows
-        expanded by their counts: the bounds are those of the data written
-        out one row per observation.
+        Buckley-James has no simple closed-form standard error, so the
+        uncertainty is found by resampling the observations with
+        replacement, refitting, and taking percentiles of the refitted
+        coefficients. Counts ``n`` are frequency weights, so the
+        observations resampled are the rows expanded by their counts: the
+        bounds are those of the data written out one row per observation.
+        (This was ``bootstrap_ci`` until v0.30.)
 
         Parameters
         ----------
+        name : str, optional
+            A coefficient, one of :attr:`parameter_names`. ``None`` (the
+            default) bounds every coefficient.
         alpha_ci : float, optional
             One minus the confidence level of the intervals. Default 0.05.
+        bound : ('two-sided', 'lower', 'upper'), optional
+            A one-sided bound puts all of ``alpha_ci`` on one side, so it
+            is that end of the two-sided interval at ``2 * alpha_ci``.
         n_boot : int, optional
             The number of bootstrap resamples. Default 200.
         random_state : None, int or numpy.random.Generator, optional
@@ -599,13 +411,49 @@ class BuckleyJamesModel(
         Returns
         -------
         numpy.ndarray
-            An ``(n_coef, 2)`` array of ``[lower, upper]`` bounds.
+            For every coefficient, an ``(n_coef, 2)`` array of ``[lower,
+            upper]`` bounds (``(n_coef,)`` one-sided); for one, its
+            ``[lower, upper]`` (or the one bound).
         """
         check_alpha_ci(alpha_ci)
+        check_option("bound", bound, BOUNDS)
+        names = list(self.parameter_names)
+        if name is not None and name not in names:
+            raise ValueError(
+                f"Unknown coefficient {name!r}; this model's coefficients "
+                f"are {names}."
+            )
+        boot = self._bootstrap_draws(n_boot, random_state)
+        out = np.asarray(percentile_bounds(boot, alpha_ci, bound))
+        return out if name is None else out[names.index(name)]
+
+    def bootstrap_ci(
+        self,
+        alpha_ci: float = 0.05,
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        """Deprecated in v0.30, removed in v0.31: call
+        ``param_cb(alpha_ci=..., n_boot=..., random_state=...)``, which
+        gives the same bounds."""
+        from surpyval.utils.deprecation import REMOVED_IN
+        from surpyval.utils.warnings import caller_stacklevel
+
+        warnings.warn(
+            "BuckleyJamesModel.bootstrap_ci is deprecated and will be "
+            f"removed in v{REMOVED_IN}; call param_cb(alpha_ci=..., "
+            "n_boot=..., random_state=...), which gives the same bounds.",
+            FutureWarning,
+            stacklevel=caller_stacklevel(),
+        )
+        return self.param_cb(None, alpha_ci, "two-sided", n_boot, random_state)
+
+    def _bootstrap_draws(self, n_boot: int, random_state: Any) -> list:
+        """The coefficients of ``n_boot`` refits to resampled data."""
         if self._data is None:
             raise ValueError(
-                "bootstrap_ci needs the fit data, which this model does not "
-                "carry"
+                "param_cb needs the fit data, which this model does not "
+                "carry: its bounds are the bootstrap's, from refits to it."
             )
         Y, delta, Z, w = self._data
         p = self.beta.size
@@ -638,7 +486,7 @@ class BuckleyJamesModel(
                 boot.append(expand(-g, kept, p))
             except np.linalg.LinAlgError:
                 continue
-        return percentile_bounds(boot, alpha_ci)
+        return boot
 
     def __repr__(self) -> str:
         lines = [
@@ -746,7 +594,7 @@ class BuckleyJames_(FitterRepr):
         >>> model = BuckleyJames.fit(x, Z, c=c)
         >>> model.beta.round(3)
         array([0.435])
-        >>> model.bootstrap_ci(random_state=1).round(3)
+        >>> model.param_cb(random_state=1).round(3)
         array([[0.342, 0.532]])
         >>> model.sf([5, 10], [0.0]).round(4)
         array([0.7366, 0.2693])
@@ -780,7 +628,7 @@ class BuckleyJames_(FitterRepr):
                 "estimate."
             )
         p = Z_a.shape[1]
-        aliased = _aliased(Z_a, n_a)
+        aliased = aliased_design_columns(Z_a, n_a)
         kept = np.setdiff1d(np.arange(p), aliased)
         if aliased.size:
             warn_aliased(
@@ -857,6 +705,9 @@ class BuckleyJames_(FitterRepr):
             The fitted model, which keeps the covariate names (or formula)
             so it predicts from DataFrame rows.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col)
         design = FrameDesign(df, Z_cols, formula, drop_missing=True)
         return design.fit(
@@ -871,3 +722,8 @@ class BuckleyJames_(FitterRepr):
 
 
 BuckleyJames = BuckleyJames_()
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_aliased = aliased_design_columns

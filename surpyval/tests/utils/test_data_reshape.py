@@ -10,6 +10,18 @@ from surpyval import EventHistoryData, ItemHistory, ItemLifetime, SurpyvalData
 from surpyval import recurrent as rc
 from surpyval.utils.warnings import MaskedCauseWarning
 
+# These tests check EventHistoryData itself, reading its ids and tl as
+# they are there (before model.data becomes a SurpyvalData).
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.ids changes meaning:FutureWarning"
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.tl changes meaning:FutureWarning"
+    ),
+]
+
+
 LIVES = [
     ItemLifetime("A", observed=5, event_type="seal", covariates=[1, 0.5]),
     ItemLifetime("B", observed=7, event_type="bearing", covariates=[0, 0.2]),

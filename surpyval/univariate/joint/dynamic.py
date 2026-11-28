@@ -96,7 +96,14 @@ class DynamicPrediction:
         self._args = (Z, markers, given)
         self.covariates = z
         self.age = float(u)
-        self.markers = dict(zip(ages.tolist(), values.tolist()))
+        names = getattr(model, "markers", None)
+        if names is not None:
+            self.markers: dict = {
+                name: dict(zip(a.tolist(), v.tolist()))
+                for name, a, v in zip(names, ages, values)
+            }
+        else:
+            self.markers = dict(zip(ages.tolist(), values.tolist()))
         self._ages, self._values = ages, values
         self._missing = not bool(np.all(np.isfinite(z)))
 
@@ -217,6 +224,104 @@ class DynamicPrediction:
             active[idx[done]] = False
         return np.where(never, np.inf, t)
 
+    def mean(self, tau: float | None = None) -> float:
+        r"""
+        The expected failure age given the readings and survival to
+        ``age`` (``u``): ``u`` plus the expected remaining life,
+
+        .. math::
+            E[T \mid T > u, y] = u + \int_u^\infty
+            P(T > t \mid T > u, y)\, dt ,
+
+        or, with ``tau``, the restricted mean :math:`E[\min(T, \tau)
+        \mid T > u, y]`, the same integral to ``tau``.
+
+        In words: the area under the item's survival curve from now on,
+        added to its age now. A path whose varying parameters can carry
+        the marker away from failure (a straight line whose slope may be
+        negative, say) leaves a chance, however small, that the item never
+        fails, and then the mean is infinite: where the survival is still
+        above 1e-12 a thousand ``alpha`` past ``u`` (the end of
+        :meth:`qf`'s search), ``mean()`` returns ``inf`` and warns,
+        giving that chance; ``mean(tau)`` and :meth:`qf` are finite there.
+
+        The integral is taken on ``t = u + a e^w`` (``a`` the model's
+        ``alpha``) by Simpson's rule in ``w`` (steps of at most 1/32 from
+        ``e^w = 1e-12``), stopping where the survival has fallen below
+        1e-17. ``nan`` where a covariate is missing.
+
+        Parameters
+        ----------
+        tau : float, optional
+            An age past ``age``: the restricted mean to it. ``None`` (the
+            default) for the mean.
+
+        Returns
+        -------
+        float
+            The expected failure age (since new, as the model's ages).
+        """
+        import warnings
+
+        from surpyval.utils.warnings import caller_stacklevel
+
+        if self._missing:
+            return float("nan")
+        u = self.age
+        a = self.model._scale()
+        w_lo = np.log(1e-12)
+        if tau is not None:
+            tau = float(tau)
+            if not np.isfinite(tau) or tau < u:
+                raise ValueError(
+                    f"tau is an age at or after the age now, {u:g}; got "
+                    f"{tau:g}. Leave it out for the mean."
+                )
+            if tau == u:
+                return u
+            w_hi = np.log((tau - u) / a)
+            if w_hi <= w_lo:
+                return tau
+        else:
+            w_hi = np.log(1e3)
+        n = max(int(np.ceil((w_hi - w_lo) * 16.0)) * 2, 2)
+        w_all = np.linspace(w_lo, w_hi, n + 1)
+        h = float(w_all[1] - w_all[0])
+        floor = np.log(1e-17)
+        parts = []
+        log_sf = np.zeros(1)
+        # in blocks, stopping once the survival is below the floor: ages
+        # far past it are not asked about
+        for first in range(0, w_all.size, 128):
+            w = w_all[first : first + 128]
+            log_sf, _ = self._log_sf_hf(u + a * np.exp(w))
+            parts.append(np.exp(log_sf + w) * a)
+            if log_sf[-1] < floor:
+                break
+        else:
+            if tau is None and log_sf[-1] > np.log(1e-12):
+                warnings.warn(
+                    "The mean failure age is infinite: the item's survival "
+                    f"levels off at about {np.exp(log_sf[-1]):.3g} (it is "
+                    f"still that a thousand alpha, {1e3 * a:g}, past the "
+                    "age now), the chance that its path never brings it "
+                    "to fail. Give tau for the restricted mean to an age, "
+                    "or use qf for the quantiles.",
+                    UserWarning,
+                    stacklevel=caller_stacklevel(),
+                )
+                return float("inf")
+        terms = np.concatenate(parts)
+        if terms.size % 2 == 0:
+            # (stopped past the floor: what is left is below it)
+            terms = np.append(terms, 0.0)
+        # Simpson's rule: exact to h^4 where tau cuts the integrand off
+        weights = np.ones(terms.size)
+        weights[1:-1:2], weights[2:-1:2] = 4.0, 2.0
+        area = h / 3.0 * float(np.sum(weights * terms))
+        # the part below e^w = 1e-12, where the survival is 1
+        return float(u + area + 1e-12 * a)
+
     def remaining_life(self, p: npt.ArrayLike = 0.5) -> Any:
         """
         The remaining life from ``age`` that the item outlives with
@@ -228,6 +333,73 @@ class DynamicPrediction:
         """
         return self.qf(p) - self.age
 
+    # -- failure modes -----------------------------------------------------
+
+    @property
+    def modes(self) -> list | None:
+        """The model's failure modes, ``None`` for a model of one way of
+        failing."""
+        causes = getattr(self.model, "causes", None)
+        return None if causes is None else list(causes)
+
+    def _cif_all(self, x: npt.NDArray) -> npt.NDArray:
+        """Every mode's chance of failing by it by each age of the flat
+        ``x``, ``(n_modes, x.size)``: 0 up to ``age``, ``nan`` at
+        ``nan`` and ``inf`` (and every age where a covariate is
+        missing)."""
+        n_modes = len(self.modes or [])
+        out = np.zeros((n_modes, x.size))
+        out[:, ~np.isfinite(x)] = np.nan
+        if self._missing:
+            return np.full(out.shape, np.nan)
+        Z, markers, given = self._args
+        f, after, _ = self.model._log_cif_function(x, Z, markers, given)
+        if after.any():
+            est = self.model._estimated
+            params = np.asarray(self.model.params, dtype=float)[est]
+            with np.errstate(all="ignore"):
+                out[:, after] = np.exp(np.asarray(f(params), dtype=float))
+        return out
+
+    @keeps_query_shape
+    def cif(self, x: npt.ArrayLike, mode: Any = None) -> npt.NDArray:
+        """
+        The chance that the item fails by the failure mode ``mode`` by
+        age ``x``, given its readings so far and that it was running at
+        ``age`` (0 up to ``age``): the mode's cumulative incidence from
+        now. ``mode=None`` is the chance of failing by any mode, ``ff``.
+        The modes' chances and ``sf`` add to 1 at every age. ``nan`` at
+        an infinite age (use a late finite one for the chance of ever
+        failing by the mode).
+
+        It is the expectation, over the item's path parameters given its
+        readings and its survival to ``age``, of the chance of failing by
+        that mode before any other, ``int_age^x h_k(s) S(s) ds /
+        S(age)``. It is computed as the chance of failing at all by ``x``
+        (``ff(x)``) times the mode's share, the share taken at each node
+        of that average, inside the integral over age, so that the
+        result is that expectation and the modes add to ``ff``.
+
+        Parameters
+        ----------
+        x : array_like
+            The ages (since new, as the model's).
+        mode : optional
+            One of the model's failure modes (:attr:`modes`), or ``None``
+            for any.
+        """
+        x = np.asarray(x, dtype=float)
+        k = self.model._check_mode(mode)
+        if k is None:
+            return self.ff(x)
+        return self._cif_all(x)[k]
+
+    @keeps_query_shape
+    def total_cif(self, x: npt.ArrayLike) -> npt.NDArray:
+        """The chance of failing by any mode by age ``x``: the modes'
+        :meth:`cif` added up, which is ``ff(x)``, ``1 - sf(x)``."""
+        return self.ff(np.asarray(x, dtype=float))
+
     # -- uncertainty -------------------------------------------------------
 
     def cb(
@@ -236,31 +408,55 @@ class DynamicPrediction:
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        mode: Any = None,
     ) -> npt.NDArray:
         """
-        Wald confidence bounds on the item's conditional ``sf``, ``ff`` or
-        ``Hf`` at ages ``x``, from the parameters' covariance: the delta
-        method on ``log(-log sf)``, as :meth:`JointModel.cb
+        Wald confidence bounds on the item's conditional ``sf``, ``ff``,
+        ``Hf`` or, with failure modes, chance of failing by ``mode``
+        (``on="cif"``) at ages ``x``, from the parameters' covariance:
+        the delta method on ``log(-log sf)`` (on ``log(-log(1 - cif))``
+        for a mode), as :meth:`JointModel.cb
         <surpyval.univariate.joint.joint_model.JointModel.cb>`, which it
         is (``Hf`` is ``-log`` of the bounds on ``sf``). Up to ``age``
-        the bounds are the estimate.
+        the bounds are the estimate. Each mode's bounds are its own
+        (pointwise, one mode at a time): the modes' upper bounds need not
+        add up to the upper bound on ``ff``.
 
         Parameters
         ----------
         x : array_like
             The ages.
-        on : {'sf', 'ff', 'Hf'}, optional
+        on : {'sf', 'ff', 'Hf', 'cif'}, optional
             The function bounded (``'R'`` and ``'F'`` are ``'sf'`` and
             ``'ff'``). Default ``'sf'``.
         alpha_ci : float, optional
             The total tail probability. Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Default ``'two-sided'``, ``[lower, upper]`` on a last axis.
+        mode : optional
+            With ``on='cif'``, the failure mode (:attr:`modes`); ``None``
+            for any (``'ff'``).
         """
-        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf", "cif"))
         check_alpha_ci(alpha_ci)
         check_option("bound", bound, BOUNDS)
         Z, markers, given = self._args
+        if on == "cif":
+            return self.model.cb(
+                x,
+                Z,
+                markers,
+                given,
+                on="cif",
+                alpha_ci=alpha_ci,
+                bound=bound,
+                mode=mode,
+            )
+        if mode is not None:
+            raise ValueError(
+                "'mode' is for the chance of failing by a mode, on='cif'; "
+                f"got on={on!r}."
+            )
         if on != "Hf":
             return self.model.cb(
                 x,
@@ -292,39 +488,72 @@ class DynamicPrediction:
 
     # -- the marker --------------------------------------------------------
 
-    def marker(self, x: npt.ArrayLike) -> Any:
+    def marker(self, x: npt.ArrayLike, name: Any = None) -> Any:
         """The mean of the item's true (noise-free) marker at ages ``x``,
         given its readings and survival to ``age``: its smoothed path up
         to ``age``, and beyond it the path projected (not conditioned on
-        surviving to ``x``)."""
+        surviving to ``x``). With several markers, of the marker
+        ``name`` (given every marker's readings)."""
         x_arr = np.asarray(x, dtype=float)
-        mean, _ = self._moments(x_arr)
+        mean, _ = self._moments(x_arr, name)
         return mean.reshape(x_arr.shape)[()]
 
+    def _marker_name(self, name: Any) -> Any:
+        """The marker ``name`` checked (``None`` for a model of one)."""
+        names = getattr(self.model, "markers", None)
+        if names is None:
+            if name is not None:
+                raise ValueError(
+                    "This model has one marker: leave 'name' out."
+                )
+            return None
+        if name is None and len(names) == 1:
+            return names[0]
+        if name not in names:
+            raise ValueError(
+                "With several markers, name the one whose path to give, "
+                f"name= one of {list(names)!r}; got {name!r}."
+            )
+        return name
+
     def marker_interval(
-        self, x: npt.ArrayLike, alpha_ci: float = 0.05
+        self, x: npt.ArrayLike, alpha_ci: float = 0.05, name: Any = None
     ) -> npt.NDArray:
         """An equal-tailed ``1 - alpha_ci`` interval for the item's true
         marker at ages ``x``, mean plus or minus a normal quantile of its
         standard deviation, at the fitted parameters: ``[lower, upper]``
         on a last axis. It is the spread of the item's own path, not of a
         new reading (which adds the noise, ``sd_noise``), and for a path
-        not linear in its parameters a normal approximation."""
+        not linear in its parameters a normal approximation. With
+        several markers, of the marker ``name``."""
         check_alpha_ci(alpha_ci)
         x_arr = np.asarray(x, dtype=float)
-        mean, sd = self._moments(x_arr)
+        mean, sd = self._moments(x_arr, name)
         q = norm.ppf(1 - alpha_ci / 2)
         out = np.stack([mean - q * sd, mean + q * sd], axis=-1)
         return out.reshape(x_arr.shape + (2,))
 
-    def _moments(self, x: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+    def _moments(
+        self, x: npt.NDArray, name: Any = None
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        name = self._marker_name(name)
         flat = np.atleast_1d(x).ravel()
         if self._missing:
             return np.full(flat.shape, np.nan), np.full(flat.shape, np.nan)
         safe = np.where(np.isfinite(flat), flat, 0.0)
-        mean, sd = self.model._marker_moments(
-            safe, self.covariates, self._ages, self._values, self.age
-        )
+        if name is None:
+            mean, sd = self.model._marker_moments(
+                safe, self.covariates, self._ages, self._values, self.age
+            )
+        else:
+            mean, sd = self.model._marker_moments(
+                safe,
+                self.covariates,
+                self._ages,
+                self._values,
+                self.age,
+                marker=name,
+            )
         bad = ~np.isfinite(flat)
         return np.where(bad, np.nan, mean), np.where(bad, np.nan, sd)
 
@@ -351,6 +580,11 @@ class DynamicPrediction:
         """
         rng = as_generator(random_state)
         return np.asarray(self.qf(rng.uniform(size=int(size))), dtype=float)
+
+    def _n_readings(self) -> int:
+        if getattr(self.model, "markers", None) is None:
+            return len(self.markers)
+        return sum(len(r) for r in self.markers.values())
 
     # -- serialisation -----------------------------------------------------
 
@@ -393,8 +627,12 @@ class DynamicPrediction:
             ages; ``sf``, ``ff`` and ``hf`` at them; ``sf_lower`` and
             ``sf_upper``, the Wald bounds of :meth:`cb` (``None`` where
             the model has no covariance); ``remaining_life``, ``{"p":
-            [0.1, 0.5, 0.9], "life": [...]}``; and ``marker``, the item's
-            path from its first reading (or ``age``) to the last age,
+            [0.1, 0.5, 0.9], "life": [...]}``; ``cif``, with failure
+            modes each mode's chance of failing by it by each age and
+            its Wald bounds, ``{mode: {"estimate", "lower", "upper"}}``
+            (``None`` for a model of one way of failing); and
+            ``marker``, the item's path from its first reading (or
+            ``age``) to the last age,
             ``{"x", "mean", "lower", "upper"}``; and ``how``, how the
             model was fitted (``"two-stage"`` for the approximate
             estimate, whose bounds are too narrow).
@@ -443,11 +681,16 @@ class DynamicPrediction:
                 band = None
             if band is not None and np.isfinite(band).any():
                 sf_lower, sf_upper = band[:, 0], band[:, 1]
-        start = min([self.age, *self._ages.tolist()])
+        marker_names = getattr(self.model, "markers", None)
+        every = (
+            np.concatenate(self._ages)
+            if marker_names is not None
+            else self._ages
+        )
+        start = min([self.age, *np.asarray(every).tolist()])
         finite = grid[np.isfinite(grid)]
         stop = float(finite.max()) if finite.size else self.age
         path = np.linspace(start, max(stop, start), 101)
-        interval = self.marker_interval(path, alpha_ci=alpha_ci)
         p = np.array(_REMAINING_P)
         names = list(getattr(self.model, "feature_names", None) or [])
         z = np.atleast_1d(np.asarray(self.covariates, dtype=float)).ravel()
@@ -460,7 +703,16 @@ class DynamicPrediction:
             "how": self.model.how,
             "age": self.age,
             "covariates": covariates,
-            "markers": [[float(a), float(v)] for a, v in self.markers.items()],
+            "markers": (
+                [[float(a), float(v)] for a, v in self.markers.items()]
+                if marker_names is None
+                else {
+                    str(name): [
+                        [float(a), float(v)] for a, v in readings.items()
+                    ]
+                    for name, readings in self.markers.items()
+                }
+            ),
             "alpha_ci": float(alpha_ci),
             "x": grid,
             "sf": np.asarray(self.sf(grid), dtype=float),
@@ -472,14 +724,63 @@ class DynamicPrediction:
                 "p": p,
                 "life": np.asarray(self.remaining_life(p), dtype=float),
             },
-            "marker": {
-                "x": path,
-                "mean": np.asarray(self.marker(path), dtype=float),
-                "lower": interval[:, 0],
-                "upper": interval[:, 1],
-            },
+            "cif": self._cif_entry(grid, alpha_ci),
+            "marker": (
+                self._marker_entry(path, alpha_ci, None)
+                if marker_names is None
+                else {
+                    str(name): self._marker_entry(path, alpha_ci, name)
+                    for name in marker_names
+                }
+            ),
         }
         return encode_non_finite(out)
+
+    def _cif_entry(self, grid: npt.NDArray, alpha_ci: float) -> Any:
+        """``to_dict``'s ``cif``: each failure mode's chance by each age
+        of ``grid`` with its Wald bounds (``None`` where the model has no
+        covariance), ``{mode: {"estimate", "lower", "upper"}}``; ``None``
+        for a model of one way of failing."""
+        if self.modes is None:
+            return None
+        every = self._cif_all(grid)
+        out: dict = {}
+        for k, mode in enumerate(self.modes):
+            lower: Any = None
+            upper: Any = None
+            if not self._missing:
+                try:
+                    band = np.asarray(
+                        self.cb(grid, on="cif", alpha_ci=alpha_ci, mode=mode),
+                        dtype=float,
+                    )
+                except (
+                    ValueError,
+                    NotImplementedError,
+                    np.linalg.LinAlgError,
+                ):
+                    band = None
+                if band is not None and np.isfinite(band).any():
+                    lower, upper = band[:, 0], band[:, 1]
+            out[str(mode)] = {
+                "estimate": every[k],
+                "lower": lower,
+                "upper": upper,
+            }
+        return out
+
+    def _marker_entry(
+        self, path: npt.NDArray, alpha_ci: float, name: Any
+    ) -> dict:
+        """``to_dict``'s ``marker``: the item's path (of marker ``name``)
+        and its interval along ``path``."""
+        interval = self.marker_interval(path, alpha_ci=alpha_ci, name=name)
+        return {
+            "x": path,
+            "mean": np.asarray(self.marker(path, name), dtype=float),
+            "lower": interval[:, 0],
+            "upper": interval[:, 1],
+        }
 
     def __repr__(self) -> str:
         median = float(self.remaining_life(0.5))
@@ -487,7 +788,7 @@ class DynamicPrediction:
             "Dynamic prediction of a joint model\n"
             "===================================\n"
             f"Age now             : {self.age:.6g}\n"
-            f"Readings            : {len(self.markers)}\n"
+            f"Readings            : {self._n_readings()}\n"
             f"Median life left    : {median:.6g}"
         )
         if self.model.how == "two-stage":

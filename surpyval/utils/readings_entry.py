@@ -45,7 +45,8 @@ def one_measurement(m: Any, what: str, data: bool = False) -> dict:
         raise ValueError(
             f"{what} takes one measurement, and the readings hold "
             f"{len(names)} ({', '.join(map(str, names))}): keep one with "
-            f"{keep}."
+            f"{keep} (or fit them together, a joint model of several "
+            "markers: JointPH(Weibull, {name: path_model, ...}))."
         )
     return m[names[0]]
 
@@ -180,6 +181,38 @@ def degradation_readings(source: Any, what: str) -> tuple:
     )
 
 
+def data_censoring(source: Any, i: np.ndarray) -> dict | None:
+    """``censored_units="data"`` read from ``source``: ``{unit: x}`` for
+    each right-censored row (``c = 1``) of a SurpyvalData whose unit has
+    readings in ``i``, a unit still running at its ``x`` (None where
+    there is none). Observed, left and interval censored rows are left
+    to the threshold. Refused for a Measurements, which has no
+    censoring."""
+    from surpyval.utils.measurements import Measurements
+
+    if isinstance(source, Measurements):
+        raise ValueError(
+            "censored_units='data' reads the censoring of a SurpyvalData "
+            "holding the readings, and a Measurements has none: list the "
+            "units still running as censored_units (or {unit: time} for "
+            "the time each was last known to be running)."
+        )
+    data = source
+    units = (
+        list(data.ids) if data.ids is not None else list(range(len(data.x)))
+    )
+    x = np.asarray(data.x, dtype=float)
+    if x.ndim == 2:
+        x = x[:, 0]
+    seen = set(np.asarray(i, dtype=object).tolist())
+    out = {
+        unit: float(time)
+        for unit, time, c in zip(units, x, np.asarray(data.c))
+        if c == 1 and unit in seen
+    }
+    return out or None
+
+
 def _is_readings(value: Any) -> bool:
     from surpyval.utils.measurements import Measurements
     from surpyval.utils.surpyval_data import SurpyvalData
@@ -249,6 +282,11 @@ def takes_readings(method: F) -> F:
         arguments["x"], arguments["y"], arguments["i"] = x_arr, y_arr, i_arr
         if Z is not None:
             arguments["Z"] = Z
+        if (
+            isinstance(arguments.get("censored_units"), str)
+            and arguments["censored_units"] == "data"
+        ):
+            arguments["censored_units"] = data_censoring(x, i_arr)
 
         def fit() -> Any:
             return method(*bound.args, **bound.kwargs)
@@ -305,13 +343,17 @@ def readings_column(m_col: Any, y_col: Any, default: str = "y") -> Any:
 # -- the joint models ---------------------------------------------------------
 
 
-def markers_by_row(markers: Any, i: Any, x: Any) -> Any:
+def markers_by_row(
+    markers: Any, i: Any, x: Any, several: list | None = None
+) -> Any:
     """The joint fit's ``markers`` as one ``{age: value}`` per row of
     ``x``: a Measurements is matched to the rows by unit, ``i`` (a unit
     with no readings gets ``{}``, as from a SurpyvalData; a unit with
     readings and no row is warned of and its readings are not used); any
     other ``markers`` is returned as it is, and then ``i`` must be left
-    out."""
+    out. With ``several`` (the names of a model's markers), each row's
+    readings are ``{name: {age: value}}`` of the Measurements' named
+    measurements (those it holds of ``several``)."""
     from surpyval.utils.item_history import checked_id
     from surpyval.utils.measurements import Measurements, attached
     from surpyval.utils.warnings import named
@@ -325,7 +367,17 @@ def markers_by_row(markers: Any, i: Any, x: Any) -> Any:
                 "Measurements."
             )
         return markers
-    store = one_measurement(markers, "The joint model")
+    if several is None:
+        store = one_measurement(markers, "The joint model")
+    else:
+        missing = [name for name in several if name not in markers.names]
+        if missing:
+            raise ValueError(
+                f"The readings hold no measurement {missing!r}; the model's "
+                f"markers are {list(several)!r} and the readings' "
+                f"measurements {list(markers.names)!r}."
+            )
+        stores = {name: markers[name] for name in several}
     if i is None:
         raise TypeError(
             "The readings (a Measurements) are matched to the rows by "
@@ -341,17 +393,24 @@ def markers_by_row(markers: Any, i: Any, x: Any) -> Any:
     seen: dict = {}
     for k in ids:
         seen[k] = seen.get(k, 0) + 1
-    several = [k for k, count in seen.items() if count > 1]
-    if several:
+    repeated = [k for k, count in seen.items() if count > 1]
+    if repeated:
         raise ValueError(
             "The joint model takes one row per unit, with the unit's "
-            f"readings; unit{'s' if len(several) > 1 else ''} "
-            f"{named(several)} {'have' if len(several) > 1 else 'has'} "
+            f"readings; unit{'s' if len(repeated) > 1 else ''} "
+            f"{named(repeated)} {'have' if len(repeated) > 1 else 'has'} "
             "several rows in i."
         )
     # The readings of a unit with no row are warned of, as when they are
     # attached to a SurpyvalData
     attached(SimpleNamespace(ids=ids), markers)
+    if several is not None:
+        from surpyval.univariate.joint._multi import ByMarker
+
+        return [
+            ByMarker({name: dict(stores[name].get(k, {})) for name in several})
+            for k in ids
+        ]
     return [dict(store.get(k, {})) for k in ids]
 
 
@@ -418,6 +477,30 @@ def takes_joint_readings(method: F) -> F:
         from surpyval.utils.surpyval_data import SurpyvalData
 
         x = arguments.get("x")
+        if getattr(arguments.get("self"), "takes_several_markers", False):
+            # a model of several markers: its fit takes the readings and
+            # their units by marker
+            from surpyval.univariate.joint.joint_ph import marker_units
+
+            arguments["marker_unit"] = marker_units(
+                arguments.get("marker_unit"),
+                list(arguments["self"].markers),
+                readings,
+                x,
+            )
+            if isinstance(x, SurpyvalData) and readings is not None:
+                if x.m is not None:
+                    raise TypeError(
+                        "x is a SurpyvalData, which holds the readings "
+                        f"(data.m): leave out {given!r} (or pass arrays "
+                        "rather than a SurpyvalData)."
+                    )
+                if isinstance(readings, Measurements):
+                    data = x[np.arange(len(x.x))]
+                    data.m = readings
+                    arguments["x"] = data
+                    del arguments["markers"]
+            return method(*bound.args, **bound.kwargs)
         if "marker_unit" in signature.parameters:
             _take_marker_unit(arguments, x, readings)
         if isinstance(x, SurpyvalData) and readings is not None:

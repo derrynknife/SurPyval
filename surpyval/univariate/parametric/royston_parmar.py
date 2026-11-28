@@ -72,6 +72,7 @@ from surpyval.utils.no_maximum import (
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.splines import natural_cubic_basis
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import (
@@ -92,36 +93,16 @@ SCALES = ("hazard", "odds", "normal")
 def rcs_basis(x: np.ndarray, knots: np.ndarray) -> np.ndarray:
     """Restricted-cubic-spline design matrix (Durrleman-Simon) at ``x``.
 
-    Columns are ``[1, x, v_1(x), ..., v_m(x)]`` for the ``m`` internal knots.
+    Columns are ``[1, x, v_1(x), ..., v_m(x)]`` for the ``m`` internal knots
+    (:func:`surpyval.utils.splines.natural_cubic_basis`, the basis
+    ``SplinePath`` shares in another form).
     """
-    x = np.asarray(x, dtype=float)
-    kmin, kmax = knots[0], knots[-1]
-    cols = [np.ones_like(x), x]
-    span = kmax - kmin
-    for kj in knots[1:-1]:
-        lam = (kmax - kj) / span
-        cols.append(
-            np.maximum(x - kj, 0.0) ** 3
-            - lam * np.maximum(x - kmin, 0.0) ** 3
-            - (1.0 - lam) * np.maximum(x - kmax, 0.0) ** 3
-        )
-    return np.column_stack(cols)
+    return natural_cubic_basis(x, knots, form="durrleman-simon")
 
 
 def rcs_deriv(x: np.ndarray, knots: np.ndarray) -> np.ndarray:
     """Derivative of the RCS basis with respect to ``x``."""
-    x = np.asarray(x, dtype=float)
-    kmin, kmax = knots[0], knots[-1]
-    cols = [np.zeros_like(x), np.ones_like(x)]
-    span = kmax - kmin
-    for kj in knots[1:-1]:
-        lam = (kmax - kj) / span
-        cols.append(
-            3.0 * np.maximum(x - kj, 0.0) ** 2
-            - 3.0 * lam * np.maximum(x - kmin, 0.0) ** 2
-            - 3.0 * (1.0 - lam) * np.maximum(x - kmax, 0.0) ** 2
-        )
-    return np.column_stack(cols)
+    return natural_cubic_basis(x, knots, deriv=1, form="durrleman-simon")
 
 
 def place_knots(x_events: np.ndarray, n_internal: int) -> np.ndarray:

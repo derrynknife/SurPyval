@@ -19,7 +19,6 @@ from scipy.stats import t as student_t
 
 from surpyval.multivariate.parametric.copula._rectangle import (
     MAX_AXES,
-    MAX_LIKELIHOOD_AXES,
     rectangle,
 )
 
@@ -147,24 +146,173 @@ def test_three_t_coordinates_tend_to_the_normal_and_agree_with_scipy():
 
 def test_independent_coordinates_multiply():
     rng = np.random.default_rng(16)
-    for k in (3, 4, 5):
+    for k in (3, 4, 5, 8):
         lo = rng.normal(-1.0, 1.0, (3, k))
         hi = lo + rng.exponential(1.5, (3, k))
         exact = np.prod(norm.cdf(hi) - norm.cdf(lo), axis=1)
         np.testing.assert_allclose(
-            rectangle(lo, hi, np.eye(k)), exact, atol=1e-9 if k == 3 else 1e-5
+            rectangle(lo, hi, np.eye(k)), exact, rtol=1e-9
         )
 
 
-@pytest.mark.parametrize("k", [4, 5, 6])
+@pytest.mark.parametrize("k", [4, 5, 6, 8, 10])
 def test_many_coordinates_by_the_lattice(k):
     # Equicorrelated 1/2: P(all <= 0) = 1 / (k + 1), normal or t
     corr = 0.5 * np.ones((k, k)) + 0.5 * np.eye(k)
     lo, hi = np.full((1, k), -INF), np.zeros((1, k))
-    np.testing.assert_allclose(rectangle(lo, hi, corr), 1 / (k + 1), atol=1e-4)
+    np.testing.assert_allclose(rectangle(lo, hi, corr), 1 / (k + 1), atol=1e-6)
     np.testing.assert_allclose(
-        rectangle(lo, hi, corr, nu=5.0), 1 / (k + 1), atol=1e-4
+        rectangle(lo, hi, corr, nu=5.0), 1 / (k + 1), atol=1e-5
     )
+
+
+# A one-factor correlation, R = l l' off the diagonal, makes the
+# coordinates independent given one standard normal W (Z_i = l_i W +
+# sqrt(1 - l_i^2) e_i), so the rectangle is a one-dimensional integral over
+# W of a product of univariate CDFs (and, for the t, a second integral over
+# the scale); the trapezoidal rule on [-12, 12] gives it to about 1e-13.
+_W = np.linspace(-12.0, 12.0, 24001)
+_PHI = np.exp(-0.5 * _W**2) / np.sqrt(2.0 * np.pi)
+
+
+def _one_factor(lo, hi, lam):
+    s = np.sqrt(1.0 - lam**2)
+    out = []
+    for a, b in zip(lo, hi):
+        A = (a[None, :] - lam * _W[:, None]) / s
+        B = (b[None, :] - lam * _W[:, None]) / s
+        flip = (A + B) > 0
+        p = np.where(flip, norm.sf(A) - norm.sf(B), norm.cdf(B) - norm.cdf(A))
+        out.append(np.trapezoid(_PHI * np.prod(p, axis=1), _W))
+    return np.array(out)
+
+
+def _one_factor_t(lo, hi, lam, nu):
+    from scipy.stats import chi2
+
+    from surpyval.multivariate.parametric.copula.elliptical import (
+        _tanh_sinh,
+    )
+
+    z, zc, w = _tanh_sinh(1.0 / 32.0)
+    scale = np.sqrt(np.where(z <= 0.5, chi2.ppf(z, nu), chi2.isf(zc, nu)) / nu)
+    return sum(
+        wj * _one_factor(lo * sj, hi * sj, lam) for sj, wj in zip(scale, w)
+    )
+
+
+def _censored_limits(rng, m, k):
+    """Each row's limits as a censored row's: right, left and interval
+    censored coordinates, mixed."""
+    lo = np.where(rng.random((m, k)) < 0.6, rng.normal(0, 1.5, (m, k)), -INF)
+    hi = np.where(np.isfinite(lo), INF, rng.normal(0, 1.5, (m, k)))
+    both = (rng.random((m, k)) < 0.2) & np.isfinite(lo)
+    hi = np.where(both, lo + rng.uniform(0.2, 2.0, (m, k)), hi)
+    return lo, hi
+
+
+@pytest.mark.parametrize("k", [4, 5, 6, 8, 10])
+def test_many_coordinates_agree_with_one_factor_integrals(k):
+    rng = np.random.default_rng(30 + k)
+    worst_abs = worst_rel = 0.0
+    for trial in range(3):
+        lam = (
+            rng.uniform(-0.95, 0.95, k) if trial else rng.uniform(0.3, 0.97, k)
+        )
+        corr = np.outer(lam, lam)
+        np.fill_diagonal(corr, 1.0)
+        lo, hi = _censored_limits(rng, 8, k)
+        ref = _one_factor(lo, hi, lam)
+        ours = rectangle(lo, hi, corr)
+        worst_abs = max(worst_abs, np.max(np.abs(ours - ref)))
+        worst_rel = max(worst_rel, np.max(np.abs(ours / ref - 1.0)))
+    # (measured: below 3.2e-6 and 4e-4 for k = 4 to 10)
+    assert worst_abs < 5e-6, worst_abs
+    assert worst_rel < 1e-3, worst_rel
+
+
+@pytest.mark.parametrize("nu", [1.5, 4.0])
+def test_many_t_coordinates_agree_with_one_factor_integrals(nu):
+    rng = np.random.default_rng(41)
+    worst = 0.0
+    for k in (4, 6):
+        lam = rng.uniform(-0.9, 0.9, k)
+        corr = np.outer(lam, lam)
+        np.fill_diagonal(corr, 1.0)
+        lo, hi = _censored_limits(rng, 6, k)
+        ref = _one_factor_t(lo, hi, lam, nu)
+        worst = max(worst, np.max(np.abs(rectangle(lo, hi, corr, nu) - ref)))
+    # (measured: below 3e-6)
+    assert worst < 5e-6, worst
+
+
+def test_a_block_of_three_and_an_independent_coordinate():
+    """Four coordinates, the last independent of the others: the lattice
+    rule gives the three-coordinate quadrature's value times the
+    univariate probability (a one-factor block, whose integral is also
+    exact, checks both)."""
+    rng = np.random.default_rng(42)
+    lam = np.array([0.8, -0.6, 0.7, 0.0])
+    corr4 = np.outer(lam, lam)
+    np.fill_diagonal(corr4, 1.0)
+    lo, hi = _censored_limits(rng, 10, 4)
+    exact = _one_factor(lo, hi, lam)
+    three = rectangle(lo[:, :3], hi[:, :3], corr4[:3, :3]) * rectangle(
+        lo[:, 3:], hi[:, 3:], np.eye(1)
+    )
+    np.testing.assert_allclose(three, exact, rtol=1e-8, atol=1e-12)
+    np.testing.assert_allclose(
+        rectangle(lo, hi, corr4), exact, rtol=1e-5, atol=1e-7
+    )
+
+
+def test_a_nearly_singular_correlation_matrix():
+    """A correlation matrix with smallest eigenvalue 7e-4, against R's
+    mvtnorm (Miwa's algorithm, which Genz-Bretz confirms to 1e-9): the
+    prioritised order keeps the lattice rule to 1e-5 of the probability,
+    where a fixed order was wrong by a factor of 8."""
+    corr = _correlations(3, seed=43)[0]
+    corr4 = np.eye(4)
+    corr4[:3, :3] = corr
+    lo = np.array([[1.01837034, 0.1013686, 0.4336791, -INF]])
+    hi = np.array([[1.74202245, INF, INF, INF]])
+    # pmvnorm(lo, hi, corr, algorithm = Miwa(steps = 4096)) of the three
+    np.testing.assert_allclose(
+        rectangle(lo, hi, corr4), 4.380972e-07, rtol=1e-4
+    )
+
+
+def test_the_lattice_rule_is_smooth_in_the_correlations():
+    """A likelihood search and its finite-difference Hessian need the
+    rule to be a smooth function of the correlations: its second
+    differences agree from a step of 1e-2 down to 1e-5."""
+    k = 5
+    base = 0.3 * np.ones((k, k)) + 0.7 * np.eye(k)
+    lo = np.array([[0.2, -INF, -0.5, 0.1, -1.0]])
+    hi = np.array([[INF, 0.4, 0.7, INF, INF]])
+
+    def f(r, nu):
+        corr = base.copy()
+        corr[0, 1] = corr[1, 0] = r
+        corr[2, 3] = corr[3, 2] = 0.3 + 0.5 * (r - 0.3)
+        return np.log(rectangle(lo, hi, corr, nu)[0])
+
+    for nu in (None, 4.0):
+        second = [
+            (f(0.3 + h, nu) - 2 * f(0.3, nu) + f(0.3 - h, nu)) / h**2
+            for h in (1e-2, 1e-3, 1e-4, 1e-5)
+        ]
+        np.testing.assert_allclose(second, second[2], rtol=2e-4)
+
+
+def test_the_order_changes_the_result_only_within_the_rules_accuracy():
+    rng = np.random.default_rng(44)
+    corr = _correlations(5, seed=45)[2]
+    lo, hi = _censored_limits(rng, 6, 5)
+    default = rectangle(lo, hi, corr)
+    for perm in ([0, 1, 2, 3, 4], [4, 3, 2, 1, 0]):
+        given = rectangle(lo, hi, corr, order=np.tile(perm, (6, 1)))
+        np.testing.assert_allclose(given, default, rtol=1e-3, atol=1e-5)
 
 
 def test_four_coordinates_agree_with_scipy():
@@ -184,12 +332,12 @@ def test_four_coordinates_agree_with_scipy():
                 allow_singular=True,
             )
             worst = max(worst, abs(ours[row] - ref))
-    assert worst < 5e-4, worst
+    assert worst < 1e-5, worst
 
 
 def test_the_rule_is_deterministic_and_rows_are_independent():
     rng = np.random.default_rng(19)
-    for k in (3, 4):
+    for k in (3, 4, 6):
         corr = _correlations(k, seed=20)[1]
         lo = rng.normal(-1.0, 1.0, (5, k))
         hi = lo + rng.exponential(1.5, (5, k))
@@ -206,4 +354,52 @@ def test_too_many_coordinates_are_refused():
     k = MAX_AXES + 1
     with pytest.raises(ValueError, match="fewer axes at a time"):
         rectangle(np.full((1, k), -INF), np.zeros((1, k)), np.eye(k))
-    assert MAX_LIKELIHOOD_AXES == 3
+    with pytest.raises(ValueError, match="fewer axes at a time"):
+        rectangle(
+            np.full((1, k - 1), -INF), np.zeros((1, k - 1)), np.eye(k - 1), 4.0
+        )
+
+
+def _nearly_singular(rng, smallest):
+    """A random correlation matrix of three coordinates whose smallest
+    eigenvalue is ``smallest``."""
+    a = rng.normal(size=(3, 3))
+    s = a @ a.T
+    for _ in range(50):
+        d = np.sqrt(np.diag(s))
+        s = s / np.outer(d, d)
+        w, v = np.linalg.eigh(s)
+        w[0] = smallest
+        s = v @ np.diag(w) @ v.T
+    d = np.sqrt(np.diag(s))
+    s = s / np.outer(d, d)
+    return (s + s.T) / 2
+
+
+@pytest.mark.parametrize("nu", [None, 4.0])
+def test_three_coordinates_of_a_nearly_singular_matrix(monkeypatch, nu):
+    """With a smallest eigenvalue of 1e-4 or 1e-3 the other two
+    coordinates given the first are almost perfectly correlated, and their
+    rectangle changes sharply where their standardised limits meet. The
+    quadrature agrees with one of a ten times finer step (measured: within
+    4e-10; the rule before it split its panels at those points was off
+    by up to 1.3e-4, and 10% of the probability)."""
+    from surpyval.multivariate.parametric.copula import _rectangle
+    from surpyval.multivariate.parametric.copula.elliptical import (
+        _tanh_sinh,
+    )
+
+    rng = np.random.default_rng(675)
+    cases = [
+        (_nearly_singular(rng, smallest), *_censored_limits(rng, 8, 3))
+        for smallest in (1e-4, 1e-4, 1e-3, 1e-3)
+    ]
+    ours = [rectangle(lo, hi, corr, nu) for corr, lo, hi in cases]
+    fine = _tanh_sinh(step=1.0 / 128.0, reach=4.5)
+    monkeypatch.setattr(_rectangle, "_Z", fine[0])
+    monkeypatch.setattr(_rectangle, "_ZC", fine[1])
+    monkeypatch.setattr(_rectangle, "_W", fine[2])
+    for (corr, lo, hi), got in zip(cases, ours):
+        assert np.linalg.eigvalsh(corr)[0] < 2e-3
+        ref = rectangle(lo, hi, corr, nu)
+        np.testing.assert_allclose(got, ref, rtol=1e-5, atol=2e-9)

@@ -67,15 +67,23 @@ Where to start
   survival or reliability, right censored or suspended)? The
   :doc:`Glossary` maps the engineering, medical and statistical
   vocabularies to each other and to SurPyval's names.
+- Coming from another tool? :doc:`Coming from lifelines`,
+  :doc:`Coming from R` and :doc:`Coming from Weibull++` map its names to
+  SurPyval's, show common tasks side by side with matching numbers, and
+  list the differences that catch people out (the censoring flag first).
+- Wondering how long a fit takes on a million rows? :doc:`Speed` has
+  measured times by data size and the ways to make a fit faster.
 
 How the documentation is organised
 ----------------------------------
 
-The pages are in five groups, in the menu on the left:
+The pages are in six groups, in the menu on the left:
 
 - **Quickstart & Intro**: the pages above, plus
   :doc:`Handy References - Aide-mémoire`, a one-page summary of the
   functions of a distribution and how they relate.
+- **Coming from other tools**: guides for users of lifelines, R and the
+  engineering reliability tools.
 - **Survival Analysis**: the *theory* pages. Each explains a family of
   methods from first principles: the problem it solves, the mathematics, how
   to read the results, what can go wrong and when to use something else.
@@ -86,7 +94,7 @@ The pages are in five groups, in the menu on the left:
   also includes :doc:`applications`, complete examples from several fields.
   Each theory page links to its how-to page and the other way round.
 - **SurPyval**: the API reference (:doc:`surpyval`), with every class,
-  function and argument, the :doc:`changelog` and the
+  function and argument, :doc:`Speed`, the :doc:`changelog` and the
   :doc:`Deprecation Policy`.
 - **Community Guidelines**: where to get help, how to report a problem and
   how to contribute.
@@ -184,6 +192,23 @@ so on.
        of a log-rank comparison, and the power of a comparison of failure
        rates before and after a change.
      - :doc:`Test Planning with SurPyval`
+   * - Reliability growth planning
+     - The curve a growth test is planned against (MIL-HDBK-189C): the
+       idealised curve (test time, growth rate or final MTBF), the chance
+       the test demonstrates a requirement, and PM2-Continuous and
+       PM2-Discrete plans with their steps after each corrective action
+       period.
+     - :doc:`Reliability Growth Planning`
+   * - Discrete reliability growth
+     - Growth of one-shot items from successes and trials by stage: the
+       AMSAA discrete model, Lloyd-Lipow and Gompertz, with Wald,
+       likelihood-ratio and bootstrap bounds and the next stage projected.
+     - :doc:`Discrete Reliability Growth`
+   * - Maturity projection
+     - The reliability once the fixes are in, allowing for the failure
+       modes not seen yet (AMPM, AMPM-Stein and the discrete AMPM-Stein of
+       MIL-HDBK-189C).
+     - :doc:`counting/maturity_projection`
 
 Almost every fitted model can be saved to a dictionary or a JSON file and
 restored with ``surv.from_dict`` or ``surv.from_json`` (see :doc:`Conventions`
@@ -323,6 +348,14 @@ Contents:
 
 .. toctree::
    :maxdepth: 2
+   :caption: Coming from other tools
+
+   Coming from lifelines
+   Coming from R
+   Coming from Weibull++
+
+.. toctree::
+   :maxdepth: 2
    :caption: Survival Analysis
 
    Non-Parametric Estimation
@@ -351,6 +384,7 @@ Contents:
    Equivalent Time Scales
    Zero-Inflated Regression
    Interval-Censored Cox Regression
+   Case-Cohort and Nested Case-Control
    Pseudo-Observations
    Adjusted Survival Curves
    Relative Survival
@@ -365,6 +399,8 @@ Contents:
    Degradation Modelling with SurPyval
    Multivariate Modelling with SurPyval
    Test Planning with SurPyval
+   Reliability Growth Planning
+   Discrete Reliability Growth
    PyMC with SurPyval
    Torch with SurPyval
 
@@ -373,6 +409,7 @@ Contents:
    :caption: SurPyval
 
    surpyval
+   Speed
    changelog
    Deprecation Policy
 

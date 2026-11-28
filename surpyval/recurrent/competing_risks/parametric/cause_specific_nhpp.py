@@ -46,7 +46,7 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.utils import optional_column
-from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -56,6 +56,7 @@ from surpyval.utils.linalg import (
     log_transformed_cb,
     wald_bound_on_support,
 )
+from surpyval.utils.model_data import event_data
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_data import (
     accepts_recurrent_surpyval_data,
@@ -63,6 +64,7 @@ from surpyval.utils.recurrent_data import (
     takes_terminal_column,
 )
 from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.removed_names import RemovedName
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes, takes_unit
 from surpyval.utils.validation import (
@@ -147,7 +149,7 @@ class _AllCauses:
     def __init__(self, model: CauseSpecificNHPP) -> None:
         self.cif = model.total_cif
         first = model.models[model.event_types[0]]
-        self.data = getattr(first, "data", None)
+        self.data = event_data(first)
 
 
 class CauseSpecificNHPP(SerialisableMixin):
@@ -434,7 +436,8 @@ class CauseSpecificNHPP(SerialisableMixin):
             end = float(x_upper.max())
         return entry, end
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     @classmethod
     @refuses_unmodelled_data
@@ -504,6 +507,84 @@ class CauseSpecificNHPP(SerialisableMixin):
                 cause_data, how=how, init=init
             )
         return out
+
+    @classmethod
+    @takes_unit
+    def fit_bayes(
+        cls,
+        x: ArrayLike,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        e: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
+        *,
+        dist: Any = CrowAMSAA,
+        priors: Any = None,
+        method: str = "auto",
+        importance: bool = False,
+        points: int | None = None,
+    ) -> Any:
+        """
+        Fit each cause's intensity by Bayes' rule: priors on its
+        parameters times the likelihood ``fit`` uses.
+
+        The causes' likelihoods are separate, so each cause has its own
+        posterior, computed as the process's ``fit_bayes`` computes it
+        (the grid for a Crow-AMSAA intensity: exact).
+
+        Parameters
+        ----------
+        x, i, c, n, e, tl, tr, dist
+            The data and the intensity model, as for ``fit``.
+        priors : optional
+            One set of priors for every cause (as the process's
+            ``fit_bayes`` takes: ``{"beta": ...}``), or a set a cause,
+            ``{cause: {"beta": ...}}`` (a cause left out has none).
+        method, importance, points
+            As for the process's ``fit_bayes``.
+
+        Returns
+        -------
+        surpyval.recurrent.bayes.BayesianCauseSpecific
+            ``models`` (each cause's fit), and ``cif``, ``iif``,
+            ``mtbf``, ``cri(x, event, on=...)``, ``count(event, ...)``
+            and ``mtbf_probability(requirement, event)`` for a cause or,
+            with ``event=None``, for all causes together.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> from surpyval.recurrent import CauseSpecificNHPP
+        >>> x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+        >>> e = ["seal", "pump", "seal", "pump", "seal", "seal", "pump",
+        ...      "seal", "pump", "seal", "seal", None]
+        >>> model = CauseSpecificNHPP.fit_bayes(
+        ...     x, c=[0] * 11 + [1], e=e,
+        ...     priors={"beta": sp.prior.around(0.8, between=(0.4, 1.6))})
+        >>> sorted(model.models)
+        ['pump', 'seal']
+        >>> model.param_cri("seal", "beta").shape
+        (2,)
+        """
+        from surpyval.recurrent.bayes import fit_cause_specific
+
+        return fit_cause_specific(
+            cls,
+            x,
+            i,
+            c,
+            n,
+            e,
+            tl,
+            tr,
+            dist=dist,
+            priors=priors,
+            method=method,
+            importance=importance,
+            points=points,
+        )
 
     @classmethod
     @ambiguous_item_ids("fit(x, c, n, t)")
@@ -606,6 +687,9 @@ class CauseSpecificNHPP(SerialisableMixin):
         Fit a cause-specific intensity model from a :class:`pandas.DataFrame`,
         naming the columns to read. See :meth:`fit` for the meaning of each.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
 
         model = cls.fit(
             x=df[x_col].to_numpy(),
@@ -621,6 +705,71 @@ class CauseSpecificNHPP(SerialisableMixin):
         )
         model.df = df
         return model
+
+    @classmethod
+    @ambiguous_item_ids(
+        "CompetingRisks.fit_from_df(df, x_col, e_col, c_col)", column=True
+    )
+    @takes_unit
+    @takes_terminal_column
+    def fit_bayes_from_df(
+        cls,
+        df: Any,
+        x_col: str,
+        e_col: str,
+        i_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        tl_col: str | None = None,
+        tr_col: str | None = None,
+        *,
+        dist: Any = CrowAMSAA,
+        priors: Any = None,
+        method: str = "auto",
+        importance: bool = False,
+        points: int | None = None,
+    ) -> Any:
+        """
+        :meth:`fit_bayes` on a :class:`pandas.DataFrame`, naming the
+        columns to read as :meth:`fit_from_df` names them. ``dist``,
+        ``priors``, ``method``, ``importance`` and ``points`` are
+        :meth:`fit_bayes`'s, passed to it unchanged.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> import surpyval as sp
+        >>> from surpyval.recurrent import CauseSpecificNHPP
+        >>> log = pd.DataFrame({
+        ...     "hours": [15, 42, 60, 98, 130, 171, 205, 260, 310, 345,
+        ...               390, 400],
+        ...     "cause": ["seal", "pump", "seal", "pump", "seal", "seal",
+        ...               "pump", "seal", "pump", "seal", "seal", None],
+        ...     "c": [0] * 11 + [1],
+        ... })
+        >>> model = CauseSpecificNHPP.fit_bayes_from_df(
+        ...     log, x_col="hours", e_col="cause", c_col="c",
+        ...     priors={"beta": sp.prior.around(0.8, between=(0.4, 1.6))})
+        >>> sorted(model.models)
+        ['pump', 'seal']
+        """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
+        return cls.fit_bayes(
+            x=df[x_col].to_numpy(),
+            i=optional_column(df, i_col),
+            c=optional_column(df, c_col),
+            n=optional_column(df, n_col),
+            e=optional_column(df, e_col),
+            tl=optional_column(df, tl_col),
+            tr=optional_column(df, tr_col),
+            dist=dist,
+            priors=priors,
+            method=method,
+            importance=importance,
+            points=points,
+        )
 
     # --- evaluation ------------------------------------------------------
 
@@ -1506,7 +1655,7 @@ class CauseSpecificNHPP(SerialisableMixin):
             import matplotlib.pyplot as plt
 
             ax = plt.gcf().gca()
-        x_plot = np.linspace(0, float(self.data.x.max()), 200)
+        x_plot = np.linspace(0, float(event_data(self).x.max()), 200)
         for cause in self.event_types:
             ax.plot(
                 x_plot,

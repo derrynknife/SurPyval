@@ -44,6 +44,7 @@ from surpyval.utils.validation import BOUNDS, CB_ON, check_option
 from surpyval.utils.warnings import caller_stacklevel
 
 from ._likelihood_ratio import (
+    _LR_RESOLVED,
     _LR_UNREACHABLE,
     LikelihoodRatioMixin,
     _LRCoord,
@@ -55,6 +56,10 @@ from ._likelihood_ratio import (
 #: means the estimate is on the edge (``ExtendedLikelihoodRatio``): the
 #: side away from it is walked out in the parameter itself.
 _LR_ON_EDGE = 1e-3
+
+#: The most points ``ExtendedLikelihoodRatio._towards_limit`` solves on
+#: the offset's profile, at ``spread * 10**k`` below its estimate.
+_LR_LIMIT_RUNGS = 8
 
 
 def critical_value(alpha_ci: float, bound: str) -> float:
@@ -158,6 +163,9 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
         self._gamma_idx = pmap.get("gamma") if model.offset else None
         self._p_idx = pmap.get(model.lfp_name) if model.lfp else None
         self._f0_idx = pmap.get("f0") if model.zi else None
+        # An offset's profiles tend to a limiting model along narrow
+        # valleys (a Gamma's to the Normal): ``_lr_follow_valley``
+        self._follows_valleys = self._gamma_idx is not None
         phi = onp.empty(len(self.names))
         phi[self._core_idx] = onp.asarray(model.params, dtype=float)
         for idx, value in (
@@ -189,6 +197,11 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
         return self._held
 
     def _lr_lean_data(self) -> None:
+        return None
+
+    def _lr_extended(self) -> None:
+        # These are the searches over every fitted parameter already (a
+        # hazard ratio, ``self.hr``, is in their likelihood and functions)
         return None
 
     def _lr_plain(self) -> bool:
@@ -335,8 +348,11 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
             if self._corner_side(idx, crit, direction):
                 coords, _ = self._lr_coords()
                 return float(coords[idx].edge(direction))
+            if self._limit_side(idx, crit, direction):
+                return self._side_is_edge(idx, crit, direction)
             value = super()._lr_param_side(idx, crit, direction)
-            return self._offset_to_corner(idx, crit, direction, value)
+            value = self._offset_to_corner(idx, crit, direction, value)
+            return self._offset_to_limit(idx, crit, direction, value)
         key = self._lr_key(idx, crit, direction)
         cache = self.__dict__.setdefault("_lr_sides", {})
         if key in cache:
@@ -377,6 +393,146 @@ class ExtendedLikelihoodRatio(LikelihoodRatioMixin):
         del unresolved[key]
         self.__dict__["_lr_sides"][key] = float(hi)
         return float(hi)
+
+    def _lr_limit_nll(self) -> float | None:
+        """The negative log-likelihood of the family's limit as the offset
+        runs to -inf (``fitters.mle.offset_limit``), fitted to the data,
+        kept; ``None`` where there is no such limit (see
+        ``_limit_deviance``)."""
+        if "_lr_limit_nll_kept" not in self.__dict__:
+            nll = None
+            if self._gamma_idx is not None and not self._held:
+                from .fitters.mle import offset_limit
+
+                nll = offset_limit(self.model)()
+                if nll is not None and not onp.isfinite(nll):
+                    nll = None
+            self.__dict__["_lr_limit_nll_kept"] = nll
+        return self.__dict__["_lr_limit_nll_kept"]
+
+    def _lr_supremum_nll(self) -> float | None:
+        """The family's limit as the offset runs to -inf
+        (``_lr_limit_nll``) where it fits the data better than the fit:
+        the likelihood's supremum is then there, not at the fit (which
+        has run off towards it, or stopped at a lower local maximum), and
+        the deviances of the likelihood-ratio bounds are measured from it
+        (``_lr_reference_nll``). An offset LogNormal of 40 near-Normal
+        values stopped at gamma = -68.1, its deviance from the Normal
+        0.375: its bounds were measured from that point, and too wide."""
+        return self._lr_limit_nll()
+
+    def _limit_deviance(self) -> float | None:
+        """The deviance of the family's limit as the offset runs to -inf
+        (the Normal for a Gamma or a LogNormal, the Logistic for a
+        LogLogistic, the smallest extreme value distribution for a
+        Weibull; ``fitters.mle.offset_limit``) against the fit, kept;
+        ``None`` where there is no such limit (no offset, a limited
+        failure population, zero inflation, a hazard ratio, a family
+        without one, or a parameter held fixed, which the limit cannot
+        follow) or its own fit is not a verified maximum."""
+        if "_lr_limit_dev" not in self.__dict__:
+            dev = None
+            if self._gamma_idx is not None and not self._held:
+                nll = self._lr_limit_nll()
+                if nll is not None:
+                    nll_hat = self._lr_neg_ll(
+                        onp.asarray(self.params, dtype=float)
+                    )
+                    dev = 2.0 * (nll - nll_hat)
+                    dev = float(dev) if onp.isfinite(dev) else None
+            self.__dict__["_lr_limit_dev"] = dev
+        return self.__dict__["_lr_limit_dev"]
+
+    def _towards_limit(self, d_lim: float) -> list[float]:
+        """The profile deviance of the offset at ``gamma_hat - spread *
+        10**k``, ``k = 0, 1, ...`` (``spread`` the range of the data),
+        while the searches settle it (``_profile_neg_ll`` gives ``nan``
+        where they cannot) and it stays within ``_LR_RESOLVED`` of the
+        limit's deviance ``d_lim`` or below it, kept."""
+        if "_lr_towards_limit" not in self.__dict__:
+            idx = self._gamma_idx
+            assert idx is not None
+            theta_hat = float(self.params[idx])
+            nll_hat = self._lr_neg_ll(onp.asarray(self.params, dtype=float))
+            x = onp.asarray(self.surv_data.x, dtype=float)
+            x = x[onp.isfinite(x)]
+            spread = float(x.max() - x.min()) if x.size else 0.0
+            spread = spread if spread > 0 else max(1.0, abs(theta_hat))
+            devs: list[float] = []
+            for k in range(_LR_LIMIT_RUNGS):
+                with np.errstate(all="ignore"):
+                    nll = self._profile_neg_ll(
+                        idx, theta_hat - spread * 10.0**k
+                    )
+                dev = 2.0 * (nll - nll_hat)
+                if not onp.isfinite(dev) or dev > d_lim + _LR_RESOLVED:
+                    break
+                devs.append(float(dev))
+            self.__dict__["_lr_towards_limit"] = devs
+        return self.__dict__["_lr_towards_limit"]
+
+    def _limit_side(self, idx: int, crit: float, direction: Any) -> bool:
+        """Whether the offset's lower side is minus infinity because the
+        family's limit as the offset runs to -inf (``_limit_deviance``)
+        fits the data at least as well as the offset fit (its deviance
+        at most ``_LR_RESOLVED``, and below ``crit``).
+
+        The likelihood's supremum is then at the limit (or the fit has
+        run off towards it), not at a finite offset, so no offset down to
+        -inf is excluded. The walk is not run: far out it reads noise as
+        a crossing (an offset LogNormal of 40 near-Normal values, limit
+        deviance -0.34, gave -3.4e14 at 99%; LogLogistic fits run off to
+        offsets of -4e4 gave -2.8e8) or gives up (``nan``)."""
+        if not (idx == self._gamma_idx and direction < 0):
+            return False
+        d_lim = self._limit_deviance()
+        return d_lim is not None and d_lim <= min(_LR_RESOLVED, crit)
+
+    def _offset_to_limit(
+        self, idx: int, crit: float, direction: Any, value: float
+    ) -> float:
+        """The offset's lower side where its walk could not settle the
+        profile (``value`` nan): minus infinity where the family's limit
+        as the offset runs to -inf is inside the region.
+
+        As the offset runs to -inf the profile deviance tends to the
+        limit's (``_limit_deviance``), along a valley the searches lose
+        far out (a Weibull's shape and scale run to infinity together,
+        and its likelihood loses its last digits there), so the walk gave
+        up before the edge. The bound is the edge where the limit's
+        deviance is below ``crit``, and the profile on the way to it
+        (``_towards_limit``) stays below ``crit``, rising at each of at
+        least three settled points, the last within a quarter of the gap
+        between the limit's deviance and ``crit`` of the limit's. Then
+        the profile is converging on a limit inside the region. Otherwise
+        ``value`` (``nan``, with the warning) stands: the bound is not
+        determined."""
+        if not (onp.isnan(value) and idx == self._gamma_idx and direction < 0):
+            return value
+        d_lim = self._limit_deviance()
+        if d_lim is None or d_lim + _LR_RESOLVED >= crit:
+            return value
+        devs = self._towards_limit(d_lim)
+        rising = all(b > a for a, b in zip(devs, devs[1:]))
+        if not (
+            len(devs) >= 3
+            and rising
+            and max(devs) < crit
+            and d_lim - devs[-1] <= 0.25 * (crit - d_lim)
+        ):
+            return value
+        return self._side_is_edge(idx, crit, direction)
+
+    def _side_is_edge(self, idx: int, crit: float, direction: Any) -> float:
+        """Keep the edge of parameter ``idx``'s space as its side
+        ``direction`` at ``crit``, and return it."""
+        coords, _ = self._lr_coords()
+        edge = float(coords[idx].edge(direction))
+        key = self._lr_key(idx, crit, direction)
+        self.__dict__.get("_lr_unresolved", {}).pop(key, None)
+        self.__dict__.setdefault("_lr_sides", {})[key] = edge
+        self.__dict__.setdefault("_lr_points", {}).setdefault(key, [])
+        return edge
 
     def _lr_side_from_edge(
         self, idx: int, crit: float, direction: Any, key: tuple

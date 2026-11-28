@@ -22,6 +22,12 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from surpyval.utils.autograd_gamma_compat import gammainc as agammainc
 from surpyval.utils.autograd_gamma_compat import gammainccln as agammainccln
 from surpyval.utils.autograd_gamma_compat import gammaincln as agammaincln
+from surpyval.utils.saddle_point import (
+    LARGE_SHAPE,
+    gamma_logs_large,
+    log_gamma_density_large,
+    log_poisson_mass,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._stable import on_support, positive_or_one, power_at_zero
@@ -291,6 +297,48 @@ def _cached_jet(a: Any, y: Any, order: int) -> tuple:
 
 def _plain_float(v: Any) -> Any:
     return v if onp.ndim(v) else float(v)
+
+
+#: Newton steps on the large-shape logs after scipy's inverse
+#: (``_polish_large_shape``)
+_POLISH_STEPS = 2
+
+
+def _polish_large_shape(y: Any, alpha: Any, p: Any, lower: Any) -> Any:
+    """The standard-Gamma time ``y`` at which the lower tail is ``p``
+    (where ``lower``) or the upper tail is ``p`` (elsewhere), polished at
+    a shape of ``LARGE_SHAPE`` or more by Newton steps on the accurate
+    logs of the incomplete gamma (``gamma_logs_large``, #1300). scipy's
+    inverses solve its own ``gammainc``/``gammaincc``, which are off by
+    up to 5.5e3 ulps there (at shape 1e3 and a tail of 1e-30), so they
+    did not invert ``sf``. Each step is on the log of the side asked for,
+    ``log P(y) - log p`` over its derivative ``f(y) / P(y)``."""
+    a, y_arr, p_arr, low = (
+        onp.array(v, dtype=float if i < 3 else bool)
+        for i, v in enumerate(onp.broadcast_arrays(alpha, y, p, lower))
+    )
+    todo = (
+        (a >= LARGE_SHAPE)
+        & onp.isfinite(a)
+        & (y_arr > 0)
+        & onp.isfinite(y_arr)
+        & (p_arr > 0)
+        & (p_arr < 1)
+    )
+    if not onp.any(todo):
+        return y
+    at, yt, pt, lt = a[todo], y_arr[todo], p_arr[todo], low[todo]
+    target = onp.log(pt)
+    for _ in range(_POLISH_STEPS):
+        log_p, log_q = gamma_logs_large(at, yt)
+        log_f = log_poisson_mass(at - 1.0, yt)
+        side = onp.where(lt, log_p, log_q)
+        # d log P / dy = f / P; d log Q / dy = -f / Q
+        slope = onp.exp(log_f - side) * onp.where(lt, 1.0, -1.0)
+        step = (side - target) / slope
+        yt = onp.where(onp.isfinite(step), yt - step, yt)
+    y_arr[todo] = yt
+    return y_arr if y_arr.ndim else float(y_arr)
 
 
 class Gamma_(OptimisedFitMixin, ParametricFitter):
@@ -679,7 +727,8 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.qf(u, 3, 4)
         array([0.27551633, 0.38376105, 0.47844395, 0.57126923, 0.66851508])
         """
-        return gammaincinv(alpha, u) / beta
+        y = _polish_large_shape(gammaincinv(alpha, u), alpha, u, True)
+        return y / beta
 
     def isf(self, s: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""The inverse survival function: the time at which the survival
@@ -701,8 +750,9 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         x = np.where(
             upper,
             gammainccinv(alpha, np.where(upper, s, 0.25)),
-            self.qf(np.where(upper, 0.5, 1.0 - s), alpha, beta) * beta,
+            gammaincinv(alpha, np.where(upper, 0.5, 1.0 - s)),
         )
+        x = _polish_large_shape(x, alpha, s, False)
         return x / beta
 
     def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
@@ -843,6 +893,15 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             x_pos = np.where(at_inf, 1.0, x_pos)
         log_scale = alpha * np.log(beta) - agammaln(alpha)
         inside = log_scale + (alpha - 1) * np.log(x_pos) - beta * x_pos
+        large = onp.asarray(getval(alpha)) >= LARGE_SHAPE
+        if onp.any(large):
+            # The saddle-point form (#1300): at shape 1e3 the terms above
+            # are of size 7e3 and cancel to 20, and their rounding was
+            # 5.7e-12 of the density (1e-3 of the log density at 1e12).
+            # Each branch at a safe shape, for the gradient.
+            a_l = np.where(large, alpha, LARGE_SHAPE)
+            saddle = np.log(beta) + log_gamma_density_large(a_l, beta * x_pos)
+            inside = np.where(large, saddle, inside)
         if np.any(at_inf):
             inside = np.where(at_inf, -np.inf, inside)
         return on_support(

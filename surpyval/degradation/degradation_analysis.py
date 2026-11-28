@@ -55,7 +55,12 @@ from .degradation_model import (  # noqa: F401
     _is_regression_fitter,
     _path_at,
 )
-from .path_models import PATH_MODELS, PathModel, get_path_model
+from .path_models import (
+    PATH_MODELS,
+    PathModel,
+    SplinePath,
+    get_path_model,
+)
 from .population import reml_estimate, reml_estimate_nonlinear
 from .rul import InducedFailureDistribution, RULPrediction  # noqa: F401
 from .step_stress import (
@@ -314,15 +319,26 @@ class DegradationAnalysis_(FitterRepr):
             extrapolation uses the paths' information, censoring does
             not (use it when the extrapolation is in doubt, a path model
             that may not hold past the readings).
-        censored_units : array like, optional
-            Units right censored at their last reading whatever
-            ``running`` says: units known to be still running whose
-            paths cross only after their last reading, and units that
-            failed another way (a hard failure, removal) while short of
-            the threshold, whose failure at the threshold was never
-            seen. A unit listed here whose fitted path reaches the
-            threshold by its last reading has failed by the threshold's
-            definition, and is refused.
+        censored_units : array like, dict or "data", optional
+            Units right censored whatever ``running`` says: units known
+            to be still running whose paths cross only after their last
+            reading, and units that failed another way (a hard failure,
+            removal) while short of the threshold, whose failure at the
+            threshold was never seen. A list censors each at its last
+            reading. A dict, ``{unit: time}``, censors each at the time
+            it was last known to be running, at or after its last reading
+            (the study ended at 60, the last reading was at 52); a time
+            of ``None`` is its last reading. ``"data"``, with ``x`` a
+            :class:`~surpyval.SurpyvalData` holding the readings, reads
+            the data's right-censored units (``c = 1``) as still running
+            at their ``x``; its other rows are left to the threshold.
+            Refused: a unit whose fitted path reaches the threshold by
+            its last reading (it has failed by the threshold's
+            definition); a time before the unit's last reading; a time
+            at or past the path's crossing (by its path the unit failed
+            unseen before then: give an earlier time, or leave the unit
+            out to take the crossing as its failure); and a time with
+            ``acceleration="clock"``, whose paths are on another clock.
 
         Returns
         -------
@@ -336,7 +352,17 @@ class DegradationAnalysis_(FitterRepr):
         )
         check_option("running", running, ("extrapolate", "censor"))
         units = np.unique(i_arr)
-        marked = self._marked_units(censored_units, units)
+        marked, censor_at = self._marked_units(censored_units, units)
+        if acceleration == "clock" and np.isfinite(censor_at).any():
+            raise ValueError(
+                "censored_units gives unit(s) {} a time they were running "
+                "at, and with acceleration='clock' the paths are on the "
+                "reference-stress clock, which the stress after the last "
+                "reading would set. List the units instead (censored at "
+                "their last readings).".format(
+                    units[np.isfinite(censor_at)].tolist()
+                )
+            )
         is_best = isinstance(path, str) and path.lower() == "best"
         if acceleration == "clock":
             self._check_clock_arguments(Z, links, is_best, distribution, x_arr)
@@ -348,6 +374,16 @@ class DegradationAnalysis_(FitterRepr):
             )
         else:
             path_model = get_path_model(path)
+        if isinstance(path_model, SplinePath) and not path_model.is_placed:
+            if acceleration == "clock":
+                raise ValueError(
+                    "With acceleration='clock' the path is fitted on the "
+                    "reference-stress time, which is not known before the "
+                    "fit, so a spline's knots cannot be placed from the "
+                    "measurement times: give them in that time, "
+                    "SplinePath(knots=[...], boundary=(lo, hi))."
+                )
+            path_model = path_model.placed(x_arr)
 
         # Stage-3 accelerated degradation: stress speeds up every unit's
         # clock, and the path is fitted on the reference-stress time.
@@ -471,6 +507,7 @@ class DegradationAnalysis_(FitterRepr):
             units,
             running,
             marked,
+            censor_at,
         )
         life_model = self._fit_life_model(
             distribution, how, pseudo_failure_times, c, Z_units, refit
@@ -503,6 +540,14 @@ class DegradationAnalysis_(FitterRepr):
             stress_ref=z_ref,
             running=running,
             censored_units=units[marked].tolist() if marked.any() else None,
+            censored_at=(
+                {
+                    unit: float(time)
+                    for unit, time in zip(units.tolist(), censor_at)
+                    if np.isfinite(time)
+                }
+                or None
+            ),
             extrapolated=extrapolated,
         )
         # Recorded so the bootstrap confidence bounds can rerun the pipeline
@@ -735,6 +780,7 @@ class DegradationAnalysis_(FitterRepr):
         units: npt.NDArray,
         running: str,
         marked: npt.NDArray,
+        censor_at: npt.NDArray,
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
         """``(pseudo_failure_times, c, extrapolated)``: each unit's time,
         censoring, and whether its failure time is a crossing past its
@@ -746,7 +792,10 @@ class DegradationAnalysis_(FitterRepr):
         its last time (each with a warning). A unit whose crossing is
         past its last reading is right censored at that reading when it
         is ``marked`` (``censored_units``), or with ``running="censor"``
-        when its last reading is short of the threshold.
+        when its last reading is short of the threshold. A marked unit
+        with a finite ``censor_at`` is censored at that time instead of
+        its last reading (refused before the reading, or at or past the
+        path's crossing).
         """
         pseudo = fits.pseudo
         events = np.isfinite(pseudo) & (pseudo > 0)
@@ -783,7 +832,8 @@ class DegradationAnalysis_(FitterRepr):
             warnings.warn(
                 "The fitted degradation path(s) of unit(s) {} never reach "
                 "the threshold {}; these units are treated as right "
-                "censored at their last observed time".format(
+                "censored at their last observed time (or the time "
+                "censored_units gives them)".format(
                     units[never].tolist(), threshold
                 ),
                 stacklevel=caller_stacklevel(),
@@ -814,6 +864,16 @@ class DegradationAnalysis_(FitterRepr):
                     np.round(pseudo_failure_times[contradicted], 6).tolist(),
                 )
             )
+        given = marked & np.isfinite(censor_at)
+        self._check_running_at(
+            given, censor_at, pseudo, events, fits.last_time, units, threshold
+        )
+        censor_time = np.where(given, censor_at, fits.last_time)
+        # a unit whose path never reaches the threshold is censored at the
+        # time it was known to be running at, where one was given
+        pseudo_failure_times = np.where(
+            never & given, censor_at, pseudo_failure_times
+        )
         to_censor = marked & beyond
         if running == "censor" and beyond.any():
             side = _failure_side(
@@ -850,29 +910,116 @@ class DegradationAnalysis_(FitterRepr):
                     )
                 )
             pseudo_failure_times = np.where(
-                to_censor, fits.last_time, pseudo_failure_times
+                to_censor, censor_time, pseudo_failure_times
             )
             c = np.where(to_censor, 1, c)
         return pseudo_failure_times, c, beyond & ~to_censor
 
     @staticmethod
+    def _check_running_at(
+        given: npt.NDArray,
+        censor_at: npt.NDArray,
+        pseudo: npt.NDArray,
+        events: npt.NDArray,
+        last_time: npt.NDArray,
+        units: npt.NDArray,
+        threshold: float,
+    ) -> None:
+        """Refuse a "still running at" time before the unit's last
+        reading, or at or past its path's crossing of the threshold
+        (between the last reading and that time: by its path the unit
+        failed unseen)."""
+        early = given & (censor_at < last_time)
+        if early.any():
+            raise ValueError(
+                "censored_units gives unit(s) {} as running at {}, before "
+                "their last readings at {}. Give each a time at or after "
+                "its last reading, or None to censor it there.".format(
+                    units[early].tolist(),
+                    censor_at[early].tolist(),
+                    last_time[early].tolist(),
+                )
+            )
+        crossed = given & events & (pseudo <= censor_at)
+        if crossed.any():
+            raise ValueError(
+                "censored_units gives unit(s) {} as running at {}, but "
+                "their fitted paths reach the threshold {} after their "
+                "last readings and before then (at {}), so by their paths "
+                "they failed unseen. Give each the latest time it is known "
+                "to have been running before that crossing (None for its "
+                "last reading), or leave it out of censored_units to take "
+                "the crossing as its failure time; or check the threshold "
+                "and the path model.".format(
+                    units[crossed].tolist(),
+                    censor_at[crossed].tolist(),
+                    threshold,
+                    np.round(pseudo[crossed], 6).tolist(),
+                )
+            )
+
+    @staticmethod
     def _marked_units(
-        censored_units: npt.ArrayLike | None, units: npt.NDArray
-    ) -> npt.NDArray:
-        """Which of ``units`` ``censored_units`` lists (all False when
-        it is None); a label with no readings is refused."""
+        censored_units: Any, units: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """``(marked, censor_at)``: which of ``units`` ``censored_units``
+        lists (all False when it is None), and the time each was given
+        as running at (NaN where none: its last reading). A label with no
+        readings is refused, and so is a time that is not a finite
+        number."""
         marked = np.zeros(len(units), dtype=bool)
+        censor_at = np.full(len(units), np.nan)
         if censored_units is None:
-            return marked
-        listed = np.atleast_1d(np.asarray(censored_units, dtype=object))
+            return marked, censor_at
+        if isinstance(censored_units, str) and censored_units == "data":
+            raise ValueError(
+                "censored_units='data' reads the censoring of a "
+                "SurpyvalData holding the readings, given as x; with "
+                "arrays, list the units still running (or give "
+                "{unit: time} for the time each was last known to be "
+                "running)."
+            )
+        if isinstance(censored_units, str):
+            raise ValueError(
+                "censored_units={!r}: give a list of units, a dict "
+                "{{unit: time}}, or 'data' with x a SurpyvalData holding "
+                "the readings (its right-censored units are then still "
+                "running at their x).".format(censored_units)
+            )
+        if isinstance(censored_units, dict):
+            items = list(censored_units.items())
+        else:
+            listed = np.atleast_1d(np.asarray(censored_units, dtype=object))
+            items = [(label, None) for label in listed.tolist()]
         known = {unit: idx for idx, unit in enumerate(units.tolist())}
         missing = []
-        for label in listed.tolist():
+        bad = []
+        for label, time in items:
             idx = known.get(label)
             if idx is None:
                 missing.append(label)
+                continue
+            marked[idx] = True
+            if time is None:
+                continue
+            if (isinstance(time, np.ndarray) and time.ndim == 0) or isinstance(
+                time, np.generic
+            ):
+                time = time.item()
+            if (
+                not isinstance(time, (int, float))
+                or isinstance(time, bool)
+                or not np.isfinite(time)
+            ):
+                bad.append((label, time))
             else:
-                marked[idx] = True
+                censor_at[idx] = float(time)
+        if bad:
+            raise ValueError(
+                "censored_units gives {} as the time(s) the unit(s) were "
+                "running at; each must be a finite number (or None for "
+                "the unit's last reading).".format(bad)
+            )
         if missing:
             raise ValueError(
                 "censored_units lists {} with no readings: give the labels "
@@ -880,7 +1027,7 @@ class DegradationAnalysis_(FitterRepr):
                     missing, named(units.tolist())
                 )
             )
-        return marked
+        return marked, censor_at
 
     @staticmethod
     def _fit_life_model(
@@ -1366,6 +1513,9 @@ class DegradationAnalysis_(FitterRepr):
         DegradationModel
             The fitted degradation model.
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         refuse_column_names(fit_kwargs, "x", "y", "i")
         y_col = readings_column(m_col, y_col)
         cols = None

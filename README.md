@@ -32,6 +32,11 @@ SurPyval also offers many different distributions for users, and because of the 
 | **Normal**    | No |
 | **LogNormal** | Yes |
 | **Gamma**     | Yes |
+| **Generalised gamma** (Prentice, as flexsurv) | Yes |
+| **Generalised F** (Prentice, as flexsurv) | Yes |
+| **Gompertz** (a negative shape allowed: a plateau) | Yes |
+| **Inverse Gaussian** | Yes |
+| **Birnbaum-Saunders** (fatigue-life) | Yes |
 | **Beta**      | No |
 | **Beta (4 parameter)** | No |
 | **Uniform**   | No |
@@ -53,6 +58,10 @@ This project grew out of a reliability engineering project, where parameters hav
 
 Different fields name the same ideas differently: a *failure* is an *event*, a *unit* is a *subject*, *reliability* is *survival* and a *suspension* is a *right censored* observation. The API has one name for each (`c` for the censoring flag, `sf` for the survival function), and the documentation's [glossary](https://surpyval.readthedocs.io/en/latest/Glossary.html) maps the vocabularies to each other.
 
+## What SurPyval is, and is not
+
+SurPyval is a statistics package for time-to-event data. It is not a machine-learning framework, a Bayesian sampler or a deep-learning framework. It has survival trees and forests, penalised fits and prediction scores because they are statistical models and measures; it has no tuning, pipeline or cross-validation tooling, and no boosting. It does Bayesian fits by closed form, grid and the Laplace approximation; sampling goes through PyMC (`surpyval.pymc`). It has no networks or training loops; `surpyval.torch` gives its likelihood as a loss to people who train their own.
+
 # The Model Landscape
 
 SurPyval's models can be placed on a set of orthogonal axes. The table below
@@ -69,7 +78,7 @@ not yet built.
 | Time | Recurrence | Events | Covariates | Parametric | Semi-/Nonparametric |
 | --- | --- | --- | --- | --- | --- |
 | Continuous time | Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` |
-| Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `QuantileRegression`, `CoxFrailty`, `CoxMixedEffects`; survival trees and forests (`surpyval.ml`) |
+| Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `CoxAalen`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `RankAFT`, `QuantileRegression`, `CoxFrailty`, `CoxMixedEffects`; survival trees and forests (`surpyval.ml`) |
 | Continuous time | Single event | Competing | Without | `ParametricCompetingRisks` | `CompetingRisks` (CIF, with confidence bounds) |
 | Continuous time | Single event | Competing | With | `ParametricCompetingRisksRegression` (a parametric regression per cause) | `FineGray`, `CompetingRisksProportionalHazards` (with standard errors and `summary()`) |
 | Continuous time | Recurrent | Single | Without | `HPP`; NHPP: `CrowAMSAA` (with growth projection), `Duane`, `CoxLewis`; renewal, with each unit's next failure: `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI` | `NonParametricCounting` (MCF) |

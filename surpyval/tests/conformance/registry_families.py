@@ -38,6 +38,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     reg_data,
     stratified_reg_data,
     stress_data,
+    tail_censored_reg_data,
     uni_data,
 )
 from surpyval.univariate.regression import kinds
@@ -234,7 +235,9 @@ DECLARED_ATTRIBUTES = frozenset(
         "surpyval.univariate.regression.ProportionalOddsModel",
         "surpyval.univariate.regression.AdditiveHazardsModel",
         "surpyval.univariate.regression.AalenAdditiveModel",
+        "surpyval.univariate.regression.CoxAalenModel",
         "surpyval.univariate.regression.BuckleyJamesModel",
+        "surpyval.univariate.regression.RankAFTModel",
         "surpyval.univariate.regression.QuantileRegressionModel",
         "surpyval.univariate.competing_risks.regression.fine_gray"
         ".FineGrayModel",
@@ -340,12 +343,20 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.univariate.regression.BuckleyJamesModel": (
         "the Buckley-James estimating equations, by iterated least squares"
     ),
+    "surpyval.univariate.regression.RankAFTModel": (
+        "the induced-smoothed Gehan or log-rank estimating equations, by "
+        "Newton's method"
+    ),
     "surpyval.univariate.regression.QuantileRegressionModel": (
         "censored quantile regression's estimating equations, a linear "
         "programme at each level of a grid"
     ),
     "surpyval.univariate.regression.AalenAdditiveModel": (
         "Aalen's estimator, a least-squares fit at each event time"
+    ),
+    "surpyval.univariate.regression.CoxAalenModel": (
+        "the Cox-Aalen estimating equations: a least-squares fit at each "
+        "event time inside Newton's method on the score"
     ),
     "surpyval.ml.SurvivalTree": "a tree of greedy splits",
     "surpyval.ml.RandomSurvivalForest": "an ensemble of trees",
@@ -385,6 +396,45 @@ NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
     "surpyval.bayes.BayesianParametric": (
         "a posterior, not a maximum: the grid's check of its own accuracy "
         "takes the place of a verified maximum"
+    ),
+    "surpyval.bayes.BayesianRegression": (
+        "a posterior, not a maximum: the Laplace engine's checks against "
+        "the exact posterior take the place of a verified maximum"
+    ),
+    "surpyval.bayes.regression.BayesianMixtureCure": (
+        "a posterior, not a maximum: the Laplace engine's checks against "
+        "the exact posterior take the place of a verified maximum"
+    ),
+    **{
+        f"surpyval.recurrent.{_name}": (
+            "a posterior, not a maximum: the grid's check of its own "
+            "accuracy (or the closed form, or the Laplace engine's checks) "
+            "takes the place of a verified maximum"
+        )
+        for _name in (
+            "BayesianRecurrence",
+            "BayesianProportionalIntensity",
+            "BayesianCauseSpecific",
+        )
+    },
+    **{
+        _path: (
+            "a posterior, not a maximum: each cause's (transition's) "
+            "fit_bayes checks its own engine, and a joint fit's grid checks "
+            "its own accuracy, in place of a verified maximum"
+        )
+        for _path in (
+            "surpyval.univariate.competing_risks.parametric.bayes"
+            ".BayesianCompetingRisks",
+            "surpyval.univariate.competing_risks.regression.bayes"
+            ".BayesianCompetingRisksRegression",
+            "surpyval.multistate.bayes.BayesianMultiState",
+            "surpyval.multistate.bayes.BayesianMultiStateRegression",
+        )
+    },
+    "surpyval.recurrent.renewal.bayes.BayesianRenewal": (
+        "a posterior, not a maximum: the grid sliced along the repair "
+        "parameter checks its own accuracy in place of a verified maximum"
     ),
 }
 
@@ -888,6 +938,17 @@ def regression(name, fitter, data=reg_data, x=X_REG, Z=Z_REG, **kw):
     )
 
 
+def _cox_aalen_coefficients(model):
+    """A Cox-Aalen model's effects, one column per column of ``Z``: an
+    additive covariate's cumulative effect at each event time, a
+    multiplicative covariate's coefficient on every row."""
+    width = model.additive.size + model.multiplicative.size
+    out = np.empty((model.x.size, width))
+    out[:, model.additive] = model.A[:, 1:]
+    out[:, model.multiplicative] = model.beta
+    return out
+
+
 def _regression_draw(model, seed, Z, call_kwargs):
     """A regression's draw for the seed properties: 15 lifetimes at each
     of two covariate rows."""
@@ -1130,6 +1191,30 @@ def _frailty_family():
             },
         )
     )
+    # The inverse Gaussian and positive stable frailties, whose group
+    # integrals are closed forms of the Laplace transform's derivatives.
+    for family in ("inverse_gaussian", "positive_stable"):
+        fitter = sp.Frailty(sp.Weibull, family=family)
+        out.append(
+            replace(
+                out[0],
+                name=f"WeibullFrailty[{family}]",
+                fitters=(),
+                fit=_fit(fitter),
+                paths={
+                    "fit_from_df": lambda d, f=fitter: f.fit_from_df(
+                        pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                            x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                        ),
+                        x_col="x",
+                        group_col="g",
+                        Z_cols=["z0", "z1"],
+                        c_col="c",
+                        n_col="n",
+                    )
+                },
+            )
+        )
     return out
 
 
@@ -1304,6 +1389,44 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+
+    def _rank(weights):
+        def from_df(d):
+            return sp.RankAFT.fit_from_df(
+                pd.DataFrame(
+                    {"x": d["x"], "c": d["c"], "n": d["n"]}
+                    | {"z0": d["Z"][:, 0], "z1": d["Z"][:, 1]}
+                ),
+                x_col="x",
+                Z_cols=["z0", "z1"],
+                c_col="c",
+                n_col="n",
+                rank_weights=weights,
+            )
+
+        return regression(
+            "RankAFT" if weights == "gehan" else f"RankAFT[{weights}]",
+            sp.RankAFT,
+            fitters=("surpyval.RankAFT",) if weights == "gehan" else (),
+            fit=_fit(sp.RankAFT, rank_weights=weights),
+            model_class="surpyval.univariate.regression.RankAFTModel",
+            functions=("sf", "ff", "Hf"),
+            # As BuckleyJames: one covariate vector per call.
+            z_style="single",
+            paths={"fit_from_df": from_df},
+            exclude={
+                "df_hf_sf": "RankAFTModel has no hf or df",
+                "row_independence": "documented to take one covariate "
+                "vector per call, so there are no rows to mix up",
+                "random_sf": NO_RANDOM,
+            },
+            draw=None,
+            coefficients=_beta,
+            intercept=True,
+        )
+
+    rank_gehan = _rank("gehan")
+    rank_logrank = _rank("logrank")
     qr = regression(
         "QuantileRegression",
         sp.QuantileRegression,
@@ -1331,9 +1454,45 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+
+    def _cox_aalen_df(d, **kw):
+        return sp.CoxAalen.fit_from_df(
+            pd.DataFrame(
+                {"x": d["x"], "c": d["c"], "n": d["n"]}
+                | {"z0": d["Z"][:, 0], "z1": d["Z"][:, 1]}
+            ),
+            x_col="x",
+            c_col="c",
+            n_col="n",
+            additive=["z1"],
+            **kw,
+        )
+
+    cox_aalen = regression(
+        "CoxAalen",
+        sp.CoxAalen,
+        # Censored at the end (see tail_censored_reg_data).
+        data=tail_censored_reg_data,
+        # The second column additive, the first multiplicative.
+        fit=_fit(sp.CoxAalen, additive=[1]),
+        model_class="surpyval.univariate.regression.CoxAalenModel",
+        functions=("sf", "ff", "Hf"),
+        paths={
+            "fit_from_df": lambda d: _cox_aalen_df(d, Z_cols=["z0", "z1"]),
+            "formula": lambda d: _cox_aalen_df(d, formula="z0 + z1"),
+        },
+        exclude={"df_hf_sf": "CoxAalenModel has no hf or df"},
+        rtol=1e-6,
+        # One column per column of Z: an additive covariate's cumulative
+        # effect at every event time, a multiplicative one's coefficient.
+        coefficients=_cox_aalen_coefficients,
+        intercept=True,
+    )
     aalen = regression(
         "AalenAdditive",
         sp.AalenAdditive,
+        # Censored at the end (see tail_censored_reg_data).
+        data=tail_censored_reg_data,
         model_class="surpyval.univariate.regression.AalenAdditiveModel",
         paths={
             "fit_from_df": lambda d: sp.AalenAdditive.fit_from_df(
@@ -1417,17 +1576,46 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+    # The inverse Gaussian and positive stable frailties (EM on the full
+    # likelihood with Breslow's ties).
+    laplace_cox = [
+        replace(
+            cox_frailty,
+            name=f"CoxFrailty[{family}]",
+            fitters=(),
+            fit=_fit(sp.CoxFrailty, family=family, tie_method="breslow"),
+            paths={
+                "fit_from_df": lambda d, fam=family: sp.CoxFrailty.fit_from_df(
+                    pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                        x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                    ),
+                    x_col="x",
+                    group_col="g",
+                    Z_cols=["z0", "z1"],
+                    c_col="c",
+                    n_col="n",
+                    family=fam,
+                    tie_method="breslow",
+                )
+            },
+        )
+        for family in ("inverse_gaussian", "positive_stable")
+    ]
     return [
         cox,
         strat,
         cox_frailty,
+        *laplace_cox,
         cox_me,
         ah,
         bj,
+        rank_gehan,
+        rank_logrank,
         qr,
         portnoy,
         po,
         aalen,
+        cox_aalen,
         interval_cox,
         cox_interval,
     ]

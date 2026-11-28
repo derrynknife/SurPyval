@@ -91,9 +91,21 @@ def test_all_flat_with_enough_data_is_the_reference_posterior():
     np.testing.assert_allclose(model.params, mle.params, rtol=0.05)
 
 
-def test_more_than_three_free_parameters_is_refused():
+def test_more_than_three_free_parameters_is_refused_by_the_grid():
     with pytest.raises(ValueError, match="1 to 3"):
-        sp.Weibull.fit_bayes(X, C, offset=True, lfp=True, priors=SHAPE)
+        sp.Weibull.fit_bayes(
+            X, C, offset=True, lfp=True, priors=SHAPE, method="grid"
+        )
+
+
+def test_more_than_three_free_parameters_goes_to_laplace():
+    """Three failures cannot place an offset and a limited-failure
+    proportion: the Laplace engine is used (past the grid's three
+    parameters) and says that its normal is a poor fit."""
+    with pytest.warns(UserWarning, match="Laplace approximation is poor"):
+        model = sp.Weibull.fit_bayes(X, C, offset=True, lfp=True, priors=SHAPE)
+    assert model.method == "laplace"
+    assert model.diagnostics["pareto_k"] > 0.7
 
 
 def test_every_parameter_fixed_is_refused():

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import numbers
+import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -10,6 +11,7 @@ import numpy as onp
 import numpy.typing as npt
 from autograd import grad, hessian, jacobian, value_and_grad
 from autograd.scipy.special import logsumexp as ag_logsumexp
+from autograd.tracer import getval
 from scipy.optimize import minimize
 from scipy.special import logsumexp
 from scipy.special import ndtri as z
@@ -119,19 +121,31 @@ class _FitMethod:
             dist: Any = None,
             m: int = 2,
             em: str = "plain",
+            hr: float | None = None,
         ) -> Any:
             if isinstance(x, objtype):
                 # ``MixtureModel.fit(model, x, ...)``: the unbound call of
                 # the instance method, which worked before #482.
-                return func(x, c, n, t, tl, tr, xl, xr, em=em)
+                return func(x, c, n, t, tl, tr, xl, xr, em=em, hr=hr)
             if dist is None:
                 raise ValueError(
                     "MixtureModel.fit needs `dist`, the distribution of "
                     "every component, e.g. "
                     "MixtureModel.fit(x, dist=surpyval.Weibull, m=2)"
                 )
+            _refuse_hr(hr)
             return func(
-                objtype(dist=dist, m=m), x, c, n, t, tl, tr, xl, xr, em=em
+                objtype(dist=dist, m=m),
+                x,
+                c,
+                n,
+                t,
+                tl,
+                tr,
+                xl,
+                xr,
+                em=em,
+                hr=hr,
             )
 
         # Keep the docstring but show this signature (with ``dist`` and
@@ -141,6 +155,20 @@ class _FitMethod:
         fit.__dict__.pop("__signature__", None)
         fit.__dict__.pop("_takes_unit", None)
         return takes_unit(accepts_surpyval_data(fit))
+
+
+def _refuse_hr(hr: Any) -> None:
+    """Refuse a hazard ratio other than 1: a mixture does not carry one."""
+    from . import _hazard_ratio
+
+    _hazard_ratio.refuse_unless_one(
+        hr,
+        "A MixtureModel",
+        "the mixture with a hazard ratio over its whole survival is "
+        "model.sf(t) ** hr (its hazard hr * model.hf(t)); to fit data "
+        "with a known hazard ratio, fit one distribution with "
+        "Dist.fit(..., hr=hr).",
+    )
 
 
 def _stack(values: list, n: int) -> npt.NDArray:
@@ -382,6 +410,7 @@ class MixtureModel(
         w: npt.ArrayLike | None = None,
         *,
         w_logits: npt.ArrayLike | None = None,
+        hr: float | None = None,
     ) -> MixtureModel:
         """
         A mixture of ``dist`` built from its components' parameters and
@@ -401,6 +430,10 @@ class MixtureModel(
             The weights as ``m - 1`` log-ratios to the last one,
             ``log(w_j / w_{m-1})`` (or ``m`` logits of any origin), the
             coordinates the covariance is fitted in; in place of ``w``.
+        hr : float, optional
+            Refused unless 1: a mixture does not carry a hazard ratio.
+            The mixture with one over its whole survival is
+            ``model.sf(t) ** hr``.
 
         Returns
         -------
@@ -417,6 +450,7 @@ class MixtureModel(
         >>> mm.sf([5, 40]).round(4)
         array([0.9336, 0.4647])
         """
+        _refuse_hr(hr)
         rows = np.atleast_2d(np.asarray(params, dtype=float))
         if rows.ndim != 2 or rows.shape[1] != dist.k:
             raise ValueError(
@@ -734,9 +768,7 @@ class MixtureModel(
         like_o = self.dist.df(data.x_o, *params)
         like_r = self.dist.sf(data.x_r, *params)
         like_l = self.dist.ff(data.x_l, *params)
-        like_i = self.dist.ff(data.x_ir, *params) - self.dist.ff(
-            data.x_il, *params
-        )
+        like_i = np.exp(self._log_windows(params, data.x_il, data.x_ir))
         like = np.zeros(len(self.data.x))
         # The observation masks, not the raw codes: a censored row with a
         # finite truncation bound on its censored side is an interval
@@ -779,41 +811,63 @@ class MixtureModel(
             if data.mask_l.any():
                 pieces.append(dist.log_ff(data.x_l, *params))
             if data.mask_i.any():
-                window = dist.ff(data.x_ir, *params) - self._ff_lower(params)
-                positive = window > 0
-                pieces.append(
-                    np.where(
-                        positive,
-                        np.log(np.where(positive, window, 1.0)),
-                        LOG_FLOOR,
-                    )
-                )
+                pieces.append(self._log_windows(params, data.x_il, data.x_ir))
             out = np.concatenate(pieces)[self._row_order()]
             out = np.where(np.isnan(out), LOG_FLOOR, out)
         return np.maximum(out, LOG_FLOOR)
 
-    def _ff_lower(self, params: Any) -> Any:
-        """One component's CDF at the interval rows' lower ends, exactly 0
-        at or below the support's lower edge without evaluating it there.
+    def _log_windows(
+        self, params: Any, lo: npt.NDArray, hi: npt.NDArray
+    ) -> Any:
+        """The log of one component's probability of each window ``(lo,
+        hi]``, floored at ``LOG_FLOOR`` where it has none.
 
-        The value is the same, but the derivative is not: a Weibull's
-        ``(0 / alpha) ** beta`` has a NaN gradient in ``alpha`` for
-        ``beta < 1`` (``inf * 0``), so with one ``[0, 1]`` interval row the
-        M-step fell back to finite differences and the polish stopped
-        after one evaluation, unable to verify (or reach) the maximum
-        (#582). Those rows are evaluated at their upper end instead (a
-        point inside the support, whose value is discarded), as
-        ``ParametricFitter.ll_interval_or_truncated`` does.
+        Taken as the univariate fit takes it
+        (``ParametricFitter._window_log_probs``): from the CDFs below the
+        component's median, and in log space from the survival function
+        above it, ``log S(lo) + log(1 - S(hi) / S(lo))``, where the CDFs
+        are both near 1 and their difference had lost its digits (a
+        window of probability 8e-11 deep in a BirnbaumSaunders'
+        upper tail was 4.4e-9 too large). A bound at or below the
+        support's lower edge, or infinite, is taken as its limit without
+        being evaluated (its derivative could be NaN: a Weibull's ``(0 /
+        alpha) ** beta`` for ``beta < 1``, #582).
+
+        A window the component gives no probability at all (its log is
+        ``-inf``) is evaluated again as the whole line, a log of 0 whose
+        gradient is 0, and floored: its ``-inf`` would put a NaN into
+        the gradient of the search. A row that every component floors so
+        adds ``LOG_FLOOR`` under each, and nothing to the gradient; the
+        fit warns with their count (:meth:`_warn_if_unexplained_rows`).
+
+        For a very narrow window (a width about 1e-9 of its ends) the
+        difference itself is formed from two values that agree to nine
+        digits, so its log is good to about 1e-10 to 1e-8 relative on
+        either branch.
         """
-        data = self.data
-        lower = float(self.dist.support[0])
-        if np.isnan(lower):
-            return self.dist.ff(data.x_il, *params)
-        inside = data.x_il > lower
-        if inside.all():
-            return self.dist.ff(data.x_il, *params)
-        safe = np.where(inside, data.x_il, data.x_ir)
-        return np.where(inside, self.dist.ff(safe, *params), 0.0)
+        dist = self.dist
+        dist_params = [params[j] for j in range(dist.k)]
+        extra = (0.0, 0.0, 1.0)
+        fns = (dist.ff, dist.log_sf, dist.log_ff)
+        with np.errstate(all="ignore"):
+            out = dist._window_log_probs(
+                dist._window_inputs(lo, hi, 0.0, dist_params),
+                dist_params,
+                extra,
+                fns,
+            )
+            empty = ~onp.isfinite(getval(out))
+            if not empty.any():
+                return out
+            lo = onp.where(empty, -onp.inf, lo)
+            hi = onp.where(empty, onp.inf, hi)
+            out = dist._window_log_probs(
+                dist._window_inputs(lo, hi, 0.0, dist_params),
+                dist_params,
+                extra,
+                fns,
+            )
+        return np.where(empty, LOG_FLOOR, out)
 
     def _row_order(self) -> npt.NDArray:
         """The index that puts the rows grouped by kind (exact, right,
@@ -837,24 +891,13 @@ class MixtureModel(
             ]
         )
 
-    def _window_prob(self, params_i: npt.NDArray) -> Any:
-        """One component's probability of landing in each observation's
-        truncation window ``(tl, tr]`` -- the per-component piece of the
-        truncation correction."""
-        tl, tr = self.data.tl, self.data.tr
-        lo = 0.0
-        fin = np.isfinite(tl)
-        if fin.any():
-            lo = np.where(
-                fin, self.dist.ff(np.where(fin, tl, 0.0), *params_i), 0.0
-            )
-        hi = 1.0
-        fin = np.isfinite(tr)
-        if fin.any():
-            hi = np.where(
-                fin, self.dist.ff(np.where(fin, tr, 0.0), *params_i), 1.0
-            )
-        return hi - lo
+    def _log_window_prob(self, params_i: npt.NDArray) -> Any:
+        """The log of one component's probability of landing in each
+        observation's truncation window ``(tl, tr]`` -- the per-component
+        piece of the truncation correction, in log space as
+        :meth:`_log_windows` takes it (a ``tl`` deep in the upper tail
+        had been ``1 - F(tl)``)."""
+        return self._log_windows(params_i, self.data.tl, self.data.tr)
 
     def neg_ll_of(self, w: npt.NDArray, params: Any) -> Any:
         """Observed negative log-likelihood of the mixture: counts multiply
@@ -871,10 +914,15 @@ class MixtureModel(
         with np.errstate(all="ignore"):
             ll = np.sum(self.data.n * ag_logsumexp(log_r, axis=0))
             if self._truncated:
-                win = 0.0
-                for i in range(self.m):
-                    win = win + w[i] * self._window_prob(params[i])
-                ll = ll - np.sum(self.data.n * np.log(win))
+                # log sum_i w_i P_i(window), the mixture's probability of
+                # each row's window, by log-sum-exp as the rows are
+                log_win = np.array(
+                    [
+                        np.log(w[i]) + self._log_window_prob(params[i])
+                        for i in range(self.m)
+                    ]
+                )
+                ll = ll - np.sum(self.data.n * ag_logsumexp(log_win, axis=0))
         return -ll
 
     def _Q(self, params: Any) -> Any:
@@ -1330,6 +1378,47 @@ class MixtureModel(
         self.params = params
         self.w = np.ones(shape=(self.m)) / self.m
 
+    @staticmethod
+    def fit_bayes(*args: Any, **kwargs: Any) -> Any:
+        """
+        Refuses: a mixture has no Bayesian fit in SurPyval.
+
+        Its likelihood is the same whichever component is called the
+        first (label switching), so its posterior has a peak for every
+        numbering of the components, and neither a single normal (the
+        Laplace approximation) nor the grid describes it. Sample it with
+        PyMC through :func:`surpyval.pymc.mixture_likelihood`, which
+        numbers the components in order of one parameter (by default
+        the family's scale or location, component 0 the shortest-lived)
+        so that the labels cannot switch.
+
+        Examples
+        --------
+        >>> import surpyval as sp
+        >>> sp.MixtureModel.fit_bayes(
+        ...     [1, 2, 3], dist=sp.Weibull)  # doctest: +ELLIPSIS
+        Traceback (most recent call last):
+        ...
+        ValueError: A mixture has no fit_bayes: ...
+        """
+        raise ValueError(
+            "A mixture has no fit_bayes: its likelihood is the same "
+            "whichever component is called the first, so the posterior "
+            "has a peak for every numbering of the components (label "
+            "switching), which the Laplace approximation (one normal) and "
+            "the grid cannot describe. Sample it with PyMC: "
+            "surpyval.pymc.mixture_likelihood(dist, x=..., weights=w, "
+            "alpha=..., beta=...) inside a pm.Model, which numbers the "
+            "components in order of one parameter (by default the "
+            "family's scale or location, so that component 0 has the "
+            "shortest life: a Weibull's alpha increasing) so that the "
+            "labels cannot switch; see 'Mixtures' in PyMC with SurPyval. "
+            "For a "
+            "cured fraction (a single component and units that never "
+            "fail), dist.fit_bayes(..., lfp=True) or "
+            "MixtureCure(dist).fit_bayes is the Bayesian fit."
+        )
+
     @_FitMethod
     @takes_unit
     @accepts_surpyval_data
@@ -1345,6 +1434,7 @@ class MixtureModel(
         xr: npt.ArrayLike | None = None,
         *,
         em: str = "plain",
+        hr: float | None = None,
     ) -> Any:
         """
         Fit the mixture to data.
@@ -1417,6 +1507,10 @@ class MixtureModel(
             both reach one, to the precision of its verification; it may,
             like any change of path, reach a different local maximum.
             Truncated data is fitted directly, not by EM, and ignores it.
+        hr : float, optional
+            Refused unless 1 (keyword only): a mixture does not carry a
+            hazard ratio. To fit data with a known one, fit a single
+            distribution, ``Dist.fit(..., hr=hr)``.
 
         Returns
         -------
@@ -1453,6 +1547,7 @@ class MixtureModel(
               beta: [ 1.83105154 12.01392721]
         """
 
+        _refuse_hr(hr)
         check_option("em", em, EM_METHODS)
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
 
@@ -1501,7 +1596,42 @@ class MixtureModel(
             warn_unverified("The mixture fit", unverified, "check the fit")
         else:
             self.maximum = "verified"
+        self._warn_if_unexplained_rows()
         return self
+
+    def _warn_if_unexplained_rows(self) -> None:
+        """Warn, with the count, where the fitted mixture gives some rows
+        probability 0 under every component (to double precision, even in
+        log space): each such row contributes the floor ``LOG_FLOOR`` to
+        the log-likelihood under every component, and nothing to its
+        gradient, so the fit is the fit to the other rows. (A row one
+        component explains is not counted: the mixture explains it.)"""
+        data = self.data
+        with np.errstate(all="ignore"):
+            floored = np.array(
+                [
+                    np.asarray(
+                        self._component_log_likelihood(self.params[i]), float
+                    )
+                    <= LOG_FLOOR
+                    for i in range(self.m)
+                ]
+            )
+        rows = floored.all(axis=0) & (data.n > 0)
+        if not rows.any():
+            return
+        count, units = int(rows.sum()), int(data.n[rows].sum())
+        warnings.warn(
+            f"{count} row(s) ({units} observation(s)) have probability 0 "
+            "under every component at the fitted parameters, even in log "
+            f"space: each adds the floor {LOG_FLOOR:g} to the "
+            "log-likelihood and nothing to its gradient, so the fit "
+            "ignores them. Check those rows (a time outside every "
+            "component's support, or a window far in every tail), or fit "
+            "another distribution or more components.",
+            UserWarning,
+            stacklevel=caller_stacklevel(),
+        )
 
     def _warn_if_lfp_limit(self) -> bool:
         """Warn when a component has run off past the data (#650), and
@@ -2778,7 +2908,8 @@ class MixtureModel(
         Parameters
         ----------
         heuristic : {'Blom', 'Median', 'ECDF', 'Modal', 'Midpoint', 'Mean', \
-            'Weibull', 'Benard', 'Beard', 'Hazen', 'Gringorten', 'None',\
+            'Weibull', 'Benard', 'Exact', 'Beard', 'Hazen', 'Gringorten',\
+            'None',\
             'Tukey', 'DPW', 'Fleming-Harrington', 'Kaplan-Meier',\
             'Nelson-Aalen', 'Filliben', 'Larsen', 'Turnbull'}, optional
             The method that the plotting point on the probability plot will

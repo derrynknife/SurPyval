@@ -58,12 +58,14 @@ _TAGGED_MODELS: dict[str, str] = {
     "AalenAdditiveModel": (
         "surpyval.univariate.regression.additive_hazards.aalen_additive"
     ),
+    "CoxAalenModel": "surpyval.univariate.regression.cox_aalen.cox_aalen",
     "AdditiveHazardsModel": (
         "surpyval.univariate.regression.additive_hazards.additive_hazards"
     ),
     "BuckleyJamesModel": (
         "surpyval.univariate.regression.buckley_james.buckley_james"
     ),
+    "RankAFTModel": "surpyval.univariate.regression.rank_aft.rank_aft",
     "QuantileRegressionModel": (
         "surpyval.univariate.regression.quantile.quantile_regression"
     ),
@@ -83,10 +85,29 @@ _TAGGED_MODELS: dict[str, str] = {
     "MixtureCureModel": (
         "surpyval.univariate.regression.distributional.mixture_cure"
     ),
+    "PromotionTimeCureModel": (
+        "surpyval.univariate.regression.distributional.promotion_time"
+    ),
     "ZeroInflatedModel": (
         "surpyval.univariate.regression.distributional.zero_inflated"
     ),
     "BayesianParametric": "surpyval.bayes.model",
+    "BayesianRegression": "surpyval.bayes.regression",
+    "BayesianMixtureCure": "surpyval.bayes.regression",
+    "BayesianResult": "surpyval.bayes.result",
+    "BayesianRecurrence": "surpyval.recurrent.bayes",
+    "BayesianProportionalIntensity": "surpyval.recurrent.bayes",
+    "BayesianCauseSpecific": "surpyval.recurrent.bayes",
+    "BayesianRenewal": "surpyval.recurrent.renewal.bayes",
+    "BayesianProcessModel": "surpyval.degradation.bayes",
+    "BayesianCompetingRisks": (
+        "surpyval.univariate.competing_risks.parametric.bayes"
+    ),
+    "BayesianMultiState": "surpyval.multistate.bayes",
+    "BayesianMultiStateRegression": "surpyval.multistate.bayes",
+    "BayesianCompetingRisksRegression": (
+        "surpyval.univariate.competing_risks.regression.bayes"
+    ),
     "JointModel": "surpyval.univariate.joint.joint_model",
     "EquivalenceModel": "surpyval.univariate.equivalence",
     "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),
@@ -117,6 +138,10 @@ _TAGGED_MODELS: dict[str, str] = {
     "PanelMultiState": "surpyval.multistate.panel",
     "PanelMultiStateRegression": "surpyval.multistate.panel",
     "ParametricMultiState": "surpyval.multistate.parametric",
+    "ParametricPanelMultiState": "surpyval.multistate.parametric_panel",
+    "ParametricPanelMultiStateRegression": (
+        "surpyval.multistate.parametric_panel"
+    ),
     "ParametricMultiStateRegression": "surpyval.multistate.parametric",
     "CauseSpecificMCF": (
         "surpyval.recurrent.competing_risks.nonparametric.cause_specific_mcf"
@@ -129,6 +154,7 @@ _TAGGED_MODELS: dict[str, str] = {
         ".cause_specific_proportional_intensity"
     ),
     "NonParametricCounting": "surpyval.recurrent.nonparametric.mcf",
+    "DiscreteGrowthModel": "surpyval.recurrent.discrete_growth",
     "JelinskiMorandaModel": "surpyval.recurrent.software.jelinski_moranda",
     "JointFrailtyModel": "surpyval.recurrent.joint_frailty",
     "LittlewoodVerrallModel": (
@@ -180,6 +206,10 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
     "copula": (
         "surpyval.multivariate.parametric.copula.copula_model",
         "CopulaModel",
+    ),
+    "bivariate-non-parametric": (
+        "surpyval.multivariate.nonparametric.dabrowska",
+        "BivariateNonParametric",
     ),
 }
 
@@ -262,8 +292,14 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # (``"random_effects"`` other than ``"full"``): a v0.28 reader would
 # ignore the entry and read the parameters after the sds as a
 # correlation of every pair, misplacing every one after them.
+#
+# Schema 6 is the layout of v0.30, which a v0.29 reader (schema 5)
+# refuses. It is needed by a joint or degradation model whose path is a
+# spline (``"path_model"`` a dictionary of its knots, not a name): a
+# v0.29 reader has no such path, and would fail on the dictionary with a
+# ``TypeError`` or an unhelpful message rather than ask for an upgrade.
 # Every other document keeps the schema it had.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # The schema of a document that needs more than schema 1 but is not
 # weighted.
@@ -303,6 +339,8 @@ _SCHEMA_MEASUREMENTS = 4
 # a hazard ratio other than 1 (``"hr"``), which a v0.28 reader would load
 # without it.
 _SCHEMA_ACCELERATED_JOINT = 5
+# A joint or degradation model on a spline path (schema 6).
+_SCHEMA_SPLINE_PATH = 6
 
 # The most path parameters a v0.28 joint model may vary between items.
 _MAX_VARYING_V028 = 3
@@ -794,6 +832,10 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     """
     stamped_versions: list = []
     dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
+    if _SCHEMA_SPLINE_PATH in stamped_versions or any(
+        _is_spline_path(d) for d in dicts
+    ):
+        return _SCHEMA_SPLINE_PATH
     if _SCHEMA_ACCELERATED_JOINT in stamped_versions or any(
         _is_schema_5_joint(d) or _has_hazard_ratio(d) for d in dicts
     ):
@@ -832,6 +874,16 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     )
 
 
+def _is_spline_path(d: dict) -> bool:
+    """Whether ``d`` is a joint or degradation model on a spline path
+    (its ``"path_model"`` a dictionary, where a v0.29 reader takes a
+    name and fails on anything else): schema 6."""
+    return isinstance(d.get("path_model"), dict) and d.get("model") in (
+        "JointModel",
+        "DegradationModel",
+    )
+
+
 def _is_schema_5_joint(d: dict) -> bool:
     """Whether ``d`` is a joint model a v0.28 reader would get wrong: one
     with the accelerated survival part, fitted in two stages, with a
@@ -846,7 +898,11 @@ def _is_schema_5_joint(d: dict) -> bool:
     return (
         d.get("survival") == "AFT"
         or d.get("how") == "two-stage"
-        or (d.get("lag") or 0) > 0
+        or (
+            any(v > 0 for v in d["lag"].values())
+            if isinstance(d.get("lag"), dict)
+            else (d.get("lag") or 0) > 0
+        )
         or d.get("weight") is not None
         or len(d.get("varying") or ()) > _MAX_VARYING_V028
         or (d.get("random_effects") or "full") != "full"

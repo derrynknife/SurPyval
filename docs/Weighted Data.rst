@@ -358,7 +358,7 @@ row's term counted ``n * w`` times, and the covariance is the robust
 (sandwich) one. ``fit_from_df`` takes ``w_col``; a row dropped for a
 missing covariate drops its weight with it. The Wald bounds
 (``cb``, ``param_cb``, ``quantile_cb`` and a distributional model's
-``parameter_cb``) use the robust covariance, ``method="bootstrap"`` is
+``param_cb`` with ``Z``) use the robust covariance, ``method="bootstrap"`` is
 the case bootstrap, and the likelihood-ratio bounds, the
 ``likelihood_ratio_test()`` and the information criteria refuse.
 
@@ -425,8 +425,8 @@ below).
 Penalised fits with weights
 ---------------------------
 
-``CoxPH.fit_penalised``, ``CoxPH.fit_tvc_penalised`` and the parametric
-families' ``fit_penalised`` (``WeibullPH``, ``WeibullAFT``, ``WeibullPO``
+``CoxPH.fit(..., penalizer=...)``, ``CoxPH.fit_tvc(..., penalizer=...)`` and the parametric
+families' ``fit(..., penalizer=...)`` (``WeibullPH``, ``WeibullAFT``, ``WeibullPO``
 and the others) take ``w``. A penalised fit divides the log-likelihood by
 the number of units before adding the penalty; with weights that number is
 the weighted one, :math:`N_w = \sum n w`, and the covariates are

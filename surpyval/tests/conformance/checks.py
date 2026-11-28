@@ -34,6 +34,8 @@ from surpyval.tests.conformance.registry import (
 # How each function scales with the time unit: value(K x) * K**power
 # in the new unit equals value(x) in the old one.
 _POWER = {"hf": 1, "df": 1, "iif": 1, "total_iif": 1, "pdf": 2, "qf": -1}
+# A mean time between failures is a time
+_POWER.update(mtbf=-1, total_mtbf=-1)
 
 
 def unit_power(case, key):
@@ -70,6 +72,9 @@ def _ages_scaled(value, k):
     from collections.abc import Mapping
 
     if isinstance(value, Mapping):
+        if value and all(isinstance(v, Mapping) for v in value.values()):
+            # several markers' readings, {marker: {age: value}}
+            return {name: _ages_scaled(v, k) for name, v in value.items()}
         return {age * k: reading for age, reading in value.items()}
     if np.ndim(value) and len(value) and isinstance(value[0], Mapping):
         return [_ages_scaled(v, k) for v in value]

@@ -136,6 +136,15 @@ gives on the same columns:
     same = CrowAMSAA.fit(log["hours"], log["truck"], log["c"])
     assert np.allclose(from_log.params, same.params)
 
+The Bayesian fit reads a table the same way. ``fit_bayes_from_df`` (on the
+Poisson-process fitters, the proportional-intensity regressions and
+``CauseSpecificNHPP``) takes the column arguments of the fitter's own
+``fit_from_df``, and passes ``priors``, ``method``, ``importance`` and
+``points`` to ``fit_bayes`` unchanged, so the posterior is the one
+``fit_bayes`` gives on the same columns as arrays. A regression's
+coefficient is named by its covariate's column, in ``priors`` and in the
+result.
+
 From a SurpyvalData
 ~~~~~~~~~~~~~~~~~~~
 
@@ -380,8 +389,10 @@ observed time; either may be infinite. ``set_support`` returns the model, and
     assert (_m[3:5] == model.mcf([9])[0]).all()
 
 Confidence bounds come from ``mcf_cb``. By default they are two-sided 95%
-bounds, returned as ``[lower, upper]`` columns and computed on the log scale
-so they cannot go negative (``bound_type="normal"`` gives the symmetric
+bounds, returned as ``[lower, upper]`` columns (the array is a
+``ConfidenceBounds``, which also names them: ``bounds.lower`` and
+``bounds.upper``, and prints them labelled) and computed on the log scale
+so they cannot go negative (``bound_type="plain"`` gives the symmetric
 estimate :math:`\pm` *z* standard errors instead); ``bound="lower"`` or
 ``"upper"`` gives a one-sided bound and ``alpha_ci`` sets the level
 (the default 0.05 gives 95% bounds). The
@@ -393,8 +404,10 @@ estimate and its bounds both rising from 0 at time 0 to the first event):
 .. jupyter-execute::
 
     print("95% bounds at 6.5  :", model.mcf_cb(6.5).round(2))
+    bounds = model.mcf_cb(6.5)
+    print("lower, upper at 6.5:", bounds.lower.round(2), bounds.upper.round(2))
     print("90% upper at 6.5   :", model.mcf_cb(6.5, bound="upper", alpha_ci=0.1).round(2))
-    print("normal bounds, 6.5 :", model.mcf_cb(6.5, bound_type="normal").round(2))
+    print("normal bounds, 6.5 :", model.mcf_cb(6.5, bound_type="plain").round(2))
     print("linear MCF at 6.5  :", model.mcf(6.5, interp="linear").round(3))
 
 The ``NonParametricCounting`` model also supports **left truncation** (delayed
@@ -2085,7 +2098,7 @@ count from there.
     :hide-output:
 
     _states = ara.unit_states()
-    assert list(_states.index) == list(ara.data.ids)
+    assert list(_states.index) == list(ara.data.item_ids)
     assert np.allclose(ahead.probability[:, 0], 1 - ara.next_failure_sf(5.0))
     assert np.allclose(ahead.expected, ahead.per_unit.sum(axis=0))
     assert np.all(ahead.lower <= ahead.expected)

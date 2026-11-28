@@ -110,12 +110,35 @@ def _step(
     """``(m, K, K)``: the fourth-order Magnus step over each ``(a, b]``."""
     d = b - a
     c = 0.5 * (a + b)
-    q1 = _generators(
-        _checked(cumhaz, c - _GAUSS * d, True), frm, to, k, np.inf
-    )
-    q2 = _generators(
-        _checked(cumhaz, c + _GAUSS * d, True), frm, to, k, np.inf
-    )
+    r1 = _checked(cumhaz, c - _GAUSS * d, True)
+    r2 = _checked(cumhaz, c + _GAUSS * d, True)
+    return _step_values(d, r1, r2, Ha, Hb, frm, to, k)
+
+
+def gauss_points(
+    a: npt.NDArray, b: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """The two points of each ``(a, b]`` where :func:`_step` takes the
+    hazards."""
+    d = b - a
+    c = 0.5 * (a + b)
+    return c - _GAUSS * d, c + _GAUSS * d
+
+
+def _step_values(
+    d: npt.NDArray,
+    r1: npt.NDArray,
+    r2: npt.NDArray,
+    Ha: npt.NDArray,
+    Hb: npt.NDArray,
+    frm: npt.NDArray,
+    to: npt.NDArray,
+    k: int,
+) -> npt.NDArray:
+    """:func:`_step` from the hazards ``r1``, ``r2`` at the
+    :func:`gauss_points` of intervals of lengths ``d``."""
+    q1 = _generators(r1, frm, to, k, np.inf)
+    q2 = _generators(r2, frm, to, k, np.inf)
     # (P' = P Q multiplies on the right, so the commutator is [Q(c1),
     # Q(c2)], the transpose of the usual Y' = A Y's [A(c2), A(c1)])
     comm = q1 @ q2 - q2 @ q1
@@ -166,15 +189,19 @@ def _refine(
     frm: npt.NDArray,
     to: npt.NDArray,
     k: int,
+    floor: float = 0.0,
 ) -> npt.NDArray:
     """``nodes`` with every interval halved until its two halves agree
-    with its one step to ``tol * length / scale``. Each interval's fate
-    depends only on itself, so a node set holds the same points however
-    far it reaches."""
+    with its one step to ``tol * length / scale`` (or to ``floor``, where
+    given: next to a hazard infinite at an end of an interval, a Weibull
+    shape below 1 at 0, the difference falls little faster than the
+    length, and the relative rule alone would halve it to the limit of
+    the grid). Each interval's fate depends only on itself, so a node set
+    holds the same points however far it reaches."""
     while True:
         H = _checked(cumhaz, nodes)
         _, diff = _halves(cumhaz, nodes, H, frm, to, k)
-        bad = diff > tol * np.diff(nodes) / scale
+        bad = (diff > tol * np.diff(nodes) / scale) & (diff > floor)
         if not np.any(bad):
             return nodes
         a, b = nodes[:-1][bad], nodes[1:][bad]

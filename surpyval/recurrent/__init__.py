@@ -1,11 +1,31 @@
+from .bayes import (
+    BayesianCauseSpecific,
+    BayesianProportionalIntensity,
+    BayesianRecurrence,
+)
 from .competing_risks import (
     CauseSpecificMCF,
     CauseSpecificNHPP,
     CauseSpecificProportionalIntensity,
 )
 from .diagnostics import GoodnessOfFitResult
+from .discrete_growth import (
+    CrowAMSAADiscrete,
+    DiscreteGrowthModel,
+    GompertzGrowth,
+    LloydLipow,
+    ModifiedGompertzGrowth,
+)
 from .intervention import InterventionTestResult, intervention_test
 from .joint_frailty import JointFrailty, JointFrailtyModel
+from .maturity_projection import (
+    AMPMProjection,
+    DiscreteSteinProjection,
+    SteinProjection,
+    adpm_stein_projection,
+    ampm_projection,
+    ampm_stein_projection,
+)
 from .nonparametric import MCFDiffResult, NonParametricCounting, mcf_diff
 from .panel_count import PanelCountMCF, PanelCountRegression
 from .parametric import (

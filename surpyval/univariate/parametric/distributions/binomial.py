@@ -16,6 +16,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     reject_structural_params,
 )
 from surpyval.utils.autograd_gamma_compat import betainccln, betaincln
+from surpyval.utils.saddle_point import log_binomial_mass
 from surpyval.utils.units import takes_unit
 
 from ..parametric import Parametric
@@ -271,6 +272,9 @@ class Binomial_(DiscreteParametricFitter):
         inside = (k >= 0) & (k <= n)
         safe_k = np.where(inside, k, 0.0)
         log_hf = self.log_df(safe_k, n, p) - self.log_sf(safe_k - 1.0, n, p)
+        # At k = n all that is at risk fails: exactly 1 (the two logs,
+        # each n log p, differed by 2e-9 at n = 1e6, p = 1e-6)
+        log_hf = np.where((k == n) & (np.asarray(p) > 0), 0.0, log_hf)
         hf = np.exp(np.where(inside, log_hf, -np.inf))
         return hf[()] if hf.ndim == 0 else hf
 
@@ -372,9 +376,20 @@ class Binomial_(DiscreteParametricFitter):
         # scipy's log mass is formed on the log scale, so it stays finite
         # where the mass underflows (it read -inf from 1e-400 on, #458);
         # the fallback from hf and sf here lost it the same way.
-        from scipy.stats import binom
-
-        return binom.logpmf(x, n, p)
+        # The saddle-point form (#1300): scipy's log mass lost 2e-10 of
+        # itself at n = 1e6, a difference of terms of size n log n.
+        x = np.asarray(x, dtype=float)
+        n_arr = np.asarray(n, dtype=float)
+        p_arr = np.asarray(p, dtype=float)
+        k = np.floor(x)
+        inside = (k == x) & (k >= 0) & (k <= n_arr)
+        ks = np.where(inside, k, 0.0)
+        out = log_binomial_mass(ks, n_arr - ks, p_arr, 1.0 - p_arr)
+        out = np.where(inside, out, -np.inf)
+        out = np.where(
+            np.isnan(x) | np.isnan(n_arr) | np.isnan(p_arr), np.nan, out
+        )
+        return out[()] if out.ndim == 0 else out
 
     def mean(self, n: Boxable, p: Boxable) -> Boxable:
         r"""

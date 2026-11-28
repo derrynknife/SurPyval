@@ -89,9 +89,7 @@ def _fit(lam):
     x, Z, c = _rossi()
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        return sp.WeibullAFT.fit_penalised(
-            x, Z, c=c, penalizer=lam, l1_ratio=1
-        )
+        return sp.WeibullAFT.fit(x, Z, c=c, penalizer=lam, l1_ratio=1)
 
 
 def test_the_stalled_lasso_fit_reaches_its_minimum():

@@ -8,6 +8,7 @@ from numpy.typing import ArrayLike
 from surpyval import plotting
 from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.nonparametric import NonParametricCounting
+from surpyval.utils.model_data import event_data
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.units import label_axes
@@ -592,13 +593,13 @@ class RecurrenceSimulationMixin:
             The axes with the plot.
         """
         require_data(self, "plot")
-        x, r, d = self.data.to_xrd()
+        x, r, d = event_data(self).to_xrd()
         if ax is None:
             import matplotlib.pyplot as plt
 
             ax = plt.gcf().gca()
 
-        x_plot = np.linspace(0, float(self.data.x.max()), 200)
+        x_plot = np.linspace(0, float(event_data(self).x.max()), 200)
         plotting.observed_and_fitted(
             ax,
             (x, (d / r).cumsum()),

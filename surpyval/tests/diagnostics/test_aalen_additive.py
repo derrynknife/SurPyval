@@ -157,9 +157,11 @@ def test_statistics_match_timereg_on_its_grid_veteran():
     ref = _reference("constant_effects_veteran")
     # timereg runs its grid to the last event time and holds B there;
     # SurPyval's estimate stops where the risk set cannot separate the
-    # covariates.
+    # covariates (and predicts nan after it), so timereg's held grid is
+    # rebuilt from the estimated steps.
     assert ref["time"][-1] == 999 and model.x[-1] == 411
-    B = model.cumulative_coefficients(ref["time"]).to_numpy()
+    assert model.stopped_at == 411
+    B = model.B[np.searchsorted(model.x, ref["time"], "right") - 1]
     assert_allclose(B, ref["cum"], **EXACT)
     _, cvm = _invariance_statistics(ref["time"], B[None])
     assert_allclose(cvm[0], ref["CvM"], **EXACT)
@@ -265,7 +267,7 @@ def test_falls_are_drawdowns_below_the_running_maximum():
 
 def test_columns_and_alpha():
     model = _veteran()
-    d = model.diagnose(columns=["karno"], alpha=0.01, random_state=0)
+    d = model.diagnose(columns=["karno"], alpha_ci=0.01, random_state=0)
     rows = d.table[d.table["check"] == "constant_effects"]
     assert list(rows["covariates"]) == [("karno",)]
     assert d.columns == ["karno"]

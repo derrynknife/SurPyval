@@ -31,6 +31,7 @@ import surpyval as sp
 from surpyval.datasets import load_rossi_static
 from surpyval.diagnostics.odds_additive import aalen_cumulative_coefficients
 from surpyval.tests.reference._data import fixture
+from surpyval.univariate.regression import AalenAdditiveModel
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -93,20 +94,19 @@ def test_cumulative_coefficients_match_timereg_additive():
 
 def test_cumulative_coefficients_match_timereg_veteran():
     x, Z, c = _veteran()
-    model = sp.AalenAdditive.fit(x, Z, c=c)
+    with pytest.warns(UserWarning, match="AalenAdditive stopped at"):
+        model = sp.AalenAdditive.fit(x, Z, c=c)
     ref = _timereg("aalen_veteran")
     k = model.x.size
     assert_allclose(model.x, ref["time"][:k], rtol=0, atol=0)
     assert_allclose(model.B, ref["cum"][:k], **EXACT)
     assert_allclose(model.B_var, ref["var_cum"][:k], **EXACT)
     # Past the first risk set too small to separate the covariates
-    # timereg holds the estimate, and the model holds its last value too.
+    # timereg holds the estimate; the model stops there and says so.
     assert k < len(ref["time"])
+    assert model.stopped_at == model.x[-1]
     later = ref["time"][k:]
-    assert_allclose(
-        model.cumulative_coefficients(later).to_numpy(),
-        np.repeat(model.B[-1:], later.size, axis=0),
-    )
+    assert np.isnan(model.cumulative_coefficients(later).to_numpy()).all()
 
 
 def test_unpenalised_fit_is_the_diagnostics_estimator():
@@ -610,3 +610,113 @@ def test_285_random_missing_covariate_and_seeds():
     g = model.random(5, [[0, 25, 3]])[0]
     np.random.seed(9)
     assert_array_equal(g, model.random(5, [[0, 25, 3]])[0])
+
+
+def test_a_fit_that_stops_early_warns_and_predicts_nan_beyond():
+    # A binary covariate whose 1 group has all left by t = 3 while the 0
+    # group fails on to t = 10: past the 1 group's last exit X'YX is
+    # singular. The hazard is 0.18 for both, so the truth at t = 9 is
+    # exp(-1.62) = 0.198; held flat after the stop the fit said 0.591.
+    rng = np.random.default_rng(0)
+    N = 400
+    a = rng.binomial(1, 0.5, N).astype(float)
+    t = rng.exponential(1 / 0.18, N)
+    end = np.where(a == 1, rng.uniform(0.5, 3, N), 10.0)
+    x, c = np.minimum(t, end), (t > end).astype(int)
+    with pytest.warns(
+        UserWarning, match=r"stopped at t = 2\.74576.* 75 later events"
+    ):
+        model = sp.AalenAdditive.fit(x, a[:, None], c=c)
+    stop = model.stopped_at
+    assert stop == model.x[-1] < x[c == 0].max()
+    times = np.array([1.0, stop, 9.0])
+    for out in (
+        model.sf(times, [0]),
+        model.ff(times, [0]),
+        model.Hf(times, [0]),
+        model.hf(times, [0]),
+    ):
+        assert np.all(np.isfinite(out[:2])) and np.isnan(out[2])
+    assert np.isnan(model.cb(times, [0])[2]).all()
+    assert np.isfinite(model.cb(times, [0])[:2]).all()
+    assert np.isnan(model.qf(0.9, [0]))
+    assert np.isnan(model.cumulative_coefficients([9.0]).to_numpy()).all()
+    assert np.isnan(model.cumulative_coefficients_cb([9.0])).all()
+    draws, _ = model.random(200, [[0]], random_state=1)
+    assert np.isnan(draws).any() and not np.isinf(draws).any()
+    back = AalenAdditiveModel.from_dict(model.to_dict())
+    assert back.stopped_at == stop and np.isnan(back.sf(9.0, [0]))
+
+
+def test_a_fit_that_does_not_stop_holds_its_curve():
+    rng = np.random.default_rng(1)
+    # A continuous covariate and follow-up ending at 8: units of every
+    # kind are at risk to the last event.
+    Z = rng.uniform(0, 1, (200, 1))
+    t = rng.exponential(5, 200)
+    model = sp.AalenAdditive.fit(np.minimum(t, 8), Z, c=(t > 8).astype(int))
+    assert np.isnan(model.stopped_at)
+    assert np.isfinite(model.sf(1e3, [0]))
+    assert np.isnan(AalenAdditiveModel.from_dict(model.to_dict()).stopped_at)
+
+
+def test_a_stopped_fit_matches_timereg_to_the_stop():
+    # scripts/reference/reference_r_aalen_stop.R (timereg 2.0.7): every
+    # a = 1 unit has left by 2.2; at the event time 2.4 the ten units at
+    # risk all have a = 0. timereg estimates B to 1.9 and then holds it
+    # to 5.1; SurPyval agrees to 1.9 and stops there.
+    x = np.array(
+        [0.4, 0.9, 1.3, 1.8, 1.1, 1.6, 2.0, 2.2]
+        + [0.5, 0.7, 1.0, 1.4, 1.9, 2.4, 2.9, 3.3, 3.8, 4.6, 5.1]
+        + [1.2, 2.7, 4.0, 5.5, 6.0]
+    )
+    c = np.r_[np.zeros(4), np.ones(4), np.zeros(11), np.ones(5)]
+    a = np.r_[np.ones(8), np.zeros(16)]
+    with pytest.warns(
+        UserWarning,
+        match=r"stopped at t = 1\.9,.*\(2\.4\) the 10 units at risk.*"
+        r"so 6 later events",
+    ):
+        model = sp.AalenAdditive.fit(x, a[:, None], c=c)
+    assert model.stopped_at == 1.9
+    t = [0.5, 1.0, 1.4, 1.9]
+    assert_allclose(
+        model.cumulative_coefficients(t).to_numpy(),
+        [
+            [6.25000000000000e-02, 6.25000000000000e-02],
+            [2.00595238095238e-01, 6.72619047619047e-02],
+            [2.83928571428571e-01, 1.83928571428571e-01],
+            [3.74837662337662e-01, 4.26352813852814e-01],
+        ],
+        rtol=1e-12,
+    )
+    assert_allclose(
+        model._B_var_at(np.array(t)),
+        [
+            [3.90625000000000e-03, 1.95312500000000e-02],
+            [1.34527352607710e-02, 4.94858985260771e-02],
+            [2.03971797052154e-02, 9.64303429705216e-02],
+            [2.86616425151328e-02, 2.15805916891550e-01],
+        ],
+        rtol=1e-12,
+    )
+    # The changed number: before, sf(4) for a = 0 was held at
+    # exp(-0.374838) = 0.687; the a = 0 group's own Nelson-Aalen
+    # estimate there is 0.403. It is now nan.
+    assert np.isnan(model.sf(4.0, [0]))
+    assert_allclose(model.sf(1.9, [0]), np.exp(-0.374837662337662))
+    group = sp.NelsonAalen.fit(x[a == 0], c=c[a == 0])
+    assert_allclose(group.sf(4.0), 0.403, atol=5e-4)
+
+
+def test_a_fit_that_estimates_no_time_predicts_nan_after_zero():
+    # The one unit with the covariate at 1 is censored first, so at the
+    # first event time every unit at risk has it at 0.
+    x = np.arange(1.0, 7.0)
+    Z = np.r_[1.0, np.zeros(5)][:, None]
+    with pytest.warns(UserWarning, match=r"stopped at t = 0,.* 5 later"):
+        model = sp.AalenAdditive.fit(x, Z, c=np.r_[1, np.zeros(5)])
+    assert model.stopped_at == 0.0 and model.x.size == 0
+    assert_array_equal(model.sf([0.0, 0.5, 3.0], [0]), [1.0, np.nan, np.nan])
+    assert np.isnan(model.cumulative_coefficients([0.5]).to_numpy()).all()
+    assert AalenAdditiveModel.from_dict(model.to_dict()).stopped_at == 0.0

@@ -20,7 +20,7 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
-from surpyval.utils.deprecation import ambiguous_item_ids, fit_entry
+from surpyval.utils.deprecation import ambiguous_item_ids
 from surpyval.utils.event_history_data import (
     accepts_event_history_data,
     refuses_unmodelled_data,
@@ -31,7 +31,7 @@ from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_data import accepts_recurrent_surpyval_data
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
-from surpyval.utils.removed_names import removed_arguments
+from surpyval.utils.removed_names import RemovedName, removed_arguments
 from surpyval.utils.units import takes_unit
 
 from .proportional_intensity import (
@@ -200,7 +200,8 @@ class ProportionalIntensityNHPP(
                 return fallback
         return start
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     @removed_arguments("0.25", dist="'baseline'")
     @refuses_unmodelled_data
@@ -527,6 +528,108 @@ class ProportionalIntensityNHPP(
         data = handle_xicn(x, i, c, n, t=t, tl=tl, tr=tr, Z=Z)
         return self._fit_from_recurrent_data(
             data, baseline, init, frailty, cluster
+        )
+
+    @takes_unit
+    def fit_bayes(
+        self,
+        x: ArrayLike,
+        Z: ArrayLike,
+        i: ArrayLike | None = None,
+        c: ArrayLike | None = None,
+        n: ArrayLike | None = None,
+        t: ArrayLike | None = None,
+        tl: ArrayLike | None = None,
+        tr: ArrayLike | None = None,
+        *,
+        priors: Any = None,
+        method: str = "auto",
+        importance: bool = False,
+        points: int | None = None,
+        baseline: Any = Duane,
+    ) -> Any:
+        """
+        Fit the proportional intensity model by Bayes' rule: priors on
+        the baseline's parameters and on the covariates' coefficients,
+        times the likelihood ``fit`` uses.
+
+        With up to three free parameters the posterior is computed on
+        the grid (exact); beyond, by the Laplace approximation, a normal
+        at the posterior's peak checked against the exact posterior
+        (``diagnostics``; a poor one warns, and ``importance=True``
+        corrects it where the check allows). There is no sampler.
+
+        Parameters
+        ----------
+        x, Z, i, c, n, t, tl, tr
+            The data, as for ``fit``.
+        baseline : NHPP fitter, optional
+            The baseline intensity, as for ``fit``.
+        priors : dict, joint prior or list, optional
+            A prior for each parameter it names: a coefficient by its
+            name (``coef_0``, or its covariate's column) or a baseline
+            parameter by its own. A coefficient with no prior gets
+            ``Normal(0, 2.5 / sd)``, ``sd`` its covariate's standard
+            deviation over the systems (the regressions' default),
+            stated in the result's ``default_priors`` and summary; a
+            baseline parameter with none is flat on its log scale.
+            ``surpyval.prior.on_function``, ``from_model`` and
+            ``from_fit`` are taken as for every Bayesian fit.
+        method : {'auto', 'grid', 'laplace'}, optional
+            The engine; ``'auto'`` is the grid up to three free
+            parameters and Laplace beyond.
+        importance : bool, optional
+            With the Laplace engine, reweight its draws towards the
+            exact posterior. False by default.
+        points : int, optional
+            The grid's starting points per parameter.
+
+        Returns
+        -------
+        surpyval.recurrent.bayes.BayesianProportionalIntensity
+            ``param_cri(name)``, and for a covariate set ``Z``:
+            ``cif``, ``iif``, ``mtbf``, ``cri(x, Z, on=...)``,
+            ``mtbf_cri(Z)``, ``count(Z, duration=...)`` and
+            ``mtbf_probability(requirement, Z)``; ``compare()``,
+            ``summary()``, ``waic()`` and ``loo()`` (one system is the
+            unit) and ``diagnose()``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import ProportionalIntensityNHPP
+        >>> rng = np.random.default_rng(1)
+        >>> x, Z, i, c = [], [], [], []
+        >>> for k in range(8):
+        ...     z = float(k % 2)
+        ...     m = rng.poisson(0.02 * np.exp(0.7 * z) * 300.0)
+        ...     x += [*np.sort(300.0 * rng.uniform(size=m)), 300.0]
+        ...     Z += [[z]] * (m + 1)
+        ...     i += [k] * (m + 1)
+        ...     c += [0] * m + [1]
+        >>> model = ProportionalIntensityNHPP.fit_bayes(x, Z, i, c)
+        >>> model.parameter_names[-1], sorted(model.default_priors)
+        ('coef_0', ['coef_0'])
+        >>> model.param_cri("coef_0").shape
+        (2,)
+        """
+        from surpyval.recurrent.bayes import fit_proportional_intensity
+
+        return fit_proportional_intensity(
+            self,
+            x,
+            Z,
+            i,
+            c,
+            n,
+            t,
+            tl,
+            tr,
+            priors=priors,
+            method=method,
+            importance=importance,
+            points=points,
+            baseline=baseline,
         )
 
     @dataframe_covariates

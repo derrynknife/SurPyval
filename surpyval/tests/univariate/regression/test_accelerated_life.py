@@ -762,8 +762,6 @@ def test_mean_cb_is_the_closed_form_mean_with_its_delta_method_bound():
     assert model.mean_cb(10.0, bound="lower") == pytest.approx(
         model.mean_cb(10.0, alpha_ci=0.1)[0], rel=1e-12
     )
-    with pytest.raises(ValueError, match="quantile_cb"):
-        model.mean_cb(10.0, method="lr")
     boot = model.mean_cb(10.0, method="bootstrap", n_boot=30, random_state=2)
     assert boot.shape == (2,) and boot[0] < mttf < boot[1]
 
@@ -806,6 +804,62 @@ def test_activation_energy_of_the_inverse_models_takes_the_sign():
     assert inverse.activation_energy()["activation_energy"] == pytest.approx(
         direct.activation_energy()["activation_energy"], rel=1e-5
     )
+
+
+def test_power_exponential_activation_energy_is_arrhenius_at_constant_v():
+    # With the non-thermal stress held constant its power is aliased and
+    # the fit is the Arrhenius fit: the same activation energy and
+    # intervals.
+    x, T, arrhenius = _arrhenius_fit()
+    Z = np.column_stack([T, np.full(T.size, 5.0)])
+    with pytest.warns(UserWarning, match="cannot be estimated"):
+        power_exp = surpyval.AcceleratedLife(
+            surpyval.Weibull, surpyval.life_models.PowerExponential
+        ).fit(x, Z=Z)
+    # The likelihood-ratio interval is the same to the last digits (both
+    # profile one likelihood). The Wald interval is not compared: each
+    # model's comes from its own finite-difference Hessian, taken at the
+    # point its search stopped (2e-8 apart), so its last digits are the
+    # platform's (the lower bound 2.7e-7 relative apart on arm64 macOS,
+    # 1.8e-6 on x86-64 Linux); its estimate is.
+    for method, keys in (
+        ("wald", ("activation_energy",)),
+        ("lr", ("activation_energy", "lower", "upper")),
+    ):
+        expected = arrhenius.activation_energy(method=method)
+        found = power_exp.activation_energy(method=method)
+        assert found["parameter"] == "a"
+        assert found["lower"] < found["activation_energy"] < found["upper"]
+        for key in keys:
+            assert found[key] == pytest.approx(expected[key], rel=1e-6)
+    assert "Activation energy   : 0.6178 eV" in repr(power_exp)
+
+
+def test_power_exponential_recovers_a_known_activation_energy():
+    from surpyval.univariate.regression._accelerated_analysis import (
+        BOLTZMANN_EV,
+    )
+
+    rng = np.random.default_rng(11)
+    T = np.repeat([358.15, 378.15, 398.15], 30)
+    V = np.tile(np.repeat([2.0, 4.0, 8.0], 10), 3)
+    life = 1e-6 * np.exp(0.7 / 8.617333262e-5 / T) * V**-1.5
+    x = life * rng.weibull(2.0, T.size)
+    model = surpyval.AcceleratedLife(
+        surpyval.Weibull, surpyval.life_models.PowerExponential
+    ).fit(x, Z=np.column_stack([T, V]))
+    energy = model.activation_energy()
+    a = model.params[model.parameter_names.index("a")]
+    assert energy["activation_energy"] == a * BOLTZMANN_EV
+    np.testing.assert_allclose(
+        [energy["kelvin_lower"], energy["kelvin_upper"]],
+        model.param_cb("a"),
+    )
+    assert energy["activation_energy"] == pytest.approx(0.7225, abs=1e-4)
+    assert energy["lower"] < 0.7 < energy["upper"]
+    lr = model.activation_energy(method="lr")
+    assert lr["lower"] < 0.7 < lr["upper"]
+    assert "Activation energy   : 0.7225 eV" in repr(model)
 
 
 def test_common_shape_test_against_its_likelihoods_written_out():
@@ -904,3 +958,85 @@ def test_mean_cb_of_a_survival_that_levels_off_is_infinite():
     model = surpyval.MixtureCure(surpyval.Weibull).fit(x, Z, c=c)
     bounds = model.mean_cb([1.0])
     assert np.all(np.isinf(bounds))
+    lr = model.mean_cb([1.0], method="lr")
+    assert np.all(np.isinf(lr))
+    assert np.isinf(model.mean_cb([1.0], method="lr", bound="lower"))
+
+
+def _power_fit():
+    np.random.seed(1)
+    stress = np.repeat([20.0, 30.0, 40.0], 40)
+    x = surpyval.Weibull.random(120, 10, 3) * (100.0 / stress)
+    return surpyval.AcceleratedLife(
+        surpyval.Weibull, surpyval.life_models.Power
+    ).fit(x, Z=stress)
+
+
+@pytest.mark.parametrize("alpha", [0.05, 0.1])
+def test_mean_cb_lr_is_the_profile_likelihood_interval_of_the_mttf(alpha):
+    # Reparameterise by the MTTF at stress 10, m = a 10^n Gamma(1 + 1/b),
+    # profile the likelihood over (b, n) with Nelder-Mead, and solve
+    # 2 (l_hat - l_profile(m)) = chi2_1(1 - alpha) on each side: the
+    # interval the likelihood-ratio bound must give, found independently
+    # of its searches.
+    from scipy.optimize import brentq, minimize
+    from scipy.special import gamma
+    from scipy.stats import chi2
+
+    model = _power_fit()
+    p0 = np.asarray(model.params, float)
+
+    def neg_ll(m, v):
+        b, n = np.exp(v[0]), v[1]
+        a = m / (10.0**n * gamma(1 + 1 / b))
+        return float(model.model.neg_ll(model.data, 1.0, b, a, n))
+
+    nll_hat = float(model.model.neg_ll(model.data, *p0))
+    v0 = np.array([np.log(p0[1]), p0[3]])
+
+    def deviance(m):
+        found = minimize(
+            lambda v: neg_ll(m, v),
+            v0,
+            method="Nelder-Mead",
+            options={"xatol": 1e-10, "fatol": 1e-12, "maxiter": 5000},
+        )
+        return 2 * (found.fun - nll_hat) - chi2.ppf(1 - alpha, 1)
+
+    m_hat = float(model.mean(10.0))
+    expected = [
+        brentq(deviance, 40.0, m_hat, xtol=1e-10),
+        brentq(deviance, m_hat, 150.0, xtol=1e-10),
+    ]
+    # 95%: [58.1111, 94.4963]; 90%: [60.4305, 90.7442]
+    lr = model.mean_cb(10.0, alpha_ci=alpha, method="lr")
+    np.testing.assert_allclose(lr, expected, rtol=1e-6)
+    wald = model.mean_cb(10.0, alpha_ci=alpha)
+    np.testing.assert_allclose(lr, wald, rtol=0.02)
+    # One side at alpha is an end of the two-sided interval at 2 alpha
+    if alpha == 0.05:
+        two = model.mean_cb(10.0, alpha_ci=0.1, method="lr")
+        assert model.mean_cb(10.0, bound="lower", method="lr") == (
+            pytest.approx(two[0], rel=1e-6)
+        )
+        assert model.mean_cb(10.0, bound="upper", method="lr") == (
+            pytest.approx(two[1], rel=1e-6)
+        )
+        rows = model.mean_cb([10.0, 20.0], method="lr")
+        assert rows.shape == (2, 2)
+        np.testing.assert_allclose(rows[0], lr, rtol=1e-9)
+
+
+def test_mean_cb_lr_of_an_exponential_is_t_over_its_hf_bound():
+    # An Exponential's mean at a row is t / H(t | row) for every t, so the
+    # likelihood-ratio bounds on the mean are t over those on Hf, ends
+    # swapped: one region, two monotone maps of one function.
+    np.random.seed(3)
+    Z = np.random.binomial(1, 0.5, 80).reshape(-1, 1)
+    x = surpyval.Exponential.random(80, 0.1) * np.exp(-0.5 * Z[:, 0])
+    model = surpyval.ExponentialPH.fit(x, Z)
+    lr = model.mean_cb([[0], [1]], method="lr")
+    H = model.cb([5.0, 5.0], [[0], [1]], on="Hf", method="lr")
+    np.testing.assert_allclose(lr, 5.0 / H[:, ::-1], rtol=1e-6)
+    assert np.all(lr[:, 0] < model.mean([[0], [1]]))
+    assert np.all(model.mean([[0], [1]]) < lr[:, 1])

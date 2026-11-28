@@ -17,6 +17,7 @@ from scipy.optimize import OptimizeResult
 
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.univariate.regression._penalty_argument import penalised_entry
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.surpyval_data import SurpyvalData, accepts_surpyval_data
 from surpyval.utils.units import takes_unit
@@ -201,10 +202,15 @@ class PenalisedFitMixin:
 
         return LogLinearPhi(LogLinearPhi.NAME_EXP, {})
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -301,7 +307,7 @@ class PenalisedFitMixin:
         >>> rng = np.random.default_rng(1)
         >>> Z = rng.normal(size=(200, 5))
         >>> x = 10 * rng.weibull(2, 200) * np.exp(-0.5 * Z[:, 0])
-        >>> model = WeibullAFT.fit_penalised(x, Z, penalizer=0.05, l1_ratio=1)
+        >>> model = WeibullAFT.fit(x, Z, penalizer=0.05, l1_ratio=1)
         >>> model.params[2:].round(3)
         array([ 0.446, -0.035, -0.007,  0.   ,  0.   ])
         """

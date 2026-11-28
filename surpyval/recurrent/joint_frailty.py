@@ -1337,10 +1337,9 @@ class JointFrailty(FitterRepr):
         >>> model.n_covariates
         0
         """
-        import pandas as pd
+        from surpyval.utils.dataframe import require_frame
 
-        if not isinstance(df, pd.DataFrame):
-            raise ValueError("'df' must be a pandas DataFrame.")
+        df = require_frame(df)
         if (terminal_col is None) == (a_col is None):
             raise TypeError(
                 "Give terminal_col (1 on the row c = 1 that closes a "

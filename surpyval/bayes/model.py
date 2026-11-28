@@ -29,7 +29,7 @@ from surpyval.bayes.prior import (
     NormalOnScale,
     PowerPrior,
     PriorSpec,
-    _fmt,
+    fmt,
     quantity_at,
     shifted,
 )
@@ -220,7 +220,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             bound.free_names,
             theta,
             np.exp(result.log_w),
-            "laplace" if method == "laplace" else "grid",
+            "grid",
             transforms=free_t,
             cell=result.cell,
             shape=result.shape,
@@ -239,7 +239,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             "widened": result.checks.get("widened", 0),
             "mode": [float(v) for v in bound.full_theta(result.mode)[0]],
             "ok": True,
-            "approximate": method == "laplace",
+            "approximate": False,
         }
         model = cls(
             dist,
@@ -260,6 +260,62 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         model._log_z = result.log_z
         model._attach_density()
         return model
+
+    @classmethod
+    def _from_laplace(
+        cls,
+        dist: Any,
+        data: SurpyvalData | None,
+        bound: Any,
+        result: Any,
+        log_post: Any,
+        mle: Any,
+        importance: bool,
+    ) -> BayesianParametric:
+        """The Laplace engine's result as a model: the normal's draws (with
+        their importance weights where reweighted)."""
+        theta = bound.full_theta(result.phi)
+        free_t = [bound.transforms[i] for i in bound.free_idx]
+        normal = {
+            "mean": [float(v) for v in result.mode],
+            "cov": [[float(v) for v in row] for row in result.cov],
+            "reweighted": bool(result.importance),
+        }
+        post = Posterior(
+            bound.names,
+            bound.free_names,
+            theta,
+            np.exp(result.log_w),
+            "laplace",
+            transforms=free_t,
+            normal=normal,
+        )
+        proper = bound.proper and data is not None
+        diag = laplace_diagnostics(result, bound, importance)
+        model = cls(
+            dist,
+            post,
+            data=data,
+            priors=bound.spec,
+            offset=bound.offset,
+            lfp=bound.lfp,
+            zi=bound.zi,
+            fixed=bound.fixed,
+            method="laplace",
+            log_evidence=result.log_z if proper else float("nan"),
+            diagnostics=diag,
+        )
+        model._mle_fit = mle
+        model._mle_known = data is not None
+        model._log_post = log_post
+        model._log_z = result.log_z
+        model._attach_density()
+        model._warn_laplace()
+        return model
+
+    def _warn_laplace(self) -> None:
+        """Warn where the Laplace approximation's checks fail."""
+        warn_laplace(self.diagnostics)
 
     @classmethod
     def _from_conjugate(
@@ -498,6 +554,9 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             fam = post._exact(post.exact["name"]) if post.exact else None
             if fam is not None:
                 post.log_density_fn = lambda p, f=fam: f.logpdf(p[:, 0])
+            return
+        if post.kind == "laplace" and post.normal is not None:
+            post.log_density_fn = _normal_density(post)
             return
         if post.kind != "grid":
             return
@@ -1744,6 +1803,9 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         m = method or ("auto" if self.method == "conjugate" else self.method)
         if m == "draws":
             m = "auto"
+        importance = m == "laplace" and bool(
+            self.diagnostics.get("importance_requested", False)
+        )
         model = fit_bayes(
             self.dist,
             data,
@@ -1755,6 +1817,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
                 k: v for k, v in fixed.items() if k not in self.priors.fixed()
             },
             method=m,
+            importance=importance,
         )
         model.unit = self.unit
         return model
@@ -1889,7 +1952,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
         rows = {}
         for name in bound.free_names:
             t = bound.transforms[bound.names.index(name)]
-            prior_iv = _prior_interval(bound, name, t, alpha_ci)
+            prior_iv = prior_interval_text(bound, name, t, alpha_ci)
             mle_val = mle_iv = None
             if mle is not None:
                 try:
@@ -1934,7 +1997,7 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             assert x is not None
             v = quantity_at(self.dist, ("R" if on == "sf" else "F", x), th)
             label = f"{'reliability' if on == 'sf' else 'failure probability'}"
-            label += f" at {_fmt(x)}"
+            label += f" at {fmt(x)}"
         elif on == "mean":
             v = self._component_means()
             label = "mean life"
@@ -2149,16 +2212,16 @@ class BayesianParametric(DiagnoseMixin, SerialisableMixin):
             if p.is_fixed or not p.proper:
                 continue
             t = bound.transforms[bound.names.index(name)]
-            iv = _prior_interval(bound, name, t, 0.01)
+            iv = prior_interval_text(bound, name, t, 0.01)
             if iv is None:
                 continue
             med = float(self.posterior.quantile(name, 0.5))
             if not iv[0] <= med <= iv[1]:
-                iv90 = _prior_interval(bound, name, t, 0.1)
+                iv90 = prior_interval_text(bound, name, t, 0.1)
                 assert iv90 is not None
                 msgs.append(
-                    f"{name} (prior 90% interval {_fmt(iv90[0])}-"
-                    f"{_fmt(iv90[1])}; the posterior median is {_fmt(med)})"
+                    f"{name} (prior 90% interval {fmt(iv90[0])}-"
+                    f"{fmt(iv90[1])}; the posterior median is {fmt(med)})"
                 )
         if msgs:
             warnings.warn(
@@ -2390,7 +2453,7 @@ def _combine(a: SurpyvalData, b: SurpyvalData) -> SurpyvalData:
     return SurpyvalData(x=x, c=c, n=n, t=t, unit=ua if ua is not None else ub)
 
 
-def _prior_interval(
+def prior_interval_text(
     bound: Any, name: str, t: Transform, alpha: float
 ) -> tuple[float, float] | None:
     """The equal-tailed prior interval of one parameter where its prior is
@@ -2512,7 +2575,7 @@ class Comparison:
             lines.append(
                 f"    prior       {r['prior']}"
                 + (
-                    f"; {lvl} {_fmt(pi[0])} - {_fmt(pi[1])}"
+                    f"; {lvl} {fmt(pi[0])} - {fmt(pi[1])}"
                     if pi is not None
                     else ""
                 )
@@ -2520,18 +2583,18 @@ class Comparison:
             if r["mle"] is not None:
                 mi = r["mle_interval"]
                 ci = (
-                    f" ({lvl} confidence interval {_fmt(mi[0])} - "
-                    f"{_fmt(mi[1])})"
+                    f" ({lvl} confidence interval {fmt(mi[0])} - "
+                    f"{fmt(mi[1])})"
                     if mi is not None
                     else ""
                 )
-                lines.append(f"    max. lik.   {_fmt(r['mle'])}{ci}")
+                lines.append(f"    max. lik.   {fmt(r['mle'])}{ci}")
             else:
                 lines.append("    max. lik.   none (the fit fails)")
             po = r["posterior_interval"]
             lines.append(
-                f"    posterior   {_fmt(r['posterior_median'])} "
-                f"({lvl} credible interval {_fmt(po[0])} - {_fmt(po[1])})"
+                f"    posterior   {fmt(r['posterior_median'])} "
+                f"({lvl} credible interval {fmt(po[0])} - {fmt(po[1])})"
             )
         return "\n".join(lines)
 
@@ -2595,7 +2658,7 @@ class PriorCheck:
             f"  {'':10}{'median':>12}   {lvl} prior interval",
         ]
         for k, (med, lo, hi) in self.table.items():
-            lines.append(f"  {k:10}{_fmt(med):>12}   {_fmt(lo)} - {_fmt(hi)}")
+            lines.append(f"  {k:10}{fmt(med):>12}   {fmt(lo)} - {fmt(hi)}")
         return "\n".join(lines)
 
 
@@ -2664,13 +2727,13 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
             )
             first = False
     for k, v in model.fixed.items():
-        lines.append(f"            {k}: fixed at {_fmt(v)}")
+        lines.append(f"            {k}: fixed at {fmt(v)}")
     lines.append(f"Posterior   {'median':>10}   {lvl} credible interval")
     for name in model.posterior.free_names:
         lo, med, hi = model.posterior.quantile(
             name, [alpha_ci / 2, 0.5, 1 - alpha_ci / 2]
         )
-        lines.append(f"  {name:<10}{_fmt(med):>10}   {_fmt(lo)} - {_fmt(hi)}")
+        lines.append(f"  {name:<10}{fmt(med):>10}   {fmt(lo)} - {fmt(hi)}")
     life = float(model.dist.support[0]) == 0
     lab = "B10 life" if life else "10% point"
     with ignoring_warnings():
@@ -2678,8 +2741,8 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
             b10 = float(model.quantile_cri(0.1, point=True))
             b_lo, b_hi = model.quantile_cri(0.1, alpha_ci=alpha_ci)
             lines.append(
-                f"{lab:<12}{_fmt(b10):>10}{unit}   {_fmt(b_lo)} - "
-                f"{_fmt(b_hi)}{unit}"
+                f"{lab:<12}{fmt(b10):>10}{unit}   {fmt(b_lo)} - "
+                f"{fmt(b_hi)}{unit}"
             )
         except ValueError:
             pass
@@ -2690,8 +2753,8 @@ def _summary(model: BayesianParametric, alpha_ci: float) -> str:
             )
             lab = "Mean life" if life else "Mean"
             lines.append(
-                f"{lab:<12}{_fmt(med):>10}{unit}   {_fmt(lo)} - "
-                f"{_fmt(hi)}{unit}"
+                f"{lab:<12}{fmt(med):>10}{unit}   {fmt(lo)} - "
+                f"{fmt(hi)}{unit}"
             )
     lines += _what_the_prior_did(model, alpha_ci)
     lines.append(_how_computed(model))
@@ -2725,9 +2788,7 @@ def _what_the_prior_did(model: BayesianParametric, alpha_ci: float) -> list:
                 iv = np.asarray(mle.param_cb(name, alpha_ci=alpha_ci), float)
         except (ValueError, AttributeError, KeyError):
             continue
-        parts.append(
-            f"{name} {_fmt(v)} ({lvl} CI {_fmt(iv[0])}-{_fmt(iv[1])})"
-        )
+        parts.append(f"{name} {fmt(v)} ({lvl} CI {fmt(iv[0])}-{fmt(iv[1])})")
         lo, hi = model.posterior.quantile(
             name, [alpha_ci / 2, 1 - alpha_ci / 2]
         )
@@ -2760,7 +2821,7 @@ def _what_the_prior_did(model: BayesianParametric, alpha_ci: float) -> list:
     return out
 
 
-def _how_computed(model: BayesianParametric) -> str:
+def _how_computed(model: Any) -> str:
     d = model.diagnostics
     if model.method == "conjugate":
         return f"Computed exactly in closed form ({d.get('case', '')})."
@@ -2773,11 +2834,119 @@ def _how_computed(model: BayesianParametric) -> str:
             f"error < {max(float(err), 1e-4):.2%})."
         )
     if model.method == "laplace":
+        k = d.get("pareto_k")
+        if k is None:
+            return (
+                "Approximated by a normal at the posterior's peak "
+                "(Laplace); with few failures this can be poor: check it "
+                "with the grid."
+            )
+        how = (
+            f"{d.get('draws')} draws reweighted towards the exact posterior "
+            "(importance sampling)"
+            if d.get("importance")
+            else f"{d.get('draws')} draws"
+        )
         return (
-            "Approximated by a normal at the posterior's peak (Laplace); "
-            "with few failures this can be poor: check it with the grid."
+            "Approximated by a normal at the posterior's peak (Laplace), "
+            f"{how}; checked against the exact posterior: Pareto k "
+            f"{float(k):.2f} (below 0.5 good, above 0.7 poor), and "
+            f"reweighting moves {d.get('shift_at')} by "
+            f"{float(d.get('shift', 0.0)):.1%} of its interval's width: "
+            f"{d.get('approximation')}."
         )
     return f"From {d.get('draws', len(model.posterior.weights))} draws."
+
+
+def laplace_diagnostics(result: Any, bound: Any, importance: bool) -> dict:
+    """The diagnostics of a Laplace engine's ``result`` for the fit whose
+    priors are ``bound``: its checks against the exact posterior, and
+    their verdict (``approximation``: good, usable or poor)."""
+    from surpyval.bayes.engines.laplace import K_BAD, K_GOOD, SHIFT
+
+    k = result.pareto_k
+    quality = "good" if k <= K_GOOD else ("usable" if k <= K_BAD else "poor")
+    j, pct = result.shift_at.split(":") if result.shift_at else ("0", "")
+    shift_at = f"{bound.free_names[int(j)]}'s {pct}% point"
+    if quality != "poor" and result.shift > SHIFT and not result.importance:
+        quality = "poor"
+    return {
+        "method": "laplace",
+        "free_parameters": list(bound.free_names),
+        "draws": result.draws,
+        "pareto_k": k,
+        "shift": result.shift,
+        "shift_at": shift_at,
+        "approximation": quality,
+        "importance": bool(result.importance),
+        "importance_requested": bool(importance),
+        "ess": result.ess,
+        "log_z_laplace": result.log_z_laplace,
+        "mode": [float(v) for v in bound.full_theta(result.mode)[0]],
+        "ok": True,
+        "approximate": True,
+    }
+
+
+def warn_laplace(d: dict) -> None:
+    """Warn where a Laplace fit's checks (its ``diagnostics``, ``d``)
+    fail, saying what to use instead."""
+    from surpyval.bayes.engines.laplace import K_BAD, SHIFT
+
+    k = float(d.get("pareto_k", 0.0))
+    n_free = len(d.get("free_parameters", []))
+    regression = d.get("regression", False)
+    if n_free <= 3 and not regression:
+        other = "method='grid' (exact for up to three free parameters)"
+    else:
+        other = "PyMC through surpyval.pymc for the exact posterior"
+    if k > K_BAD:
+        extra = (
+            " Reweighting the draws (importance=True) cannot repair it."
+            if d.get("importance_requested")
+            else ""
+        )
+        warnings.warn(
+            f"The Laplace approximation is poor for this fit: the Pareto "
+            f"k of the exact posterior against the normal is {k:.2f} "
+            f"(above {K_BAD}), so the posterior is far from normal on "
+            f"the parameters' log scale (few failures, or a parameter "
+            f"near a bound).{extra} Use {other}.",
+            stacklevel=caller_stacklevel(),
+        )
+        return
+    shift = float(d.get("shift", 0.0))
+    if shift > SHIFT and not d.get("importance"):
+        warnings.warn(
+            f"The Laplace approximation is off for this fit: reweighting "
+            f"its draws towards the exact posterior moves "
+            f"{d.get('shift_at')} by {shift:.0%} of its 95% interval's "
+            f"width (more than {SHIFT:.0%}), so the posterior is skewed "
+            f"on the parameters' log scale. Refit with importance=True, "
+            f"which corrects it, or use {other}.",
+            stacklevel=caller_stacklevel(),
+        )
+
+
+def _normal_density(post: Posterior) -> Any:
+    """The log density of a Laplace posterior's normal at points on the
+    free parameters' own scales."""
+    from surpyval.bayes.engines.laplace import normal_logpdf
+
+    assert post.normal is not None
+    mean = np.asarray(post.normal["mean"], dtype=float)
+    cov = np.asarray(post.normal["cov"], dtype=float)
+
+    def log_density(points: npt.NDArray) -> npt.NDArray:
+        ts = post.transforms or []
+        phi = np.stack(
+            [t.to_phi(points[:, j]) for j, t in enumerate(ts)], axis=1
+        )
+        jac = sum(t.log_jacobian(phi[:, j]) for j, t in enumerate(ts))
+        out: npt.NDArray = normal_logpdf(phi, mean, cov) - jac
+        return out
+
+    return log_density
 
 
 def _solve_on_log_time(f: Any, a: float, b: float, fb: float) -> float:
@@ -2823,3 +2992,10 @@ def _solve_on_log_time(f: Any, a: float, b: float, fb: float) -> float:
         maxiter=1000,
     )
     return float(np.exp(root))
+
+
+# Temporary aliases for the names these helpers had before they became
+# public. Remove them once the open branches that import the old names have
+# landed.
+_fmt = fmt
+_prior_interval = prior_interval_text

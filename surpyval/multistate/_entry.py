@@ -112,10 +112,19 @@ def initial_state(transitions: Any) -> Any:
     return starts[0]
 
 
-def _checked(data: SurpyvalData, regression: bool, transitions: Any) -> Any:
+def _checked(
+    data: SurpyvalData,
+    regression: bool,
+    transitions: Any,
+    intervals: bool = False,
+    varying: bool = False,
+    truncated: bool = False,
+) -> Any:
     """``data`` as the multi-state fits take it, or a refusal saying why
     not and what to do: a shallow copy with ``s`` filled where it has
-    none, and its covariates as a named table."""
+    none, and its covariates as a named table. With ``intervals`` (the
+    fits that take a move known only to lie between two times), rows
+    with ``c = 2`` become the two-column ``x``, ``[xl, xr]``."""
     n_rows = len(data.c)
     if data.e is None:
         raise ValueError(
@@ -125,34 +134,67 @@ def _checked(data: SurpyvalData, regression: bool, transitions: Any) -> Any:
             "for survival data with no states, KaplanMeier or a "
             "distribution's fit takes it as it is."
         )
-    odd = ~np.isin(data.c, (0, 1))
-    if odd.any():
+    left = data.c == -1
+    if left.any() and not intervals:
         raise ValueError(
-            f"Rows {_rows(odd)} are left or interval censored (c = -1 or "
-            "2): a change of state seen only between two times is not "
-            "supported by this model. Give each move at the time it was "
-            "seen, or leave those rows out "
+            f"Rows {_rows(left)} are left censored (c = -1, a move into e "
+            "at some time before x), which this model does not take. "
+            "ParametricMultiState.fit and ParametricMultiStateRegression.fit "
+            "take them (as a move between the start of the spell and x); "
+            "here, leave those rows out "
             "(data[(data.c == 0) | (data.c == 1)])."
         )
+    interval = (data.c == 2) | left
+    if interval.any() and not intervals:
+        raise ValueError(
+            f"Rows {_rows(interval)} are interval censored (c = 2): a "
+            "change of state seen only between two times is not supported "
+            "by this model. ParametricMultiState and "
+            "ParametricMultiStateRegression take such moves; here, give "
+            "each move at the time it was seen, or leave those rows out "
+            "(data[(data.c == 0) | (data.c == 1)])."
+        )
+    odd = ~np.isin(data.c, (-1, 0, 1, 2))
+    if odd.any():
+        raise ValueError(
+            f"Rows {_rows(odd)} have censoring flags other than -1, 0, 1 "
+            "and 2, which a multi-state model cannot read."
+        )
     out = data
-    if np.ndim(data.x) == 2:
+    if interval.any():
+        # Each interval-censored row's move lies in (xl, xr], read as the
+        # two-column x of the arrays; every other row's time is its lower
+        # end (xl = xr), and the move is carried by e as for c = 0. A
+        # left-censored row's move (c = -1) was at some time before x:
+        # xl = -inf, read as the start of its spell.
+        x2 = np.asarray(data.x, dtype=float)
+        lower = x2[:, 0] if x2.ndim == 2 else x2
+        upper = x2[:, 1] if x2.ndim == 2 else x2
+        lower = np.where(left, -np.inf, lower)
+        out = copy.copy(data)
+        out.x = np.column_stack([lower, np.where(interval, upper, lower)])
+        out.c = np.where(interval, 0, data.c)
+    elif np.ndim(data.x) == 2:
         # Ranges read row by row (x, xl and xr together) keep every row's
         # time as [lower, upper]: with only exact and right-censored rows
         # left, each row's time is its lower end.
         out = copy.copy(data)
         out.x = np.asarray(data.x)[:, 0]
-    if bool(np.isfinite(data.tr).any()):
+    if bool(np.isfinite(data.tr).any()) and not truncated:
         raise ValueError(
             "The SurpyvalData has right truncation (tr), which this model "
-            "does not take (it takes each row's entry, tl). Leave it out "
-            "of the data."
+            "does not take (it takes each row's entry, tl): "
+            "ParametricMultiState and ParametricMultiStateRegression take "
+            "it, with the state that had to be reached by then "
+            "(reached=). Leave it out of the data here."
         )
-    if data.time_varying_covariates is not None:
+    if data.time_varying_covariates is not None and not varying:
         raise ValueError(
-            "The SurpyvalData has time-varying covariates, which the "
-            "multi-state models do not take: split each stay at the "
-            "changes into rows with the covariates fixed, or use "
-            "data.without('time_varying_covariates')."
+            "The SurpyvalData has time-varying covariates, which this "
+            "multi-state model does not take: ParametricMultiStateRegression "
+            "takes them (each unit's path keyed by its i); here, split "
+            "each stay at the changes into rows with the covariates fixed, "
+            "or use data.without('time_varying_covariates')."
         )
     if data.Z is not None and not regression:
         raise ValueError(
@@ -216,12 +258,22 @@ def _refuse_several_rows(data: SurpyvalData) -> None:
     )
 
 
-def multistate_data(method: F) -> F:
+def multistate_data(
+    method: F | None = None, *, intervals: bool = False
+) -> Any:
     """Check a SurpyvalData given to a multi-state ``fit`` (see the
     module docstring), before :func:`accepts_surpyval_data` fills the
-    fit's arguments from it. Apply it above that decorator."""
+    fit's arguments from it. Apply it above that decorator. With
+    ``intervals=True`` (``@multistate_data(intervals=True)``, for the fits
+    whose ``x`` may be two columns), interval-censored rows (``c = 2``)
+    are passed on as the moves of ``x = [xl, xr]``; otherwise they are
+    refused, as left-censored rows always are."""
+    if method is None:
+        return functools.partial(multistate_data, intervals=intervals)
     signature = inspect.signature(method)
     regression = "Z" in signature.parameters
+    varying = "time_varying_covariates" in signature.parameters
+    truncated = "tr" in signature.parameters
 
     @functools.wraps(method)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -236,11 +288,16 @@ def multistate_data(method: F) -> F:
                 "SurpyvalData(x, ..., s=s, e=e, i=i))."
             )
         bound.arguments["x"] = _checked(
-            data, regression, bound.arguments.get("transitions")
+            data,
+            regression,
+            bound.arguments.get("transitions"),
+            intervals,
+            varying,
+            truncated,
         )
         return method(*bound.args, **bound.kwargs)
 
-    return wrapper  # type: ignore[return-value]
+    return wrapper
 
 
 #: The refusal of a SurpyvalData by the panel multi-state models.

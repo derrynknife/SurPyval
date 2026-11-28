@@ -1,0 +1,64 @@
+name: calibration-weekly
+
+run-name: SurPyval weekly calibration
+
+# Calibration studies too long or too large for the release run, which do
+# not gate a release (the maintainer's decision, 28 November 2026;
+# DECISIONS.md). They run weekly on dev, and by hand (gh workflow run
+# calibration-weekly.yml --ref dev). publish.yml reads only actions.yml's
+# runs, so a result here never blocks a publish.
+on:
+  schedule:
+    - cron: '0 14 * * 6'  # Saturday 14:00 UTC, midnight on Sunday in Brisbane
+  workflow_dispatch:
+
+jobs:
+  calibration:
+    runs-on: ubuntu-latest
+    # GitHub's limit for a job.
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # A joint model of several markers with failure modes: 200 fits
+          # of the full model (250 items) on every core of one worker;
+          # over five hours on the 0.30 release runs.
+          - group: joint-marker-causes
+            workers: '1'
+            args: >-
+              surpyval/tests/calibration/test_coverage_joint_marker_causes.py
+          # The panel multi-state model with a way back (bound 3): each fit
+          # takes minutes and over 5 GB, so four at once stopped the
+          # runner (16 GB) within minutes on the 0.30 release run; here
+          # two at once (the replicates' results do not depend on it).
+          - group: multistate-panel-cycles
+            workers: '0'
+            pool: '2'
+            args: >-
+              surpyval/tests/calibration/test_coverage_multistate_panel_cycles.py
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'dev' || github.ref }}
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: pytest (${{ matrix.group }})
+        env:
+          OPENBLAS_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+          SURPYVAL_CALIBRATION_POOL: ${{ matrix.pool || '' }}
+        run: >-
+          python -m pytest -rP --durations=10 -n ${{ matrix.workers }}
+          --timeout=20700 --timeout-method=thread
+          --run-calibration ${{ matrix.args }}

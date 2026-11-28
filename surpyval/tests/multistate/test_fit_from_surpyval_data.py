@@ -341,16 +341,33 @@ def test_data_arguments_beside_data_are_refused(cls, Z, opts):
 
 @pytest.mark.parametrize("cls, Z, opts", FITS, ids=IDS)
 def test_interval_and_left_censored_rows_are_refused(cls, Z, opts):
+    # Interval-censored moves (c = 2) and left-censored ones (c = -1) are
+    # taken by the parametric fits (test_interval.py,
+    # test_parametric_truncation.py) and refused by the others.
     zkw = {"Z": [[0.0], [1], [0], [1], [0], [1]]} if Z else {}
-    data = sp.SurpyvalData(
-        x=[[2.0, 2], [6, 6], [3, 3], [8, 8], [4, 4], [4, 6]],
-        c=[0, 0, 0, 1, 0, 2],
+    base = dict(
         e=["ill", "dead", "ill", None, "dead", "dead"],
         s=["healthy", "ill", "healthy", "ill", "healthy", "healthy"],
         **zkw,
     )
-    with pytest.raises(ValueError, match=r"Rows 5 are left or interval"):
-        cls.fit(data, **opts)
+    data = sp.SurpyvalData(
+        x=[[2.0, 2], [6, 6], [3, 3], [8, 8], [4, 4], [4, 6]],
+        c=[0, 0, 0, 1, 0, 2],
+        **base,
+    )
+    if cls in (MultiState, MultiStateProportionalHazards):
+        with pytest.raises(ValueError, match=r"Rows 5 are interval"):
+            cls.fit(data, **opts)
+    left = sp.SurpyvalData(
+        x=[2.0, 6, 3, 8, 4, 6], c=[0, 0, 0, 1, 0, -1], **base
+    )
+    if cls in (MultiState, MultiStateProportionalHazards):
+        with pytest.raises(ValueError, match=r"Rows 5 are left censored"):
+            cls.fit(left, **opts)
+    else:
+        # (as the move in (0, 6] of x = [-inf, 6] in the arrays)
+        model = cls.fit(left, **opts)
+        assert np.isfinite(model.log_likelihood)
 
 
 def test_other_refusals():
@@ -451,7 +468,9 @@ def test_ranges_refused_and_rows_left_out_fit_on_the_rest():
             tl=[0, 2, 0, 3, 0],
             i=[1, 1, 2, 2, 3],
         )
-        with pytest.raises(ValueError, match="Rows 3 are left or interval"):
+        with pytest.raises(
+            ValueError, match="Rows 3 are (left|interval) censored"
+        ):
             MultiState.fit(data)
         # The fix the message names fits
         kept = data[(data.c == 0) | (data.c == 1)]

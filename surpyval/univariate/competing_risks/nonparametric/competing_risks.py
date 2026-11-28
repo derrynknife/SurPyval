@@ -524,6 +524,12 @@ class CompetingRisks(SerialisableMixin):
             "mass": np.asarray(self.IIF[k], dtype=float)[at],
         }
 
+    def _scale_name(self, method: str, bound_type: Any) -> Any:
+        """``bound_type`` by its name since v0.30 (see ``scale_name``)."""
+        from surpyval.univariate.nonparametric._scales import scale_name
+
+        return scale_name(f"CompetingRisks.{method}", bound_type)
+
     @keeps_query_shape
     def cb(
         self,
@@ -532,7 +538,7 @@ class CompetingRisks(SerialisableMixin):
         on: str = "cif",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
         n_boot: int | None = None,
         random_state: Any = None,
     ) -> npt.NDArray:
@@ -581,15 +587,17 @@ class CompetingRisks(SerialisableMixin):
             and the columns ``[lower, upper]``, or one side. A one-sided
             bound puts all of ``alpha_ci`` on one side, so it equals that
             end of the two-sided interval at ``2 * alpha_ci``.
-        bound_type : ('exp', 'normal'), str, optional
-            'exp' (the default) forms the interval on the log(-log) scale,
+        bound_type : ('log-log', 'plain'), str, optional
+            'log-log' (the default) forms the interval on the log(-log)
+            scale,
             :math:`\hat{F}^{\exp(\pm z\,\hat{\sigma} / (\hat{F}\log
             \hat{F}))}` for the cumulative incidence (Choudhury, 2002),
-            which keeps it within [0, 1]; 'normal' is
+            which keeps it within [0, 1]; 'plain' is
             :math:`\hat{F} \pm z\,\hat{\sigma}`, which can leave it. For
             ``sf``, ``ff`` and ``Hf`` it is the single-event ``cb``'s
             ``bound_type``, which also takes 'log', 'logit', 'arcsine',
-            'peto' and 'rothman' (see ``KaplanMeier.cb``).
+            'peto' and 'rothman' (see ``KaplanMeier.cb``). ('exp' and
+            'normal' until v0.30, still accepted with a warning.)
         n_boot, random_state : optional
             The bootstrap samples and seed of the bounds of a model fitted
             to left- or interval-censored rows (``estimator == "NPMLE"``,
@@ -673,14 +681,15 @@ class CompetingRisks(SerialisableMixin):
             "('cif', 'sf', 'ff', 'Hf') instead.",
         )
         check_option("bound", bound, BOUNDS)
+        bound_type = self._scale_name("cb", bound_type)
         if on == "cif":
             check_option(
                 "bound_type",
                 bound_type,
-                ("exp", "normal"),
+                ("log-log", "plain"),
                 "The cumulative incidence is bounded on the log(-log) "
-                "scale ('exp') or plainly ('normal'); the other types are "
-                "for the survival ('sf', 'ff', 'Hf').",
+                "scale ('log-log') or plainly ('plain'); the other types "
+                "are for the survival ('sf', 'ff', 'Hf').",
             )
         else:
             check_option("bound_type", bound_type, POINTWISE_BOUND_TYPES)
@@ -732,7 +741,7 @@ class CompetingRisks(SerialisableMixin):
             var = aalen_johansen_variance(self.r, self.d, self.d_e[k])
         z = norm.ppf(1.0 - alpha_ci / (2.0 if bound == "two-sided" else 1.0))
         se = np.sqrt(var)
-        if bound_type == "normal":
+        if bound_type == "plain":
             lower, upper = F - z * se, F + z * se
         else:
             # The incidence is 1 only where one cause had every failure
@@ -740,13 +749,15 @@ class CompetingRisks(SerialisableMixin):
             one = F >= 1.0 - 1e-12
             inside = (var > 0) & ~one
             with np.errstate(divide="ignore", invalid="ignore"):
-                # On the log(-log F) scale, the survival bounds' 'exp'
+                # On the log(-log F) scale, the survival bounds' 'log-log'
                 # scale with F for the survival, z se / F the deviate
                 # times the standard error of log F.
                 F_in = np.where(inside, F, 0.5)
                 d = z * se / F_in
-                lower = np.where(inside, survival_bound("exp", F_in, -d), F)
-                upper = np.where(inside, survival_bound("exp", F_in, d), F)
+                lower = np.where(
+                    inside, survival_bound("log-log", F_in, -d), F
+                )
+                upper = np.where(inside, survival_bound("log-log", F_in, d), F)
             if np.any(one & (var > 0)):
                 below = lower[~one]
                 top = below.max() if below.size else 0.0
@@ -940,7 +951,7 @@ class CompetingRisks(SerialisableMixin):
         plot_bounds: bool = True,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
         n_boot: int | None = None,
         random_state: Any = None,
     ) -> Any:
@@ -1007,7 +1018,8 @@ class CompetingRisks(SerialisableMixin):
         _refuse_bootstrap_options(n_boot, random_state)
         check_alpha_ci(alpha_ci)
         check_option("bound", bound, BOUNDS)
-        check_option("bound_type", bound_type, ("exp", "normal"))
+        bound_type = self._scale_name("plot", bound_type)
+        check_option("bound_type", bound_type, ("log-log", "plain"))
         if ax is None:
             import matplotlib.pyplot as plt
 
@@ -1186,6 +1198,9 @@ class CompetingRisks(SerialisableMixin):
         >>> model.r
         array([3, 2, 3, 3, 2, 1])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         if xl_col is not None or xr_col is not None:
             if x_col is not None or xl_col is None or xr_col is None:
                 raise ValueError(

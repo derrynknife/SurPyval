@@ -34,6 +34,7 @@ from surpyval import (
     AcceleratedLife,
     AdditiveHazards,
     BuckleyJames,
+    CoxAalen,
     CoxPH,
     InstantlyOccurs,
     KaplanMeier,
@@ -45,6 +46,7 @@ from surpyval import (
     Parametric,
     ProportionalOdds,
     QuantileRegression,
+    RankAFT,
     RoystonParmar,
     SurpyvalData,
     Turnbull,
@@ -61,6 +63,8 @@ from surpyval.multistate import (
     PanelMultiStateRegression,
     ParametricMultiState,
     ParametricMultiStateRegression,
+    ParametricPanelMultiState,
+    ParametricPanelMultiStateRegression,
 )
 from surpyval.serialisation import (
     _PARAMETERIZATIONS,
@@ -158,6 +162,17 @@ def _mixture_cure():
     cured = rng.random(z.size) < np.where(z == 0, 0.4, 0.6)
     x = np.where(cured, 60.0, life)
     return surpyval.WeibullMixtureCure.fit(x, z, c=cured.astype(int))
+
+
+def _promotion_time_cure():
+    """A promotion-time cure regression on the mixture-cure data: the
+    covariate on theta."""
+    rng = np.random.default_rng(11)
+    z = np.tile([0.0, 1.0], 60)
+    life = 10.0 * np.exp(-0.4 * z) * rng.weibull(2.0, z.size)
+    cured = rng.random(z.size) < np.where(z == 0, 0.4, 0.6)
+    x = np.where(cured, 60.0, life)
+    return surpyval.WeibullPromotionTimeCure.fit(x, z, c=cured.astype(int))
 
 
 def _equivalence():
@@ -322,6 +337,14 @@ def _destructive():
     return DestructiveDegradation.fit(x, y, threshold=20, c=c)
 
 
+def _dabrowska():
+    from surpyval.multivariate import Dabrowska
+
+    x = np.array([[1.0, 2.0], [2.0, 1.0], [3.0, 4.0], [4.0, 3.0]])
+    c = np.array([[0, 0], [0, 1], [1, 0], [0, 0]])
+    return Dabrowska.fit(x, c=c, n=[1, 2, 1, 1])
+
+
 def _copula_with_km_margin():
     from surpyval.multivariate import Clayton
 
@@ -384,6 +407,7 @@ def _build(name):
         CrowAMSAA,
         GeneralizedRenewal,
         JointFrailty,
+        LloydLipow,
         NonParametricCounting,
         PanelCountMCF,
         PanelCountRegression,
@@ -432,6 +456,7 @@ def _build(name):
             surpyval.WeibullDistributional.fit(*_semipar_data()[:2])
         ),
         "mixture_cure": _mixture_cure,
+        "promotion_time_cure": _promotion_time_cure,
         "equivalence": _equivalence,
         "zero_inflated": _zero_inflated,
         "accelerated_life": _accelerated_life,
@@ -445,6 +470,8 @@ def _build(name):
             *_semipar_data(5)[:2], c=_semipar_data(5)[2]
         ),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
+        "cox_aalen": lambda: CoxAalen.fit(*_semipar_data(3)[:2], additive=[0]),
+        "rank_aft": lambda: RankAFT.fit(*_semipar_data(3)[:2]),
         "quantile_regression": lambda: QuantileRegression.fit(
             *_semipar_data(3)
         ),
@@ -511,6 +538,16 @@ def _build(name):
         "multistate_panel_regression": lambda: (
             PanelMultiStateRegression.fit(**panel_data(True))
         ),
+        "multistate_panel_parametric": lambda: (
+            ParametricPanelMultiState.fit(
+                **panel_data(), dist=surpyval.Exponential
+            )
+        ),
+        "multistate_panel_parametric_regression": lambda: (
+            ParametricPanelMultiStateRegression.fit(
+                **panel_data(True), model=surpyval.ExponentialPH
+            )
+        ),
         "cause_specific_mcf": lambda: CauseSpecificMCF.fit(
             np.array([5, 10, 15, 4, 9, 12, 20], dtype=float),
             np.array([1, 1, 1, 2, 2, 3, 3]),
@@ -545,6 +582,9 @@ def _build(name):
             np.repeat(np.arange(6), [2, 2, 3, 4, 9, 12]),
             (_frailty_fleet() == 60).astype(int),
             frailty="gamma",
+        ),
+        "discrete_growth": lambda: LloydLipow.fit(
+            [6, 5, 4, 3, 3, 2], [10, 10, 10, 10, 10, 10]
         ),
         "mcf": lambda: NonParametricCounting.fit(
             np.array([5.0, 12.0, 20.0, 8.0, 15.0, 25.0]),
@@ -615,6 +655,7 @@ def _build(name):
         ),
         "destructive": _destructive,
         "copula": _copula_with_km_margin,
+        "bivariate_non_parametric": _dabrowska,
         "survival_tree": _tree,
         "random_survival_forest": _forest,
         "never_occurs": lambda: NeverOccurs,
@@ -624,6 +665,57 @@ def _build(name):
             [2100.0, 3400, 4050, 5000, 5500, 6000],
             c=[0, 0, 0, 1, 1, 1],
             priors={"beta": sp_prior.around(2, between=(1.5, 3))},
+        ),
+        "bayesian_regression": _bayesian_regression,
+        "bayesian_result": _bayesian_result,
+        "bayesian_recurrence": lambda: CrowAMSAA.fit_bayes(
+            np.array([10.0, 25.0, 45.0, 70.0, 100.0, 135.0, 175.0])
+        ),
+        "bayesian_proportional_intensity": lambda: (
+            ProportionalIntensityHPP.fit_bayes(
+                _pi_data()[0],
+                _pi_data()[3],
+                i=_pi_data()[1],
+                c=_pi_data()[2],
+            )
+        ),
+        "bayesian_cause_specific": lambda: CauseSpecificNHPP.fit_bayes(
+            *_recurrent_marked_data()[:3], e=_recurrent_marked_data()[3]
+        ),
+        "bayesian_renewal": _bayesian_renewal,
+        "bayesian_mixture_cure": _bayesian_mixture_cure,
+        "bayesian_process": lambda: GammaProcess.fit_bayes(
+            *_process_data(1, monotone=True), threshold=15.0
+        ),
+        "bayesian_competing_risks": lambda: (
+            ParametricCompetingRisks.fit_bayes(
+                _cr_data()[0], _cr_data()[2], c=_cr_data()[3]
+            )
+        ),
+        "bayesian_multistate": lambda: ParametricMultiState.fit_bayes(
+            **{**ms_data(), "dist": surpyval.Exponential}
+        ),
+        "bayesian_competing_risks_joint": lambda: (
+            ParametricCompetingRisks.fit_bayes(
+                [[2, 2], [2, 4], [4, 6], [5, 5], [6, 8], [7, 7], [8, 10]],
+                ["a", "b", "a", "b", "a", "a", "b"],
+                c=[-1, 2, 2, 0, 2, 0, 2],
+                dist=surpyval.Exponential,
+            )
+        ),
+        "bayesian_competing_risks_regression": lambda: (
+            surpyval.ParametricCompetingRisksRegression.fit_bayes(
+                _cr_data()[0],
+                _cr_data()[1],
+                _cr_data()[2],
+                c=_cr_data()[3],
+                model=surpyval.ExponentialPH,
+            )
+        ),
+        "bayesian_multistate_regression": lambda: (
+            surpyval.multistate.ParametricMultiStateRegression.fit_bayes(
+                **{**ms_data(True), "model": surpyval.ExponentialPH}
+            )
         ),
     }
     with warnings.catch_warnings():
@@ -643,6 +735,7 @@ CASES = [
     "parametric_regression",
     "distributional_regression",
     "mixture_cure",
+    "promotion_time_cure",
     "equivalence",
     "zero_inflated",
     "accelerated_life",
@@ -654,6 +747,8 @@ CASES = [
     "additive_hazards",
     "aalen_additive",
     "buckley_james",
+    "cox_aalen",
+    "rank_aft",
     "quantile_regression",
     "proportional_odds",
     "interval_cox",
@@ -676,11 +771,14 @@ CASES = [
     "multistate_parametric_regression_reset",
     "multistate_panel",
     "multistate_panel_regression",
+    "multistate_panel_parametric",
+    "multistate_panel_parametric_regression",
     "cause_specific_mcf",
     "cause_specific_nhpp",
     "cause_specific_proportional_intensity",
     "joint_frailty",
     "shared_frailty",
+    "discrete_growth",
     "mcf",
     "panel_count_mcf",
     "panel_count_regression",
@@ -704,13 +802,72 @@ CASES = [
     "gamma_process",
     "destructive",
     "copula",
+    "bivariate_non_parametric",
     "survival_tree",
     "random_survival_forest",
     "never_occurs",
     "instantly_occurs",
     "joint",
     "bayesian",
+    "bayesian_regression",
+    "bayesian_result",
+    "bayesian_recurrence",
+    "bayesian_proportional_intensity",
+    "bayesian_cause_specific",
+    "bayesian_renewal",
+    "bayesian_mixture_cure",
+    "bayesian_process",
+    "bayesian_competing_risks",
+    "bayesian_multistate",
+    "bayesian_competing_risks_joint",
+    "bayesian_competing_risks_regression",
+    "bayesian_multistate_regression",
 ]
+
+
+def _bayesian_renewal():
+    """The Bayesian imperfect-repair fit of two systems (as the
+    ``fit_bayes`` example of ``ARA``)."""
+    x = np.array([3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60])
+    i = np.array([1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
+    c = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+    return surpyval.recurrent.ARA.fit_bayes(x, i, c=c, m=2)
+
+
+def _bayesian_mixture_cure():
+    """The Bayesian mixture-cure fit of 150 units with one binary
+    covariate (as the ``fit_bayes`` example of ``MixtureCure``)."""
+    rng = np.random.default_rng(3)
+    Z = rng.binomial(1, 0.5, size=(150, 1)).astype(float)
+    cured = rng.uniform(size=150) < np.where(Z[:, 0] > 0, 0.5, 0.25)
+    life = Weibull.random(150, 10.0, 2.0, random_state=4)
+    x = np.where(cured, 40.0, np.minimum(life, 40.0))
+    c = np.where(cured | (life > 40.0), 1, 0)
+    return surpyval.MixtureCure(Weibull).fit_bayes(x, Z, c)
+
+
+def _bayesian_result():
+    """The shared Bayesian result, from a family's target (here the
+    regression's, as ``fit_target``'s example)."""
+    from surpyval import WeibullPH
+    from surpyval.bayes import fit_target
+    from surpyval.bayes.regression import RegressionTarget
+
+    rng = np.random.default_rng(1)
+    Z = rng.normal(size=(30, 1))
+    x = Weibull.random(30, 50.0, 2.0, random_state=2)
+    return fit_target(RegressionTarget(WeibullPH.fit(x, Z)))
+
+
+def _bayesian_regression():
+    """A Bayesian Weibull proportional hazards fit (the Laplace
+    engine)."""
+    from surpyval import WeibullPH
+
+    rng = np.random.default_rng(1)
+    Z = rng.normal(size=(30, 1))
+    x = Weibull.random(30, 50.0, 2.0, random_state=2)
+    return WeibullPH.fit_bayes(x, Z)
 
 
 def _frailty_fleet():

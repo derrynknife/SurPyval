@@ -11,10 +11,15 @@ import numpy.typing as npt
 from surpyval.univariate.parametric import (
     Beta,
     Beta4,
+    BirnbaumSaunders,
     Exponential,
     ExpoWeibull,
     Gamma,
+    GeneralizedF,
+    GeneralizedGamma,
+    Gompertz,
     Gumbel,
+    InverseGaussian,
     Logistic,
     LogLogistic,
     LogNormal,
@@ -46,10 +51,15 @@ if TYPE_CHECKING:
 distributions: list[OptimisedFitMixin] = [
     Beta,
     Beta4,
+    BirnbaumSaunders,
     Exponential,
     ExpoWeibull,
     Gamma,
+    GeneralizedF,
+    GeneralizedGamma,
+    Gompertz,
     Gumbel,
+    InverseGaussian,
     Logistic,
     LogLogistic,
     LogNormal,
@@ -228,13 +238,15 @@ def fit_best(
     the fitted model with the best value of ``metric``.
 
     The candidates are the fittable continuous univariate distributions
-    with a regular likelihood (Beta, Exponential, ExpoWeibull, Gamma,
-    Gumbel, Logistic, LogLogistic, LogNormal, Normal, Rayleigh and
-    Weibull). The data are given as to ``fit`` (``x``, ``c``, ``n``,
-    ``t``, ``tl``, ``tr``, ``xl``, ``xr``) and are checked once, as
-    ``fit`` checks them: an input error -- a malformed censoring flag,
-    say -- raises the ``ValueError`` that ``Weibull.fit`` would, rather
-    than failing every candidate. A candidate the data lie outside the
+    with a regular likelihood (Beta, BirnbaumSaunders, Exponential,
+    ExpoWeibull, Gamma, GeneralizedF, GeneralizedGamma, Gompertz, Gumbel,
+    InverseGaussian, Logistic, LogLogistic, LogNormal, Normal, Rayleigh
+    and Weibull). The
+    data are given as to ``fit`` (``x``, ``c``, ``n``, ``t``, ``tl``,
+    ``tr``, ``xl``, ``xr``) and are checked once, as ``fit`` checks them:
+    an input error -- a malformed censoring flag, say -- raises the
+    ``ValueError`` that ``Weibull.fit`` would, rather than failing every
+    candidate. A candidate the data lie outside the
     support of (a Beta for data outside (0, 1)) is passed over quietly,
     except that a warning names the lifetime families (support from 0)
     passed over because some times are at or below 0, and says what was
@@ -537,7 +549,14 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
             "be fitted to these data: " + "; ".join(failed),
             stacklevel=caller_stacklevel(),
         )
-    if set_aside:
+    # Among the default candidates, one set aside while a regular fit was
+    # chosen is not news: a four-parameter family such as the
+    # GeneralizedF has no finite maximum on much ordinary data, so naming
+    # it each time would be a warning on every call. It stays in the table
+    # (``return_table=True``). A candidate the caller named, or a choice
+    # among set-aside fits only, is still said.
+    named = bool(include_set or mixtures)
+    if set_aside and (named or best[True][1] is None):
         chosen = "none" if model is None else labels[id(model)]
         warnings.warn(
             f"fit_best set aside {', '.join(set_aside)}: without a "

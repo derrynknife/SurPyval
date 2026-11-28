@@ -538,15 +538,18 @@ def refuse_time_values(value: Any, name: str) -> None:
             f"'{name}' holds dates or times (datetime64 or pandas "
             "Timestamp); SurPyval needs durations as numbers. Subtract "
             "each unit's start and convert to the unit you want: e.g. "
-            f"({name} - start) / pd.Timedelta(days=1) for days"
+            f"({name} - start) / pd.Timedelta(days=1) for days; or give "
+            "the start and end dates to surpyval.utils.dates_to_durations"
+            "(start, end), which returns the durations and the "
+            "censoring flags (a unit with no end date is still running)"
         )
 
 
 def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
     """Refuse an ``x`` that is a data class, a record or a list of
     records, a DataFrame or a dict, naming what to do with it (#933): a
-    recurrent fit (``recurrent``) takes an ``EventHistoryData``, a
-    lifetime fit a ``SurpyvalData``."""
+    recurrent fit (``recurrent``) takes a ``SurpyvalData`` with each
+    row's unit ``i``, a lifetime fit a ``SurpyvalData`` of lifetimes."""
     from surpyval.utils.event_history_data import EventHistoryData
     from surpyval.utils.item_history import ItemHistory
     from surpyval.utils.item_lifetime import ItemLifetime
@@ -566,7 +569,7 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
                 f"{kind}, which a recurrent fit does not take: a lifetime "
                 "model fits them, as SurpyvalData.from_items(items); a "
                 "recurrent model takes each item's history of repeated "
-                "events, EventHistoryData.from_items([ItemHistory(...), "
+                "events, SurpyvalData.from_items([ItemHistory(...), "
                 "...])."
             )
         raise TypeError(
@@ -587,17 +590,16 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
         kind = f"x is {one}ItemHistory record{plural} (one item's history)"
         if recurrent:
             raise TypeError(
-                f"{kind}: build the dataset, EventHistoryData.from_items("
+                f"{kind}: build the dataset, SurpyvalData.from_items("
                 f"{'items' if listed else '[item, ...]'}), and fit that."
             )
         raise TypeError(
             f"{kind} of repeated events, which a lifetime fit does not "
-            "take: fit EventHistoryData.from_items("
+            "take: fit SurpyvalData.from_items("
             f"{'items' if listed else '[item, ...]'}).to_first_events() for "
             "the time to each item's first failure, or .to_gaps() for the "
             "times between failures; a recurrent model (such as "
-            "surpyval.recurrent.CrowAMSAA) fits the EventHistoryData as it "
-            "is."
+            "surpyval.recurrent.CrowAMSAA) fits the SurpyvalData as it is."
         )
     if isinstance(x, EventHistoryData):
         raise TypeError(
@@ -616,9 +618,8 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
                 "lifetime model fits it (Weibull.fit(data), "
                 "KaplanMeier.fit(data), ...); a recurrent model takes each "
                 "unit's history of repeated events, a SurpyvalData with "
-                "each row's unit (SurpyvalData(x, c, ..., i=i)) or an "
-                "EventHistoryData "
-                "(EventHistoryData.from_items([ItemHistory(...), ...]))."
+                "each row's unit (SurpyvalData(x, c, ..., i=i), or "
+                "SurpyvalData.from_items([ItemHistory(...), ...]))."
             )
         raise TypeError(
             "x is a SurpyvalData, which this function does not "
@@ -630,8 +631,8 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
             raise TypeError(
                 "x is a DataFrame: name its columns, "
                 "fit_from_df(df, x_col=..., i_col=..., c_col=...), or build "
-                "the data with EventHistoryData.from_dataframe(df, id=..., "
-                "age=..., ...) and fit that."
+                "the data with SurpyvalData.from_dataframe(df, x_col=..., "
+                "c_col=..., i_col=...) and fit that."
             )
         raise TypeError(
             "x is a DataFrame: name its columns, fit_from_df(df, x_col=..., "
@@ -643,7 +644,7 @@ def refuse_wrong_container(x: Any, recurrent: bool = False) -> None:
         if recurrent:
             raise TypeError(
                 "x is a dict: each item's history keyed by its id is "
-                "EventHistoryData.from_histories(observed={id: [ages]}, "
+                "SurpyvalData.from_histories(observed={id: [ages]}, "
                 "right_censored={id: age}); fit that."
             )
         raise TypeError(
@@ -899,6 +900,7 @@ def xcnt_handler(
     tl: npt.ArrayLike | Number | None = None,
     tr: npt.ArrayLike | Number | None = None,
     group_and_sort: bool = True,
+    zero_counts: bool = False,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
     Main handler that ensures any input to a surpyval fitter meets the
@@ -1043,7 +1045,7 @@ def xcnt_handler(
     )
     x = _xcnt_x(x, xl, xr)
     c = _xcnt_censoring(c, x)
-    n = _xcnt_counts(n, x)
+    n = _xcnt_counts(n, x, c if zero_counts else None)
 
     t = format_truncation(t, tl, tr, x.shape[0])
 
@@ -1517,8 +1519,13 @@ def _xcnt_censoring(c: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
     return c_arr
 
 
-def _xcnt_counts(n: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
-    """The counts as positive whole numbers, or one per row."""
+def _xcnt_counts(
+    n: npt.ArrayLike | None, x: npt.NDArray, c: npt.NDArray | None = None
+) -> npt.NDArray:
+    """The counts as positive whole numbers, or one per row. With ``c``
+    given (data whose rows have units), a count of 0 is also held on a
+    counted row (``c = 2`` or ``c = -1``): an inspection that found
+    nothing."""
     if n is None:
         # Do check here for groupby and binning
         return np.ones(x.shape[0])
@@ -1546,7 +1553,10 @@ def _xcnt_counts(n: npt.ArrayLike | None, x: npt.NDArray) -> npt.NDArray:
             "sampling, propensity or censoring weights, pass them as 'w' "
             "(and leave 'n' for counts of identical units)."
         )
-    if not (n_arr > 0).all():
+    counted = (
+        np.zeros(n_arr.shape, dtype=bool) if c is None else np.isin(c, (-1, 2))
+    )
+    if not ((n_arr > 0) | ((n_arr == 0) & counted)).all():
         raise ValueError("count array can't be 0 or less")
     return n_arr
 

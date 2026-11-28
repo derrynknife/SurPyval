@@ -573,11 +573,13 @@ def test_flags_derived_from_the_windows(model):
 # ---------------------------------------------------------------------------
 # Refusals
 # ---------------------------------------------------------------------------
-def test_refuses_a_window_without_a_cause():
+def test_an_exact_failure_needs_its_cause_a_window_does_not():
+    # a window from an unknown cause is the all-cause survival over it
+    # (tests/bayes/test_competing_risks_bayes_windows_more.py)
     with pytest.raises(ValueError, match="needs its cause"):
         ParametricCompetingRisks.fit(
             [[1.0, 1.0], [2.0, 3.0], [4.0, 4.0]],
-            [1, None, 2],
+            [1, 2, None],
             c=[0, 2, 0],
         )
 

@@ -24,7 +24,6 @@ from formulaic import Formula, ModelSpec
 from formulaic.parser.types import Factor  # type: ignore[import-untyped]
 
 from surpyval.utils import (
-    _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
     formula_model_matrix,
@@ -39,7 +38,7 @@ from surpyval.utils.dataframe import (
     frame_column,
 )
 from surpyval.utils.units import takes_unit
-from surpyval.utils.warnings import ignoring_warnings
+from surpyval.utils.warnings import caller_stacklevel, ignoring_warnings
 
 from ._aliasing import covariate_columns
 
@@ -454,6 +453,9 @@ def design_matrix_from_df(
         categorical factor levels) can be reproduced at prediction time.
         ``None`` when ``Z_cols`` was used.
     """
+    from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+    df = _as_pandas(df)
     if (Z_cols is None) and (formula is None):
         raise ValueError("One of 'Z_cols' or 'formula' must be provided")
 
@@ -768,7 +770,7 @@ def record_empty_levels(model_spec: Any, df: pd.DataFrame) -> None:
             "predicting for such a level raises a ValueError, as for a "
             "level the model was not fitted with.",
             UserWarning,
-            stacklevel=_caller_stacklevel(),
+            stacklevel=caller_stacklevel(),
         )
 
 
@@ -1330,6 +1332,9 @@ class DataFrameRegressionMixin:
         >>> model.sf([10, 20], df[["age", "weight"]].head(2)).round(4)
         array([0.4757, 0.0024])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         df, x_col, xl_col, xr_col = exact_or_range_frame(
             df, x_col, xl_col, xr_col, c_col
         )

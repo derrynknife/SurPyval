@@ -41,6 +41,10 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.univariate.regression._penalty_argument import (
+    penalised_entry,
+    penalty_argument,
+)
 from surpyval.utils.aliases import canonical_name
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.linalg import fixed_order_dot
@@ -102,6 +106,11 @@ SUPPORTED = (
     "Logistic",
     "Beta",
     "ExpoWeibull",
+    "GeneralizedF",
+    "GeneralizedGamma",
+    "Gompertz",
+    "InverseGaussian",
+    "BirnbaumSaunders",
 )
 
 #: The advice of a refusal of the parameters at Z = 0.
@@ -487,6 +496,7 @@ class DistributionalFitter(
 
     # -- fitting -----------------------------------------------------------
 
+    @penalty_argument("_fit_penalised")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
@@ -739,10 +749,15 @@ class DistributionalFitter(
                 )
         return model
 
+    fit_penalised = penalised_entry(
+        "_fit_penalised",
+        "call fit(..., penalizer=...); its default was penalizer=0.1",
+    )
+
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data
-    def fit_penalised(
+    def _fit_penalised(
         self,
         x: npt.ArrayLike,
         Z: npt.ArrayLike,
@@ -808,7 +823,7 @@ class DistributionalFitter(
         >>> rng = np.random.default_rng(3)
         >>> Z = rng.normal(size=(300, 3))
         >>> x = 10 * np.exp(-0.5 * Z[:, 0]) * rng.weibull(1.5, 300)
-        >>> model = WeibullDistributional.fit_penalised(
+        >>> model = WeibullDistributional.fit(
         ...     x, Z, penalizer={"alpha": 0.02, "beta": 0.2}, l1_ratio=1
         ... )
         >>> model.params[2:].round(3)
@@ -985,6 +1000,9 @@ class DistributionalFitter(
         >>> model.parameter_names
         ['alpha', 'beta', 'beta_load']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         if formulas is not None:
             if formula is not None or Z_cols is not None:
                 raise ValueError(

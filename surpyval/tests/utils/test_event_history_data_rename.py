@@ -1,10 +1,9 @@
 """RecurrentEventData was renamed EventHistoryData in v0.25 and the old
-name removed in v0.26: at the top level and in its old module, it raises
-the error Python would, naming the new one. So do EventHistoryData's
-``items`` and ``get_times_to_first_events``, deprecated with it."""
+name removed in v0.26: at the top level it raises the error Python would,
+naming the new one. So do EventHistoryData's ``items`` and
+``get_times_to_first_events``, deprecated with it. (The hint of its old
+module, ``surpyval.utils.recurrent_event_data``, was retired in v0.30.)"""
 
-import importlib
-import sys
 import warnings
 
 import pytest
@@ -16,8 +15,9 @@ from surpyval import EventHistoryData
 def test_the_old_top_level_name_names_the_new_one():
     with pytest.raises(
         AttributeError,
-        match="'RecurrentEventData': it was removed in v0.26; it is "
-        "surpyval.EventHistoryData",
+        match="'RecurrentEventData': it was removed in v0.26; it became "
+        "surpyval.EventHistoryData, itself deprecated in v0.30: use "
+        "surpyval.SurpyvalData",
     ):
         surpyval.RecurrentEventData
     assert not hasattr(surpyval, "RecurrentEventData")
@@ -31,12 +31,6 @@ def test_from_import_of_the_old_name_names_the_new_one():
         "v0.26",
     ):
         from surpyval import RecurrentEventData  # noqa: F401
-
-
-def test_the_old_module_names_the_new_class():
-    sys.modules.pop("surpyval.utils.recurrent_event_data", None)
-    with pytest.raises(ImportError, match="surpyval.EventHistoryData"):
-        importlib.import_module("surpyval.utils.recurrent_event_data")
 
 
 def test_star_import_no_longer_gets_the_old_name():
@@ -55,7 +49,8 @@ def test_star_import_no_longer_gets_the_old_name():
     [("items", "'ids'"), ("get_times_to_first_events", "'to_first_events()'")],
 )
 def test_the_old_attributes_name_their_replacements(old, new):
-    data = surpyval.handle_xicn([1, 2, 3], i=[1, 1, 2])
+    with pytest.warns(FutureWarning, match="handle_xicn is deprecated"):
+        data = surpyval.handle_xicn([1, 2, 3], i=[1, 1, 2])
     with pytest.raises(AttributeError) as caught:
         getattr(data, old)
     message = str(caught.value)

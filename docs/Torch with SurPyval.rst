@@ -35,13 +35,20 @@ The helpers are:
 - :func:`~surpyval.torch.nll`: the exact negative log-likelihood, of one
   distribution or a mixture (``mixture=``), and ``NLLLoss``, the same as a
   ``torch.nn.Module``;
+- :func:`~surpyval.torch.cox_nll`: the Cox partial likelihood for a
+  network's log relative hazards (DeepSurv's loss), with Efron or Breslow
+  ties;
+- :func:`~surpyval.torch.discrete_time_nll`: the discrete-time hazard
+  likelihood for a network's logits, one for each of ``K`` intervals (the
+  logistic hazard);
 - :func:`~surpyval.torch.sf`: each row's survival curve as an ``(N, T)``
   tensor, what :func:`~surpyval.metrics.score_predictions` scores;
 - :func:`~surpyval.torch.to_surpyval`: any row as an ordinary SurPyval
   model.
 
 They support the Weibull, Exponential, LogNormal, Gamma, LogLogistic,
-Normal, Gumbel, Logistic and Rayleigh distributions
+Normal, Gumbel, Logistic, Rayleigh, Gompertz, InverseGaussian,
+GeneralizedGamma and BirnbaumSaunders distributions
 (``surpyval.torch.SUPPORTED``, the same as the PyMC helpers'); any other is
 refused with that list.
 
@@ -258,6 +265,25 @@ double precision, for every family, kind of row and truncation.
 
 The gradient is first-order; for the Gamma distribution, whose
 derivative in its shape is numerical, it cannot be differentiated again.
+The two other losses are not a distribution's likelihood, so they take no
+distribution. ``cox_nll(risk, target)`` takes one log relative hazard for
+each row (a network's output; a constant added to all of them changes
+nothing) and the same ``Targets``, with exact or right-censored rows, counts
+and left truncation. Each failure is scored against the units still running
+at that time, so the loss depends only on the order of the times. With
+``reduction="sum"`` it equals the negative log partial likelihood that
+:class:`~surpyval.CoxPH` reports at the same coefficients, to 1e-8, with
+``ties="efron"`` (the default, as ``CoxPH``'s) or ``"breslow"``; the exact
+method is not offered, because it sums over orderings of the ties. The
+default ``reduction="mean"`` divides by the number of failures.
+``discrete_time_nll(logits, index, c, n)`` takes ``(N, K)`` logits of the
+chance of failing in each interval given the unit reached it, the interval
+each unit failed in (or was last seen to survive, if ``c`` is 1), counting
+from 0. It equals the negative log-likelihood of a discrete lifetime model
+with those hazards, such as ``DiscreteWeibull`` or ``Geometric``, where
+interval ``k`` is the discrete time ``k + 1``. The checks are in
+``surpyval/tests/torch/test_torch_survival_losses.py``.
+
 Because each kind of row is gathered on its own, the loss is for eager
 torch, not ``torch.vmap`` or tracing.
 
@@ -269,6 +295,10 @@ API
 .. autofunction:: surpyval.torch.constrain
 
 .. autofunction:: surpyval.torch.nll
+
+.. autofunction:: surpyval.torch.cox_nll
+
+.. autofunction:: surpyval.torch.discrete_time_nll
 
 .. autofunction:: surpyval.torch.sf
 

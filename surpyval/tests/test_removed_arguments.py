@@ -418,6 +418,8 @@ _SHIM_NAMES = frozenset(
         "RenamedAttribute",
         "fit_entry",
         "renamed_name",
+        "renamed_value",
+        "SURVIVAL_SCALE_RENAMES",
         "DeprecationWarning",
     }
 )

@@ -15,6 +15,17 @@ from surpyval.recurrent import (
 )
 from surpyval.utils.recurrent_utils import handle_xicn
 
+# These tests check the EventHistoryData the fits work on, reading its
+# ids and tl as they are there (before model.data becomes a SurpyvalData).
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.ids changes meaning:FutureWarning"
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.tl changes meaning:FutureWarning"
+    ),
+]
+
 
 def test_handle_xicn_default_truncation():
     # Without truncation the window defaults to the whole real line on the

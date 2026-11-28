@@ -49,6 +49,18 @@ def checked_hr(hr: Any) -> float:
     return value
 
 
+def refuse_unless_one(hr: Any, what: str, alternative: str) -> None:
+    """Refuse a hazard ratio other than 1 given to a model that cannot
+    carry one (``what``), saying what to use; ``None`` and 1 pass."""
+    if hr is None:
+        return
+    if checked_hr(hr) != 1:
+        raise ValueError(
+            f"{what} does not take a hazard ratio (hr = {float(hr):g}): "
+            f"{alternative}"
+        )
+
+
 def base(model: Any) -> Any:
     """The model without its hazard ratio: the same object's state with
     ``hr = 1`` (no cached mean)."""
@@ -56,6 +68,21 @@ def base(model: Any) -> Any:
     state = dict(model.__dict__)
     state.pop("_mean", None)
     state["hr"] = 1.0
+    out.__dict__.update(state)
+    return out
+
+
+def at(model: Any, core: Any, p: float = 1.0, f0: float = 0.0) -> Any:
+    """The model, its hazard ratio and offset kept, at the distribution
+    parameters ``core``, limited-failure proportion ``p`` and zero
+    inflation ``f0``: what a delta-method bound differentiates (``mean``,
+    ``mrl`` and the restricted mean of a model with ``hr``)."""
+    out = object.__new__(type(model))
+    state = dict(model.__dict__)
+    state.pop("_mean", None)
+    state["params"] = onp.array(core, dtype=float)
+    state["lfp_p"] = float(p)
+    state["f0"] = float(f0)
     out.__dict__.update(state)
     return out
 
@@ -223,17 +250,35 @@ def _refuse(model: Any, what: str, alternative: str) -> ValueError:
     )
 
 
-def _numerical_ok(model: Any, what: str) -> None:
-    """Refuse a moment of a model whose hazard-scaled moments are not
-    worked out here: a discrete distribution, or the defective moments of
-    a limited failure population."""
-    if model.dist.discrete:
-        raise _refuse(
-            model,
-            what,
-            "for a discrete distribution sum over its points, as "
-            "model.sf(numpy.arange(k)).sum() for the mean.",
-        )
+#: The most points a discrete model's sums run over before refusing.
+_MAX_POINTS = 2**24
+
+
+def discrete_raw_moment(model: Any, n: int) -> float:
+    r"""``E[T ** n]`` of a discrete model on the counts ``0, 1, 2, ...``
+    with a hazard ratio and no limited failure population, from its
+    survival function :math:`R(k) = P(T > k)`: :math:`\sum_{k \ge 0}
+    ((k + 1)^n - k^n) R(k)` (the mean is :math:`\sum_k R(k)`), summed in
+    blocks until a block adds nothing."""
+    total = 0.0
+    start, size = 0, 1024
+    while start < _MAX_POINTS:
+        k = onp.arange(start, start + size, dtype=float)
+        s = onp.asarray(model.sf(k), dtype=float)
+        part = float(onp.sum(((k + 1.0) ** n - k**n) * s))
+        total += part
+        if s[-1] == 0 or (s[-1] < 1e-17 and part <= 1e-17 * total):
+            return total
+        start += size
+        size *= 2
+    raise _refuse(
+        model,
+        f"Moment {n}",
+        f"its sum over the counts has not settled after {_MAX_POINTS} "
+        "points (a tail that falls as a power of k, whose moment may be "
+        "infinite); the mean up to a count n is "
+        "model.sf(numpy.arange(n)).sum().",
+    )
 
 
 def raw_moment(model: Any, n: int) -> float:
@@ -241,6 +286,8 @@ def raw_moment(model: Any, n: int) -> float:
     failure population, by quadrature over its survival function:
     :math:`\int_0^\infty n t^{n-1} R(t)\,dt - \int_{-\infty}^0 n t^{n-1}
     F(t)\,dt`."""
+    if model.dist.discrete:
+        return discrete_raw_moment(model, n)
     from scipy.integrate import quad
 
     from surpyval.utils.warnings import ignoring_warnings
@@ -275,7 +322,6 @@ def mean(model: Any, defective: bool) -> float:
     same = same_family(model)
     if same is not None:
         return same.mean(defective=defective)
-    _numerical_ok(model, "The mean")
     if model.lfp_p < 1:
         raise _refuse(
             model,
@@ -292,7 +338,6 @@ def moment(model: Any, n: int, defective: bool) -> float:
     same = same_family(model)
     if same is not None:
         return same.moment(n, defective=defective)
-    _numerical_ok(model, "A moment")
     if n == 0:
         return 1.0
     if model.lfp_p < 1:
@@ -315,19 +360,57 @@ def var(model: Any, defective: bool) -> float:
 
 
 def entropy(model: Any) -> float:
+    r"""The differential entropy :math:`-\int f \log f\,dt`: the
+    family's closed form for a Weibull or Exponential, and otherwise by
+    quadrature, with :math:`\log f = \log hr + \log h_0 - hr\,H_0` from
+    the model without its hazard ratio (finite far into the upper tail,
+    where ``f`` underflows)."""
     same = same_family(model)
     if same is not None and not model.zi:
         return same.entropy()
-    if model.lfp_p == 1 and model.f0 == 0:
+    if model.lfp_p != 1 or model.f0 != 0:
+        # The atoms at 0 or at infinity: the model's own refusal
+        return base(model).entropy()
+    if model.dist.discrete:
         raise _refuse(
             model,
             "The entropy",
-            "it is in closed form for the Weibull and Exponential only; "
-            "integrate -model.df(t) * log(model.df(t)) over the support "
-            "for another distribution.",
+            "SurPyval has no entropy for a discrete distribution; sum "
+            "-p * log(p) over p = model.df(numpy.arange(k)).",
         )
-    # The atoms at 0 or at infinity: the model's own refusal
-    return base(model).entropy()
+    return _entropy_by_quadrature(model)
+
+
+def _entropy_by_quadrature(model: Any) -> float:
+    from scipy.integrate import quad
+
+    from surpyval.utils.warnings import ignoring_warnings
+
+    b = base(model)
+    log_hr = float(onp.log(model.hr))
+
+    def integrand(t: float) -> float:
+        with onp.errstate(all="ignore"):
+            h0 = float(b.hf(t))
+            log_f = log_hr + onp.log(h0) - model.hr * float(b.Hf(t))
+        if not onp.isfinite(log_f):
+            # f = 0 (or the edge of the support): no contribution
+            return 0.0
+        return -float(onp.exp(log_f)) * log_f
+
+    lo, hi = (float(v) for v in model.support)
+    # Split at the quartiles, so each piece has the mass to find
+    q1, q2, q3 = (float(v) for v in model.qf([0.25, 0.5, 0.75]))
+    edges = [lo, q1, q2, q3, hi]
+    total = 0.0
+    with ignoring_warnings():
+        for a, c in zip(edges[:-1], edges[1:]):
+            if c > a:
+                value, _ = quad(
+                    integrand, a, c, epsabs=0.0, epsrel=1e-11, limit=200
+                )
+                total += value
+    return float(total)
 
 
 def mrl(model: Any, x: Any) -> Any:
@@ -337,7 +420,13 @@ def mrl(model: Any, x: Any) -> Any:
     same = same_family(model)
     if same is not None:
         return onp.atleast_1d(onp.asarray(same.mrl(t), dtype=float))
-    _numerical_ok(model, "The mean residual life")
+    if model.dist.discrete:
+        raise _refuse(
+            model,
+            "The mean residual life",
+            "for a discrete distribution sum the survival beyond the age, "
+            "as model.sf(numpy.arange(k, n)).sum() / model.sf(k) at age k.",
+        )
     from scipy.integrate import quad
 
     from surpyval.utils.warnings import ignoring_warnings

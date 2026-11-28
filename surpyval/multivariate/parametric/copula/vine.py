@@ -114,13 +114,35 @@ def _as_dim(u: Any) -> dict:
     }
 
 
+def _arg(c: Any, u: Any, lo: Any, hi: Any) -> dict:
+    """An argument of a pair-copula as a prepared dimension (see
+    ``Copula._prepare_dim``): each row's value ``u``, or, where it is
+    censored (``c`` of 1, -1 or 2), the range it is known to lie in."""
+    u = _clip(u)
+    return {
+        "c": onp.asarray(c, dtype=int),
+        "u": u,
+        "ulo": _clip(lo),
+        "uhi": _clip(hi),
+        "logf": onp.zeros(u.shape),
+        "has_trunc": False,
+        "censored": bool(onp.any(onp.asarray(c) != 0)),
+    }
+
+
 def _fit_pair(family: Any, x: Any, y: Any, weights: Any) -> tuple | None:
     """``(theta, neg_ll)`` of the pair-copula ``family`` fitted to the
-    pseudo-observations ``(x, y)``, or ``None`` where it has no finite
+    pseudo-observations ``(x, y)`` (arrays, or arguments of
+    :func:`_arg` with censored rows), or ``None`` where it has no finite
     likelihood there."""
     if _is_independence(family):
         return onp.zeros(0), 0.0
-    dims = [_as_dim(x), _as_dim(y)]
+    dims = [a if isinstance(a, dict) else _as_dim(a) for a in (x, y)]
+    if any(d.get("unknown") for d in dims):
+        raise RuntimeError(
+            "a vine edge was given an argument conditioned on a censored "
+            "series; only the ends may be censored"
+        )
     to_unbounded, to_bounded = family._bounds_transforms()
     with onp.errstate(all="ignore"):
         start = onp.asarray(
@@ -175,6 +197,33 @@ class _Edge:
         if self.independent:
             return y
         return _clip(self.family.du(x, y, *params[self.slice]))
+
+    def next_arg(self, x: dict, y: dict, params: Any, first: bool) -> dict:
+        """The argument of the next tree: the first argument given the
+        second (``first``) or the second given the first. A censored
+        argument stays censored, its range carried through the
+        h-function (which increases in it); one given a censored
+        argument is not known (and is not used: only an end of the vine
+        is censored, see :func:`_censored_ends`)."""
+        target, other = (x, y) if first else (y, x)
+        if other["censored"]:
+            return {"censored": True, "unknown": True}
+        h = self.first_given_second if first else self.second_given_first
+
+        def at(v: Any) -> Any:
+            return (
+                h(v, other["u"], params) if first else h(other["u"], v, params)
+            )
+
+        u = at(target["u"])
+        if not target["censored"]:
+            return _arg(onp.zeros(u.shape, dtype=int), u, u, u)
+        interval = target["c"] == 2
+        lo = hi = u
+        if interval.any():
+            lo = onp.where(interval, at(target["ulo"]), u)
+            hi = onp.where(interval, at(target["uhi"]), u)
+        return _arg(target["c"], u, lo, hi)
 
     def second_from(self, x: Any, w: Any, params: Any) -> Any:
         """The second argument ``y`` at which ``P(Y <= y | X = x)`` is
@@ -502,10 +551,112 @@ class VineCopula(Copula):
         return lower, upper
 
     # -- the likelihood ----------------------------------------------------
+    @property
+    def ends(self) -> tuple:
+        """The two series that may be censored (see
+        :func:`_censored_ends`): a D-vine's first and last, a C-vine's
+        last two."""
+        return _ends(self.kind, self.order)
+
     def _rows_loglik(self, params: Any, dims: list) -> Any:
+        codes = onp.column_stack([d["c"] for d in dims])
         U = onp.column_stack([d["u"] for d in dims])
         logf = onp.column_stack([d["logf"] for d in dims])
-        return self._log_density(U, params) + onp.sum(logf, axis=1)
+        observed = codes == 0
+        ll = onp.sum(onp.where(observed, logf, 0.0), axis=1)
+        if observed.all():
+            return ll + self._log_density(U, params)
+        params = onp.asarray(params, dtype=float)
+        lower = onp.column_stack([d["ulo"] for d in dims])
+        upper = onp.column_stack([d["uhi"] for d in dims])
+        patterns, which = onp.unique(observed, axis=0, return_inverse=True)
+        which = onp.ravel(which)
+        for p, pattern in enumerate(patterns):
+            rows = onp.flatnonzero(which == p)
+            if pattern.all():
+                ll[rows] += self._log_density(U[rows], params)
+                continue
+            censored = set(onp.flatnonzero(~pattern).tolist())
+            if not censored <= set(self.ends):
+                raise ValueError(
+                    _not_at_ends(self.kind, self.order, rows.size, censored)
+                )
+            args = [
+                _arg(
+                    codes[rows, d], U[rows, d], lower[rows, d], upper[rows, d]
+                )
+                for d in range(self.n_axes)
+            ]
+            ll[rows] += self._censored_log_density(args, params)
+        return ll
+
+    def _censored_log_density(self, args: list, params: Any) -> Any:
+        """The log of the vine's density integrated over the censored
+        series of the rows ``args`` (an argument per series, in the
+        data's axes), all censored in the same series, each an end
+        (:attr:`ends`).
+
+        The density of the series is that of the others times, for each
+        end, its conditional density given them; the two ends, given the
+        series between them (the vine's last tree's conditioning set),
+        have the last tree's pair-copula as their copula, with the
+        conditional distributions given the series between as margins.
+        So a censored end's edges in the earlier trees integrate out,
+        and the last edge's term is the pair-copula's own censored
+        likelihood (an h-function's difference, or a rectangle's mass),
+        on the end's range carried through the h-functions of the trees
+        before."""
+        D = self.n_axes
+        V = [args[d] for d in self.order]
+        top = self.edges[-1]
+        total = onp.zeros(V[0]["u"].shape)
+
+        def add(edge: _Edge, x: dict, y: dict) -> None:
+            nonlocal total
+            if x.get("unknown") or y.get("unknown"):
+                raise RuntimeError(
+                    "a vine edge was given an argument conditioned on a "
+                    "censored series; only the ends may be censored"
+                )
+            if not (x["censored"] or y["censored"]):
+                if not edge.independent:
+                    with onp.errstate(divide="ignore"):
+                        total = total + onp.log(
+                            onp.asarray(
+                                edge.pdf(x["u"], y["u"], params), dtype=float
+                            )
+                        )
+            elif edge is top:
+                total = total + edge.family._pair_loglik(
+                    params[edge.slice], x, y
+                )
+
+        if self.kind == "d":
+            low = list(V)
+            high = list(V)
+            for tree in range(1, D):
+                new_low, new_high = [], []
+                for i in range(D - tree):
+                    edge = self._at[(i, i + tree)]
+                    x, y = low[i], high[i + 1]
+                    add(edge, x, y)
+                    if tree < D - 1:
+                        new_low.append(edge.next_arg(x, y, params, first=True))
+                        new_high.append(
+                            edge.next_arg(x, y, params, first=False)
+                        )
+                low, high = new_low, new_high
+        else:
+            w = list(V)
+            for root in range(D - 1):
+                for k in range(root + 1, D):
+                    edge = self._at[(root, k)]
+                    add(edge, w[root], w[k])
+                    if root < D - 2:
+                        w[k] = edge.next_arg(
+                            w[root], w[k], params, first=False
+                        )
+        return total
 
     def neg_ll(self, params: Any, dims: list, weights: npt.NDArray) -> float:
         params = onp.asarray(params, dtype=float)
@@ -548,10 +699,13 @@ class VineCopula(Copula):
         return out
 
     def _init_theta(self, dims: list) -> npt.NDArray:
-        U = onp.column_stack([d["u"] for d in dims])
-        weights = onp.ones(U.shape[0])
+        weights = onp.ones(len(dims[0]["u"]))
         return _sequential(
-            self.kind, self.order, U, weights, [[e.family] for e in self.edges]
+            self.kind,
+            self.order,
+            _args_of(dims),
+            weights,
+            [[e.family] for e in self.edges],
         )[1]
 
     def _warn_if_perfectly_dependent(
@@ -621,22 +775,48 @@ class VineCopula(Copula):
                 **{k: given.pop(k, None) for k in ("c", "n", "t", "xl", "xr")},
             )
             args, kwargs = (), given
-        _check_complete(data)
+        _check_data(data, self.order, self.kind)
         return Copula.fit(self, data, *args, **kwargs)
 
 
-def _check_complete(data: Any) -> None:
-    """A vine is fitted to fully observed rows without truncation."""
-    censored = onp.any(data.c != 0, axis=1)
-    if censored.any():
-        raise ValueError(
-            f"A vine copula is fitted to fully observed rows; "
-            f"{int(censored.sum())} row(s) have a censored value (c). A "
-            "censored row's likelihood is an integral of the vine's "
-            "density over the censored series, which is not computed. "
-            "The Gaussian and Student-t copulas take censored rows of "
-            "three or more series (Gaussian.fit, StudentT.fit)."
-        )
+def _censored_axes(data: Any) -> list:
+    """The series with a censored value in some row."""
+    return [int(d) for d in onp.flatnonzero(onp.any(data.c != 0, axis=0))]
+
+
+def _ends(kind: str, order: Any) -> tuple:
+    """The two series of a vine with ``order`` that may be censored: a
+    D-vine's first and last, a C-vine's last two (the pair its last tree
+    joins, given all the others but neither of them in a D-vine)."""
+    order = list(order)
+    if kind == "d" or len(order) == 2:
+        return (order[0], order[-1])
+    return (order[-2], order[-1])
+
+
+def _not_at_ends(kind: str, order: Any, rows: int, censored: Any) -> str:
+    where = (
+        "its first and last series (the ends of the path)"
+        if kind == "d" or len(order) == 2
+        else "its last two series"
+    )
+    ends = ", ".join(str(e) for e in _ends(kind, order))
+    return (
+        f"A {kind.upper()}-vine takes censored values in {where}, "
+        f"series {ends} in the order {list(order)}; {rows} row(s) "
+        f"are censored in series {sorted(int(c) for c in censored)}. A "
+        "censored row's likelihood is the vine's density integrated over "
+        "its censored series, which is in closed form (through the "
+        "h-functions) only for those. Put the censored series at the "
+        "ends of `order` (or leave out `order` and the fit does), or fit "
+        "a Gaussian or Student-t copula, which takes censoring in any "
+        "series."
+    )
+
+
+def _check_data(data: Any, order: Any = None, kind: str = "d") -> None:
+    """A vine is fitted without truncation, with censored values in at
+    most two series: the ends of its order, where given."""
     if onp.isfinite(data.t).any():
         raise ValueError(
             "A vine copula does not take truncated data (t): its "
@@ -644,22 +824,47 @@ def _check_complete(data: Any) -> None:
             "is not computed. A copula of two series takes truncation: "
             "fit the series in pairs."
         )
+    censored = _censored_axes(data)
+    if len(censored) > 2:
+        rows = int(onp.sum(onp.any(data.c != 0, axis=1)))
+        raise ValueError(
+            "A vine copula takes censored values in at most two of the "
+            f"series (the ends of its order); series {censored} are "
+            f"censored ({rows} row(s)). A censored row's likelihood is "
+            "the vine's density integrated over its censored series, "
+            "which is in closed form only at the ends. Fit a Gaussian or "
+            "Student-t copula (Gaussian.fit, StudentT.fit), which takes "
+            "censoring in any series."
+        )
+    if order is not None and censored:
+        if not set(censored) <= set(_ends(kind, order)):
+            rows = int(onp.sum(onp.any(data.c != 0, axis=1)))
+            raise ValueError(_not_at_ends(kind, order, rows, censored))
+
+
+def _args_of(dims: list) -> list:
+    """Each prepared dimension (``Copula._prepare_dim``) as a vine's
+    argument (:func:`_arg`)."""
+    return [_arg(d["c"], d["u"], d["ulo"], d["uhi"]) for d in dims]
 
 
 def _sequential(
-    kind: str, order: list, U: Any, weights: Any, choices: list
+    kind: str, order: list, args: list, weights: Any, choices: list
 ) -> tuple:
     """The families and parameters of a vine fitted tree by tree to the
-    pseudo-observations ``U``: each edge, in turn, the candidate of its
-    ``choices`` (one list of families per edge) with the lowest AIC on
-    the arguments the trees before it give. ``(families, theta)``."""
-    V = _clip(U)[:, order]
-    D = V.shape[1]
+    pseudo-observations ``args`` (one :func:`_arg` per series): each
+    edge, in turn, the candidate of its ``choices`` (one list of
+    families per edge) with the lowest AIC on the arguments the trees
+    before it give. A censored end's arguments stay censored, so each of
+    its edges is fitted to the pair-copula's censored likelihood of the
+    end given the series before it. ``(families, theta)``."""
+    V = [args[d] for d in order]
+    D = len(V)
     chosen: list = []
     thetas: list = []
     queue = iter(choices)
 
-    def select(x: Any, y: Any) -> tuple:
+    def select(x: dict, y: dict) -> tuple:
         best: tuple | None = None
         for family in next(queue):
             fitted = _fit_pair(family, x, y, weights)
@@ -680,63 +885,90 @@ def _sequential(
         return edge, best[2]
 
     if kind == "d":
-        low = [V[:, i] for i in range(D)]
-        high = list(low)
+        low = list(V)
+        high = list(V)
         for tree in range(1, D):
             new_low, new_high = [], []
             for i in range(D - tree):
                 x, y = low[i], high[i + 1]
                 edge, theta = select(x, y)
-                new_low.append(edge.first_given_second(x, y, theta))
-                new_high.append(edge.second_given_first(x, y, theta))
+                new_low.append(edge.next_arg(x, y, theta, first=True))
+                new_high.append(edge.next_arg(x, y, theta, first=False))
             low, high = new_low, new_high
     else:
-        w = [V[:, k] for k in range(D)]
+        w = list(V)
         for root in range(D - 1):
             for k in range(root + 1, D):
                 edge, theta = select(w[root], w[k])
-                w[k] = edge.second_given_first(w[root], w[k], theta)
+                w[k] = edge.next_arg(w[root], w[k], theta, first=False)
     theta = onp.concatenate(thetas) if thetas else onp.zeros(0)
     return chosen, theta
 
 
-def _default_order(kind: str, U: Any) -> list:
-    """The order by strongest absolute Kendall's tau: for a C-vine, each
-    root in turn the series with the largest sum of ``|tau|`` with the
-    ones left; for a D-vine, the path with the largest sum of ``|tau|``
-    between neighbours (every path up to eight series, then from the
-    strongest pair by nearest neighbour). Ties go to the lower axis."""
+def _default_order(
+    kind: str, U: Any, observed: Any = None, ends: Any = ()
+) -> list:
+    """The order by strongest absolute Kendall's tau (over the rows that
+    observe both series of a pair): for a C-vine, each root in turn the
+    series with the largest sum of ``|tau|`` with the ones left; for a
+    D-vine, the path with the largest sum of ``|tau|`` between neighbours
+    (every path up to eight series, then from the strongest pair by
+    nearest neighbour). Ties go to the lower axis. The series in
+    ``ends`` (the censored ones, at most two) are kept at the ends of a
+    D-vine's path, or last in a C-vine's order."""
     from scipy.stats import kendalltau
 
     D = U.shape[1]
+    if observed is None:
+        observed = onp.ones(U.shape, dtype=bool)
+    ends = [int(e) for e in ends]
     tau = onp.zeros((D, D))
     for i, j in itertools.combinations(range(D), 2):
-        value = kendalltau(U[:, i], U[:, j]).statistic
+        both = observed[:, i] & observed[:, j]
+        value = (
+            kendalltau(U[both, i], U[both, j]).statistic
+            if both.sum() >= 3
+            else onp.nan
+        )
         tau[i, j] = tau[j, i] = abs(value) if onp.isfinite(value) else 0.0
     if kind == "c":
-        left = list(range(D))
-        order = []
-        while left:
-            sums = [sum(tau[d, e] for e in left if e != d) for d in left]
-            order.append(left.pop(int(onp.argmax(sums))))
+        order: list = []
+        for group in ([d for d in range(D) if d not in ends], sorted(ends)):
+            left = list(group)
+            rest = [d for d in range(D) if d not in order]
+            while left:
+                sums = [sum(tau[d, e] for e in rest if e != d) for d in left]
+                d = left.pop(int(onp.argmax(sums)))
+                order.append(d)
+                rest.remove(d)
         return order
     if D <= _EXHAUSTIVE_ORDER:
         best: tuple | None = None
         for path in itertools.permutations(range(D)):
             if path[0] > path[-1]:
                 continue  # (a path and its reverse are one vine)
+            if not set(ends) <= {path[0], path[-1]}:
+                continue
             total = sum(tau[a, b] for a, b in zip(path, path[1:]))
             if best is None or total > best[0] + 1e-12:
                 best = (total, path)
         assert best is not None
         return list(best[1])
+    if ends:
+        line = [ends[0]]
+        left = [d for d in range(D) if d not in ends]
+        while left:
+            d = max(left, key=lambda e: (tau[line[-1], e], -e))
+            line.append(d)
+            left.remove(d)
+        return line + ends[1:]
     a, b = onp.unravel_index(int(onp.argmax(tau)), tau.shape)
     line = [int(min(a, b)), int(max(a, b))]
     left = [d for d in range(D) if d not in line]
     while left:
-        ends = [(tau[line[0], d], 0, d) for d in left]
-        ends += [(tau[line[-1], d], 1, d) for d in left]
-        _, end, d = max(ends, key=lambda e: (e[0], -e[2]))
+        choices = [(tau[line[0], d], 0, d) for d in left]
+        choices += [(tau[line[-1], d], 1, d) for d in left]
+        _, end, d = max(choices, key=lambda e: (e[0], -e[2]))
         line = [d] + line if end == 0 else line + [d]
         left.remove(d)
     return line
@@ -885,8 +1117,8 @@ class VineFitter:
         truncate: int | None = None,
         candidates: Any = None,
     ) -> Any:
-        """Fit a vine copula and its margins to fully observed
-        multivariate data.
+        """Fit a vine copula and its margins to multivariate data, fully
+        observed or censored in up to two of the series.
 
         The margins are fitted first. Then, on their probabilities, the
         vine is fitted tree by tree: each pair-copula in turn, on the
@@ -899,10 +1131,13 @@ class VineFitter:
         ----------
         x, c, n, t, xl, xr
             Multivariate survival data, or a ``MultivariateSurpyvalData``
-            as ``x``, with ``D >= 2`` axes. Every value must be observed:
-            censored rows and truncation are refused (the Gaussian and
-            Student-t copulas take censored rows of three or more
-            series).
+            as ``x``, with ``D >= 2`` axes. Right, left and interval
+            censoring is taken in up to two of the series, which the
+            vine has at the ends of its order (a D-vine's first and
+            last series, a C-vine's last two): there a censored row's
+            likelihood is in closed form. Censoring in more series, and
+            truncation, are refused (the Gaussian and Student-t copulas
+            take censoring in any series).
         margins : sequence of length D
             A distribution to fit, or a fitted model, per series.
         how : {"IFM", "MLE"}
@@ -923,7 +1158,8 @@ class VineFitter:
             C-vine's roots, tree by tree). By default the order of
             strongest absolute Kendall's tau: the D-vine path with the
             largest sum between neighbours, or C-vine roots each with
-            the largest sum with the series left.
+            the largest sum with the series left; with censored
+            series, the best such order with them at the ends.
         truncate : int, optional
             Keep the pair-copulas of the first ``truncate`` trees and
             make the later ones independence copulas (the series are
@@ -994,25 +1230,32 @@ class VineFitter:
             data = x
         else:
             data = MultivariateSurpyvalData(x, c=c, n=n, t=t, xl=xl, xr=xr)
-        _check_complete(data)
         D = data.D
+        if order is not None:
+            order = _check_order(order, D)
+        _check_data(data, order, structure)
         margins = _check_margins(margins, D, fitted_only=False)
         choices = _edge_choices(families, candidates, truncate, structure, D)
         probe = VineCopula(
             structure, range(D), _as_trees([c[0] for c in choices], D)
         )
         models = probe._fit_margins(margins, data)
-        U = onp.column_stack(
-            [
-                probe._prepare_dim(models[d], *data.dimension(d))["u"]
-                for d in range(D)
-            ]
-        )
+        dims = [
+            probe._prepare_dim(models[d], *data.dimension(d)) for d in range(D)
+        ]
         if order is None:
-            order = _default_order(structure, U)
-        order = _check_order(order, D)
+            order = _default_order(
+                structure,
+                onp.column_stack([d["u"] for d in dims]),
+                onp.column_stack([d["c"] == 0 for d in dims]),
+                _censored_axes(data),
+            )
         chosen, theta = _sequential(
-            structure, order, U, onp.asarray(data.n, dtype=float), choices
+            structure,
+            order,
+            _args_of(dims),
+            onp.asarray(data.n, dtype=float),
+            choices,
         )
         vine = VineCopula(structure, order, _as_trees(chosen, D))
         init = vine._just_inside(theta) if theta.size else None
@@ -1058,6 +1301,9 @@ class VineFitter:
         >>> model.parameter_names
         ['theta_0_1', 'theta_1_2', 'theta_0_2|1']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return Copula.fit_from_df(
             self,
             df,

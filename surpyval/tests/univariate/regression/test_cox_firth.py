@@ -40,7 +40,7 @@ def test_ordinary_fit_names_fit_firth_on_separation():
         sp.CoxPH.fit(x, Z, c=c, tie_method="breslow")
     messages = [str(w.message) for w in caught]
     assert any(
-        m.startswith("No finite maximum") and "CoxPH.fit_firth" in m
+        m.startswith("No finite maximum") and "CoxPH.fit(..., firth=True)" in m
         for m in messages
     ), messages
 
@@ -49,7 +49,7 @@ def test_firth_is_finite_under_separation_without_warning():
     x, Z, c = _separation()
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        model = sp.CoxPH.fit_firth(x, Z, c=c)
+        model = sp.CoxPH.fit(x, Z, c=c, firth=True)
     assert model.maximum == "verified"
     assert np.all(np.isfinite(model.params))
     assert np.all(np.isfinite(model.firth.lower))

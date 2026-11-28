@@ -81,6 +81,68 @@ def per_item_fits(
     return items, np.array(fits).reshape(-1, P), jacs, sigma2
 
 
+def pooled_spline_fits(
+    path_model: Any, varying: list, ages: list, values: list
+) -> tuple[list, npt.NDArray, list, float]:
+    """:func:`per_item_fits` for a spline path whose bends are common to
+    the items: one least squares fit of every item's readings together,
+    the common parameters shared and each item's varying ones its own.
+
+    Each item fitted alone sees only the bends its readings reach: one
+    that fails before a knot has no reading of the bend after it, and
+    the bend before it is then fitted to a few readings and is wild. The
+    mean of such fits started ``SplinePath.natural(df=3)`` on a fleet
+    whose readings stop at failure far from the readings' curve, and the
+    search stalled there. Pooled, each common bend is told by every
+    reading past its knot. The path is linear in its parameters, so the
+    common ones are the least squares solution with each item's varying
+    ones profiled out (``y_i - X_i v_i`` projected off ``X_i``'s varying
+    columns), and each item's varying ones are its own fit given them.
+    Items with fewer distinct reading ages than varying parameters are
+    left out, as :func:`per_item_fits` leaves out items with fewer than
+    the path's parameters."""
+    P = len(path_model.parameter_names)
+    V = list(varying)
+    C = [j for j in range(P) if j not in V]
+    kept, designs = [], []
+    for i, (t, y) in enumerate(zip(ages, values)):
+        t = np.asarray(t, dtype=float)
+        if len(np.unique(t)) < len(V):
+            continue
+        kept.append(i)
+        designs.append((path_model.basis(t), np.asarray(y, dtype=float)))
+    if not kept:
+        return per_item_fits(path_model, ages, values)
+    lhs = np.zeros((len(C), len(C)))
+    rhs = np.zeros(len(C))
+    for X, y in designs:
+        A, B = X[:, V], X[:, C]
+        # the residual maker of the item's varying columns
+        M = np.eye(len(y)) - A @ np.linalg.pinv(A)
+        lhs += B.T @ M @ B
+        rhs += B.T @ M @ y
+    common = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
+    fits, jacs = [], []
+    rss, n_read = 0.0, 0
+    for X, y in designs:
+        A, B = X[:, V], X[:, C]
+        own = np.linalg.lstsq(A, y - B @ common, rcond=None)[0]
+        theta = np.zeros(P)
+        theta[V], theta[C] = own, common
+        r = y - X @ theta
+        rss += float(r @ r)
+        n_read += len(y)
+        fits.append(theta)
+        jacs.append(X)
+    dof = n_read - len(kept) * len(V) - len(C)
+    if dof > 0 and rss > 0:
+        sigma2 = rss / dof
+    else:
+        all_values = np.concatenate([v for v in values if len(v)])
+        sigma2 = 1e-2 * max(float(np.var(all_values)), 1e-12)
+    return kept, np.array(fits).reshape(-1, P), jacs, sigma2
+
+
 def marker_start(
     model: Model,
     ages: list,
@@ -93,7 +155,14 @@ def marker_start(
     ``sigma``."""
     layout = model.layout
     path_model = model.path.model
-    items, fits, jacs, sigma2 = per_item_fits(path_model, ages, values)
+    if getattr(path_model, "name", None) == "Spline" and len(
+        layout.varying
+    ) < len(path_model.parameter_names):
+        items, fits, jacs, sigma2 = pooled_spline_fits(
+            path_model, list(layout.varying), ages, values
+        )
+    else:
+        items, fits, jacs, sigma2 = per_item_fits(path_model, ages, values)
     p = Z.shape[1]
     weights = np.sqrt(w[items])
     # each path parameter regressed on the covariates that shift it

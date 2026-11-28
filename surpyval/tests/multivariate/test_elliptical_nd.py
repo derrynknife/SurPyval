@@ -393,31 +393,63 @@ def test_fit_from_df_and_data_object_agree_with_the_arrays():
 
 
 # -- refusals -----------------------------------------------------------------
-def test_truncation_is_refused_for_more_than_two_series():
-    X = _model().random(30, random_state=111)
-    t = np.zeros(X.shape + (2,))
-    t[..., 0], t[..., 1] = -np.inf, np.inf
-    t[:5, 0, 0] = 0.01
-    with pytest.raises(
-        ValueError, match=r"truncated data \(t; 5 row\(s\).*in pairs"
-    ):
-        Gaussian.fit(X, t=t, margins=[sp.Weibull] * 3)
+# (truncation: test_elliptical_nd_truncation.py)
 
 
-def test_rows_with_more_than_three_censored_series_are_refused():
-    margins = _margins(4)
-    truth = Gaussian.from_params(np.full(6, 0.3), margins)
-    X = truth.random(40, random_state=112)
+def test_rows_with_more_censored_series_than_the_rule_takes_are_refused():
+    D = 16
+    X = np.random.default_rng(115).uniform(1.0, 10.0, (30, D))
     c = np.zeros(X.shape, int)
-    c[:3] = 1
-    c[3:9, :3] = 1  # three censored series: taken
+    c[:2] = 1
     with pytest.raises(
-        ValueError, match=r"3 row\(s\) have 4.*3 of the series"
+        ValueError, match=r"up to 15 censored.*2 row\(s\) have 16.*15 of"
     ):
-        Gaussian.fit(X, c=c, margins=[sp.Weibull] * 4)
-    model = Gaussian.fit(X[3:], c=c[3:], margins=[sp.Weibull] * 4)
-    assert model.params.shape == (6,)
-    assert model.sf(X[:2]).shape == (2,)
+        Gaussian.fit(X, c=c, margins=[sp.Weibull] * D)
+    c[:2, 0] = 0
+    with pytest.raises(ValueError, match=r"up to 14 censored.*have 15"):
+        StudentT.fit(X, c=c, margins=[sp.Weibull] * D)
+
+
+@pytest.mark.parametrize("family", [Gaussian, StudentT])
+def test_four_censored_series_with_one_censored_to_everything(family):
+    """A fourth series interval censored over (almost) its whole range
+    carries no information, so a row with it and three other censored
+    series has the three-series copula's likelihood: the lattice rule of
+    four censored coordinates against the three-coordinate quadrature."""
+    rng = np.random.default_rng(114)
+    margins = _margins(4)
+    nu = [NU] if family is StudentT else []
+    N = 24
+    c = rng.choice([1, -1, 2], (N, 3))
+    x = rng.uniform(3.0, 30.0, (N, 3))
+    xl = x * rng.uniform(0.5, 0.9, x.shape)
+    xr = x * rng.uniform(1.1, 1.8, x.shape)
+    wide = margins[3].qf(np.array([1e-10, 1 - 1e-10]))
+    data4 = MultivariateSurpyvalData(
+        np.c_[x, np.full(N, 30.0)],
+        c=np.c_[c, np.full(N, 2)],
+        xl=np.c_[xl, np.full(N, wide[0])],
+        xr=np.c_[xr, np.full(N, wide[1])],
+    )
+    R = np.array(
+        [
+            [1.0, 0.5, 0.2, 0.3],
+            [0.5, 1.0, 0.4, -0.2],
+            [0.2, 0.4, 1.0, 0.1],
+            [0.3, -0.2, 0.1, 1.0],
+        ]
+    )
+    four = for_axes(family.name, 4, "unstructured")
+    three = for_axes(family.name, 3, "unstructured")
+    ours = four._rows_loglik(
+        [R[i, j] for i, j in four.pairs] + nu, _dims(four, margins, data4)
+    )
+    data3 = MultivariateSurpyvalData(x, c=c, xl=xl, xr=xr)
+    expected = three._rows_loglik(
+        [R[i, j] for i, j in three.pairs] + nu,
+        _dims(three, margins[:3], data3),
+    )
+    np.testing.assert_allclose(ours, expected, rtol=0, atol=5e-5)
 
 
 def test_arguments_are_checked():

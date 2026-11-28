@@ -16,6 +16,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
 )
 from surpyval.utils.autograd_gamma_compat import gammainccln, gammaincln
+from surpyval.utils.saddle_point import log_poisson_mass
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._discrete_tails import poisson_log_tails, refine_quantile
@@ -192,6 +193,18 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         return poisson.rvs(mu, size=size, random_state=state).astype(float)
 
     def log_df(self, x: Numeric, mu: Boxable) -> Boxable:
+        if not isinstance(mu, ArrayBox) and not isinstance(x, ArrayBox):
+            # The saddle-point form (#1300): k log mu - mu - log k! is a
+            # sum of terms of size k log k, whose rounding was 7e-10 of
+            # the mass at mu = 1e6. (Values only: a fit differentiates
+            # the direct form below.)
+            x_arr = np.asarray(x, dtype=float)
+            inside = x_arr >= 0.0
+            out = log_poisson_mass(np.where(inside, x_arr, 0.0), mu)
+            out = np.where(
+                inside, out, np.where(np.isnan(x_arr), np.nan, -np.inf)
+            )
+            return out[()] if out.ndim == 0 else out
         return np.where(
             x < 0.0, -np.inf, x * np.log(mu) - mu - gammaln(x + 1.0)
         )

@@ -13,16 +13,13 @@ from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.renewal.renewal_model import (
     discount_weight_derivatives,
 )
-from surpyval.utils.deprecation import (
-    REMOVED_IN,
-    RenamedAttribute,
-    ambiguous_item_ids,
-    fit_entry,
-)
+from surpyval.utils.deprecation import ambiguous_item_ids
+from surpyval.utils.removed_names import RemovedName
 
 if TYPE_CHECKING:
     from surpyval.recurrent.renewal.renewal_model import RenewalModel
 
+from surpyval.recurrent.renewal._bayes_fit import RenewalBayesMixin
 from surpyval.recurrent.renewal._derivatives import (
     intensity_derivatives,
     negated,
@@ -306,7 +303,7 @@ def _event_layout(data: Any) -> tuple:
 
 
 @singleton_fitter
-class ARI(RenewalFitMixin):
+class ARI(RenewalBayesMixin, RenewalFitMixin):
     """
     Arithmetic Reduction of Intensity (ARI) imperfect-repair model of Doyen and
     Gaudoin (2004).
@@ -552,7 +549,8 @@ class ARI(RenewalFitMixin):
             )
         return negll_func
 
-    fit_from_recurrent_data = fit_entry("_fit_from_recurrent_data")
+    #: Removed in v0.30: ``fit`` takes the data object itself.
+    fit_from_recurrent_data = RemovedName("call fit(data)", "0.30")
 
     @refuses_unmodelled_data
     def _fit_from_recurrent_data(
@@ -811,6 +809,9 @@ class ARI(RenewalFitMixin):
         >>> model.model.params.round(3)
         array([3.508, 1.3  ])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         return super().fit_from_df(
             df,
             x_col,
@@ -822,10 +823,8 @@ class ARI(RenewalFitMixin):
             **fit_options,
         )
 
-    #: The old name of :meth:`from_params` (deprecated in v0.29).
-    fit_from_parameters = RenamedAttribute(
-        "from_params", REMOVED_IN, FutureWarning
-    )
+    #: The old name of :meth:`from_params` (removed in v0.30).
+    fit_from_parameters = RemovedName("use 'from_params'", "0.30")
 
     def from_params(
         self,

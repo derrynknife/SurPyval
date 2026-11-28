@@ -34,6 +34,32 @@ class SpellData:
     n_clusters: int
     tm: TransitionMatrix
     ids_given: bool
+    #: The earliest time each spell can have ended: ``x`` where its end
+    #: is known, the left end of the interval where the move out of the
+    #: state is known only to lie in ``(xl, x]``. ``None``: every end is
+    #: known.
+    xl: npt.NDArray | None = None
+    #: Right truncation: each row's cut-off (its unit's; ``inf`` where
+    #: the unit was not truncated), the unit having been seen only
+    #: because it reached the state ``reached`` (an index) by then.
+    #: ``None``: no truncation.
+    tr: npt.NDArray | None = None
+    reached: int | None = None
+    #: On the reset clock, the rows that carry on the stay of their
+    #: unit's row before (a stay split into rows): their time in the
+    #: state runs on from that row's. ``None``: every row is its own stay.
+    carry: npt.NDArray | None = None
+
+    @property
+    def interval(self) -> npt.NDArray:
+        """Whether each spell's end is interval censored."""
+        if self.xl is None:
+            return np.zeros(self.x.size, dtype=bool)
+        return self.xl < self.x
+
+    @property
+    def has_intervals(self) -> bool:
+        return bool(np.any(self.interval))
 
 
 def _object_array(values: Any, name: str, size: int | None) -> npt.NDArray:
@@ -61,6 +87,83 @@ def _times(values: Any, name: str, size: int) -> npt.NDArray:
     return arr
 
 
+def _exit_times(
+    x: Any, intervals: bool
+) -> tuple[npt.NDArray | None, npt.NDArray]:
+    """``(xl, x)``: the exit times, and the left ends of interval-censored
+    moves (``None`` where ``x`` is one column)."""
+    x = np.asarray(x, dtype=float)
+    xl = None
+    if x.ndim == 2 and x.shape[1] == 2 and intervals:
+        xl, x = x[:, 0].copy(), x[:, 1].copy()
+    elif x.ndim != 1:
+        raise ValueError(
+            "'x' must be one exit time per row (1-D)"
+            + (
+                " or two columns [xl, xr] per row, a move known only to "
+                "lie between them"
+                if intervals
+                else "; a move known only to lie between two times "
+                "(interval censored) is taken by ParametricMultiState and "
+                "ParametricMultiStateRegression, with 'x' as two columns "
+                "[xl, xr]"
+            )
+            + f"; got shape {x.shape}."
+        )
+    return xl, x
+
+
+def _left_censored(
+    xl: npt.NDArray, censored: npt.NDArray, tl: npt.NDArray | None
+) -> npt.NDArray:
+    """The left ends of the moves with a left-censored one (``xl =
+    -inf``: a move at some time before ``xr``) read as the start of its
+    spell (``tl``, or 0 for a spell from the start of the clock)."""
+    left = np.isneginf(xl)
+    if np.any(left & censored):
+        k = int(np.flatnonzero(left & censored)[0])
+        raise ValueError(
+            f"Row {k} is left censored (xl = -inf, a move at some time "
+            "before xr) with no state moved into ('e' is missing): give "
+            "the state the unit was found in."
+        )
+    if not np.any(left):
+        return xl
+    begin = (
+        np.zeros(xl.size) if tl is None else np.where(np.isfinite(tl), tl, 0.0)
+    )
+    return np.where(left, begin, xl)
+
+
+def _check_intervals(
+    xl: npt.NDArray, x: npt.NDArray, censored: npt.NDArray
+) -> None:
+    """Refuse an interval-censored move's ends that cannot be (``-inf``,
+    a left-censored move, is read before this)."""
+    if np.any(~np.isfinite(xl)):
+        raise ValueError(
+            "'x' has a missing or infinite left end 'xl': give the "
+            "last time each unit was seen in its state (xl = xr where "
+            "the move's time is known, -inf for a move at some time "
+            "before xr: left censored)."
+        )
+    if np.any(xl > x):
+        k = int(np.flatnonzero(xl > x)[0])
+        raise ValueError(
+            f"Row {k} has xl = {xl[k]:g} above xr = {x[k]:g}: an "
+            "interval-censored move lies in (xl, xr], so xl <= xr."
+        )
+    wide = (xl < x) & censored
+    if np.any(wide):
+        k = int(np.flatnonzero(wide)[0])
+        raise ValueError(
+            f"Row {k} is censored (a missing 'e') with an interval "
+            f"({xl[k]:g}, {x[k]:g}]: a censored spell ends at the last "
+            "time the unit was seen in its state, so give xl = xr "
+            "there."
+        )
+
+
 def check_spells(
     x: npt.ArrayLike,
     e: npt.ArrayLike,
@@ -69,15 +172,13 @@ def check_spells(
     i: npt.ArrayLike | None = None,
     n: npt.ArrayLike | None = None,
     transitions: Any = None,
+    intervals: bool = False,
 ) -> SpellData:
     """Check long-form data and code its states (see the module
-    docstring and ``MultiState.fit``)."""
-    x = np.asarray(x, dtype=float)
-    if x.ndim != 1:
-        raise ValueError(
-            "'x' must be one exit time per row (1-D); interval-censored "
-            "changes of state are not supported by the multi-state models."
-        )
+    docstring and ``MultiState.fit``). With ``intervals``, ``x`` may also
+    be two columns, ``[xl, xr]`` per row: a move out of the state at an
+    unknown time in ``(xl, xr]`` (``xl == xr`` where it is known)."""
+    xl, x = _exit_times(x, intervals)
     size = x.size
     if size == 0:
         raise ValueError("No data: 'x' is empty.")
@@ -93,6 +194,13 @@ def check_spells(
     e = _object_array(e, "e", size)
     state = _object_array(state, "state", size)
     censored = missing_events(e)
+    if xl is not None:
+        xl = _left_censored(
+            xl, censored, None if tl is None else _times(tl, "tl", size)
+        )
+        _check_intervals(xl, x, censored)
+        if not np.any(xl < x):
+            xl = None
     if np.any(missing_events(state)):
         raise ValueError(
             "'state' has missing values: every spell needs the state the "
@@ -104,6 +212,15 @@ def check_spells(
             "'tl' has missing (NaN) entry times; use -inf (or leave 'tl' "
             "out) for a spell observed from the start."
         )
+    if xl is not None:
+        late = (tl_arr > xl) & (xl < x)
+        if np.any(late):
+            k = int(np.flatnonzero(late)[0])
+            raise ValueError(
+                f"Row {k} enters its state at tl = {tl_arr[k]:g}, after "
+                f"the start of its interval ({xl[k]:g}, {x[k]:g}]: the "
+                "unit was seen in its state at xl, so tl <= xl."
+            )
     bad = tl_arr >= x
     if np.any(bad):
         k = int(np.flatnonzero(bad)[0])
@@ -195,7 +312,10 @@ def check_spells(
         n_clusters = len(uniques)
         ids_given = True
         order = np.lexsort((tl_arr, cluster))
-        cs, ts, xs = cluster[order], tl_arr[order], x[order]
+        # (the spell entered by an interval-censored move may start
+        # anywhere in the move's interval)
+        ends = x if xl is None else xl
+        cs, ts, xs = cluster[order], tl_arr[order], ends[order]
         same_unit = cs[1:] == cs[:-1]
         overlap = same_unit & (ts[1:] < xs[:-1])
         if np.any(overlap):
@@ -223,6 +343,7 @@ def check_spells(
         n_clusters=n_clusters,
         tm=tm,
         ids_given=ids_given,
+        xl=xl,
     )
 
 

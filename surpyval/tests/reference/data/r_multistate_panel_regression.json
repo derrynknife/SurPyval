@@ -1,0 +1,44 @@
+{
+  "generator": "scripts/reference/reference_r_multistate_panel_regression.R",
+  "R": "R version 4.6.2 (2026-10-29)",
+  "references": {
+    "exponential": {
+      "fixture": "multistate_inspected_covariates",
+      "software": "R msm",
+      "version": "1.9",
+      "call": "msm(state ~ time, subject = id, data = d, qmatrix = Q, deathexact = 3, covariates = ~ male + w, control = list(reltol = 1e-14, maxit = 10000))",
+      "settings": {
+        "transitions": "1-2, 1-3, 2-3",
+        "coefficients": "male then w, each by transition"
+      },
+      "values": {
+        "loglik": -1011.51739140978,
+        "q": [0.153287566567889, 0.0281535322441873, 0.106450681099042],
+        "q_se": [0.0190791252842281, 0.0097729277108889, 0.0218225743111574],
+        "b_male": [0.445636161366515, 0.122509851402743, -0.242711194904272],
+        "b_w": [0.490872291149678, -0.12546642662656, 0.569155283122031],
+        "b_male_se": [0.133058076908669, 0.468584085534874, 0.204739236539443],
+        "b_w_se": [0.134822208084922, 0.487278092765027, 0.213102224115431]
+      }
+    },
+    "weibull": {
+      "fixture": "multistate_inspected_covariates",
+      "software": "R nhm",
+      "version": "0.1.2",
+      "call": "nhm(model.nhm(state ~ time, data = d, subject = id, type = 'weibull', trans = trans, nonh = trans, covariates = 'male', covm = list(male = trans), death = TRUE, death.states = 3), control = nhm.control(rtol = 1e-11, atol = 1e-11, safe = TRUE, maxLikcontrol = list(reltol = 1e-15, gradtol = 1e-10, iterlim = 1000)))",
+      "settings": {
+        "transitions": "1-2, 1-3, 2-3",
+        "parameters": "log(1 / scale), then log(shape), then the male coefficient, by transition"
+      },
+      "values": {
+        "value": 983.87891881231,
+        "names": ["Rate: 1->2", "Rate: 1->3", "Rate: 2->3", "Shape: 1->2", "Shape: 1->3", "Shape: 2->3", "Covariate: male 1 -> 2", "Covariate: male 1 -> 3", "Covariate: male 2 -> 3"],
+        "scale": [5.07529804551372, 13.9395923269852, 8.27522942463546],
+        "shape": [1.56170219114823, 1.76153934348214, 1.78982333254193],
+        "b_male": [0.607814350299213, 0.220557757199773, -0.185654952852058],
+        "par": [-1.62438525138346, -2.63473316006867, -2.11326664591027, 0.445776374563907, 0.566188053765249, 0.582116918077854, 0.607814350299213, 0.220557757199773, -0.185654952852058],
+        "par_se": [0.0631740155559309, 0.216111824481519, 0.0881700602136643, 0.0568628141841041, 0.151222709819523, 0.149833964671736, 0.135131385525422, 0.410627432468026, 0.207123744596091]
+      }
+    }
+  }
+}

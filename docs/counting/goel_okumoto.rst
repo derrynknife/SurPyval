@@ -13,6 +13,7 @@ that show no reliability growth are refused.
 
    .. automethod:: surpyval.recurrent.parametric.goel_okumoto.GoelOkumoto.fit
    .. automethod:: surpyval.recurrent.parametric.goel_okumoto.GoelOkumoto.fit_from_df
+   .. automethod:: surpyval.recurrent.parametric.goel_okumoto.GoelOkumoto.fit_bayes_from_df
    .. automethod:: surpyval.recurrent.parametric.goel_okumoto.GoelOkumoto.from_params
    .. automethod:: surpyval.recurrent.parametric.goel_okumoto.GoelOkumoto.cif
    .. automethod:: surpyval.recurrent.parametric.goel_okumoto.GoelOkumoto.iif

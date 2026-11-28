@@ -423,7 +423,7 @@ def test_a_binary_effect_that_changes_is_advised_strata(binary_violation):
     row = _row(d, "proportional_hazards", ("z",))
     assert row["verdict"] == "fail" and "falls" in row["detail"]
     assert (
-        "FrailtyFitter.fit",
+        "WeibullFrailty.fit",
         "CoxPH.fit(strata=)",
         "summary(robust=)",
     ) in _features(d)
@@ -478,7 +478,7 @@ def test_a_curved_effect_is_advised_a_transform():
     d = _fit(df).diagnose()
     row = _row(d, "functional_form", ("z",))
     assert row["verdict"] == "fail" and "not linear" in row["detail"]
-    assert _features(d) == [("FrailtyFitter.fit_from_df(formula=)",)]
+    assert _features(d) == [("WeibullFrailty.fit_from_df(formula=)",)]
     assert "WeibullFrailty.fit_from_df" in d.advice[0]
 
 
@@ -612,7 +612,7 @@ def test_columns_and_alpha(gamma_weibull, gamma_weibull_d):
     )
     assert d.columns == ["age"]
     # theta's p-value is 0.0016: not significant at 0.001
-    strict = gamma_weibull.diagnose(alpha=0.001)
+    strict = gamma_weibull.diagnose(alpha_ci=0.001)
     assert _row(strict, "frailty_variance")["verdict"] == "warn"
     assert ("WeibullPH.fit", "WeibullPH.fit_from_df") in _features(strict)
 

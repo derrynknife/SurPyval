@@ -329,9 +329,31 @@ def test_a_laplace_approximation_is_checked_against_the_grid():
     model = _fit(np.minimum(x, 12), c, priors=WEAK, method="laplace")
     d = model.diagnose(n_boot=50, random_state=1)
     rows = _rows(d, "grid_accuracy")
-    assert list(rows["test"]) == ["Laplace approximation against the grid"]
-    assert rows["statistic"].iloc[0] > GRID_WARN
+    assert list(rows["test"]) == [
+        "Laplace approximation: Pareto k",
+        "Laplace approximation against the grid",
+    ]
+    assert rows["statistic"].iloc[0] == model.diagnostics["pareto_k"]
+    assert rows["statistic"].iloc[1] > GRID_WARN
     assert any("Weibull.fit_bayes(method=)" in a.features for a in d.advice)
+
+
+def test_a_laplace_fit_past_the_grid_is_checked_by_its_pareto_k():
+    # four free parameters: no grid to compare with, so the Pareto k alone
+    x = sp.Weibull.random(150, 100, 2, random_state=5) + 50
+    c = (x > 170).astype(int)
+    priors = {
+        "beta": sp.prior.between(1, 4),
+        "lfp_p": sp.prior.between(0.5, 0.99),
+    }
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.Weibull.fit_bayes(
+            np.minimum(x, 170.0), c, offset=True, lfp=True, priors=priors
+        )
+    d = model.diagnose(n_boot=20, random_state=1)
+    rows = _rows(d, "grid_accuracy")
+    assert list(rows["test"]) == ["Laplace approximation: Pareto k"]
 
 
 def test_a_closed_form_has_no_grid_check():

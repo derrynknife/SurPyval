@@ -14,6 +14,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.univariate.regression._penalty_argument import penalty_argument
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
@@ -411,6 +412,7 @@ class ProportionalHazardsFitter(
             phi_init=_zero_init,
         )
 
+    @penalty_argument("_fit_penalised")
     @dataframe_covariates
     @takes_unit
     @accepts_surpyval_data

@@ -72,6 +72,7 @@ class Posterior:
         cell: npt.NDArray | None = None,
         exact: dict | None = None,
         shape: tuple | None = None,
+        normal: dict | None = None,
     ) -> None:
         self.parameter_names = list(parameter_names)
         self.free_names = list(free_names)
@@ -85,6 +86,12 @@ class Posterior:
         self.exact = exact
         #: How a grid's points are laid out, ``(lattices, m, ..., m)``.
         self.shape = None if shape is None else tuple(int(v) for v in shape)
+        #: A Laplace posterior's normal on the free parameters'
+        #: unconstrained scale, ``{"mean": [...], "cov": [[...]],
+        #: "reweighted": bool}``: unless it was reweighted, each free
+        #: parameter's quantiles are the normal's own, exactly, and
+        #: ``draws`` draws from it afresh.
+        self.normal = normal
         #: log density of the free parameters (natural scale), set by the
         #: model where it is known exactly (grid and conjugate).
         self.log_density_fn: Callable[[npt.NDArray], npt.NDArray] | None
@@ -125,7 +132,28 @@ class Posterior:
         col = self.points[:, self._col(name)]
         if name not in self.free_names:
             return np.full(q.shape, col[0])
+        plain = self._plain_normal()
+        if plain is not None and self.transforms is not None:
+            j = self.free_names.index(name)
+            mean, cov = plain
+            t = self.transforms[j]
+            # a transform that falls as phi rises (an offset's, below its
+            # upper end) maps phi's upper quantiles to theta's lower ones
+            z = stats.norm.ppf(1.0 - q if t.kind == "neglog" else q)
+            phi = mean[j] + np.sqrt(cov[j, j]) * z
+            return np.asarray(t.to_theta(phi), dtype=float)
         return self.wquantile(col, q)
+
+    def _plain_normal(self) -> tuple[npt.NDArray, npt.NDArray] | None:
+        """A Laplace posterior's normal (mean, cov), where its draws were
+        not reweighted; else None."""
+        nm = self.normal
+        if nm is None or nm.get("reweighted"):
+            return None
+        return (
+            np.asarray(nm["mean"], dtype=float),
+            np.asarray(nm["cov"], dtype=float),
+        )
 
     def wquantile(
         self,
@@ -213,7 +241,11 @@ class Posterior:
         """
         v = np.asarray(values, dtype=float)
         w = self.weights
-        rows = (v.reshape(len(w), -1) * w[:, None]).T
+        # A point of no weight adds nothing, even where the function is
+        # infinite there (a grid's edge can reach a scale of 0, whose
+        # cumulative intensity is inf): inf * 0 would make the mean NaN.
+        flat = np.where(w[:, None] > 0, v.reshape(len(w), -1), 0.0)
+        rows = (flat * w[:, None]).T
         out = np.ascontiguousarray(rows).sum(axis=1)
         return out.reshape(v.shape[1:])
 
@@ -223,8 +255,10 @@ class Posterior:
         ``k`` draws from the posterior, shape ``(k, len(parameter_names))``.
 
         A grid posterior draws cells by their weight and a point uniformly
-        within each cell; a conjugate posterior draws exactly; a posterior
-        from draws resamples them.
+        within each cell; a conjugate posterior draws exactly; a Laplace
+        posterior draws from its normal (resampling its draws by their
+        weights where they were reweighted); a posterior from draws
+        resamples them.
 
         Parameters
         ----------
@@ -249,6 +283,15 @@ class Posterior:
             out = np.repeat(self.points[:1], k, axis=0)
             col = self._col(exact["name"])
             out[:, col] = self._exact(exact["name"]).ppf(rng.uniform(size=k))
+            return out
+        plain = self._plain_normal()
+        if plain is not None and self.transforms is not None:
+            mean, cov = plain
+            L = np.linalg.cholesky(cov)
+            phi = mean + rng.standard_normal(size=(k, len(mean))) @ L.T
+            out = np.repeat(self.points[:1], k, axis=0)
+            for j, (t, i) in enumerate(zip(self.transforms, self.free_idx)):
+                out[:, i] = t.to_theta(phi[:, j])
             return out
         idx = rng.choice(len(self.weights), size=k, p=self.weights)
         out = self.points[idx].copy()
@@ -305,7 +348,9 @@ class Posterior:
         (shape ``(m, d)``, the free parameters in :attr:`free_names`
         order, on their own scales). Exact for a grid or conjugate
         posterior: the prior times the likelihood, divided by the
-        evidence the grid computed.
+        evidence the grid computed. For a Laplace posterior it is the
+        approximating normal's density (carried to the parameters' own
+        scales), not the exact posterior's.
         """
         if self.log_density_fn is None:
             raise ValueError(
@@ -342,6 +387,16 @@ class Posterior:
         exact = self._exact(name)
         if exact is not None:
             return v, exact.pdf(v)
+        plain = self._plain_normal()
+        if plain is not None and self.transforms is not None:
+            j = self.free_names.index(name)
+            t = self.transforms[j]
+            with np.errstate(all="ignore"):
+                pv = t.to_phi(v)
+                dens = stats.norm.pdf(
+                    pv, plain[0][j], np.sqrt(plain[1][j, j])
+                ) * np.exp(-t.log_jacobian(pv))
+            return v, np.where(np.isfinite(dens), dens, 0.0)
         if len(self.free_names) == 1 and self.log_density_fn is not None:
             return v, self.density(v[:, None])
         j = self.free_names.index(name)
@@ -388,6 +443,7 @@ class Posterior:
             "cell": None if self.cell is None else self.cell.tolist(),
             "exact": self.exact,
             "shape": None if self.shape is None else list(self.shape),
+            "normal": self.normal,
         }
 
     @classmethod
@@ -407,4 +463,5 @@ class Posterior:
             cell=None if d.get("cell") is None else np.asarray(d["cell"]),
             exact=d.get("exact"),
             shape=d.get("shape"),
+            normal=d.get("normal"),
         )

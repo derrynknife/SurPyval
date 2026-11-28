@@ -54,6 +54,28 @@ the failures counted in each period of testing.
     counting/rayleigh_defects
     counting/clocks
 
+Discrete (Success/Fail) Reliability Growth
+------------------------------------------
+
+Growth of one-shot items, fitted to the failures and trials of each
+development stage: the AMSAA discrete model, Lloyd-Lipow and Gompertz.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/discrete_growth
+
+Maturity Projection
+-------------------
+
+The reliability once the fixes are in, allowing for the failure modes
+not seen yet: AMPM, AMPM-Stein and the discrete AMPM-Stein.
+
+.. toctree::
+    :maxdepth: 1
+
+    counting/maturity_projection
+
 Models of the Times Between Failures
 ------------------------------------
 

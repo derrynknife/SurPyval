@@ -384,7 +384,16 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             # Checked against the rows as given (before any grouping),
             # then grouped by weight as well.
             x, c, n, t = xcnt_handler(
-                x, c, n, t, xl, xr, tl, tr, group_and_sort=False
+                x,
+                c,
+                n,
+                t,
+                xl,
+                xr,
+                tl,
+                tr,
+                group_and_sort=False,
+                zero_counts=ids is not None,
             )
             w_arr = check_weights(w, len(c))
             if group_and_sort:
@@ -393,7 +402,16 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             w_arr = np.asarray(w, dtype=float)
         elif handle:
             x, c, n, t = xcnt_handler(
-                x, c, n, t, xl, xr, tl, tr, group_and_sort=group_and_sort
+                x,
+                c,
+                n,
+                t,
+                xl,
+                xr,
+                tl,
+                tr,
+                group_and_sort=group_and_sort,
+                zero_counts=ids is not None,
             )
         self.w = w_arr
 
@@ -1014,6 +1032,8 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         s_col: Any = None,
         a_col: Any = None,
         m: Any = None,
+        end_col: Any = None,
+        ends: Any = None,
     ) -> SurpyvalData:
         """
         The data from a :class:`pandas.DataFrame` with one row per item
@@ -1099,6 +1119,17 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         m : Measurements or dict, optional
             The units' readings, ``data.m`` (a frame of readings is read
             with ``Measurements.from_dataframe``); needs ``i_col``.
+        end_col : str, optional
+            For a log of repeated events, one row per event (a maintenance
+            log: ``i_col`` the unit, ``x_col`` its age at each failure):
+            each unit's age at the end of its observation, on its rows
+            (the same on each, blank cells left out), an alternative to a
+            ``c = 1`` row. The data then has, for each unit, its events in
+            time order and its end of observation.
+        ends : dict or pandas.Series, optional
+            For a log of repeated events, ``{unit: age}``, the end of each
+            unit's observation, for the units it names: a way to give the
+            units that never failed, which have no row in the log.
 
         Returns
         -------
@@ -1152,7 +1183,50 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         ... )
         >>> data.c, data.n_items
         (array([0, 0, 1, 0]), 3)
+
+        A log of repeated events, one row per failure, with the age each
+        unit has reached (M3 has not failed, so has no row):
+
+        >>> log = pd.DataFrame({
+        ...     "machine": ["M1", "M1", "M2"],
+        ...     "hours": [420, 1310, 980],
+        ...     "part": ["seal", "bearing", "seal"],
+        ... })
+        >>> data = SurpyvalData.from_dataframe(
+        ...     log, i_col="machine", x_col="hours", e_col="part",
+        ...     ends={"M1": 2600, "M2": 2900, "M3": 3100},
+        ... )
+        >>> data.i, data.c.tolist()
+        (['M1', 'M1', 'M1', 'M2', 'M2', 'M3'], [0, 0, 1, 0, 1, 1])
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
+        if end_col is not None or ends is not None:
+            return _event_log_from_frame(
+                df,
+                dict(
+                    event_col=event_col,
+                    w_col=w_col,
+                    s_col=s_col,
+                    a_col=a_col,
+                    m=m,
+                ),
+                i_col=i_col,
+                x_col=x_col,
+                xl_col=xl_col,
+                xr_col=xr_col,
+                c_col=c_col,
+                n_col=n_col,
+                e_col=e_col,
+                tl_col=tl_col,
+                tr_col=tr_col,
+                end_col=end_col,
+                ends=ends,
+                Z_cols=Z_cols,
+                attribute_cols=attribute_cols,
+                unit=unit,
+            )
         from surpyval.utils.data_frames import (
             lifetime_from_frame,
             recognised_columns,
@@ -1280,6 +1354,15 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         ``data.markers``, ``{id: {age: value}}`` (``{}`` for an item with
         none), for the joint models.
 
+        A list of :class:`~surpyval.utils.item_history.ItemHistory`
+        records (each an item's history of repeated events) gives the data
+        with units ``i`` that every recurrent ``fit`` takes: one row per
+        event in time order, then the end of the item's observation
+        (``c = 1``) where it has one, with its late entry ``tl`` on its
+        first row, and its right truncation, covariates and attributes on
+        each of its rows. ``counts`` are for lifetimes only, and a list
+        holds records of one kind.
+
         Examples
         --------
         >>> from surpyval import ItemLifetime, SurpyvalData
@@ -1292,6 +1375,23 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         ... )
         >>> data.x, data.c, data.n
         (array([5., 9.]), array([0, 1]), array([ 3, 10]))
+
+        Histories of repeated events:
+
+        >>> from surpyval import ItemHistory
+        >>> SurpyvalData.from_items(
+        ...     [
+        ...         ItemHistory("A", observed=[5, 9], right_censored=12),
+        ...         ItemHistory("B", observed=[4], right_censored=10),
+        ...     ]
+        ... )
+        SurpyvalData: 2 items, 5 rows
+           id     x  c  n  a
+          'A'   5.0  0  1  0
+          'A'   9.0  0  1  0
+          'A'  12.0  1  1  0
+          'B'   4.0  0  1  0
+          'B'  10.0  1  1  0
         """
         from surpyval.utils.item_lifetime import ItemLifetime
         from surpyval.utils.record_keywords import (
@@ -1305,6 +1405,19 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
             ["items", "counts", "unit"],
             FROM_ITEMS_ALIASES,
         )
+        if hasattr(items, "__next__"):
+            items = list(items)  # a generator of records
+        histories = _history_records(items)
+        if histories is not None:
+            if counts is not None:
+                raise ValueError(
+                    "'counts' say how many identical items a lifetime "
+                    "stands for (ItemLifetime); an ItemHistory is one "
+                    "item's history: leave counts out."
+                )
+            from surpyval.utils.history_rows import rows_from_histories
+
+            return rows_from_histories(histories, unit=unit)
         items = _record_list(items, ItemLifetime, "SurpyvalData")
         from surpyval.utils.item_history import (
             check_item_ids,
@@ -1401,6 +1514,197 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         if any(i.markers is not None for i in items):
             data.markers = {i.id: i.markers or {} for i in items}
         return data
+
+    @classmethod
+    def from_histories(
+        cls,
+        observed: dict | None = None,
+        right_censored: dict | None = None,
+        *,
+        left_truncation: Any = None,
+        right_truncation: Any = None,
+        covariates: dict | None = None,
+        gaps: bool = False,
+        unit: Any = None,
+        **unknown: Any,
+    ) -> SurpyvalData:
+        """
+        Data with units ``i`` from each item's history of repeated events,
+        keyed by the item's id: the ages at which it failed, ``observed``,
+        and the age at which its observation ended, ``right_censored``.
+        An item with no end of observation is taken to have been observed
+        until its last failure; an item that has not failed has an end of
+        observation and no failures. Every recurrent ``fit`` takes the
+        result (``CrowAMSAA.fit(data)``).
+
+        Parameters
+        ----------
+        observed : dict, optional
+            ``{item: [age, age, ...]}``, the item's age (time since new or
+            first observed) at each failure; a single failure may be a
+            number.
+        right_censored : dict, optional
+            ``{item: age}``, the item's age when its observation ended
+            (when it was last checked), at or after its last failure.
+        left_truncation : dict or scalar, optional
+            ``{item: age}``, the age at which an item came under
+            observation (its failures before then are unknown), or one
+            number for every item.
+        right_truncation : dict or scalar, optional
+            ``{item: age}``, the age by which an item failed, which is why
+            it is in the data (not the end of its observation, which is
+            ``right_censored``), or one number for every item.
+        covariates : dict, optional
+            ``{item: row}``, each item's covariates (a number, a row of
+            them, or ``{name: value}``, which names them), for every item.
+        gaps : bool, default False
+            Read ``observed`` as the times between failures (the first
+            from the start of observation: ``left_truncation``, else 0) and
+            ``right_censored`` as the time from the last failure to the end
+            of observation; each item's ages are their running totals.
+        unit : str, optional
+            The unit of the ages, kept with the data.
+
+        Returns
+        -------
+        SurpyvalData
+            One row per failure in time order, then the end of the item's
+            observation (``c = 1``), each row with its item's id ``i``.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData.from_histories(
+        ...     observed={"M1": [420, 1310, 2050], "M2": [980, 2400]},
+        ...     right_censored={"M1": 2600, "M2": 2900, "M3": 3100},
+        ... )
+        >>> data
+        SurpyvalData: 3 items, 8 rows
+            id       x  c  n  a
+          'M1'   420.0  0  1  0
+          'M1'  1310.0  0  1  0
+          'M1'  2050.0  0  1  0
+          'M1'  2600.0  1  1  0
+          'M2'   980.0  0  1  0
+          'M2'  2400.0  0  1  0
+          'M2'  2900.0  1  1  0
+          'M3'  3100.0  1  1  0
+
+        The same history, recorded as the time between failures:
+
+        >>> again = SurpyvalData.from_histories(
+        ...     observed={"M1": [420, 890, 740], "M2": [980, 1420]},
+        ...     right_censored={"M1": 550, "M2": 500, "M3": 3100},
+        ...     gaps=True,
+        ... )
+        >>> again == data
+        True
+        """
+        from surpyval.utils.event_history_data import _histories_from_dicts
+        from surpyval.utils.history_rows import rows_from_histories
+
+        histories = _histories_from_dicts(
+            "SurpyvalData.from_histories",
+            SurpyvalData.from_histories,
+            observed,
+            right_censored,
+            left_truncation,
+            right_truncation,
+            covariates,
+            gaps,
+            unknown,
+        )
+        return rows_from_histories(
+            histories, unit=unit, what="SurpyvalData.from_histories"
+        )
+
+    def to_histories(self) -> dict:
+        """
+        Data with units ``i`` as each unit's history of repeated events,
+        the form :meth:`from_histories` reads: ``"observed"`` (``{unit:
+        ages at its failures}``) and ``"right_censored"`` (``{unit: age at
+        the end of observation}``, for the units with one), with
+        ``"left_truncation"`` / ``"right_truncation"`` for the units that
+        are truncated and ``"covariates"`` where the data has them. So
+        ``SurpyvalData.from_histories(**data.to_histories())`` is the same
+        histories. Interval or left censored counts, repeated rows, event
+        types and gaps in a unit's observation have no place in the dicts,
+        and are refused.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData(
+        ...     [5, 9, 12, 4], [0, 0, 1, 1], i=["A", "A", "A", "B"]
+        ... )
+        >>> data.to_histories()["right_censored"]
+        {'A': 12.0, 'B': 4.0}
+        """
+        return self._event_history("to_histories").to_histories()
+
+    def to_first_events(self) -> SurpyvalData:
+        """
+        Each unit's time to its first failure, as lifetime data (one row
+        per unit), from data with units ``i`` whose rows are a unit's
+        repeated events: its first failure (observed; between two
+        inspections, interval censored; before its first look, left
+        censored), or right censored at the end of its observation where
+        it has none, with its late entry (left truncation), id, covariates
+        and the first failure's event type. Fit it with any lifetime
+        model: ``Weibull.fit(data.to_first_events())``.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData(
+        ...     [5, 9, 12, 4, 10, 8],
+        ...     [0, 0, 1, 0, 1, 1],
+        ...     i=["A", "A", "A", "B", "B", "C"],
+        ... )
+        >>> first = data.to_first_events()
+        >>> first.x, first.c
+        (array([5., 4., 8.]), array([0, 0, 1]))
+        """
+        return self._event_history("to_first_events").to_first_events()
+
+    def to_gaps(self) -> SurpyvalData:
+        """
+        The times between each unit's failures, as lifetime data, from
+        data with units ``i`` whose rows are a unit's repeated events,
+        each repair taken to make the unit as good as new (a renewal
+        process): one row per gap, with id ``(unit, k)`` for the unit's
+        ``k``-th gap, its covariates and the event type of the failure
+        that ended it. The first gap runs from new to the first failure,
+        left truncated at the unit's entry where observation began late;
+        each unit's last gap, from its last failure to the end of its
+        observation, is right censored. Fit it with any lifetime model:
+        ``Weibull.fit(data.to_gaps())``.
+
+        It needs each failure's age, so failures counted between
+        inspections or before a first look are refused (their gaps are not
+        known; :meth:`to_first_events` takes them), as are time-varying
+        covariates and two failures at one age.
+
+        Examples
+        --------
+        >>> from surpyval import SurpyvalData
+        >>> data = SurpyvalData(
+        ...     [5, 9, 12, 4, 10], [0, 0, 1, 0, 1], i=["A", "A", "A", "B", "B"]
+        ... )
+        >>> gaps = data.to_gaps()
+        >>> gaps.x, gaps.c
+        (array([5., 4., 3., 4., 6.]), array([0, 0, 1, 0, 1]))
+        >>> gaps.ids
+        [('A', 1), ('A', 2), ('A', 3), ('B', 1), ('B', 2)]
+        """
+        return self._event_history("to_gaps").to_gaps()
+
+    def _event_history(self, what: str) -> Any:
+        """The rows read as each unit's history of repeated events (the
+        reading a recurrent ``fit`` makes of them), for ``what``."""
+        from surpyval.utils.history_rows import event_history_from_rows
+
+        return event_history_from_rows(self, f"SurpyvalData.{what}")
 
     def to_items(self) -> list:
         """
@@ -1709,15 +2013,35 @@ class SurpyvalData(MeasurementsMixin, ReshapeMixin):
         """The number of items: the rows weighted by their counts ``n``
         (``len(data)`` is the number of rows). With unit ids a unit may
         have several rows (stays in states, stretches, repeated events),
-        so the items are the distinct units, each counted by the ``n`` of
-        its first row."""
+        so the items are the distinct units. In data with states a unit
+        is counted by the ``n`` of its first row (``n`` identical units
+        that stay in the same states); in data without, where ``n``
+        counts a row's events (failures between two inspections), a unit
+        with several rows is one item."""
         n = np.asarray(self.n)
         if self.ids is not None and units_with_several_rows(self):
             first: dict = {}
             for k, unit in enumerate(self.ids):
                 first.setdefault(unit, k)
+            if getattr(self, "s", None) is None:
+                several = set(units_with_several_rows(self))
+                return int(
+                    sum(
+                        1 if unit in several else n[k]
+                        for unit, k in first.items()
+                    )
+                )
             return int(n[list(first.values())].sum())
         return int(n.sum())
+
+    @property
+    def item_ids(self) -> list | None:
+        """The units' (items') ids, one per unit, in the order of their
+        first rows (``None`` without ids). ``ids`` and ``i`` are one per
+        row; a unit with several rows appears once here."""
+        if self.ids is None:
+            return None
+        return list(dict.fromkeys(self.ids))
 
     @property
     def i(self) -> list | None:
@@ -2964,7 +3288,17 @@ def accepts_surpyval_data(method: F) -> F:
                 + ", ".join(repr(g) for g in given)
                 + " (or pass arrays rather than a SurpyvalData)."
             )
-        markers = _markers_taken(data, names)
+        markers = _markers_taken(
+            data,
+            names,
+            bool(
+                getattr(
+                    bound.arguments.get(params[0]) if params else None,
+                    "takes_several_markers",
+                    False,
+                )
+            ),
+        )
         if data.time_varying_covariates is not None:
             if data.e is not None and "e" not in names:
                 raise ValueError(
@@ -3017,7 +3351,13 @@ def accepts_surpyval_data(method: F) -> F:
             else:
                 lost.append("event types")
         if data.time_varying_covariates is not None:
-            lost.append("time-varying covariates")
+            if "time_varying_covariates" in names:
+                # (a multi-state regression: each unit's path, by its i)
+                filled["time_varying_covariates"] = dict(
+                    data.time_varying_covariates
+                )
+            else:
+                lost.append("time-varying covariates")
         lost += _fill_histories(data, names, state, filled)
         filled.update(markers)
         if lost:
@@ -3254,21 +3594,47 @@ def _given_beside_data(arguments: dict, data: SurpyvalData) -> list:
     ]
 
 
-def _markers_taken(data: SurpyvalData, names: set) -> dict:
+def _markers_taken(
+    data: SurpyvalData, names: set, takes_several: bool = False
+) -> dict:
     """The data's marker readings as a fit's ``markers`` argument (one
     ``{age: value}`` per row), ``{}`` where it has none; refused for a fit
-    that takes none."""
+    that takes none. For a fit that ``takes_several`` markers, each row's
+    ``{name: {age: value}}`` of every named measurement."""
     if data.m is None:
         return {}
     if "markers" not in names:
         raise ValueError(_NO_MARKERS)
+    if takes_several:
+        from surpyval.univariate.joint._multi import ByMarker
+
+        if units_with_several_rows(data):
+            raise ValueError(
+                "A joint model takes one row per unit, with the unit's "
+                "readings; some units have several rows."
+            )
+        keys = data.ids if data.ids is not None else range(len(data.x))
+        store = {name: data.m[name] for name in data.m.names}
+        return {
+            "markers": [
+                ByMarker(
+                    {
+                        str(name): dict(one.get(key, {}))
+                        for name, one in store.items()
+                    }
+                )
+                for key in keys
+            ]
+        }
     if len(data.m.names) > 1:
         raise ValueError(
             "This fit takes one measurement as its markers, and the "
             f"SurpyvalData holds {len(data.m.names)} ("
             + ", ".join(map(str, data.m.names))
             + "): keep one with data.with_measurement(name), or leave "
-            'them out with data.without("m").'
+            'them out with data.without("m") (or fit them together, a '
+            "joint model of several markers: JointPH(Weibull, {name: "
+            "path_model, ...}))."
         )
     several = units_with_several_rows(data)
     if several:
@@ -3622,7 +3988,9 @@ def several_rows_clause(data: Any) -> str | None:
             f"takes one row per unit ({which} "
             f"{'have' if len(units) > 1 else 'has'} several: repeated "
             "events, a = 0 where the unit carried on; the recurrent models "
-            "in surpyval.recurrent take them)"
+            "in surpyval.recurrent take them, and data.to_first_events() or "
+            "data.to_gaps() gives each unit's first failure, or the times "
+            "between its failures, as lifetimes)"
         )
     return (
         f"takes one row per unit ({which} "
@@ -3672,6 +4040,11 @@ def terminal_flags(
     """
     c = np.asarray(c)
     k = len(c)
+    if a is None and ids is None:
+        # Each row is its own unit, so no unit has more than one row: the
+        # answer without building the units row by row, which took a
+        # second per million rows of every fit.
+        return None, None
     units = list(range(k)) if ids is None else list(ids)
     rows_of: dict = {}
     for r, unit in enumerate(units):
@@ -3758,6 +4131,53 @@ def _kind_ids(name: str, value: Any, k: int) -> list:
     return [checked_id(i) for i in listed]
 
 
+def _event_log_from_frame(df: Any, lifetime_only: dict, **columns: Any) -> Any:
+    """``SurpyvalData.from_dataframe`` for a log of repeated events (given
+    ``end_col`` or ``ends``): the log read as each unit's history, as
+    rows with units ``i``. ``lifetime_only`` holds the arguments such a
+    log has no place for."""
+    from surpyval.utils.data_frames import history_from_frame
+    from surpyval.utils.event_history_data import EventHistoryData
+
+    given = [
+        name for name, value in lifetime_only.items() if value is not None
+    ]
+    if given:
+        raise ValueError(
+            "end_col and ends read the frame as a log of repeated events, "
+            "one row per event, which has no place for "
+            + ", ".join(given)
+            + ": leave end_col and ends out and give each unit's end of "
+            "observation as a row of its own (c = 1)."
+        )
+    if columns["i_col"] is None:
+        raise ValueError(
+            "end_col and ends give each unit's end of observation in a log "
+            "of repeated events: name the column of unit ids, i_col."
+        )
+    return history_from_frame(
+        EventHistoryData, df, **columns
+    ).to_surpyval_data()
+
+
+def _history_records(items: Any) -> list | None:
+    """``items`` as a list where it is a list of
+    :class:`~surpyval.utils.item_history.ItemHistory` records and nothing
+    else; None otherwise."""
+    from surpyval.utils.item_history import ItemHistory
+
+    if isinstance(items, ItemHistory):
+        raise TypeError(
+            "SurpyvalData.from_items takes a list of records; got one "
+            "ItemHistory: give [item]."
+        )
+    if not isinstance(items, (list, tuple)) or not items:
+        return None
+    if all(isinstance(item, ItemHistory) for item in items):
+        return list(items)
+    return None
+
+
 def _record_list(items: Any, record: type, dataset: str) -> list:
     """``items`` as a list of ``record`` objects (an ``ItemLifetime`` or
     ``ItemHistory``) for ``dataset.from_items``: a single record, a
@@ -3806,8 +4226,11 @@ def _record_list(items: Any, record: type, dataset: str) -> list:
             )
             hint = f": a list of {kind} records builds {_a(built)}"
             if kind == "ItemHistory":
-                hint += (
-                    " (EventHistoryData.from_items(items).to_first_events() "
+                # (Only a list that mixes the two kinds gets here.)
+                hint = (
+                    ": a list holds records of one kind. ItemHistory "
+                    "records alone give the data with units i "
+                    "(SurpyvalData.from_items(histories).to_first_events() "
                     "for their first failures as lifetimes)"
                 )
         raise TypeError(
@@ -3868,7 +4291,7 @@ def _options(
 #: stretch of a path, and halves them until no estimate moves by more than
 #: ``_PATH_TOLERANCE`` of its standard error, for at most ``_PATH_ROUNDS``
 #: halvings (8, 16, ..., 2048 steps a stretch) and ``_PATH_ROWS`` rows.
-_PATH_STEPS = 8
+PATH_STEPS = 8
 _PATH_TOLERANCE = 0.01
 _PATH_ROUNDS = 8
 _PATH_ROWS = 2_000_000
@@ -3944,15 +4367,15 @@ def _fit_tvc_from_data(
     continuous = any(
         isinstance(schedule, CovariatePath) for schedule in schedules.values()
     )
-    model, count = fitted(_PATH_STEPS)
+    model, count = fitted(PATH_STEPS)
     if not continuous:
         return model
-    return _refined_on_paths(fitted, model, count)
+    return refined_on_paths(fitted, model, count)
 
 
-def _refined_on_paths(fitted: Callable, model: Any, count: int) -> Any:
+def refined_on_paths(fitted: Callable, model: Any, count: int) -> Any:
     """The fit on continuous paths, refined: ``model`` is the fit with
-    ``_PATH_STEPS`` steps a stretch (``count`` rows), and ``fitted(steps)``
+    ``PATH_STEPS`` steps a stretch (``count`` rows), and ``fitted(steps)``
     fits with another number. The steps are halved until the estimates
     move by no more than ``_PATH_TOLERANCE`` of their standard errors
     (where a standard error is missing, of ``1e-2 max(|estimate|, 1)``),
@@ -3963,7 +4386,7 @@ def _refined_on_paths(fitted: Callable, model: Any, count: int) -> Any:
 
     from surpyval.utils.warnings import caller_stacklevel
 
-    steps, change = _PATH_STEPS, 0.0
+    steps, change = PATH_STEPS, 0.0
     converged = False
     for _ in range(_PATH_ROUNDS):
         finer, finer_count = fitted(2 * steps)

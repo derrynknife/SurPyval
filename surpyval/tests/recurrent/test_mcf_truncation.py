@@ -18,6 +18,17 @@ from surpyval.recurrent.competing_risks import CauseSpecificMCF
 from surpyval.recurrent.nonparametric import NonParametricCounting
 from surpyval.utils.recurrent_utils import handle_xicn
 
+# These tests check the EventHistoryData the fits work on, reading its
+# ids and tl as they are there (before model.data becomes a SurpyvalData).
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.ids changes meaning:FutureWarning"
+    ),
+    pytest.mark.filterwarnings(
+        "ignore:EventHistoryData.tl changes meaning:FutureWarning"
+    ),
+]
+
 
 def _delayed_entry_data():
     # Item 1 enters at t=0 with events at 2, 5 and is right-censored at 10.

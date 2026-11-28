@@ -66,6 +66,7 @@ from surpyval.univariate.regression._bootstrap import (
 )
 from surpyval.utils.no_maximum import (
     NoFiniteMaximumError,
+    estimates_only,
     quiet_maximum_warnings,
     warn_bootstrap_refits,
 )
@@ -144,7 +145,11 @@ def jackknife(model: Any, fits: Refits) -> Jackknife:
             kwargs["tl"] = t[keep, 0]
             kwargs["tr"] = t[keep, 1]
         try:
-            with ignoring_warnings(), quiet_maximum_warnings():
+            with (
+                ignoring_warnings(),
+                quiet_maximum_warnings(),
+                estimates_only(),
+            ):
                 refit = model.dist.fit(
                     x[keep],
                     offset=model.offset,
@@ -323,30 +328,49 @@ class _UnivariateDesign(ResampleDesign):
 class _CaseDesign:
     """What a case resample of a weighted model's data draws from: every
     unit (a row with ``n = k`` is ``k`` units) with its time, censoring,
-    truncation and weight."""
+    truncation and weight. Grouped data (a row with ``n`` above 1) are
+    resampled by row, with multinomial counts, as for the regressions
+    (``univariate.regression._bootstrap.CaseDesign``)."""
 
     def __init__(self, model: Any, public: bool = False) -> None:
         check_resamplable(model, public)
         data = model.data
         n = np.asarray(data["n"], dtype=int)
-        units = np.repeat(np.arange(n.size), n)
+        # The weights scaled to sum to the units, as the fit uses them, so
+        # that the refits do not depend on the scale of ``w``.
+        w = np.asarray(data["w"], dtype=float)
+        w = w * (n.sum() / np.sum(n * w))
+        self.grouped = bool(np.any(n > 1))
+        rows = (
+            np.arange(n.size)
+            if self.grouped
+            else np.repeat(np.arange(n.size), n)
+        )
         x = np.asarray(data["x"], dtype=float)
-        self.x = x[units]
-        self.c = np.asarray(data["c"])[units]
-        t = np.asarray(data["t"], dtype=float).reshape(-1, 2)[units]
+        self.x = x[rows]
+        self.c = np.asarray(data["c"])[rows]
+        t = np.asarray(data["t"], dtype=float).reshape(-1, 2)[rows]
         self.tl, self.tr = t[:, 0], t[:, 1]
         self.truncated = bool(
             np.any(np.isfinite(self.tl)) or np.any(np.isfinite(self.tr))
         )
-        # The weights scaled to sum to the units, as the fit uses them, so
-        # that the refits do not depend on the scale of ``w``.
-        w = np.asarray(data["w"], dtype=float)
-        self.w = (w * (n.sum() / np.sum(n * w)))[units]
+        self.w = w[rows]
+        self.units = int(n.sum())
+        self.share = n[rows] / self.units
 
     def resample(self, rng: np.random.Generator) -> dict:
-        """The arguments of one refit: the units drawn with replacement."""
-        k = rng.integers(0, self.x.shape[0], size=self.x.shape[0])
-        out: dict[str, Any] = {"x": self.x[k], "c": self.c[k], "w": self.w[k]}
+        """The arguments of one refit: the units drawn with replacement
+        (for grouped data, each row's multinomial count as its ``n``)."""
+        out: dict[str, Any]
+        if self.grouped:
+            counts = rng.multinomial(self.units, self.share)
+            k = np.flatnonzero(counts)
+            out = {"x": self.x[k], "c": self.c[k], "w": self.w[k]}
+            out["n"] = counts[k]
+        else:
+            size = self.x.shape[0]
+            k = np.asarray(rng.integers(0, size, size=size))
+            out = {"x": self.x[k], "c": self.c[k], "w": self.w[k]}
         if self.truncated:
             out["tl"] = self.tl[k]
             out["tr"] = self.tr[k]
@@ -597,7 +621,11 @@ def _draw(
                 kwargs["tl"] = design.tl
                 kwargs["tr"] = design.tr
         try:
-            with ignoring_warnings(), quiet_maximum_warnings():
+            with (
+                ignoring_warnings(),
+                quiet_maximum_warnings(),
+                estimates_only(),
+            ):
                 refit = model.dist.fit(
                     x,
                     offset=model.offset,

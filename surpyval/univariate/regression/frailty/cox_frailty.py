@@ -52,7 +52,6 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.univariate.regression._aliasing import dataframe_covariates
-from surpyval.utils import _caller_stacklevel
 from surpyval.utils.covariates import (
     coefficient_names,
     loaded_coefficient_names,
@@ -69,7 +68,7 @@ from surpyval.utils.no_maximum import (
 from surpyval.utils.surpyval_data import accepts_surpyval_data
 from surpyval.utils.units import takes_unit
 from surpyval.utils.validation import check_option
-from surpyval.utils.warnings import collecting_warnings
+from surpyval.utils.warnings import caller_stacklevel, collecting_warnings
 
 from .._aliasing import expand, fit_columns
 from .._fit_skeleton import covariate_center
@@ -88,7 +87,7 @@ from ..regression_data import (
     serialise_covariate_meta,
 )
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
-from .families import check_family
+from .families import LAPLACE_FAMILIES, check_family
 from .frailty_fitter import _log_rising_ratio, grouped_data
 from .frailty_model import _SharedFrailty
 
@@ -776,7 +775,16 @@ class CoxFrailtyFitter(FitterRepr):
             fits several terms and random slopes). ``frailties`` are then
             ``exp`` of each group's predicted ``w`` (its posterior mode),
             and ``log_likelihood`` the Laplace-approximated integrated
-            partial likelihood.
+            partial likelihood. ``"inverse_gaussian"`` (mean 1, variance
+            ``theta``) or ``"positive_stable"`` (index ``1 - theta``;
+            ``theta`` is Kendall's tau, and the frailty has no mean):
+            EM on the full likelihood with the baseline's jumps as
+            parameters (Breslow's ties: ``tie_method="efron"`` is refused
+            where event times are tied), ``theta`` maximising its profile;
+            ``log_likelihood`` is that marginal likelihood, and the
+            standard errors are from its observed information with the
+            jumps profiled out. See the frailty families section of the
+            shared frailty documentation.
 
         Returns
         -------
@@ -853,7 +861,7 @@ class CoxFrailtyFitter(FitterRepr):
                 warnings.warn(
                     message,
                     caught_warning.category,
-                    stacklevel=_caller_stacklevel(),
+                    stacklevel=caller_stacklevel(),
                 )
         kept = np.arange(p_all)
         if cox is not None and cox.aliased.size:
@@ -878,6 +886,26 @@ class CoxFrailtyFitter(FitterRepr):
                 tie_method,
                 theta,
                 center,
+            )
+        if family in LAPLACE_FAMILIES:
+            from ._cox_laplace import laplace_cox_frailty
+
+            return laplace_cox_frailty(
+                x,
+                Zfull,
+                Zk,
+                means,
+                c,
+                w,
+                labels,
+                inv,
+                kept,
+                cox,
+                maximum,
+                tie_method,
+                theta,
+                center,
+                family,
             )
         em = _CoxFrailtyEM(x, Zk - means, c, w, inv, n_groups, tie_method)
         monotone = maximum == "no finite maximum"
@@ -1062,6 +1090,9 @@ class CoxFrailtyFitter(FitterRepr):
         >>> model.feature_names
         ['age', 'C(sex)[T.2]']
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         check_columns(
             df, x_col=x_col, c_col=c_col, n_col=n_col, group_col=group_col
         )
@@ -1253,6 +1284,23 @@ class CoxFrailtyModel(_SharedFrailty):
         }
         rows = table.loc["frailty"].rename(columns=estimates)
         rows.index.name = None
+        if self.family in LAPLACE_FAMILIES:
+            out += (
+                (
+                    "\nFrailty theta (tau) : "
+                    if self.family == "positive_stable"
+                    else "\nFrailty variance    : "
+                )
+                + "observed-information standard error; Wald 95% "
+                "interval\n"
+            ) + format_table(rows, list(estimates.values()))
+            out += (
+                "\nLog-likelihood      : {:.4f} (marginal, Breslow "
+                "baseline; {:.4f} without frailty)".format(
+                    self.log_likelihood, self.log_likelihood_no_frailty
+                )
+            )
+            return out
         out += (
             "\nFrailty variance    : profile-likelihood standard error; "
             "Wald 95% interval\n"

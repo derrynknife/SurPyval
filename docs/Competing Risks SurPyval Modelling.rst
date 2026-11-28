@@ -417,7 +417,7 @@ incidence: two-sided ``[lower, upper]`` rows by default, or one side with
 ``bound="lower"`` or ``"upper"``, at the level ``alpha_ci`` (0.05, a 95%
 interval). The variance is Aalen's, the ``var`` that R's ``cmprsk::cuminc``
 reports, and the interval is formed on the log(-log) scale so that it stays in
-[0, 1] (``bound_type="normal"`` gives the plain estimate :math:`\pm` z
+[0, 1] (``bound_type="plain"`` gives the plain estimate :math:`\pm` z
 standard errors); see :doc:`Competing Risks Analysis` for the formula. With
 ``on="sf"``, ``"ff"`` or ``"Hf"`` it bounds the all-cause functions
 (``event=None``) or a cause's net ones instead, as ``KaplanMeier`` or
@@ -1523,9 +1523,7 @@ means (``model.center``, and ``phi`` is relative to them).
 refitted to each resample, and the bounds are the percentiles of the refits'
 incidences, so they carry the coefficients', the baseline's and the
 censoring weights' uncertainty together. Here the 95% bounds at
-:math:`Z = (1, 0)` contain the true incidence at each time. There is no
-Wald or likelihood-ratio bound: ``method="wald"`` and ``"lr"`` refuse and
-say to use the bootstrap.
+:math:`Z = (1, 0)` contain the true incidence at each time.
 
 .. jupyter-execute::
 
@@ -1543,6 +1541,33 @@ say to use the bootstrap.
 
     assert np.all((bounds[:, 0] < truth) & (truth < bounds[:, 1])), bounds
 
+``method="wald"`` gives the delta-method bound, with no refits. In words:
+each unit moves the estimate a little, through its own event and its place in
+the risk sets, through the coefficients, and through the estimated censoring
+distribution that weights the competing failures. The variance is the sum of
+those moves squared (each unit's *influence*), taken on
+:math:`\log \Lambda(t \mid Z)`, the log of the cumulative subdistribution
+hazard, so the bound stays inside (0, 1). Each unit's influence equals the
+derivative of the estimate in that unit's case weight (exactly without
+censoring, to 1e-4 with it), and in a simulation study (n = 150, 400 data
+sets) the 95% bound covered the true incidence 94.5% to 95.5% of the time.
+It is built for a model without strata or clusters; there it refuses and
+names the bootstrap. There is no likelihood-ratio bound: ``method="lr"``
+refuses and says to use the bootstrap.
+
+The Wald bounds at the same times:
+
+.. jupyter-execute::
+
+    wald = model.cb(times, z, method="wald")
+    print(np.round(wald, 3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all((wald[:, 0] < truth) & (truth < wald[:, 1])), wald
+
 Things to watch:
 
 - ``event`` must be given when the data contain more than one cause, and it
@@ -1553,7 +1578,7 @@ Things to watch:
 - The Fine-Gray model is fitted for one cause at a time. To model every cause,
   use ``CompetingRisksProportionalHazards`` with ``model="Fine-Gray"`` (below);
   the separate fits are not constrained to be mutually consistent.
-- For many covariates, or correlated ones, ``FineGray.fit_penalised`` adds a
+- For many covariates, or correlated ones, ``FineGray.fit(..., penalizer=...)`` adds a
   ridge, lasso or elastic-net penalty (the objective of R's
   ``fastcmprsk::fastCrrp``; see the penalised regression section of
   :doc:`Regression Modelling with SurPyval`). The penalised model predicts

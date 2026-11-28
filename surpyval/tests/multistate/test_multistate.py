@@ -138,7 +138,7 @@ def test_competing_risks_is_the_cumulative_incidence():
         assert_allclose(
             model.occupancy(q, cause), cr.cif(q, cause), rtol=0, atol=1e-15
         )
-        width = crw.cb(q, cause, bound_type="normal")
+        width = crw.cb(q, cause, bound_type="plain")
         se = (width[:, 1] - width[:, 0]) / (2 * 1.959963984540054)
         assert_allclose(
             model.occupancy_se(q, cause, variance="robust"),

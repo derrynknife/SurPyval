@@ -56,10 +56,16 @@ How it applies
   their ``mean``, ``moment``, ``var``, ``entropy``, ``mrl`` and restricted
   mean are those families' closed forms. Other distributions integrate
   the survival function numerically for the mean, moments, variance, mean
-  residual life and restricted mean, and refuse the entropy (integrate
-  ``-df * log(df)`` instead). A discrete model's moments, and the
-  defective moments of a limited failure population, are refused with
-  what to use.
+  residual life and restricted mean, and the density for the entropy,
+  :math:`-\int f \log f\,dt` (with :math:`\log f = \log hr + \log h_0 -
+  hr\,H_0`, so the far tail adds nothing it should not). A discrete
+  model's moments are sums over its survival function,
+  :math:`E[T] = \sum_{k \ge 0} P(T > k)` and :math:`E[T^n] = \sum_{k \ge
+  0} ((k + 1)^n - k^n) P(T > k)`; where those sums have not settled after
+  about 17 million counts (a tail falling as a power of ``k``, whose
+  moment may be infinite) they are refused. A discrete model's entropy
+  and mean residual life, and the defective moments of a limited failure
+  population, are refused with what to use.
 - **``hr = 1`` changes nothing.** Every function and every seeded draw is
   the model's without ``hr``, to the last bit.
 
@@ -94,13 +100,33 @@ scale multiplied by :math:`2^{1/\beta}`). Maximum likelihood only.
 The bounds hold ``hr`` fixed, as a known constant:
 
 - ``cb`` and ``quantile_cb`` with ``method="wald"`` (every ``on=``
-  target) and ``method="bootstrap"`` (each refit has the same ``hr``);
+  target), ``method="lr"`` and ``method="bootstrap"`` (each refit has the
+  same ``hr``). The likelihood-ratio bound is the extreme of the
+  hazard-scaled model's own function over the parameters' likelihood
+  region, so a Weibull's is the plain Weibull fit's (the two models are
+  one reparameterisation of the other);
 - ``param_cb`` with every method, the likelihood-ratio bounds included
   (the profile likelihood is the hazard-scaled model's);
-- refused, naming what to use instead: the likelihood-ratio bounds on a
-  function (``cb``/``quantile_cb`` with ``method="lr"``), and
-  ``mean_cb``, ``mrl_cb``, ``rmst_cb`` and ``rmst`` (bound them from the
-  bootstrap refits, ``model.bootstrap(...).models``, which carry ``hr``).
+- ``mean_cb``, ``mrl_cb``, ``rmst_cb`` and ``rmst`` with every method
+  they have. The Wald bound differentiates the hazard-scaled model's own
+  mean, mean residual life or restricted mean (a closed form for the
+  Weibull and exponential, the integral of ``sf`` otherwise), and the
+  likelihood-ratio bound takes its extreme over the region;
+- refused, naming what to use instead: the pivotal bound, which is for a
+  probability-plotting fit (``fit(..., hr=)`` is maximum likelihood
+  only).
+
+Mixtures and non-parametric fits
+--------------------------------
+
+``MixtureModel`` (``fit`` and ``from_params``) and the non-parametric
+fits (``KaplanMeier``, ``NelsonAalen``, ``FlemingHarrington``,
+``Turnbull``) take ``hr=`` only to refuse anything but 1. A
+non-parametric estimate comes from the data, with no model to scale, and
+a mixture does not carry a hazard ratio. The curve with one is
+``model.sf(t) ** hr`` (a hazard ``hr`` times the model's), and data from
+an environment with a known hazard ratio are fitted by one distribution,
+``Dist.fit(..., hr=hr)``.
 
 Saving
 ------

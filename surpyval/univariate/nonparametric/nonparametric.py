@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numbers
+import warnings
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -43,13 +44,13 @@ _QF_TOL = 1e-9
 _CB_ON = ("sf", "ff", "Hf", "R", "F")
 
 # The pointwise interval types of ``cb``: the scale the normal interval is
-# formed on ('exp' is log(-log), 'normal' the survival itself, 'log' its
+# formed on ('log-log', 'plain' the survival itself, 'log' its
 # logarithm, 'logit' its log-odds, 'arcsine' the arcsine of its square
 # root), or a different variance ('peto', Peto's) or interval ('rothman',
 # Rothman's Wilson-type). See ``cb``.
 POINTWISE_BOUND_TYPES = (
-    "exp",
-    "normal",
+    "log-log",
+    "plain",
     "log",
     "logit",
     "arcsine",
@@ -57,7 +58,7 @@ POINTWISE_BOUND_TYPES = (
     "rothman",
 )
 # The types whose bounds are always within [0, 1].
-_UNIT_BOUND_TYPES = ("exp", "log", "logit", "arcsine", "rothman")
+_UNIT_BOUND_TYPES = ("log-log", "log", "logit", "arcsine", "rothman")
 
 
 def pointwise_survival_bounds(
@@ -75,7 +76,7 @@ def pointwise_survival_bounds(
     the estimate reaches 0) they are NaN, for the caller to fill.
 
     The forms are those of R's ``survival::survfit(conf.type=...)`` ('log',
-    'log-log' (``exp``), 'plain' (``normal``, unclipped), 'logit',
+    'log-log', 'plain' (unclipped), 'logit',
     'arcsin') and of ``km.ci::km.ci(method=...)`` ('peto', 'rothman')."""
     sd = np.sqrt(var_log)
     if bound_type in SCALES:
@@ -804,7 +805,7 @@ class NonParametric(
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         interp: str = "step",
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
         dist: str = "z",
     ) -> npt.NDArray:
         r"""
@@ -861,11 +862,13 @@ class NonParametric(
             the variance of :math:`\log \hat R` (Greenwood's for the
             Kaplan-Meier) and :math:`z` the normal quantile:
 
-            - 'exp' (the default): on the log(-log) scale,
+            - 'log-log' (the default): on the log(-log) scale,
               :math:`\hat R^{\exp(\pm z \hat\sigma / \log \hat R)}`;
-              R's ``conf.type="log-log"``. Within [0, 1].
-            - 'normal': on the survival itself,
-              :math:`\hat R \pm z \hat R \hat\sigma`; R's ``"plain"``,
+              R's ``conf.type="log-log"``. Within [0, 1]. (Called
+              'exp' until v0.30; that name still works, with a warning.)
+            - 'plain': on the survival itself,
+              :math:`\hat R \pm z \hat R \hat\sigma`; R's ``"plain"``
+              (called 'normal' until v0.30),
               but not cut to [0, 1], so it can leave it, and it tends to
               undercover in small samples.
             - 'log': on the log scale, :math:`\hat R e^{\pm z
@@ -888,10 +891,10 @@ class NonParametric(
               :math:`n' = \hat R (1 - \hat R) / \widehat{Var}(\hat R)`;
               R's ``km.ci(method="rothman")``. Within [0, 1].
 
-            The transformed intervals ('exp', 'log', 'logit', 'arcsine')
-            and 'rothman' cover better than 'normal' and 'peto' where the
-            estimate is near 0 or 1 (see Klein and Moeschberger, Section
-            4.3, and Borgan and Liestøl, 1990).
+            The transformed intervals ('log-log', 'log', 'logit',
+            'arcsine') and 'rothman' cover better than 'plain' and 'peto'
+            where the estimate is near 0 or 1 (see Klein and Moeschberger,
+            Section 4.3, and Borgan and Liestøl, 1990).
         dist : ('z',), str, optional
             The statistic used for the bounds. Only the normal ('z') is
             supported, which is what the asymptotic theory of the estimator
@@ -974,6 +977,7 @@ class NonParametric(
 
         """
         _check_cb_order(alpha_ci)
+        bound_type = self._scale_name("cb", bound_type)
         check_alpha_ci(alpha_ci)
         # The guard used to test ``on in []`` and so never fired: any other
         # ``on`` (e.g. 'hf') fell through to the survival bounds in
@@ -1018,7 +1022,7 @@ class NonParametric(
             elif on in ["ff", "F", "Hf"] and bound == "upper":
                 bound = "lower"
 
-            cb = self.R_cb(
+            cb = self._survival_cb(
                 x,
                 bound=bound,
                 interp=interp,
@@ -1048,20 +1052,60 @@ class NonParametric(
         bound: str = "two-sided",
         interp: str = "step",
         alpha_ci: float = 0.05,
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
         dist: str = "z",
     ) -> npt.NDArray:
         r"""
-        Confidence bounds of the survival function, as used by ``cb`` and
-        ``plot``. Takes the same arguments as ``cb`` (without ``on``), but
-        a two-sided result has the columns in ``[upper, lower]`` order;
-        ``cb(x, on='sf')`` returns them as ``[lower, upper]`` and is the
-        method to call. Outside the data they are those of ``cb`` (1 below
-        the first value for the step estimate, NaN with a warning above
-        the last). With a support set (see ``set_support``) they are 1
-        from ``lower`` to the first value, the bounds at the last value
-        from there to ``upper``, and NaN outside.
+        Deprecated in v0.30, and removed in v0.31: call
+        ``cb(x, on="sf")``, which takes the same arguments and returns a
+        two-sided result as ``[lower, upper]``, where this returns
+        ``[upper, lower]``.
+
+        Confidence bounds of the survival function. Outside the data they
+        are those of ``cb`` (1 below the first value for the step
+        estimate, NaN with a warning above the last). With a support set
+        (see ``set_support``) they are 1 from ``lower`` to the first
+        value, the bounds at the last value from there to ``upper``, and
+        NaN outside.
         """
+        from surpyval.utils.deprecation import REMOVED_IN
+        from surpyval.utils.warnings import caller_stacklevel
+
+        warnings.warn(
+            f"{self._display_name()}.R_cb is deprecated and will be removed "
+            f"in v{REMOVED_IN}; call cb(x, on='sf'), which takes the "
+            "same arguments. Its two-sided columns are [lower, upper]; "
+            "R_cb's are [upper, lower].",
+            FutureWarning,
+            stacklevel=caller_stacklevel(),
+        )
+        bound_type = self._scale_name("R_cb", bound_type)
+        return self._survival_cb(x, bound, interp, alpha_ci, bound_type, dist)
+
+    def _display_name(self) -> str:
+        """The estimator's name as a user writes it (``KaplanMeier``)."""
+        model = getattr(self, "model", None)
+        if isinstance(model, str) and model:
+            return model.replace("-", "").replace(" ", "")
+        return type(self).__name__.rstrip("_")
+
+    def _scale_name(self, method: str, bound_type: Any) -> Any:
+        """``bound_type`` by its name since v0.30 (see ``scale_name``)."""
+        from ._scales import scale_name
+
+        return scale_name(f"{self._display_name()}.{method}", bound_type)
+
+    def _survival_cb(
+        self,
+        x: npt.ArrayLike,
+        bound: str = "two-sided",
+        interp: str = "step",
+        alpha_ci: float = 0.05,
+        bound_type: str = "log-log",
+        dist: str = "z",
+    ) -> npt.NDArray:
+        """The bounds of the survival function, ``[upper, lower]`` when
+        two-sided (as ``cb`` reverses them), within the support."""
         check_alpha_ci(alpha_ci)
         _check_bound(bound)
         _check_interp(interp)
@@ -1070,7 +1114,7 @@ class NonParametric(
             lambda q: self._R_cb(q, bound, interp, alpha_ci, bound_type, dist),
             1.0,
             interp,
-            "R_cb",
+            "cb",
         )
 
     def _R_cb(
@@ -1092,7 +1136,7 @@ class NonParametric(
             raise ValueError(
                 "bound_type='peto' is not available for a weighted fit: "
                 "Peto's variance, S^2 (1 - S) / Y, counts the units at "
-                "risk, Y, and has no weighted form. Use bound_type='exp' "
+                "risk, Y, and has no weighted form. Use bound_type='log-log' "
                 "(or another type), whose variance is the robust one."
             )
         _check_bound(bound)
@@ -1336,14 +1380,15 @@ class NonParametric(
         self,
         p: npt.ArrayLike,
         alpha_ci: float = 0.05,
-        bound_type: str = "exp",
+        bound_type: str = "log-log",
         dist: str = "z",
+        bound: str = "two-sided",
     ) -> npt.NDArray:
         r"""
-        Two-sided confidence interval of the quantile at each
-        probability p using the Brookmeyer-Crowley method: the interval
-        is the set of times at which the pointwise confidence interval
-        of the survival function contains 1 - p.
+        Confidence interval of the quantile at each probability p using
+        the Brookmeyer-Crowley method: the interval is the set of times
+        at which the pointwise confidence interval of the survival
+        function contains 1 - p.
 
         Parameters
         ----------
@@ -1357,19 +1402,24 @@ class NonParametric(
             computed. Defaults to 0.05.
         bound_type : str, optional
             The type of the underlying pointwise survival bounds; any of
-            ``cb``'s (default 'exp').
+            ``cb``'s (default 'log-log').
         dist : ('z',), str, optional
             The statistic used in the underlying survival function
             bounds. Only the normal ('z') is supported.
+        bound : ('two-sided', 'lower', 'upper'), str, optional
+            The two-sided interval (default), or one one-sided bound at
+            ``alpha_ci``: the end of the two-sided interval at
+            ``2 alpha_ci``.
 
         Returns
         -------
 
         cb : numpy array
             Array of shape (len(p), 2) with the ``[lower, upper]``
-            interval of the quantile for each p. The upper limit is NaN
-            where the relevant bound of the survival function never
-            crosses 1 - p (i.e. the interval is open to the right).
+            interval of the quantile for each p (shape ``(len(p),)`` for
+            a one-sided bound). The upper limit is NaN where the relevant
+            bound of the survival function never crosses 1 - p (i.e. the
+            interval is open to the right).
 
         Examples
         --------
@@ -1386,7 +1436,14 @@ class NonParametric(
         Brookmeyer, R. and Crowley, J. (1982), "A confidence interval for
         the median survival time", Biometrics 38, 29-41.
         """
+        bound_type = self._scale_name("quantile_cb", bound_type)
         check_alpha_ci(alpha_ci)
+        check_option("bound", bound, BOUNDS)
+        if bound != "two-sided" and not alpha_ci < 0.5:
+            raise ValueError(
+                f"A one-sided bound takes alpha_ci below 0.5 (it is an end "
+                f"of the two-sided interval at 2 alpha_ci); got {alpha_ci}."
+            )
         p = np.atleast_1d(p).astype(float)
         outside = warn_outside_unit_interval(p, "quantile_cb")
 
@@ -1394,7 +1451,7 @@ class NonParametric(
             self.x,
             on="sf",
             bound="two-sided",
-            alpha_ci=alpha_ci,
+            alpha_ci=alpha_ci if bound == "two-sided" else 2 * alpha_ci,
             bound_type=bound_type,
             dist=dist,
         )
@@ -1417,7 +1474,76 @@ class NonParametric(
             out[i, 1] = (
                 self.x[np.argmax(in_upper)] if in_upper.any() else np.nan
             )
-        return out
+        if bound == "two-sided":
+            return out
+        return out[:, 0] if bound == "lower" else out[:, 1]
+
+    def median_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        bound_type: str = "log-log",
+    ) -> npt.NDArray | float:
+        r"""
+        Confidence interval of the median survival time, :attr:`median`:
+        :meth:`quantile_cb` at ``p = 0.5``.
+
+        In words: the interval holds every time at which the survival
+        curve's own pointwise confidence interval still contains 50%.
+        It starts where the lower survival bound first falls to 0.5 and
+        ends where the upper survival bound first falls below it
+        (Brookmeyer and Crowley 1982), so it needs no estimate of the
+        density at the median, and it is not symmetric about it.
+
+        Parameters
+        ----------
+
+        alpha_ci : scalar, optional
+            The level of significance. Defaults to 0.05 (a 95% interval).
+        bound : ('two-sided', 'lower', 'upper'), str, optional
+            The two-sided interval (default), or one one-sided bound.
+        bound_type : str, optional
+            The scale of the pointwise survival bounds, any of
+            :meth:`cb`'s; the default ``'log-log'`` is R's
+            ``conf.type = "log-log"``, ``'log'`` R's default.
+
+        Returns
+        -------
+
+        cb : numpy array or scalar
+            The ``[lower, upper]`` interval, or the one bound asked for.
+            The upper end is NaN where the upper survival bound never
+            falls below 0.5 in the data (the interval is open to the
+            right: R's ``survfit`` prints ``NA`` there); the median itself
+            is NaN where the estimate never reaches 0.5.
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit(
+        ...     [5, 5, 8, 8, 9, 12, 13, 13, 16, 18, 23, 23, 27, 28, 30, 31,
+        ...      33, 34, 43, 45, 45, 48, 161],
+        ...     c=[0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+        ...        1, 0, 0, 1],
+        ... )
+        >>> model.median
+        np.float64(27.0)
+        >>> model.median_cb()
+        array([13., 34.])
+        >>> model.median_cb(bound_type="log")
+        array([18., 45.])
+
+        References
+        ----------
+
+        Brookmeyer, R. and Crowley, J. (1982), "A confidence interval for
+        the median survival time", Biometrics 38, 29-41.
+        """
+        out = self.quantile_cb(
+            0.5, alpha_ci=alpha_ci, bound_type=bound_type, bound=bound
+        )
+        out = np.asarray(out, dtype=float)
+        return out if bound == "two-sided" else float(np.ravel(out)[0])
 
     def _survival_past_data(self, tau: float) -> float | None:
         """The survival estimate at the largest observed time when ``tau``
@@ -1990,7 +2116,11 @@ class NonParametric(
         # without bounds (they are ``bootstrap_cb``'s, which needs a seed).
         if self._weighted_without_variance():
             plot_bounds = False
-        cbs = self.R_cb(self.x, **kwargs) if plot_bounds else None
+        if "bound_type" in kwargs:
+            kwargs["bound_type"] = self._scale_name(
+                "get_plot_data", kwargs["bound_type"]
+            )
+        cbs = self._survival_cb(self.x, **kwargs) if plot_bounds else None
 
         d = getattr(self, "d", None)
         if d is not None:
@@ -2080,7 +2210,9 @@ class NonParametric(
         interp = kwargs.pop("interp", "step")
         bound = kwargs.pop("bound", "two-sided")
         alpha_ci = kwargs.pop("alpha_ci", 0.05)
-        bound_type = kwargs.pop("bound_type", "exp")
+        bound_type = self._scale_name(
+            "plot", kwargs.pop("bound_type", "log-log")
+        )
         dist = kwargs.pop("dist", "z")
 
         _check_bound(bound)

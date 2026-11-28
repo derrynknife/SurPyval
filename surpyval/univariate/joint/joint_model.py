@@ -10,6 +10,7 @@ import autograd.numpy as anp
 import numpy as np
 import numpy.typing as npt
 from autograd import make_jvp
+from autograd.scipy.special import logsumexp
 from scipy.stats import norm
 
 from surpyval.serialisation import (
@@ -35,9 +36,11 @@ from surpyval.utils.validation import (
 from ._likelihood import (
     EFFECTS,
     GH_FIT,
+    GH_PREDICT,
     INTEGRATIONS,
     JointArrays,
     Layout,
+    MarkerPaths,
     Model,
     PathFunction,
     _at,
@@ -48,9 +51,18 @@ from ._likelihood import (
     check_random_effects,
     check_weight,
     continued_modes,
+    log1mexp,
     log_integrals,
     log_integrand,
     scatter,
+)
+from ._multi import (
+    lag_to_dict,
+    lag_words,
+    marker_lags,
+    marker_weights,
+    weight_to_dict,
+    weight_words,
 )
 
 if TYPE_CHECKING:
@@ -59,7 +71,7 @@ if TYPE_CHECKING:
     from .dynamic import DynamicPrediction
 
 #: The functions ``cb`` bounds ('R' and 'F' are 'sf' and 'ff').
-_CB_ON = ("sf", "R", "ff", "F")
+_CB_ON = ("sf", "R", "ff", "F", "cif")
 
 #: Each link in words, for the printout.
 _LINK_WORDS = {
@@ -216,6 +228,7 @@ def parameter_names(
     random_effects: Any = "full",
     causes: Any = None,
     shared: Any = (),
+    markers: Any = None,
 ) -> list[str]:
     """The names of a joint model's parameters: each path parameter
     followed by its covariates' shifts of its mean (``a``, ``a_<cov>``,
@@ -235,7 +248,12 @@ def parameter_names(
     ``ParametricCompetingRisks`` names its causes' parameters), then the
     parameters of ``shared`` (``"beta"``, a hazard covariate or an
     effect), which the causes have in common, one each under its plain
-    name."""
+    name.
+
+    With ``markers`` (several markers' names) the path names are
+    ``"<marker>.<name>"``, ``links`` are ``(marker, link)`` pairs, the
+    noise is ``"<marker>.sd_noise"`` a marker and each effect
+    ``"<marker>.marker_effect"`` (:func:`effect_name`)."""
     if shifts is None:
         shifts = {name: list(covariates) for name in path_names}
     if hazard is None:
@@ -251,22 +269,45 @@ def parameter_names(
         for j, b in enumerate(varying)
         if j > i and label[i] == label[j]
     ]
-    effects = [EFFECTS[link] for link in links]
+    effects = [effect_name(link) for link in links]
+    noise = (
+        ["sd_noise"]
+        if markers is None
+        else [f"{marker}.sd_noise" for marker in markers]
+    )
     if causes is not None:
         every = ["alpha", "beta", *hazard, *effects]
         common = [name for name in every[1:] if name in shared]
         own = [name for name in every if name not in common]
-        out += ["sd_noise"]
+        out += noise
         out += [f"{cause}: {name}" for cause in causes for name in own]
         return out + common
-    return out + ["sd_noise", "alpha", "beta", *hazard, *effects]
+    return out + [*noise, "alpha", "beta", *hazard, *effects]
+
+
+def effect_name(link: Any) -> str:
+    """The name of a link's effect: ``marker_effect``,
+    ``slope_effect``, ``cumulative_effect``; of a marker's link (a
+    ``(marker, link)`` pair, several markers) prefixed by the marker,
+    ``"vibration.marker_effect"``."""
+    if isinstance(link, tuple):
+        return f"{link[0]}.{EFFECTS[link[1]]}"
+    return EFFECTS[link]
+
+
+def link_words(link: Any) -> str:
+    """A link in words: ``"current value"``; of a marker's link, the
+    marker's (``"vibration's current value"``)."""
+    if isinstance(link, tuple):
+        return f"{link[0]}'s {_LINK_WORDS[link[1]]}"
+    return _LINK_WORDS[link]
 
 
 def shareable(hazard: list[str], links: tuple) -> list[str]:
     """What the causes of a joint model may share (``shared=``): the
     Weibull ``beta``, a hazard covariate's coefficient, and a link's
     effect."""
-    return ["beta", *hazard, *[EFFECTS[link] for link in links]]
+    return ["beta", *hazard, *[effect_name(link) for link in links]]
 
 
 def _reported_alpha(th: dict, layout: Layout, refs: tuple) -> Any:
@@ -351,12 +392,20 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
             parts.append(anp.reshape(shift, (p,)))
         elif kept.size:
             parts.append(anp.stack([shift[k] for k in kept]))
-    if q:
+    same = layout.correlated
+    if layout.loaded is not None:
+        # the spread of the model with the parameter held as a multiple
+        # of another varying freely: its varying parameters' order
+        D = _loaded_spread(theta, layout)
+        q = D.shape[0]
+        labels = np.asarray(layout.full_blocks, dtype=int)
+        same = labels[:, None] == labels[None, :]
+    elif q:
         L = theta["L"]
         D = anp.dot(L, anp.transpose(L))
+    if q:
         sd = anp.sqrt(anp.stack([D[i, i] for i in range(q)]))
         parts.append(sd)
-        same = layout.correlated
         corr = [
             D[i, j] / (sd[i] * sd[j])
             for i in range(q)
@@ -366,7 +415,7 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
         if corr:
             parts.append(anp.stack(corr))
     if layout.n_causes > 1:
-        parts.append(anp.reshape(theta["sigma"], (1,)))
+        parts.append(anp.reshape(theta["sigma"], (layout.n_markers,)))
         parts.append(_reported_causes(theta, layout, refs))
         return anp.concatenate(parts)
     beta, gamma = theta["beta"], theta["gamma"]
@@ -375,7 +424,11 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
         (anp.dot(gamma, zbar) - _reference_shift(zeta, layout, r, c))
         / _per_scale(layout, beta)
     )
-    parts.append(anp.stack([theta["sigma"], alpha, beta]))
+    if layout.n_markers > 1:
+        parts.append(anp.reshape(theta["sigma"], (layout.n_markers,)))
+        parts.append(anp.stack([alpha, beta]))
+    else:
+        parts.append(anp.stack([theta["sigma"], alpha, beta]))
     if layout.hazard.all():
         parts.append(anp.reshape(gamma, (p,)))
     elif layout.hazard.any():
@@ -384,6 +437,44 @@ def reported_params(theta: dict, layout: Layout, refs: tuple) -> Any:
         )
     parts.append(zeta)
     return anp.concatenate(parts)
+
+
+def _pair(name: str, varying: list) -> tuple:
+    """The two varying parameters of the correlation ``name``
+    (``corr_<a>_<b>``); empty where it is not one of theirs."""
+    for i, a in enumerate(varying):
+        for b in varying[i + 1 :]:
+            if name == f"corr_{a}_{b}":
+                return (a, b)
+    return ()
+
+
+def _loaded_spread(theta: dict, layout: Layout) -> Any:
+    """The items' spread ``D`` of a layout with a parameter held as a
+    multiple of a varying one (:attr:`Layout.loaded`), in the order of
+    :attr:`Layout.full_varying`: the varying ones' ``L L'``, and the
+    held one's row ``lam`` times that one's (its variance ``lam^2``
+    times that one's). Its rank is one short; differentiable by
+    autograd."""
+    L = theta["L"]
+    q = layout.q
+    D = anp.dot(L, anp.transpose(L)) if q else anp.zeros((0, 0))
+    _, place, at, _ = layout.loaded
+    lam = theta["lam"]
+    row = [lam * D[place, c] for c in range(q)]
+    full_rows = []
+    for r in range(q + 1):
+        if r == at:
+            full_rows.append(
+                anp.stack(row[:at] + [lam * lam * D[place, place]] + row[at:])
+            )
+            continue
+        own = r if r < at else r - 1
+        entries = [D[own, c] for c in range(q)]
+        full_rows.append(
+            anp.stack(entries[:at] + [lam * D[own, place]] + entries[at:])
+        )
+    return anp.stack(full_rows)
 
 
 def _per_scale(layout: Layout, beta: Any) -> Any:
@@ -397,7 +488,11 @@ def _reference_shift(zeta: Any, layout: Layout, r: float, c: float) -> Any:
     """The log hazard (the log ageing rate, accelerated) between the
     marker's reference ``r`` and the centre ``c`` of the internal hazard:
     the value's effect times ``r - c``, and 0 where the hazard does not
-    follow the value."""
+    follow the value. With several markers ``r`` and ``c`` are those of
+    each link's term (0 but for a value's)."""
+    if np.ndim(r) or np.ndim(c):
+        diff = np.asarray(r, dtype=float) - np.asarray(c, dtype=float)
+        return anp.sum(zeta * diff)
     if "value" not in layout.links:
         return 0.0
     return zeta[layout.links.index("value")] * (r - c)
@@ -418,8 +513,17 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         mus.append(params[i] + anp.dot(shift, zbar))
         shifts.append(shift)
         i += 1 + n
-    sd = params[i : i + q]
-    i += q
+    sd = params[i : i + q + layout.n_loaded]
+    i += q + layout.n_loaded
+    lam = None
+    if layout.loaded is not None:
+        # every sd of the model with the parameter held as a multiple of
+        # another varying freely, but no correlation of it: it is +-1
+        # with that one (``sign``), and those with the others follow
+        _, place, at, sign = layout.loaded
+        held = sd[at]
+        sd = anp.concatenate([sd[:at], sd[at + 1 :]])
+        lam = sign * held / sd[place]
     same = layout.correlated
     n_corr = len(layout.lower)
     corr = params[i : i + n_corr]
@@ -448,21 +552,29 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         L = _cholesky(rows, q)
     else:
         L = anp.zeros((0, 0))
+    sigma = (
+        params[i]
+        if layout.n_markers == 1
+        else params[i : i + layout.n_markers]
+    )
+    i += layout.n_markers - 1
     if layout.n_causes > 1:
         return {
+            **({} if lam is None else {"lam": lam}),
             "mu": anp.stack(mus),
             "Delta": anp.stack(shifts) if p else anp.zeros((P, 0)),
             "L": L,
-            "sigma": params[i],
+            "sigma": sigma,
             **_internal_causes(
                 params[i + 1 : i + 1 + layout.n_survival], layout, refs
             ),
         }
-    sigma, alpha_r, beta = params[i], params[i + 1], params[i + 2]
+    alpha_r, beta = params[i + 1], params[i + 2]
     n_hazard = layout.n_hazard
     gamma = layout._gamma(params[i + 3 : i + 3 + n_hazard])
     zeta = params[i + 3 + n_hazard : i + 3 + n_hazard + layout.n_links]
     return {
+        **({} if lam is None else {"lam": lam}),
         "mu": anp.stack(mus),
         "Delta": anp.stack(shifts) if p else anp.zeros((P, 0)),
         "L": L,
@@ -476,6 +588,48 @@ def internal_theta(params: Any, layout: Layout, refs: tuple) -> dict:
         "gamma": gamma,
         "zeta": zeta,
     }
+
+
+def _saved_path(path: Any) -> tuple:
+    """``(key, links)``: a built-in path model by its name (a spline by
+    its dict), on links (``LinkedPathModel``) with them; a path of one's
+    own is refused (``NotImplementedError``)."""
+    from surpyval.degradation.path_models import PATH_MODELS, path_model_key
+    from surpyval.degradation.stress import LinkedPathModel
+
+    links = None
+    if isinstance(path, LinkedPathModel):
+        links = dict(path.links)
+        path = path.base
+    key = path_model_key(path)
+    # by its class: an unpickled built-in path is a copy of it
+    if not isinstance(key, dict) and type(PATH_MODELS.get(key)) is not type(
+        path
+    ):
+        raise NotImplementedError(
+            f"The {path.name!r} path model is not a built-in "
+            "one, so it cannot be rebuilt from a name: keep the model "
+            "with pickle."
+        )
+    return key, links
+
+
+def _restored_path(key: Any, links: Any) -> Any:
+    """The path model :func:`_saved_path` saved."""
+    from surpyval.degradation.path_models import PATH_MODELS, get_path_model
+
+    if not isinstance(key, dict) and key not in PATH_MODELS:
+        raise ValueError(
+            f"Unknown path model {key!r}; the built-in ones are "
+            f"{sorted(PATH_MODELS)}, and a spline is saved as its "
+            "SplinePath.to_dict()."
+        )
+    path = get_path_model(key)
+    if links:
+        from surpyval.degradation.stress import LinkedPathModel, validate_links
+
+        path = LinkedPathModel(path, validate_links(path, dict(links)))
+    return path
 
 
 def _cholesky(rows: list, q: int) -> Any:
@@ -662,6 +816,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: The baseline distribution (``Weibull``) and the marker's path model.
     dist: Any
     path_model: Any
+    #: The markers' names in a model of several markers (``path_model``
+    #: is then their :class:`~._multi.MarkerSet`, ``link`` holds
+    #: ``(marker, link)`` pairs, ``marker_reference`` and
+    #: ``marker_unit`` are dicts by marker); ``None`` for one marker.
+    markers: list | None = None
     #: The names of the path parameters that vary between items.
     varying: list[str]
     #: The fitted parameters, in the order of ``parameter_names``.
@@ -712,7 +871,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     n_events_by_cause: dict | None = None
     #: The marker value at which ``alpha`` is reported (``None`` where
     #: the hazard does not follow the value).
-    marker_reference: float | None
+    marker_reference: Any
     #: The number of estimated parameters, the ``k`` of the criteria.
     k: int
     #: What the fit reached (``surpyval.utils.no_maximum``): ``"not
@@ -746,12 +905,16 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     #: ages'): from the readings' ``Measurements`` or ``marker_unit=`` at
     #: the fit; None is unknown. With ``unit`` it names the unit of each
     #: link's effect (``effect_units``).
-    marker_unit: str | None = None
+    marker_unit: Any = None
     #: The marker's centre in the internal hazard (the mean reading) and
     #: the covariate means: predictions are computed there.
-    _centre: float = 0.0
+    _centre: Any = 0.0
     _zbar: npt.NDArray
     _covariance: npt.NDArray | None = None
+    #: ``(k, j)``: the varying parameter ``k`` the fit holds as an exact
+    #: multiple of the varying ``j`` about their means (a correlation of
+    #: +-1 between them, :attr:`perfect_correlations`); None: none.
+    _proportional: tuple | None = None
     _neg_ll: float
     #: The path part of the internal estimates (``mu``, ``Delta``, ``L``,
     #: ``sigma``), a start for another link's fit of the same data
@@ -762,7 +925,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     def kind(self) -> str:
         return "Joint (Weibull {}, {})".format(
             _SURVIVAL_WORDS[self.survival],
-            ", ".join(_LINK_WORDS[link] for link in self.link),
+            ", ".join(link_words(link) for link in self.link),
         )
 
     @property
@@ -788,8 +951,22 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.effect_units["cumulative_effect"]
         '(mm/s)·(time unit)'
         """
-        marker = self.marker_unit or "marker unit"
         age = getattr(self, "unit", None) or "time unit"
+        if self.markers is not None:
+            units = dict(self.marker_unit or {})
+            out = {}
+            for name, link in self.link:
+                marker = units.get(name) or "marker unit"
+                per = {
+                    "value": marker,
+                    "slope": f"{_in_brackets(marker)}/{_in_brackets(age)}",
+                    "cumulative": (
+                        f"{_in_brackets(marker)}·{_in_brackets(age)}"
+                    ),
+                }
+                out[effect_name((name, link))] = per[link]
+            return out
+        marker = self.marker_unit or "marker unit"
         per = {
             "value": marker,
             "slope": f"{_in_brackets(marker)}/{_in_brackets(age)}",
@@ -817,14 +994,78 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         return shifts, hazard
 
     @property
+    def spreads_at_zero(self) -> list[str]:
+        """The varying parameters whose spread between items the fit
+        holds at its lower bound, 0: their ``sd_<name>`` is exactly 0
+        and they are, in effect, common to all items. The fit is then
+        the one with them common (its likelihood, predictions and the
+        other parameters' standard errors are that fit's); their sds
+        and correlations (0) have no standard errors. Compare this fit
+        with the one where they are common by ``aic()``, or by
+        :meth:`likelihood_ratio_test`."""
+        # Only the fit's holding on the boundary (joint_ph's
+        # _held_on_the_boundary) writes an sd of exactly 0; a search
+        # ends at an sd above 0 (exp of its log), so an exact 0 marks it,
+        # in a fitted model and in one loaded from its dict.
+        names = list(self.parameter_names)
+        params = np.asarray(self.params, dtype=float)
+        return [
+            v
+            for v in self.varying
+            if f"sd_{v}" in names and params[names.index(f"sd_{v}")] == 0.0
+        ]
+
+    @property
+    def perfect_correlations(self) -> list[str]:
+        """The correlations between two varying parameters that the fit
+        holds at +1 or -1, the edge of the valid ones (as
+        ``corr_<a>_<b>``): one parameter's spread between items is then
+        an exact multiple of the other's, each item's departure from the
+        mean in it that multiple of its departure in the other. The fit
+        is the one with that one integrated over and the other a fixed
+        multiple of it; the correlation has no standard error, and the
+        correlations of the held parameter with the others follow from
+        the other's. Empty where none is held."""
+        if self._proportional is None:
+            return []
+        k, j = self._proportional
+        varying = list(self.varying)
+        a, b = sorted((k, j), key=varying.index)
+        return [f"corr_{a}_{b}"]
+
+    @property
+    def _varying_fitted(self) -> list[str]:
+        """The varying parameters with a spread above 0, those the
+        likelihood integrates over."""
+        held = set(self.spreads_at_zero)
+        return [v for v in self.varying if v not in held]
+
+    @property
     def _layout(self) -> Layout:
         names = list(self.path_model.parameter_names)
         kept = [self.feature_names[k] for k in self._kept]
         shifts, hazard = self._covariate_parts()
+        varying = self._varying_fitted
+        loaded = None
+        if self._proportional is not None:
+            # one varying parameter a multiple of another
+            k, j = self._proportional
+            full = list(varying)
+            varying = [v for v in full if v != k]
+            params = np.asarray(self.params, dtype=float)
+            corr = params[
+                list(self.parameter_names).index(self.perfect_correlations[0])
+            ]
+            loaded = (
+                names.index(k),
+                varying.index(j),
+                full.index(k),
+                float(np.sign(corr)),
+            )
         return Layout(
             len(names),
             len(kept),
-            tuple(names.index(v) for v in self.varying),
+            tuple(names.index(v) for v in varying),
             np.array(
                 [[cov in shifts.get(n, []) for cov in kept] for n in names],
                 dtype=bool,
@@ -832,8 +1073,10 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             np.array([cov in hazard for cov in kept], dtype=bool),
             tuple(self.link),
             self.survival,
-            block_labels(self.random_effects_structure, self.varying),
+            block_labels(self.random_effects_structure, varying),
             **self._cause_layout(kept),
+            n_markers=1 if self.markers is None else len(self.markers),
+            loaded=loaded,
         )
 
     def _cause_layout(self, kept: list) -> dict:
@@ -845,7 +1088,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "n_causes": len(self.causes),
             "shared_beta": "beta" in self.shared,
             "shared_hazard": [cov in self.shared for cov in kept],
-            "shared_links": [EFFECTS[k] in self.shared for k in self.link],
+            "shared_links": [effect_name(k) in self.shared for k in self.link],
         }
 
     def _names(self) -> list[str]:
@@ -862,6 +1105,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             self.random_effects_structure,
             self.causes,
             self.shared,
+            self.markers,
         )
 
     def _scale(self) -> float:
@@ -878,6 +1122,19 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         )
 
     def _likelihood_model(self) -> Model:
+        if self.markers is not None:
+            return Model(
+                self._layout,
+                MarkerPaths(
+                    self.path_model,
+                    tuple(self.link),
+                    self.lag,
+                    self.weight,
+                    self._centre,
+                ),
+                0.0,
+                self.integration,
+            )
         return Model(
             self._layout,
             PathFunction(
@@ -889,11 +1146,58 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
 
     @property
     def _estimated(self) -> npt.NDArray:
-        """The entries of ``params`` that are estimated (not aliased)."""
-        return ~np.isnan(np.asarray(self.params, dtype=float))
+        """The entries of ``params`` that are estimated (not aliased,
+        and not the spread of a parameter held at 0,
+        :attr:`spreads_at_zero`)."""
+        out = ~np.isnan(np.asarray(self.params, dtype=float))
+        held = set(self.spreads_at_zero)
+        if held:
+            varying = list(self.varying)
+            label = block_labels(self.random_effects_structure, varying)
+            dropped = {f"sd_{v}" for v in held} | {
+                f"corr_{a}_{b}"
+                for i, a in enumerate(varying)
+                for j, b in enumerate(varying)
+                if j > i and label[i] == label[j] and {a, b} & held
+            }
+            for k, name in enumerate(self.parameter_names):
+                if name in dropped:
+                    out[k] = False
+        if self._proportional is not None:
+            # the held parameter's correlations: +-1 with the one it is a
+            # multiple of, and those with the others follow from its
+            held_k = self._proportional[0]
+            for k, name in enumerate(self.parameter_names):
+                if name.startswith("corr_") and held_k in _pair(
+                    name, list(self.varying)
+                ):
+                    out[k] = False
+        return out
 
     @property
     def _refs(self) -> tuple:
+        if self.markers is not None:
+            reference = dict(self.marker_reference or {})
+            centres = list(self._centre)
+            names = list(self.markers)
+            c = np.array(
+                [
+                    centres[names.index(m)] if k == "value" else 0.0
+                    for m, k in self.link
+                ]
+            )
+            r = np.array(
+                [
+                    (
+                        reference.get(m, centres[names.index(m)])
+                        if k == "value"
+                        else 0.0
+                    )
+                    for m, k in self.link
+                ],
+                dtype=float,
+            )
+            return (c, self._zbar, r)
         reference = self.marker_reference
         return (
             self._centre,
@@ -902,9 +1206,83 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         )
 
     def _theta(self, params: Any = None) -> dict:
-        if params is None:
+        own = params is None
+        if own:
+            self._check_edges()
             params = np.asarray(self.params, dtype=float)[self._estimated]
-        return internal_theta(params, self._layout, self._refs)
+        with np.errstate(all="ignore"):
+            theta = internal_theta(params, self._layout, self._refs)
+        if own:
+            self._check_resolved(theta)
+        if own and not np.all(np.isfinite(np.asarray(theta["L"], float))):
+            # (a fit always gives a valid spread; a dict edited by hand,
+            # or written elsewhere, may not)
+            names = [
+                n
+                for n in self.parameter_names
+                if n.startswith(("sd_", "corr_"))
+            ]
+            raise ValueError(
+                "The model's spread between items ("
+                + ", ".join(names)
+                + ") is not a valid covariance matrix: its correlations "
+                "are not positive definite (or an sd is not above 0). Each "
+                "correlation must be between -1 and 1 and together they "
+                "must be consistent; check the values in 'params' (a "
+                "correlation of exactly +-1 is a fit held on its edge, "
+                "saved with 'proportional')."
+            )
+        return theta
+
+    def _check_edges(self) -> None:
+        """Refuse a correlation of exactly +-1 that the model does not
+        hold (``perfect_correlations``): a fit on that edge saves which
+        parameter is the multiple of which; without it the spread is
+        singular and the likelihood not defined."""
+        held = set(self.perfect_correlations)
+        names = list(self.parameter_names)
+        params = np.asarray(self.params, dtype=float)
+        for name in names:
+            if name.startswith("corr_") and name not in held:
+                value = params[names.index(name)]
+                if np.isfinite(value) and abs(value) == 1.0:
+                    raise ValueError(
+                        f"{name} is exactly {value:+g}, a singular spread, "
+                        "and the model does not hold it there (no "
+                        "'proportional' in its dict): its likelihood is not "
+                        "defined. A fit on that edge is saved with "
+                        "'proportional' naming the "
+                        "parameter held as a multiple of the other; otherwise "
+                        "give a correlation strictly between -1 and 1."
+                    )
+
+    def _check_resolved(self, theta: dict) -> None:
+        """Refuse a spread above 0 but too small for the integration to
+        resolve, by the same rule as a fit's search
+        (``joint_ph._resolved_spreads``, its first part): a varying
+        parameter's own spread (its Cholesky diagonal) below 1e-9 of its
+        mean value (``mu``, at the covariates' means). There the nodes'
+        offsets are lost to rounding and the likelihood is wrong; a fit
+        never reports one (its search does not step there, and a spread
+        at 0 is saved as exactly 0)."""
+        layout = self._layout
+        L = np.asarray(theta["L"], dtype=float)
+        if not L.size:
+            return
+        mu = np.asarray(theta["mu"], dtype=float)
+        names = list(self.path_model.parameter_names)
+        for k, j in enumerate(layout.varying):
+            own, value = L[k, k], mu[j]
+            if np.isfinite(own) and 0.0 < own < 1e-9 * abs(value):
+                v = names[j]
+                raise ValueError(
+                    f"The spread of {v} of its own is {own:.3g}, above 0 but "
+                    f"below 1e-9 of {v}'s mean ({value:.6g}): too small for "
+                    "the integration over the items to resolve (its nodes "
+                    "would sit within rounding of each other). A spread that "
+                    f"small is 0: set sd_{v} (and its correlations) to 0 for "
+                    f"the model with {v} common to all items."
+                )
 
     def covariance(self) -> npt.NDArray:
         """The parameters' covariance, in the order of
@@ -956,6 +1334,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         nested in the fit without: the test asks whether the modes
         differ in it, such as whether the marker speaks to one way of
         failing more than to another.
+
+        The fit with fewer varying parameters (``varying`` a part of
+        this one's, nothing else different) is nested too: it is this
+        model with their spreads 0, on the lower bound of a variance.
+        Where one parameter is left out, the statistic's reference is
+        then half chi-squared on the correlations left out and half on
+        them and its sd (Self and Liang, 1987; Stram and Lee, 1994): the
+        p-value is the mean of the two. Where several are, chi-squared
+        on the difference in parameters, which is conservative (its
+        p-value too large). This is the test for a spread the fit holds
+        at 0 (:attr:`spreads_at_zero`), which has no standard error.
 
         That ``nested`` is nested in this model is the caller's claim;
         what can be checked is: both are joint fits by maximum
@@ -1020,17 +1409,56 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "link",
             "lag",
             "weight",
-            "varying",
+            "markers",
         )
+        dropped = [v for v in self.varying if v not in nested.varying]
+        fewer = bool(dropped) and [
+            v for v in self.varying if v in nested.varying
+        ] == list(nested.varying)
         differ = [
             name
             for name in same
             if getattr(self, name) != getattr(nested, name)
+            # several markers: the nested model may follow fewer of
+            # them (a marker's effect 0)
+            and not (
+                name == "link"
+                and self.markers is not None
+                and set(nested.link) < set(self.link)
+            )
         ] + (
             ["path_model"]
             if type(self.path_model) is not type(nested.path_model)
             else []
         )
+        if list(self.varying) != list(nested.varying) and not fewer:
+            differ.append("varying")
+        others = sorted(
+            set(nested.parameter_names) ^ set(self.parameter_names)
+        )
+        others = [
+            name
+            for name in others
+            if name not in self.parameter_names
+            or not name.startswith(("sd_", "corr_"))
+        ]
+        held = self.perfect_correlations or nested.perfect_correlations
+        if held and list(self.varying) == list(nested.varying):
+            raise ValueError(
+                "A likelihood-ratio test of a correlation held at +-1 "
+                f"({held[0]}) against a free one is not taken: the two fits "
+                "have the same parameters, and the null is on the edge of "
+                "the valid correlations, where the statistic's reference is "
+                "a mixture whose weights depend on the information matrix. "
+                "The held fit is the free model's maximum, so its neg_ll() "
+                "is the free model's."
+            )
+        if fewer and others:
+            raise ValueError(
+                "A likelihood-ratio test of fewer varying parameters "
+                "compares two fits that differ only in their spread; "
+                f"these also differ in {others!r}."
+            )
         if differ:
             raise ValueError(
                 "A likelihood-ratio test compares two fits of the same "
@@ -1054,11 +1482,26 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 "nested in it or this fit did not reach its maximum "
                 "(check both models' 'maximum')."
             )
-        statistic = max(2.0 * gain, 0.0)
+        # a gain within round-off of 0 (two searches reaching one
+        # maximum by different steps) is 0: chi-squared on 0 degrees of
+        # freedom, in the boundary mixture below, is a point at 0, and a
+        # statistic of 1e-13 would halve the p-value
+        statistic = 2.0 * gain if gain > 1e-9 * max(1.0, abs(ll)) else 0.0
+        p_value = float(chi2.sf(statistic, df))
+        if fewer and len(dropped) == 1:
+            # one spread on its lower bound, 0, under the null: half
+            # chi-squared on its correlations, half on them and its sd
+            # (Self and Liang 1987; Stram and Lee 1994)
+            below = (
+                float(chi2.sf(statistic, df - 1))
+                if df > 1
+                else float(statistic <= 0.0)
+            )
+            p_value = 0.5 * below + 0.5 * p_value
         return {
             "statistic": float(statistic),
             "df": df,
-            "p_value": float(chi2.sf(statistic, df)),
+            "p_value": p_value,
             "log_likelihood": float(ll),
             "log_likelihood_null": float(ll_null),
         }
@@ -1076,10 +1519,18 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         shifts, hazard = self._covariate_parts()
         n_path = len(names) + sum(len(shifts.get(n, [])) for n in names)
         p = len(hazard)
-        n_spread = self._layout.n_spread
+        # every varying parameter's spread (one held at 0 too)
+        label = block_labels(self.random_effects_structure, self.varying)
+        n_spread = len(label) + sum(
+            label[i] == label[j]
+            for i in range(len(label))
+            for j in range(i + 1, len(label))
+        )
         path = list(range(n_path))
         spread = list(range(n_path, n_path + n_spread))
         i = spread[-1] + 1 if spread else n_path
+        if self.markers is not None:
+            return self._marker_parts(path, spread, i, p, hazard)
         at = {
             "value": "marker = {:.6g}".format(
                 np.nan
@@ -1106,7 +1557,13 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                     spread,
                 ),
                 ("noise", [i]),
-                *self._cause_parts(hazard, at),
+                *self._cause_parts(
+                    hazard,
+                    ", ".join(at[link] for link in self.link),
+                    ", ".join(_LINK_WORDS[link] for link in self.link)
+                    + (f", lag {self.lag:g}" if self.lag > 0 else "")
+                    + _weight_words(self.weight),
+                ),
             ]
         return [
             (
@@ -1141,27 +1598,86 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             ),
         ]
 
-    def _cause_parts(self, hazard: list, at: dict) -> list:
+    def _marker_parts(
+        self, path: list, spread: list, i: int, p: int, hazard: list
+    ) -> list[tuple[str, list[int]]]:
+        """:meth:`_parts` of several markers: the path (each marker's in
+        turn), the spread, each marker's noise, the survival part (alpha
+        at each followed marker's reference) and the links."""
+        one, two = "", ""
+        if self.how == "two-stage":
+            one, two = f" ({_STAGE_ONE})", f" ({_STAGE_TWO})"
+        M = len(self.markers or [])
+        reference = dict(self.marker_reference or {})
+        at = []
+        for name, link in self.link:
+            if link == "value":
+                at.append(f"{name} = {reference.get(name, np.nan):.6g}")
+            elif link == "slope":
+                at.append(f"{name} slope = 0")
+            else:
+                at.append(f"{name} area = 0")
+        paths = "; ".join(
+            f"{name}: {model.name} ({path_formula(model)})"
+            for name, model in zip(self.markers or [], self.path_model.models)
+        )
+        noise = list(range(i, i + M))
+        j = i + M
+        links = (
+            ", ".join(link_words(link) for link in self.link)
+            + lag_words(self.lag, heading=True)
+            + weight_words(self.weight)
+        )
+        if self.causes is not None:
+            return [
+                (f"paths: {paths}", path),
+                (
+                    "spread between items"
+                    + _structure_words(self.random_effects_structure),
+                    spread,
+                ),
+                ("noise", noise),
+                *self._cause_parts(hazard, ", ".join(at), links),
+            ]
+        return [
+            (f"paths: {paths}{one}", path),
+            (
+                "spread between items"
+                + _structure_words(self.random_effects_structure)
+                + one,
+                spread,
+            ),
+            ("noise" + one, noise),
+            (
+                "survival: {} {}, alpha at {}{}".format(
+                    self.dist.name, self.survival, ", ".join(at), two
+                ),
+                list(range(j, j + 2 + p)),
+            ),
+            (
+                "links: "
+                + ", ".join(link_words(link) for link in self.link)
+                + lag_words(self.lag, heading=True)
+                + weight_words(self.weight)
+                + two,
+                list(range(j + 2 + p, j + 2 + p + len(self.link))),
+            ),
+        ]
+
+    def _cause_parts(self, hazard: list, at: str, links: str) -> list:
         """The survival part's headings and positions with several
         causes: each cause's baseline and coefficients, then its
-        effects, then what the causes share."""
+        effects, then what the causes share. ``at`` says where ``alpha``
+        is reported and ``links`` what the hazard follows."""
         names = list(self.parameter_names)
-        effects = [EFFECTS[link] for link in self.link]
-        link_words = (
-            ", ".join(_LINK_WORDS[link] for link in self.link)
-            + (f", lag {self.lag:g}" if self.lag > 0 else "")
-            + _weight_words(self.weight)
-        )
+        effects = [effect_name(link) for link in self.link]
         out = []
         for cause in self.causes or []:
             own = [f"{cause}: {name}" for name in ["alpha", "beta", *hazard]]
             out.append(
                 (
                     "survival, {}: {} {}, alpha at {}".format(
-                        cause,
-                        self.dist.name,
-                        self.survival,
-                        ", ".join(at[link] for link in self.link),
+                        cause, self.dist.name, self.survival, at
                     ),
                     [names.index(name) for name in own if name in names],
                 )
@@ -1169,7 +1685,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             own = [f"{cause}: {name}" for name in effects]
             out.append(
                 (
-                    f"link, {cause}: {link_words}",
+                    f"link, {cause}: {links}",
                     [names.index(name) for name in own if name in names],
                 )
             )
@@ -1293,6 +1809,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
     def __repr__(self) -> str:
         from surpyval.univariate.regression._summary import format_table
 
+        if self.markers is not None:
+            return self._marker_repr()
         followed = " and ".join(_LINK_WORDS[link] for link in self.link)
         followed += _weight_words(self.weight)
         if self.lag > 0:
@@ -1337,11 +1855,131 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 continue
             rows = table.loc[heading].rename(columns=columns)
             rows.index.name = None
+            if heading.startswith("survival:") and self.causes is None:
+                rows, heading = self._alpha_at_means(rows, heading, positions)
             out += "\n{}\n{}".format(
                 heading[0].upper() + heading[1:],
                 format_table(rows, list(columns.values())),
             )
         return out
+
+    def _marker_repr(self) -> str:
+        """The printout of a model of several markers."""
+        from surpyval.univariate.regression._summary import format_table
+
+        followed = ", ".join(link_words(link) for link in self.link)
+        followed += weight_words(self.weight)
+        followed += lag_words(self.lag)
+        if self.survival == "AFT":
+            survival = (
+                f"{self.dist.name} accelerated failure time, ageing sped "
+                f"up by the {followed}"
+            )
+        else:
+            survival = (
+                f"{self.dist.name} proportional hazards in the {followed}"
+            )
+        paths = "\n".join(
+            f"  {name:<18}: {model.name}, {path_formula(model)}"
+            for name, model in zip(self.markers or [], self.path_model.models)
+        )
+        out = (
+            "Joint SurPyval Model"
+            "\n===================="
+            f"\nMarkers             : {len(self.markers or [])}, each with "
+            "its own path, noise and effect\n"
+            + paths
+            + "\nVarying between items: "
+            + ", ".join(self.varying)
+            + _structure_words(self.random_effects_structure)
+            + f"\nSurvival            : {survival}"
+            f"\nData                : {self.n_items:g} items, "
+            f"{self.n_events:g} failures, {self.n_readings:g} readings"
+            f"{self._cause_line()}"
+            f"\nFit                 : {self._fit_line()}"
+            f"\nIntegration         : {_INTEGRATION_WORDS[self.integration]}"
+            "\nEffect units        : "
+        )
+        out += "; ".join(
+            f"{name} per {per}" for name, per in self.effect_units.items()
+        )
+        table = self.summary()
+        columns = {
+            "coef": "estimate",
+            "se(coef)": "se",
+            "coef lower 95%": "lower 95%",
+            "coef upper 95%": "upper 95%",
+        }
+        for heading, positions in self._parts():
+            if not positions:
+                continue
+            rows = table.loc[heading].rename(columns=columns)
+            rows.index.name = None
+            if heading.startswith("survival:"):
+                rows, heading = self._alpha_at_means(rows, heading, positions)
+            out += "\n{}\n{}".format(
+                heading[0].upper() + heading[1:],
+                format_table(rows, list(columns.values())),
+            )
+        return out
+
+    def _alpha_at_means(
+        self, rows: pd.DataFrame, heading: str, positions: list[int]
+    ) -> tuple[pd.DataFrame, str]:
+        """The printout's survival part with ``alpha`` at the hazard
+        covariates' means first (the readable value: at the covariates'
+        0, which can be far from the data, ``alpha`` can be 1e11 with a
+        larger standard error), and the parameter itself, at 0, after
+        it as ``alpha (Z = 0)``; unchanged where the means are 0. Its
+        interval is the Wald interval on the log scale, from the delta
+        method on ``log alpha - (gamma . zbar) / beta`` (``/ 1`` for an
+        accelerated model), as the table's other positive parameters'."""
+        import pandas as pd
+
+        names = self.parameter_names
+        kept = [self.feature_names[k] for k in self._kept]
+        means = dict(zip(kept, np.asarray(self._zbar, dtype=float)))
+        hazard = [j for j in positions[2:] if names[j] in means]
+        shift = {names[j]: means[names[j]] for j in hazard}
+        # (a mean within round-off of 0, a centred covariate, is 0)
+        if not hazard or all(abs(v) < 1e-12 for v in shift.values()):
+            return rows, heading
+        params = np.asarray(self.params, dtype=float)
+        i_alpha, i_beta = positions[0], positions[1]
+        alpha, beta = params[i_alpha], params[i_beta]
+        per = 1.0 if self.survival == "AFT" else beta
+        moved = float(sum(params[j] * shift[names[j]] for j in hazard))
+        value = alpha * np.exp(-moved / per)
+        grad = np.zeros(params.size)
+        grad[i_alpha] = 1.0 / alpha
+        if self.survival != "AFT":
+            grad[i_beta] = moved / beta**2
+        for j in hazard:
+            grad[j] = -shift[names[j]] / per
+        try:
+            cov = self.covariance()
+        except ValueError:
+            cov = np.full((params.size, params.size), np.nan)
+        with np.errstate(all="ignore"):
+            se_log = float(np.sqrt(grad @ cov @ grad))
+        half = norm.ppf(0.975) * se_log
+        first = pd.DataFrame(
+            {
+                "estimate": [value],
+                "se": [value * se_log],
+                "lower 95%": [value * np.exp(-half)],
+                "upper 95%": [value * np.exp(half)],
+            },
+            index=["alpha"],
+        )
+        rest = rows.rename(index={"alpha": "alpha (Z = 0)"})
+        at = ", ".join(f"{k} = {v:.6g}" for k, v in shift.items())
+        heading = heading.replace(
+            "alpha at ",
+            f"alpha at the covariates' means ({at}) and ",
+            1,
+        )
+        return pd.concat([first, rest[list(first.columns)]]), heading
 
     def _cause_line(self) -> str:
         """The printout's line of the failure modes (none for a model
@@ -1349,15 +1987,39 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         if self.causes is None:
             return ""
         counts = self.n_events_by_cause or {}
-        return "\nFailure modes       : " + ", ".join(
+        line = "\nFailure modes       : " + ", ".join(
             f"{cause} ({counts.get(cause, np.nan):g} failures)"
             for cause in self.causes
         )
+        # the failures of unknown mode (no label in 'e'), any of them
+        unknown = float(self.n_events) - float(sum(counts.values()))
+        if counts and unknown > 0.5:
+            line += f"; {unknown:g} of unknown mode"
+        return line
 
     def _fit_line(self) -> str:
         """What the printout's ``Fit`` line says."""
         if self.how != "two-stage":
-            return f"maximum {self.maximum}"
+            held = self.spreads_at_zero
+            line = f"maximum {self.maximum}"
+            if held:
+                sds = ", ".join(f"sd_{v}" for v in held)
+                common = ", ".join(held)
+                line += (
+                    f", with {sds} at the lower bound, 0 (the fit with "
+                    f"{common} common to all items; no standard error "
+                    "there: compare by aic())"
+                )
+            if self._proportional is not None:
+                k, j = self._proportional
+                name = self.perfect_correlations[0]
+                value = self.params[list(self.parameter_names).index(name)]
+                line += (
+                    f", with {name} at its edge, {value:+g} ({k} an exact "
+                    f"multiple of {j} about their means; no standard error "
+                    "there)"
+                )
+            return line
         line = (
             "two-stage (approximate: the paths from the readings alone, "
             "then the lifetimes with each item's predicted path taken as "
@@ -1379,6 +2041,14 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         from surpyval.utils.item_lifetime import ItemLifetime
 
         p = len(self.feature_names)
+        if isinstance(Z, ItemLifetime) and self.markers is not None:
+            raise ValueError(
+                f"Item {Z.id!r} is an ItemLifetime, whose markers are one "
+                "measurement, and this model has several markers "
+                f"({', '.join(self.markers)}): give Z (its covariates), "
+                "markers={marker: {age: value}} and given (the age it was "
+                "last seen running)."
+            )
         if isinstance(Z, ItemLifetime):
             item = Z
             if markers is not None or given is not None:
@@ -1423,6 +2093,8 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                     Z = np.asarray(item.covariates, dtype=float)
             markers, given = item.markers, item.value
         z = self._covariate_row(Z)
+        if self.markers is not None:
+            return self._marker_question(z, markers, given)
         ages, values = self._readings(markers)
         if given is None:
             if ages.size:
@@ -1448,6 +2120,89 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         if ages.size and np.all(np.isfinite(z)):
             self.path_model.check_data(ages, values)
         return z, ages, values, given_age
+
+    def _marker_question(
+        self, z: npt.NDArray, markers: Any, given: Any
+    ) -> tuple:
+        """:meth:`_question`'s readings and age of several markers: the
+        readings ``[(ages, values), ...]``, one marker each."""
+        names = list(self.markers or [])
+        if markers is None:
+            markers = {}
+        if not isinstance(markers, Mapping) or any(
+            not isinstance(v, Mapping) for v in markers.values()
+        ):
+            raise ValueError(
+                "With several markers 'markers' are the readings so far by "
+                f"marker, {{marker: {{age: value}}}}, of {names!r}; got "
+                f"{markers!r}."
+            )
+        unknown = [k for k in markers if k not in names]
+        if unknown:
+            raise ValueError(
+                f"'markers' names {unknown!r}, which are not markers of the "
+                f"model; its markers are {names!r}."
+            )
+        readings = [self._readings(markers.get(name)) for name in names]
+        latest = max(
+            [float(a.max()) for a, _ in readings if a.size], default=None
+        )
+        if given is None:
+            if latest is not None:
+                raise ValueError(
+                    "Give 'given', the age the item was last seen running "
+                    f"(at or after its last reading, {latest:g}): the "
+                    "readings alone do not say it."
+                )
+            given_age = 0.0
+        else:
+            given_age = _finite_number("given", given)
+            if given_age < 0:
+                raise ValueError(
+                    f"'given' is an age, 0 or more; got {given_age:g}."
+                )
+            if latest is not None and latest > given_age:
+                raise ValueError(
+                    f"A reading at age {latest:g} is after 'given', "
+                    f"{given_age:g}, the age the item was last seen "
+                    f"running: give given={latest:g} or later."
+                )
+        if np.all(np.isfinite(z)):
+            for name, model, (a, v) in zip(
+                names, self.path_model.models, readings
+            ):
+                if a.size:
+                    model.check_data(a, v)
+        ages = [a for a, _ in readings]
+        values = [v for _, v in readings]
+        return z, ages, values, given_age
+
+    def _item_arrays(
+        self, times: npt.NDArray, zc: npt.NDArray, ages: Any, values: Any
+    ) -> JointArrays:
+        """One item's arrays, a row an age of ``times`` (each its own
+        ``T``), its readings in every row: ``ages`` and ``values`` (by
+        marker, lists, with several markers)."""
+        M = times.size
+        common = (
+            np.ones(M),
+            np.maximum(times, 1e-300),
+            np.zeros(M),
+            np.zeros(M),
+            np.repeat(zc, M, axis=0),
+        )
+        if self.markers is None:
+            return JointArrays.build(*common, [ages] * M, [values] * M)
+        from ._multi import joined
+
+        a, v, ch = joined(list(zip(ages, values)))
+        return JointArrays.build(
+            *common,
+            [a] * M,
+            [v] * M,
+            channels=[ch] * M,
+            n_markers=len(self.markers),
+        )
 
     def _covariate_row(self, Z: Any) -> npt.NDArray:
         """``Z`` as the row of every covariate column (a named mapping is
@@ -1528,20 +2283,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         zc = (z[kept] - self._zbar).reshape(1, -1)
         times = np.concatenate([[u], np.asarray(x, dtype=float)])
         M = times.size
-        many = JointArrays.build(
-            np.ones(M),
-            np.maximum(times, 1e-300),
-            np.zeros(M),
-            np.zeros(M),
-            np.repeat(zc, M, axis=0),
-            [ages] * M,
-            [values] * M,
-        )
+        many = self._item_arrays(times, zc, ages, values)
         model = self._likelihood_model()
         theta = self._theta()
         with np.errstate(all="ignore"):
             mode, root = continued_modes(
-                theta, model.layout, model.path, many, times, self._centre
+                theta, model.layout, model.path, many, times, model.centre
             )
             nodes = model.prediction_nodes(mode, root, theta, many, times)
             log_I = log_integrals(
@@ -1550,32 +2297,33 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             log_J = log_integrals(
                 theta, model, many, nodes, times, np.ones(M), readings=True
             )
-        return log_I[1:] - log_I[0], (log_J - log_I)[1:]
+            # (an age the item cannot survive to: log sf -inf, and its
+            # hazard there not defined, nan)
+            return log_I[1:] - log_I[0], (log_J - log_I)[1:]
 
     def _marker_moments(
-        self, x: npt.NDArray, z: npt.NDArray, ages: Any, values: Any, u: float
+        self,
+        x: npt.NDArray,
+        z: npt.NDArray,
+        ages: Any,
+        values: Any,
+        u: float,
+        marker: Any = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """The mean and standard deviation of one item's noise-free
         marker at the ages ``x``, over its path parameters' distribution
         given its readings and that it reached ``u`` (adaptive
-        Gauss-Hermite quadrature, at the fitted parameters)."""
+        Gauss-Hermite quadrature, at the fitted parameters); with
+        several markers, of ``marker``."""
         kept = self._kept
         zc = (z[kept] - self._zbar).reshape(1, -1)
-        one = JointArrays.build(
-            np.ones(1),
-            np.array([max(u, 1e-300)]),
-            np.zeros(1),
-            np.zeros(1),
-            zc,
-            [ages],
-            [values],
-        )
+        one = self._item_arrays(np.array([u]), zc, ages, values)
         model = self._likelihood_model()
         theta = self._theta()
         t = np.array([u])
         with np.errstate(all="ignore"):
             mode, root = continued_modes(
-                theta, model.layout, model.path, one, t, self._centre
+                theta, model.layout, model.path, one, t, model.centre
             )
             nodes = model.prediction_nodes(mode, root, theta, one, t)
             if isinstance(nodes, tuple):
@@ -1598,7 +2346,12 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 dtype=float,
             )
             x = np.asarray(x, dtype=float)
-            m = _at(model.path, params, x[None, :])[0]  # (K, M)
+            if self.markers is not None:
+                k = list(self.markers).index(marker)
+                piece = model.path.slices[k]
+                m = _at(model.path.parts[k], params[..., piece], x[None, :])[0]
+            else:
+                m = _at(model.path, params, x[None, :])[0]  # (K, M)
             m = np.asarray(m, dtype=float)
         mean = weights @ m
         var = weights @ (m - mean) ** 2
@@ -1673,19 +2426,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         zc = (z[kept] - self._zbar).reshape(1, -1)
         times = np.concatenate([[u], x[after]])
         M = times.size
-        many = JointArrays.build(
-            np.ones(M),
-            np.maximum(times, 1e-300),
-            np.zeros(M),
-            np.zeros(M),
-            np.repeat(zc, M, axis=0),
-            [ages] * M,
-            [values] * M,
-        )
+        many = self._item_arrays(times, zc, ages, values)
         model = self._likelihood_model()
         theta = self._theta()
         mode, root = continued_modes(
-            theta, model.layout, model.path, many, times, self._centre
+            theta, model.layout, model.path, many, times, model.centre
         )
         nodes = model.prediction_nodes(mode, root, theta, many, times)
         zero = np.zeros(M)
@@ -1696,6 +2441,114 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 th, model, many, nodes, times, zero, readings=True
             )
             return log_I[1:] - log_I[0]
+
+        return f, after, False
+
+    def _check_mode(self, mode: Any) -> int | None:
+        """The place of the failure mode ``mode`` among the model's
+        ``causes`` (``None`` for every mode together)."""
+        if mode is None:
+            return None
+        if self.causes is None:
+            raise ValueError(
+                "This joint model has one way of failing (it was fitted "
+                "without failure modes, e=): leave 'mode' out, and "
+                "cif(x) is ff(x). Fit with each failure's mode as e= for "
+                "the chance of each."
+            )
+        names = [str(c) for c in self.causes]
+        if str(mode) not in names:
+            raise ValueError(
+                f"'mode' is one of the model's failure modes, "
+                f"{list(self.causes)!r}; got {mode!r}."
+            )
+        return names.index(str(mode))
+
+    def _log_cif_function(
+        self, x: npt.NDArray, Z: Any, markers: Any, given: Any
+    ) -> tuple:
+        """``(f, after, missing)``: ``f(params)``, the log of the item's
+        chance of failing by each mode by each age of ``x`` after
+        ``given`` (``u``), ``(n_modes, n_after)``, as a function of the
+        estimated parameters; the mask of those ages; and whether the
+        item's covariates are missing.
+
+        Each mode's chance is the chance of failing at all by ``x``,
+        ``1 - sf(x)`` (:meth:`_log_sf_function`'s), times the mode's
+        share of it: over the item's path parameters given its readings
+        and its survival to ``u`` (``b``, on the nodes placed there),
+
+            share_k(x) = E[F(x | b) G_k(x | b) / sum_j G_j(x | b)]
+                         / E[F(x | b)],
+
+        with ``F(x | b) = 1 - S(x | b) / S(u | b)``, exact, and ``G_k(x
+        | b) = int_u^x h_k(s | b) S(s | b) / S(u | b) ds`` by the
+        cumulative hazard's Gauss-Legendre rule
+        (:func:`log_cause_fails_between`). The share is taken at each
+        node, inside the integral over age and the average over the
+        path, so the result is ``E[G_k(x | b)]``, the mode's cumulative
+        incidence from ``u``. So the modes' chances add to
+        ``1 - sf(x)`` whatever the rule's error, which moves only the
+        split between them. The nodes are held at the fitted parameters
+        while differentiating."""
+        f_sf, after, missing = self._log_sf_function(x, Z, markers, given)
+        if missing:
+            return None, after, True
+        n_modes = len(self.causes or [])
+        if not after.any():
+            return (lambda params: np.zeros((n_modes, 0))), after, False
+        z, ages, values, u = self._question(Z, markers, given)
+        kept = self._kept
+        zc = (z[kept] - self._zbar).reshape(1, -1)
+        xs = np.asarray(x, dtype=float)[after]
+        n = xs.size
+        model = self._likelihood_model()
+        theta = self._theta()
+        at_u = self._item_arrays(np.array([u]), zc, ages, values)
+        mode, root = continued_modes(
+            theta, model.layout, model.path, at_u, np.array([u]), model.centre
+        )
+        nodes = model.prediction_nodes(mode, root, theta, at_u, np.array([u]))
+        if not isinstance(nodes, tuple):
+            raise NotImplementedError(
+                "The chance of each failure mode is integrated on a grid "
+                f"of the varying parameters, which a model of more than "
+                f"{max(GH_PREDICT)} of them has none of (its predictions "
+                "use Laplace's approximation). Fit with fewer varying "
+                "parameters, or use sf for the chance of failing at all."
+            )
+        b, logw = nodes
+        rows = np.repeat(np.array([u]), n)
+        same = (np.repeat(b, n, axis=0), np.repeat(logw, n, axis=0))
+        base = self._item_arrays(rows, zc, ages, values)
+        by_mode = []
+        for k in range(n_modes):
+            each = self._item_arrays(rows, zc, ages, values)
+            each.e = np.full(n, k)
+            by_mode.append(each)
+        zero = np.zeros(n)
+
+        def f(params: Any) -> Any:
+            th = internal_theta(params, model.layout, self._refs)
+            # log weight, prior, readings and S(u | b) at each node
+            at = log_integrand(th, model, base, same, rows, zero, True)
+            # S(x | b) on the same nodes
+            to_x = log_integrand(th, model, base, same, xs, zero, True)
+            log_F = log1mexp(anp.log(at - to_x))
+            log_G = anp.stack(
+                [
+                    log_integrand(th, model, arr, same, rows, zero, True, xs)
+                    - at
+                    for arr in by_mode
+                ]
+            )
+            log_split = log_G - logsumexp(log_G, axis=0)
+            log_share = (
+                logsumexp((at + log_F)[None] + log_split, axis=-1)
+                - logsumexp(at + log_F, axis=-1)[None]
+            )
+            log_total = log1mexp(anp.log(-f_sf(params)))
+            return log_total[None] + log_share
 
         return f, after, False
 
@@ -1816,6 +2669,98 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         return 1.0 - self.sf(x, Z, markers, given)
 
     @keeps_query_shape
+    def qf(
+        self,
+        p: npt.ArrayLike,
+        Z: Any = None,
+        markers: dict | None = None,
+        given: float | None = None,
+    ) -> npt.NDArray:
+        """
+        The age by which one item has failed with probability ``p``, given
+        its covariates ``Z``, its readings so far ``markers`` and that it
+        was still running at age ``given`` (as for :meth:`sf`): the
+        inverse of :meth:`ff`, ``predict(Z, markers, given).qf(p)``.
+
+        ``given`` for ``p = 0``; ``inf`` for 1 and where the survival
+        never falls to ``1 - p`` (a path that can carry the marker away
+        from failure leaves a chance of never failing); ``nan`` with a
+        warning outside [0, 1]. The remaining life is ``qf(p) - given``.
+        The result has the shape of ``p``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+        >>> rng = np.random.default_rng(3)
+        >>> items = []
+        >>> for k in range(60):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     life = 100 * rng.weibull(2.0) * np.exp(-0.9 * (start - 2))
+        ...     end = min(life, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     outcome = "observed" if life < 120 else "right_censored"
+        ...     items.append(
+        ...         ItemLifetime(k, **{outcome: end},
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
+        >>> t = model.qf([0.1, 0.5], markers={0: 2.0, 20: 2.5}, given=40)
+        >>> bool(40 < t[0] < t[1])
+        True
+        >>> bool(np.allclose(model.ff(t, markers={0: 2.0, 20: 2.5},
+        ...                           given=40), [0.1, 0.5]))
+        True
+        """
+        return self.predict(Z, markers, given).qf(p)
+
+    def mean(
+        self,
+        Z: Any = None,
+        markers: dict | None = None,
+        given: float | None = None,
+        tau: float | None = None,
+    ) -> float:
+        """
+        The expected failure age of one item, given its covariates ``Z``,
+        its readings so far ``markers`` and that it was still running at
+        age ``given`` (as for :meth:`sf`), or with ``tau`` the restricted
+        mean to that age: ``predict(Z, markers, given).mean(tau)`` (see
+        :meth:`DynamicPrediction.mean
+        <surpyval.univariate.joint.dynamic.DynamicPrediction.mean>`).
+
+        It is ``inf``, with a warning giving the chance, where the item's
+        survival levels off above 0: a path whose varying parameters can
+        carry the marker away from failure (a straight line with a slope
+        that may be negative) leaves a chance that it never fails. Give
+        ``tau`` for the restricted mean then, or use :meth:`qf`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import ItemLifetime, SurpyvalData, WeibullJointPH
+        >>> rng = np.random.default_rng(3)
+        >>> items = []
+        >>> for k in range(60):
+        ...     start, rate = rng.normal(2.0, 0.4), rng.normal(0.02, 0.005)
+        ...     life = 100 * rng.weibull(2.0) * np.exp(-0.9 * (start - 2))
+        ...     end = min(life, 120.0)
+        ...     ages = np.arange(0.0, end, 10.0)
+        ...     y = start + rate * ages + rng.normal(0, 0.2, ages.size)
+        ...     outcome = "observed" if life < 120 else "right_censored"
+        ...     items.append(
+        ...         ItemLifetime(k, **{outcome: end},
+        ...                      markers=dict(zip(ages, y)))
+        ...     )
+        >>> model = WeibullJointPH.fit(SurpyvalData.from_items(items))
+        >>> m = model.mean(markers={0: 2.0, 20: 2.5}, given=40, tau=200)
+        >>> bool(40 < m < 200)
+        True
+        """
+        return self.predict(Z, markers, given).mean(tau)
+
+    @keeps_query_shape
     def cb(
         self,
         x: npt.ArrayLike,
@@ -1825,10 +2770,14 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        mode: Any = None,
     ) -> npt.NDArray:
         """
         Confidence bounds on one item's survival (``on="sf"``, the
-        default) or failure probability (``on="ff"``) to each age ``x``,
+        default), failure probability (``on="ff"``) or, with failure
+        modes, chance of failing by the mode ``mode`` (``on="cif"``; the
+        delta method on ``log(-log(1 - cif))``, the same scale) to each
+        age ``x``,
         given its covariates, readings and the age it was last seen
         running (as for :meth:`sf`), from the uncertainty of the
         parameters: the delta method, with the parameters' covariance, on
@@ -1847,13 +2796,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             The item, as for :meth:`sf` (an ``ItemLifetime`` as ``Z``
             stands for all three).
         on : str, optional
-            ``"sf"`` (or ``"R"``) or ``"ff"`` (or ``"F"``).
+            ``"sf"`` (or ``"R"``), ``"ff"`` (or ``"F"``) or ``"cif"``.
         alpha_ci : float, optional
             The total tail probability: 0.05 (the default) gives 95%
             bounds.
         bound : str, optional
             ``"two-sided"`` (``[lower, upper]`` on a last axis),
             ``"lower"`` or ``"upper"``.
+        mode : optional
+            With ``on="cif"``, one of the model's failure modes
+            (``causes``); ``None`` (the default) for any, which is
+            ``on="ff"``.
 
         Examples
         --------
@@ -1879,8 +2832,18 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         check_alpha_ci(alpha_ci)
         check_option("on", on, _CB_ON)
         check_option("bound", bound, BOUNDS)
+        k = self._check_mode(mode)
+        if on == "cif" and k is None:
+            on = "ff"
+        elif on != "cif" and k is not None:
+            raise ValueError(
+                "'mode' is for the chance of failing by a mode, on='cif'; "
+                f"got on={on!r}."
+            )
         cov = self.covariance()
         x = np.asarray(x, dtype=float)
+        if on == "cif" and k is not None:
+            return self._cif_cb(x, Z, markers, given, k, alpha_ci, bound)
         f, after, missing = self._log_sf_function(x, Z, markers, given)
         tail, signs = bound_signs(alpha_ci, bound)
         if on in ("ff", "F"):
@@ -1915,6 +2878,49 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 )
         if on in ("ff", "F"):
             out = 1.0 - out
+        return out if bound == "two-sided" else out[..., 0]
+
+    def _cif_cb(
+        self,
+        x: npt.NDArray,
+        Z: Any,
+        markers: Any,
+        given: Any,
+        k: int,
+        alpha_ci: float,
+        bound: str,
+    ) -> npt.NDArray:
+        """:meth:`cb` on the chance of failing by the mode at place
+        ``k``: the delta method on ``log(-log(1 - cif))``, the nodes held
+        at the fitted parameters (``[0, 0]`` up to ``given``)."""
+        cov = self.covariance()
+        f, after, missing = self._log_cif_function(x, Z, markers, given)
+        tail, signs = bound_signs(alpha_ci, bound)
+        q = norm.ppf(1 - tail)
+        out = np.zeros(x.shape + (signs.size,))
+        out[np.isnan(x)] = np.nan
+        if missing:
+            out[:] = np.nan
+        elif after.any():
+            est = self._estimated
+            params = np.asarray(self.params, dtype=float)[est]
+            sub = cov[np.ix_(est, est)]
+            if self.how == "two-stage":
+                sub = np.where(np.isfinite(sub), sub, 0.0)
+
+            def log_H(v: Any) -> Any:
+                # the cif's own cumulative hazard, log(-log(1 - cif))
+                return anp.log(-anp.log1p(-anp.exp(f(v)[k])))
+
+            with np.errstate(all="ignore"):
+                jvp = make_jvp(log_H)(params)
+                columns = [jvp(e)[1] for e in np.eye(params.size)]
+                centre = log_H(params)
+                J = np.stack(columns, axis=-1)
+                se = np.sqrt(np.einsum("mi,ij,mj->m", J, sub, J))
+                out[after] = -np.expm1(
+                    -np.exp(centre[:, None] + signs[None, :] * q * se[:, None])
+                )
         return out if bound == "two-sided" else out[..., 0]
 
     # -- saving and loading ----------------------------------------------
@@ -1957,37 +2963,35 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         >>> bool(np.allclose(restored.params, model.params))
         True
         """
-        from surpyval.degradation.path_models import (
-            PATH_MODELS,
-            path_model_key,
-        )
-        from surpyval.degradation.stress import LinkedPathModel
-
-        path, links = self.path_model, None
-        if isinstance(path, LinkedPathModel):
-            links = dict(path.links)
-            path = path.base
-        key = path_model_key(path)
-        # by its class: an unpickled built-in path is a copy of it
-        if type(PATH_MODELS.get(key)) is not type(path):
-            raise NotImplementedError(
-                f"The {path.name!r} path model is not a built-in "
-                "one, so it cannot be rebuilt from a name: keep the model "
-                "with pickle."
-            )
+        several: dict = {}
+        if self.markers is not None:
+            key, links = None, None
+            several = {
+                "markers": [
+                    dict(
+                        zip(
+                            ("name", "path_model", "links"),
+                            (name, *_saved_path(m)),
+                        )
+                    )
+                    for name, m in zip(self.markers, self.path_model.models)
+                ]
+            }
+        else:
+            key, links = _saved_path(self.path_model)
         out: dict[str, Any] = {
             "model": "JointModel",
             "distribution": self.dist.name,
             "path_model": key,
             "links": links,
+            **several,
             "varying": list(self.varying),
-            "link": list(self.link),
-            **({} if self.lag == 0 else {"lag": float(self.lag)}),
-            **(
-                {}
-                if self.weight is None
-                else {"weight": [self.weight[0], float(self.weight[1])]}
-            ),
+            "link": [
+                list(link) if isinstance(link, tuple) else link
+                for link in self.link
+            ],
+            **lag_to_dict(self.lag),
+            **weight_to_dict(self.weight),
             "survival": self.survival,
             "params": np.asarray(self.params, dtype=float).tolist(),
             "parameter_names": list(self.parameter_names),
@@ -2006,9 +3010,17 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             "marker_reference": (
                 None
                 if self.marker_reference is None
-                else float(self.marker_reference)
+                else (
+                    {k: float(v) for k, v in self.marker_reference.items()}
+                    if isinstance(self.marker_reference, Mapping)
+                    else float(self.marker_reference)
+                )
             ),
-            "centre": float(self._centre),
+            "centre": (
+                [float(v) for v in self._centre]
+                if self.markers is not None
+                else float(self._centre)
+            ),
             "covariate_means": np.asarray(self._zbar, dtype=float).tolist(),
             "n_items": float(self.n_items),
             "n_events": float(self.n_events),
@@ -2016,7 +3028,13 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             **(
                 {}
                 if self.marker_unit is None
-                else {"marker_unit": self.marker_unit}
+                else {
+                    "marker_unit": (
+                        dict(self.marker_unit)
+                        if isinstance(self.marker_unit, Mapping)
+                        else self.marker_unit
+                    )
+                }
             ),
             "integration": self.integration,
             **(
@@ -2029,6 +3047,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 }
             ),
             **self._causes_entry(),
+            **(
+                {}
+                if self._proportional is None
+                else {"proportional": list(self._proportional)}
+            ),
             "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
             **({} if self.how == "MLE" else {"how": self.how}),
@@ -2080,7 +3103,6 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         True
         """
         import surpyval
-        from surpyval.degradation.path_models import PATH_MODELS
 
         require_model_tag(model_dict, "JointModel", "a joint model")
         if model_dict["distribution"] != "Weibull":
@@ -2088,24 +3110,23 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 "A joint model has a Weibull baseline; the dict names "
                 f"{model_dict['distribution']!r}."
             )
-        key = model_dict["path_model"]
-        if key not in PATH_MODELS:
-            raise ValueError(
-                f"Unknown path model {key!r}; the built-in ones are "
-                f"{sorted(PATH_MODELS)}."
-            )
         out = cls()
         out.dist = surpyval.Weibull
-        out.path_model = PATH_MODELS[key]
-        if model_dict.get("links"):
-            from surpyval.degradation.stress import (
-                LinkedPathModel,
-                validate_links,
-            )
+        several = model_dict.get("markers")
+        if several:
+            from ._multi import MarkerSet
 
-            out.path_model = LinkedPathModel(
-                out.path_model,
-                validate_links(out.path_model, dict(model_dict["links"])),
+            out.markers = [str(entry["name"]) for entry in several]
+            out.path_model = MarkerSet(
+                out.markers,
+                [
+                    _restored_path(entry["path_model"], entry.get("links"))
+                    for entry in several
+                ],
+            )
+        else:
+            out.path_model = _restored_path(
+                model_dict["path_model"], model_dict.get("links")
             )
         out.varying = list(model_dict["varying"])
         out.params = np.array(model_dict["params"], dtype=float)
@@ -2120,15 +3141,31 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
         hazard = model_dict.get("hazard_covariates")
         out.hazard_covariates = None if hazard is None else list(hazard)
         # saved before the hazard could follow anything but the value
-        out.link = tuple(model_dict.get("link") or ("value",))
-        # saved before the lag, or with none: at once
-        out.lag = check_lag(model_dict.get("lag", 0.0))
-        # saved before the weights, or with none: all the exposure
-        saved_weight = model_dict.get("weight")
-        out.weight = check_weight(
-            None if saved_weight is None else tuple(saved_weight)
+        out.link = tuple(
+            tuple(link) if isinstance(link, list) else link
+            for link in (model_dict.get("link") or ("value",))
         )
-        if out.weight is not None and "cumulative" not in out.link:
+        # saved before the lag, or with none: at once
+        saved_lag = model_dict.get("lag", 0.0)
+        saved_weight = model_dict.get("weight")
+        if out.markers is not None and isinstance(saved_lag, Mapping):
+            # a lag by marker
+            out.lag = marker_lags(out.markers, saved_lag)
+        else:
+            out.lag = check_lag(saved_lag)
+        if out.markers is not None and isinstance(saved_weight, Mapping):
+            out.weight = marker_weights(
+                out.markers,
+                {k: tuple(v) for k, v in saved_weight.items()},
+                out.link,
+            )
+        else:
+            # saved before the weights, or with none: all the exposure
+            out.weight = check_weight(
+                None if saved_weight is None else tuple(saved_weight)
+            )
+        plain = [k[1] if isinstance(k, tuple) else k for k in out.link]
+        if isinstance(out.weight, tuple) and "cumulative" not in plain:
             raise ValueError(
                 "A joint model's weight is on its accumulated exposure "
                 "(the 'cumulative' link); the dict has the weight "
@@ -2142,7 +3179,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 "hazards) or 'AFT' (accelerated); the dict names "
                 f"{survival!r}."
             )
-        if survival == "AFT" and "cumulative" in out.link:
+        if survival == "AFT" and "cumulative" in plain:
             raise ValueError(
                 "An accelerated joint model does not follow the area under "
                 "the marker (its effective age already accumulates it); the "
@@ -2150,8 +3187,18 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
             )
         out.survival = survival
         reference = model_dict["marker_reference"]
-        out.marker_reference = None if reference is None else float(reference)
-        out._centre = float(model_dict["centre"])
+        if several:
+            out.marker_reference = (
+                None
+                if reference is None
+                else {k: float(v) for k, v in reference.items()}
+            )
+            out._centre = [float(v) for v in model_dict["centre"]]
+        else:
+            out.marker_reference = (
+                None if reference is None else float(reference)
+            )
+            out._centre = float(model_dict["centre"])
         out._zbar = np.array(model_dict["covariate_means"], dtype=float)
         out.n_items = float(model_dict.get("n_items", 0.0))
         out.n_events = float(model_dict.get("n_events", 0.0))
@@ -2179,6 +3226,11 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                 f"names {how!r}."
             )
         out.how = how
+        # saved before a correlation could be held at +-1: none is
+        proportional = model_dict.get("proportional")
+        out._proportional = (
+            None if proportional is None else tuple(proportional)
+        )
         neg_ll = model_dict["_neg_ll"]
         out._neg_ll = np.nan if neg_ll is None else float(neg_ll)
         out.k = int(np.sum(~np.isnan(out.params)))
@@ -2217,7 +3269,7 @@ class JointModel(InformationCriteriaMixin, SerialisableMixin):
                     f"'causes' ({out.causes!r}) and 'shared' "
                     f"({list(out.shared)!r}): expected {expected!r}."
                 )
-        if out.random_effects_structure != "full":
+        if out.random_effects_structure != "full" or several:
             expected = out._names()
             if expected != out.parameter_names:
                 saved = _saved_structure(out.random_effects_structure)

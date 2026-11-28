@@ -1,0 +1,189 @@
+{
+ "design": "Design (fixed before the first run, 25 Nov 2026): 200 fleets (seeds 3000\nto 3199) of 200 items from ``_multi_fleet.simulate`` (the test fleet:\nvibration and temperature each a straight line with a start and a rate\nof each item's own, the four correlated across the markers, read every\n30 and 60 days, noise sd 0.5 and 2.0; Weibull PH, alpha 800 days and\nbeta 2 at vibration 4 and temperature 65, effects 0.8 and 0.08 per\nunit), followed to 730 days. Each is fitted with ``JointPH(Weibull,\n{\"vibration\": LinearPath, \"temperature\": LinearPath})`` (every parameter\nvarying, every correlation estimated; the full grid, 2,401 nodes an\nitem) and ``marker_reference={\"vibration\": 4, \"temperature\": 65}``, so\nthe truth is in the model's own parameterisation. Recorded: each\nparameter's estimate and its 95% Wald interval from ``summary()`` (the\nsds and the Weibull's on the log scale, the correlations on Fisher's),\nand whether the maximum was verified. Reported: the bias (with its Monte\nCarlo error) and the interval's coverage over the verified fits.",
+ "fits": 200,
+ "verified": 200,
+ "failed": 0,
+ "median_seconds": 55.316630840301514,
+ "parameters": {
+  "vibration.a": {
+   "truth": 3.0,
+   "mean": 3.000503050405297,
+   "bias": 0.0005030504052969675,
+   "bias_mc_se": 0.0033524252812240536,
+   "relative_bias": 0.0001676834684323225,
+   "coverage_95": 0.94,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "vibration.b": {
+   "truth": 0.0027397260273972603,
+   "mean": 0.002738010531920636,
+   "bias": -1.7154954766243624e-06,
+   "bias_mc_se": 7.820691735346295e-06,
+   "relative_bias": -0.0006261558489678923,
+   "coverage_95": 0.96,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "temperature.a": {
+   "truth": 60.0,
+   "mean": 59.99099226823897,
+   "bias": -0.009007731761030868,
+   "bias_mc_se": 0.02254649488762313,
+   "relative_bias": -0.0001501288626838478,
+   "coverage_95": 0.94,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "temperature.b": {
+   "truth": 0.0136986301369863,
+   "mean": 0.013664117796924571,
+   "bias": -3.451234006172921e-05,
+   "bias_mc_se": 4.778604335668782e-05,
+   "relative_bias": -0.002519400824506232,
+   "coverage_95": 0.945,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "sd_vibration.a": {
+   "truth": 0.6,
+   "mean": 0.6004502471420636,
+   "bias": 0.00045024714206365335,
+   "bias_mc_se": 0.002604560806396127,
+   "relative_bias": 0.0007504119034394223,
+   "coverage_95": 0.92,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "sd_vibration.b": {
+   "truth": 0.0013698630136986301,
+   "mean": 0.0013738231611928498,
+   "bias": 3.960147494219647e-06,
+   "bias_mc_se": 6.375394615799794e-06,
+   "relative_bias": 0.002890907670780342,
+   "coverage_95": 0.96,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "sd_temperature.a": {
+   "truth": 4.0,
+   "mean": 4.007663595489397,
+   "bias": 0.0076635954893973235,
+   "bias_mc_se": 0.016578691157016125,
+   "relative_bias": 0.0019158988723493309,
+   "coverage_95": 0.93,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "sd_temperature.b": {
+   "truth": 0.00821917808219178,
+   "mean": 0.008213150760574462,
+   "bias": -6.02732161731831e-06,
+   "bias_mc_se": 3.6891276912133024e-05,
+   "relative_bias": -0.0007333241301070611,
+   "coverage_95": 0.955,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "vibration.sd_noise": {
+   "truth": 0.5,
+   "mean": 0.4994923313866947,
+   "bias": -0.0005076686133053121,
+   "bias_mc_se": 0.00044921355988811385,
+   "relative_bias": -0.0010153372266106242,
+   "coverage_95": 0.93,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "temperature.sd_noise": {
+   "truth": 2.0,
+   "mean": 1.9972727386372129,
+   "bias": -0.0027272613627871145,
+   "bias_mc_se": 0.0025924349099711104,
+   "relative_bias": -0.0013636306813935573,
+   "coverage_95": 0.94,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "alpha": {
+   "truth": 800.0,
+   "mean": 807.8839413461423,
+   "bias": 7.883941346142251,
+   "bias_mc_se": 3.711422596232478,
+   "relative_bias": 0.009854926682677814,
+   "coverage_95": 0.945,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "beta": {
+   "truth": 2.0,
+   "mean": 2.007454943193924,
+   "bias": 0.007454943193923924,
+   "bias_mc_se": 0.015201940287186725,
+   "relative_bias": 0.003727471596961962,
+   "coverage_95": 0.935,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "vibration.marker_effect": {
+   "truth": 0.8,
+   "mean": 0.8261012976122584,
+   "bias": 0.026101297612258323,
+   "bias_mc_se": 0.008441508607390673,
+   "relative_bias": 0.032626622015322904,
+   "coverage_95": 0.925,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "temperature.marker_effect": {
+   "truth": 0.08,
+   "mean": 0.07927067920617309,
+   "bias": -0.0007293207938269125,
+   "bias_mc_se": 0.0011528382531484178,
+   "relative_bias": -0.009116509922836406,
+   "coverage_95": 0.955,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "corr_vibration.a_vibration.b": {
+   "truth": 0.2,
+   "mean": 0.2113600524233204,
+   "bias": 0.011360052423320388,
+   "bias_mc_se": 0.006403574738361563,
+   "relative_bias": 0.05680026211660194,
+   "coverage_95": 0.97,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "corr_vibration.a_temperature.a": {
+   "truth": 0.5,
+   "mean": 0.503438223882731,
+   "bias": 0.003438223882730962,
+   "bias_mc_se": 0.004394268673894444,
+   "relative_bias": 0.006876447765461924,
+   "coverage_95": 0.92,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "corr_vibration.a_temperature.b": {
+   "truth": 0.0,
+   "mean": 0.008161084780213402,
+   "bias": 0.008161084780213402,
+   "bias_mc_se": 0.006842339414134011,
+   "relative_bias": null,
+   "coverage_95": 0.92,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "corr_vibration.b_temperature.a": {
+   "truth": 0.0,
+   "mean": 0.0045094937764925905,
+   "bias": 0.0045094937764925905,
+   "bias_mc_se": 0.006135954408738175,
+   "relative_bias": null,
+   "coverage_95": 0.935,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "corr_vibration.b_temperature.b": {
+   "truth": 0.3,
+   "mean": 0.3016254133755299,
+   "bias": 0.001625413375529905,
+   "bias_mc_se": 0.006078024026201633,
+   "relative_bias": 0.0054180445850996834,
+   "coverage_95": 0.95,
+   "coverage_mc_se": 0.015411035007422441
+  },
+  "corr_temperature.a_temperature.b": {
+   "truth": 0.1,
+   "mean": 0.10441498238702977,
+   "bias": 0.004414982387029767,
+   "bias_mc_se": 0.006224037320941534,
+   "relative_bias": 0.04414982387029767,
+   "coverage_95": 0.93,
+   "coverage_mc_se": 0.015411035007422441
+  }
+ }
+}

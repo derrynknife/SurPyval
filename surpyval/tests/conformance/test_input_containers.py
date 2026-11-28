@@ -210,6 +210,8 @@ def test_list_inputs(case):
         # A copula reads a list as one sequence per series (documented in
         # MultivariateSurpyvalData), so the (m, 2) pairs go as two lists.
         lists["x"] = data["x"].T.tolist()
+        if np.ndim(data.get("c")) == 2:
+            lists["c"] = data["c"].T.tolist()
     got = refit(case, {**data, **lists})
     _compare(
         case,

@@ -523,42 +523,53 @@ class QuantileRegressionModel(NoLikelihoodMixin, SerialisableMixin):
                 stacklevel=caller_stacklevel(),
             )
 
-    def bootstrap_ci(
+    def param_cb(
         self,
-        tau: float,
+        name: str | None = None,
         alpha_ci: float = 0.05,
+        bound: str = "two-sided",
         n_boot: int = 200,
         random_state: Any = None,
+        *,
+        tau: float,
     ) -> npt.NDArray:
         """
-        Percentile bootstrap confidence intervals for the intercept and
-        the coefficients at level ``tau``.
+        Percentile bootstrap confidence bounds on the intercept and the
+        coefficients at level ``tau``.
 
         The units are resampled with replacement (a row with count ``n``
         is ``n`` units), the process refitted on the grid up to ``tau``,
-        and the intervals are the percentiles of the refitted
-        coefficients. A resample whose process stops below ``tau``, or
-        in which a covariate is constant, is left out, with a warning
-        counting them.
+        and the bounds are the percentiles of the refitted coefficients.
+        A resample whose process stops below ``tau``, or in which a
+        covariate is constant, is left out, with a warning counting them.
+        (This was ``bootstrap_ci(tau, ...)`` until v0.30.)
 
         Parameters
         ----------
-        tau : float
-            The level, at most :attr:`tau_max`.
+        name : str, optional
+            ``"Intercept"`` or a covariate's name. ``None`` (the default)
+            bounds them all, the intercept first.
         alpha_ci : float, optional
             The intervals' total tail probability: 0.05 (the default) for
-            95% two-sided intervals, 0.1 for 90%.
+            95% two-sided intervals, 0.1 for 90%. A one-sided bound puts
+            all of it on one side.
+        bound : ('two-sided', 'lower', 'upper'), optional
+            Two-sided bounds put ``[lower, upper]`` on a last axis.
         n_boot : int, optional
             The number of resamples. Default 200.
         random_state : None, int or numpy.random.Generator, optional
             The seed of the resampling. ``None`` (the default) draws from
             numpy's global generator, so ``np.random.seed`` reproduces it.
+        tau : float
+            The level, at most :attr:`tau_max`. Keyword only.
 
         Returns
         -------
         numpy.ndarray
-            An ``(1 + n_covariates, 2)`` array of ``[lower, upper]``, the
-            intercept first.
+            For every coefficient, a ``(1 + n_covariates, 2)`` array of
+            ``[lower, upper]`` (``(1 + n_covariates,)`` one-sided), the
+            intercept first; for one, its ``[lower, upper]`` (or the one
+            bound).
 
         Examples
         --------
@@ -569,12 +580,19 @@ class QuantileRegressionModel(NoLikelihoodMixin, SerialisableMixin):
         >>> t = np.exp(1.0 + 0.5 * z + 0.3 * rng.normal(size=300))
         >>> c = (t > 20).astype(int)
         >>> model = QuantileRegression.fit(np.minimum(t, 20), z, c=c)
-        >>> ci = model.bootstrap_ci(0.5, 0.1, n_boot=50, random_state=1)
+        >>> ci = model.param_cb(alpha_ci=0.1, n_boot=50, random_state=1,
+        ...                     tau=0.5)
         >>> ci.round(2)
         array([[0.92, 1.05],
                [0.45, 0.57]])
         """
         check_alpha_ci(alpha_ci)
+        check_option("bound", bound, BOUNDS)
+        names = ["Intercept"] + self._names()
+        if name is not None and name not in names:
+            raise ValueError(
+                f"Unknown coefficient {name!r}; this model's are {names}."
+            )
         self._level(tau)
         refits = self._refits(n_boot, random_state, float(tau))
         draws = np.full((n_boot, 1 + self.coefs.shape[1]), np.nan)
@@ -587,8 +605,36 @@ class QuantileRegressionModel(NoLikelihoodMixin, SerialisableMixin):
         self._warn_left_out(
             int(n_boot - ok.sum()), n_boot, f"the coefficients at {tau:g}"
         )
-        bounds = _percentile(draws[ok], alpha_ci, "two-sided")
-        return np.asarray(bounds, dtype=float).reshape(-1, 2)
+        out = np.asarray(_percentile(draws[ok], alpha_ci, bound), dtype=float)
+        if bound == "two-sided":
+            out = out.reshape(-1, 2)
+        else:
+            out = out.reshape(-1)
+        return out if name is None else out[names.index(name)]
+
+    def bootstrap_ci(
+        self,
+        tau: float,
+        alpha_ci: float = 0.05,
+        n_boot: int = 200,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        """Deprecated in v0.30, removed in v0.31: call
+        ``param_cb(alpha_ci=..., n_boot=..., random_state=..., tau=tau)``,
+        which gives the same bounds."""
+        from surpyval.utils.deprecation import REMOVED_IN
+
+        warnings.warn(
+            "QuantileRegressionModel.bootstrap_ci is deprecated and will be "
+            f"removed in v{REMOVED_IN}; call param_cb(alpha_ci=..., "
+            "n_boot=..., random_state=..., tau=tau), which gives the same "
+            "bounds.",
+            FutureWarning,
+            stacklevel=caller_stacklevel(),
+        )
+        return self.param_cb(
+            None, alpha_ci, "two-sided", n_boot, random_state, tau=tau
+        )
 
     @keeps_query_shape
     def quantile_cb(
@@ -605,7 +651,7 @@ class QuantileRegressionModel(NoLikelihoodMixin, SerialisableMixin):
         B10 life of units with covariates ``Z``, say, with
         ``p = 0.1``.
 
-        The units are resampled as for :meth:`bootstrap_ci`, the whole
+        The units are resampled as for :meth:`param_cb`, the whole
         process refitted, and each refit's quantile read as :meth:`qf`
         reads the model's; a resample whose process stops below a ``p``
         gives no quantile there and is left out of that bound, with a
@@ -687,7 +733,7 @@ class QuantileRegressionModel(NoLikelihoodMixin, SerialisableMixin):
         Percentile bootstrap bounds on ``sf``, ``ff`` or ``Hf`` at ``x``
         for covariates ``Z``.
 
-        The units are resampled as for :meth:`bootstrap_ci` and the whole
+        The units are resampled as for :meth:`param_cb` and the whole
         process refitted; the bounds on ``sf`` are the percentiles of the
         refits' survival, and those on ``ff`` and ``Hf`` the same bounds
         transformed. Calls with the same ``n_boot`` and integer
@@ -775,7 +821,7 @@ class QuantileRegressionModel(NoLikelihoodMixin, SerialisableMixin):
         covariate multiplies the ``tau`` quantile (for the intercept, the
         quantile at ``Z = 0``). There is no closed-form standard error, so
         ``se(coef)``, ``z`` and ``p`` are ``nan``; with ``n_boot`` the
-        intervals are those of :meth:`bootstrap_ci`, else ``nan``.
+        intervals are those of :meth:`param_cb`, else ``nan``.
 
         Parameters
         ----------
@@ -816,7 +862,13 @@ class QuantileRegressionModel(NoLikelihoodMixin, SerialisableMixin):
             ["Intercept"] + self._names(), coef, nan, alpha_ci, p=nan
         )
         if n_boot is not None:
-            bounds = self.bootstrap_ci(tau, alpha_ci, n_boot, random_state)
+            bounds = self.param_cb(
+                None,
+                alpha_ci,
+                n_boot=n_boot,
+                random_state=random_state,
+                tau=tau,
+            )
             level = f"{100 * (1 - alpha_ci):g}%"
             lower, upper = bounds[:, 0], bounds[:, 1]
             table["coef lower " + level] = lower
@@ -1125,6 +1177,9 @@ class QuantileRegression_(FitterRepr):
         prio        -0.071
         Name: coef, dtype: float64
         """
+        from surpyval.utils.dataframe import as_pandas as _as_pandas
+
+        df = _as_pandas(df)
         check_columns(df, x_col=x_col, c_col=c_col, n_col=n_col)
         design = FrameDesign(df, Z_cols, formula, drop_missing=True)
         return design.fit(
